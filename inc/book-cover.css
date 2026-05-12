@@ -1,0 +1,315 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap');
+
+/* ─────────────────────────────────────────────
+   Featured Image
+───────────────────────────────────────────── */
+
+.featured-image {
+    max-width: 350px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    float: none !important;
+    clear: both !important;
+}
+
+.featured-image img {
+    width: 100% !important;
+    height: auto !important;
+    object-fit: contain !important;
+}
+
+@media (max-width: 768px) {
+    .featured-image {
+        max-width: 80% !important;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   Post Görselleri
+───────────────────────────────────────────── */
+
+.card img,
+.card .featured-image,
+.listrecent .card img {
+    height: auto !important;
+    max-height: none !important;
+    object-fit: contain !important;
+}
+
+/* ─────────────────────────────────────────────
+   Header & Logo
+───────────────────────────────────────────── */
+
+.brandrow {
+    padding-top: 8px !important;
+    padding-bottom: 15px !important;
+}
+
+/* ─────────────────────────────────────────────
+   Search Bar
+───────────────────────────────────────────── */
+
+.searchrow {
+    padding: 18px 0 8px 0 !important;
+    border-top: 1px solid #f0f0f0;
+}
+
+.searchrow .search-form {
+    display: flex;
+    width: 100%;
+}
+
+.searchrow .search-field {
+    flex: 1 !important;
+    padding: 10px 20px !important;
+    border-radius: 4px 0 0 4px !important;
+    border: 1px solid #ddd !important;
+    font-size: 15px !important;
+    outline: none !important;
+}
+
+.searchrow .search-submit {
+    border-radius: 0 4px 4px 0 !important;
+    padding: 10px 22px !important;
+    font-size: 18px !important;
+}
+
+.searchrow .search-submit .fa-search,
+.searchrow button[type="submit"] .fa-search {
+    font-size: 18px !important;
+}
+
+/* ─────────────────────────────────────────────
+   Slider
+───────────────────────────────────────────── */
+
+.superslider,
+.carousel,
+.carousel-item,
+.carousel-item img {
+    max-height: 530px !important;
+    height: 530px !important;
+    object-fit: cover !important;
+}
+
+@media (max-width: 768px) {
+    .superslider,
+    .carousel,
+    .carousel-item,
+    .carousel-item img {
+        max-height: 320px !important;
+        height: 320px !important;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   Mobil
+───────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .navbar-toggler {
+        display: none !important;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   Post Sütun Düzeni
+───────────────────────────────────────────── */
+
+.listrecent .col-md-6.col-lg-4 {
+    flex: 0 0 25% !important;
+    max-width: 25% !important;
+}
+
+@media (max-width: 768px) {
+    .listrecent .col-md-6.col-lg-4 {
+        flex: 0 0 50% !important;
+        max-width: 50% !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .listrecent .col-md-6.col-lg-4 {
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+    }
+}
+
+/* ─────────────────────────────────────────────
+   Post Kartı
+───────────────────────────────────────────── */
+
+.postbox_default_thumbnail div {
+    transition: transform 0.4s ease;
+}
+
+.postbox_default_thumbnail:hover div {
+    transform: scale(1.05);
+}
+
+.postbox_default_thumbnail {
+    min-height: 300px !important;
+    height: 300px !important;
+}
+
+.postbox_default {
+    border-color: #f5f5f3 !important;
+}
+
+/* ─────────────────────────────────────────────
+   Book Cover — Genel Stiller
+───────────────────────────────────────────── */
+
+.thetelos-book-cover {
+    width: 160px;
+    height: 220px;
+    min-height: unset;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 12px;
+    box-sizing: border-box;
+    position: relative;
+    font-family: 'DM Serif Display', Georgia, serif;
+    margin: 0 auto;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.thetelos-book-cover .cover-frame-outer {
+    position: absolute;
+    top: 10px; left: 10px; right: 10px; bottom: 10px;
+    border: 1px solid var(--cover-border);
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.thetelos-book-cover .cover-frame-inner {
+    display: none;
+}
+
+.thetelos-book-cover .cover-author {
+    color: var(--cover-subtext);
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    text-align: center;
+    text-transform: uppercase;
+    z-index: 1;
+    margin-top: 10px;
+    font-family: 'DM Serif Display', Georgia, serif;
+}
+
+.thetelos-book-cover .cover-title {
+    color: var(--cover-text);
+    font-size: clamp(10px, 2vw, 18px);
+    font-weight: 400;
+    font-style: italic;
+    text-align: center;
+    line-height: 1.35;
+    z-index: 1;
+    padding: 0 10px;
+    word-break: break-word;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'DM Serif Display', Georgia, serif;
+}
+
+.thetelos-book-cover .cover-logo {
+    z-index: 1;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.thetelos-book-cover .cover-logo img {
+    height: 12px;
+    opacity: 0.5;
+    filter: brightness(0) invert(1);
+}
+.postbox_default_thumbnail a {
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    .mainheading h5 {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        align-items: center !important;
+        gap: 8px !important;
+    }
+
+    /* Yazar adı tam satır */
+    .mainheading h5 > a:first-child {
+        flex: 1 1 100% !important;
+        order: 0 !important;
+    }
+
+    /* Analiz butonu solda */
+    .mainheading h5 .analysis-trigger-btn {
+        order: 1 !important;
+    }
+
+    /* Print/PDF butonları analiz butonunun yanında */
+    .mainheading h5 .thetelos-action-btns {
+        order: 2 !important;
+        margin-left: 0 !important;
+    }
+
+    /* Okuma süresi başındaki nokta */
+    p > .dot:first-child,
+    .post-date + .dot {
+        display: none !important;
+    }
+}
+/* ─── Kart footer hizalama ─── */
+.postbox_default .wrapfooter {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+}
+.postbox_default .meta-footer-thumb {
+    flex-shrink: 0 !important;
+}
+.postbox_default .author-meta {
+    flex: 1 !important;
+    min-width: 0 !important;
+    padding-left: 0 !important;
+}
+.postbox_default .author-meta .post-name {
+    display: block !important;
+    font-size: 13px !important;
+    font-weight: 400 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    line-height: 1.2 !important;
+    margin-bottom: 1px !important;
+}
+.postbox_default .author-meta .post-name a {
+    color: #1a1a1a !important;
+    text-decoration: none !important;
+}
+.postbox_default .author-meta .readingtime {
+    font-size: 12px !important;
+    color: #888 !important;
+    line-height: 1.2 !important;
+}
+.postbox_default .post-read-more {
+    flex-shrink: 0 !important;
+    margin-left: auto !important;
+}
+a .thetelos-book-cover *,
+a:hover .thetelos-book-cover * {
+    text-decoration: none !important;
+}
