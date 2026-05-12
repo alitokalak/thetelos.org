@@ -11,10 +11,9 @@
     var useDispatch    = wp.data.useDispatch;
     var Spinner        = wp.components.Spinner;
 
-    // WP 6.6+ → wp.editor, öncesi → wp.editPost
     var PluginDocumentSettingPanel =
-        ( wp.editor    && wp.editor.PluginDocumentSettingPanel )   ||
-        ( wp.editPost  && wp.editPost.PluginDocumentSettingPanel );
+        ( wp.editor   && wp.editor.PluginDocumentSettingPanel )  ||
+        ( wp.editPost && wp.editPost.PluginDocumentSettingPanel );
 
     if ( ! PluginDocumentSettingPanel ) {
         console.warn( '[TCF] PluginDocumentSettingPanel not found.' );
@@ -35,7 +34,6 @@
 
         var _s = useState( {
             query:    '',
-            ready:    false,
             results:  [],
             status:   '',
             loading:  false,
@@ -47,20 +45,20 @@
             _s[1]( function ( p ) { return Object.assign( {}, p, u ); } );
         };
 
-        // Başlıktan sorgu oluştur (bir kez)
+        // ── Başlık değişince otomatik ara (800ms debounce) ──────────
         useEffect( function () {
-            if ( ! s.ready && postTitle ) {
-                set( { query: postTitle, ready: true } );
-            }
+            if ( ! postTitle || postTitle.length < 3 ) return;
+
+            set( { query: postTitle } );
+
+            var timer = setTimeout( function () {
+                doSearch( postTitle );
+            }, 800 );
+
+            return function () { clearTimeout( timer ); };
         }, [ postTitle ] );
 
-        // Başlık hazır olunca otomatik ara
-        useEffect( function () {
-            if ( s.ready && s.query ) {
-                doSearch( s.query );
-            }
-        }, [ s.ready ] );
-
+        // ── Arama ───────────────────────────────────────────────────
         function doSearch( q ) {
             q = ( q !== undefined ? q : s.query ).trim();
             if ( ! q ) return;
@@ -88,6 +86,7 @@
                 } );
         }
 
+        // ── Kapak seç → featured image yap ─────────────────────────
         function pickCover( cover, idx ) {
             var pid = postId || tcfData.postId;
             if ( ! pid ) { set( { status: 'Please save the post first.' } ); return; }
@@ -117,6 +116,7 @@
                 } );
         }
 
+        // ── Render ──────────────────────────────────────────────────
         return el( PluginDocumentSettingPanel, {
             name:        'thetelos-book-cover',
             title:       'Book Cover Fetcher',
@@ -159,13 +159,13 @@
             s.status && el( 'div', {
                 style: {
                     fontSize: '11px', marginBottom: '6px',
-                    color: s.status.startsWith( '✓' ) ? '#00ab6b'
-                         : s.status.startsWith( 'Error' )  ? '#cc1818'
+                    color: s.status.startsWith( '✓' )     ? '#00ab6b'
+                         : s.status.startsWith( 'Error' ) ? '#cc1818'
                          : '#888',
                 }
             }, s.status ),
 
-            // Yükleniyor spinner
+            // Yükleniyor
             s.loading && el( 'div', { style: { textAlign: 'center', padding: '8px 0' } },
                 el( Spinner )
             ),
