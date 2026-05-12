@@ -6,6 +6,7 @@
     var el             = wp.element.createElement;
     var useState       = wp.element.useState;
     var useEffect      = wp.element.useEffect;
+    var useRef         = wp.element.useRef;
     var registerPlugin = wp.plugins.registerPlugin;
     var useSelect      = wp.data.useSelect;
     var useDispatch    = wp.data.useDispatch;
@@ -32,6 +33,9 @@
 
         var editPost = useDispatch( 'core/editor' ).editPost;
 
+        // İlk aramanın yapılıp yapılmadığını izle
+        var initialDone = useRef( false );
+
         var _s = useState( {
             query:    '',
             results:  [],
@@ -45,20 +49,27 @@
             _s[1]( function ( p ) { return Object.assign( {}, p, u ); } );
         };
 
-        // ── Başlık değişince otomatik ara (800ms debounce) ──────────
+        // ── Başlık her değiştiğinde: arama alanını güncelle + ara ──
         useEffect( function () {
-            if ( ! postTitle || postTitle.length < 3 ) return;
+            var q = postTitle.trim();
+            if ( ! q || q.length < 4 ) return;
 
-            set( { query: postTitle } );
+            // Arama alanını her zaman başlıkla güncelle
+            set( { query: q } );
 
-            var timer = setTimeout( function () {
-                doSearch( postTitle );
-            }, 800 );
-
-            return function () { clearTimeout( timer ); };
+            if ( ! initialDone.current ) {
+                // İlk yükleme: 400ms sonra ara (Gutenberg'in stabil olması için)
+                initialDone.current = true;
+                var initTimer = setTimeout( function () { doSearch( q ); }, 400 );
+                return function () { clearTimeout( initTimer ); };
+            } else {
+                // Sonraki değişiklikler: 800ms debounce
+                var changeTimer = setTimeout( function () { doSearch( q ); }, 800 );
+                return function () { clearTimeout( changeTimer ); };
+            }
         }, [ postTitle ] );
 
-        // ── Arama ───────────────────────────────────────────────────
+        // ── Arama fonksiyonu ────────────────────────────────────────
         function doSearch( q ) {
             q = ( q !== undefined ? q : s.query ).trim();
             if ( ! q ) return;
@@ -86,7 +97,7 @@
                 } );
         }
 
-        // ── Kapak seç → featured image yap ─────────────────────────
+        // ── Kapak seç → featured image ──────────────────────────────
         function pickCover( cover, idx ) {
             var pid = postId || tcfData.postId;
             if ( ! pid ) { set( { status: 'Please save the post first.' } ); return; }
@@ -124,7 +135,6 @@
             initialOpen: true,
         },
 
-            // Arama satırı
             el( 'div', { style: { display: 'flex', gap: '6px', marginBottom: '6px' } },
                 el( 'input', {
                     type:        'text',
@@ -155,7 +165,6 @@
                 }, s.loading ? '…' : 'Search' )
             ),
 
-            // Durum mesajı
             s.status && el( 'div', {
                 style: {
                     fontSize: '11px', marginBottom: '6px',
@@ -165,12 +174,10 @@
                 }
             }, s.status ),
 
-            // Yükleniyor
             s.loading && el( 'div', { style: { textAlign: 'center', padding: '8px 0' } },
                 el( Spinner )
             ),
 
-            // Kapak grid'i
             ! s.loading && s.results.length > 0 && el( 'div', {
                 style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '5px' }
             },
