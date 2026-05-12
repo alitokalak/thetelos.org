@@ -1,556 +1,399 @@
 <?php
-/** Index (de-duplicated magazine layout) */
+/**
+ * The Telos — Homepage Template
+ *
+ * Sections: Hero → Featured Works → Browse the Stacks → Latest Additions
+ *
+ * @package Mediumish / TheTelos
+ */
 get_header();
 
-echo '<main id="main" role="main">';
-
-// === Theme mods / options ===
-$mediumish_homeslider_active = get_theme_mod('mediumish_homeslider_active');  // 0 = show
-$mediumish_option_homeslider_recentposts = get_theme_mod('mediumish_option_homeslider_recentposts');  // 1 = recent posts (ignore tag)
-$slidertag = get_theme_mod('mediumish_option_homeslider');  // array of tag IDs expected
-if ((int) $mediumish_option_homeslider_recentposts === 1) {
-    $slidertag = [];  // force “recent” mode
-}
-$slidernumber = max(1, (int) get_theme_mod('mediumish_option_homeslider_numberposts'));
-$mediumish_postsbycategory_active = get_theme_mod('mediumish_postsbycategory_active');  // 0 = show
-$postcategories = get_theme_mod('mediumish_option_postsbycategory');  // array of {categoryfield, postsperpage, categorystyle}
-$mediumish_homecategorycloud_active = get_theme_mod('mediumish_homecategorycloud_active');  // 0 = show
-$mediumish_homecategorycloud_bg = get_theme_mod('mediumish_homecategorycloud_bg');
-$mediumish_allstories = get_theme_mod('all_stories_text', 'All Stories');
-
-// === Global “seen” bucket to avoid duplicates across all sections ===
+$paged = max( 1, get_query_var( 'paged' ) ?: get_query_var( 'page' ) ?: 1 );
 $seen_ids = [];
 
-// === Helper: push current post into $seen_ids safely ===
-function wt_seen_push(&$seen, $post_id)
-{
-    if ($post_id && !in_array($post_id, $seen, true)) {
-        $seen[] = (int) $post_id;
-    }
+// Helper — push IDs
+function tls_push( &$seen, $id ) {
+    $id = (int) $id;
+    if ( $id && ! in_array( $id, $seen, true ) ) $seen[] = $id;
 }
-
-// Normalize checkbox-ish values from Customizer (0/1, "on", "true", etc.)
-if (!function_exists('wt_truthy')) {
-    function wt_truthy($v): bool
-    {
-        if (is_bool($v))
-            return $v;
-        $v = strtolower(trim((string) $v));
-        return in_array($v, ['1', 'true', 'on', 'yes', 'y'], true);
-    }
-}
-
-// === Pagination var ===
-$paged = max(1, get_query_var('paged') ?: get_query_var('page') ?: 1);
 ?>
-<div class="container">
 
-<?php if (is_home()): ?>
-    <?php if (is_paged()): ?>
-        <style>
-            .listpostsbycats, #main-slider { display:none; }
-        </style>
-    <?php endif; ?>
+<main id="main" role="main">
 
-    <?php
-    // =========================
-    // SLIDER (optional)
-    // =========================
+<?php if ( is_home() && ! is_paged() ) : ?>
 
-    // Read controls directly (don’t pre-mangle $slidertag)
-    $disable_slider = wt_truthy(get_theme_mod('mediumish_homeslider_active'));  // “Disable home slider”
-    $use_recent_posts = wt_truthy(get_theme_mod('mediumish_option_homeslider_recentposts'));  // “Slider by recent posts”
-    $slides_count = max(1, (int) get_theme_mod('mediumish_option_homeslider_numberposts'));
+<!-- ══════════════════════════════════
+     HERO
+══════════════════════════════════ -->
+<section class="tls-hero">
+    <div class="container">
+        <p class="tls-hero-eyebrow">The Digital Archive</p>
+        <h1 class="tls-hero-title">
+            Explore the World's<br><em>Great Book Summaries</em>
+        </h1>
+        <p class="tls-hero-desc">
+            A curated archive of the world's most influential texts, distilled for the modern scholar. Access centuries of wisdom in a focused digital environment.
+        </p>
 
-    if (!$disable_slider):
-        // Base = recent posts
-        $slider_args = [
-            'post_type' => 'post',
-            'posts_per_page' => $slides_count,
-            'ignore_sticky_posts' => 1,
-            'no_found_rows' => true,
-            'orderby' => 'date',
-            'order' => 'DESC',
-            'post_status' => 'publish',
-        ];
+        <!-- Search bar -->
+        <form class="tls-hero-search" role="search" method="get" action="<?php echo esc_url( home_url( '/' ) ); ?>">
+            <svg style="width:18px;height:18px;color:#bbb;margin-left:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" name="s"
+                   placeholder="Search by author, title, or concept…"
+                   value="<?php echo esc_attr( get_search_query() ); ?>"
+                   autocomplete="off"
+                   aria-label="Search the archive">
+            <button type="submit">Explore</button>
+        </form>
 
-        // Only apply tag filter if NOT using “recent posts”
-        if (!$use_recent_posts) {
-            $raw = get_theme_mod('mediumish_option_homeslider');  // Kirki Select returns one value
-
-            // Sometimes Kirki returns ['value'=>X]
-            if (is_array($raw) && array_key_exists('value', $raw)) {
-                $raw = $raw['value'];
-            }
-
-            if ($raw !== '' && $raw !== null) {
-                if (ctype_digit((string) $raw)) {
-                    $slider_args['tag__in'] = [(int) $raw];  // tag by ID
-                } else {
-                    $slider_args['tag_slug__in'] = [(string) $raw];  // tag by slug
-                }
-            }
-        }
-
-        $slider = new WP_Query($slider_args);
-        $count = (int) $slider->post_count;
-
-        if ($slider->have_posts()):
-            ?>
-        
-	<div id="main-slider"
-     class="carousel slide margb-2"
-     data-ride="carousel"
-     role="region"
-     aria-roledescription="carousel"
-     aria-label="<?php esc_attr_e('Featured posts slider', 'mediumish'); ?>">
-
-    <?php if ($count > 1): ?>
-        <ol class="carousel-indicators">
-            <?php for ($i = 0; $i < $count; $i++): ?>
-                <li
-                    data-target="#main-slider"
-                    data-slide-to="<?php echo esc_attr($i); ?>"
-                    aria-label="<?php echo esc_attr(sprintf(__('Slide %d', 'mediumish'), $i + 1)); ?>"
-                    <?php echo $i === 0 ? 'class="active" aria-current="true"' : ''; ?>>
-                </li>
-            <?php endfor; ?>
-        </ol>
-    <?php endif; ?>
-
-    <div class="carousel-inner" aria-live="polite">
+        <!-- Popular tags -->
         <?php
-        $i = 0;
-        while ($slider->have_posts()):
-            $slider->the_post();
-            wt_seen_push($seen_ids, get_the_ID());
+        $pop_tags = get_terms( [
+            'taxonomy'   => 'category',
+            'orderby'    => 'count',
+            'order'      => 'DESC',
+            'number'     => 6,
+            'hide_empty' => true,
+        ] );
+        if ( ! empty( $pop_tags ) && ! is_wp_error( $pop_tags ) ) :
+        ?>
+        <div class="tls-hero-tags">
+            <span>Popular:</span>
+            <?php foreach ( $pop_tags as $pt ) : ?>
+                <a class="tls-tag-pill"
+                   href="<?php echo esc_url( get_category_link( $pt->term_id ) ); ?>">
+                    <?php echo esc_html( $pt->name ); ?>
+                </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════
+     FEATURED WORKS
+══════════════════════════════════ -->
+<?php
+// Use sticky posts as featured; fallback to 3 most recent
+$sticky = get_option( 'sticky_posts', [] );
+$featured_args = [
+    'post_type'           => 'post',
+    'post_status'         => 'publish',
+    'posts_per_page'      => 3,
+    'ignore_sticky_posts' => 1,
+    'orderby'             => 'date',
+    'order'               => 'DESC',
+    'no_found_rows'       => true,
+];
+if ( ! empty( $sticky ) ) {
+    $featured_args['post__in'] = array_slice( $sticky, 0, 3 );
+    $featured_args['orderby']  = 'post__in';
+}
+$featured_q = new WP_Query( $featured_args );
+
+// Determine section title from first post's category
+$section_cat = 'Featured Works';
+if ( $featured_q->have_posts() ) {
+    $first_cats = get_the_category( $featured_q->posts[0]->ID );
+    if ( ! empty( $first_cats ) ) $section_cat = $first_cats[0]->name;
+}
+?>
+
+<section class="tls-section">
+    <div class="container">
+        <p class="tls-section-label">Featured Works</p>
+        <div class="tls-section-header">
+            <h2 class="tls-section-title">Pillars of <?php echo esc_html( $section_cat ); ?></h2>
+            <a class="tls-view-all" href="<?php echo esc_url( home_url( '/' ) ); ?>">
+                View entire archive
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+        </div>
+
+        <?php if ( $featured_q->have_posts() ) : ?>
+        <div class="tls-featured-grid">
+            <?php
+            $fi = 1;
+            while ( $featured_q->have_posts() ) :
+                $featured_q->the_post();
+                tls_push( $seen_ids, get_the_ID() );
+                $cats    = get_the_category();
+                $cat_name = ! empty( $cats ) ? $cats[0]->name : '';
+                $cat_link = ! empty( $cats ) ? get_category_link( $cats[0]->term_id ) : '';
+                $authors  = get_the_terms( get_the_ID(), 'authors' );
+                $auth     = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0]->name : get_the_author_meta( 'display_name' );
             ?>
-            <div class="carousel-item <?php echo $i === 0 ? 'active' : ''; ?>"
-                 role="group"
-                 aria-roledescription="slide"
-                 aria-label="<?php echo esc_attr(($i + 1) . ' / ' . $count); ?>">
-
-                <a href="<?php the_permalink(); ?>" aria-label="<?php echo esc_attr(get_the_title()); ?>">
-                    <?php if (has_post_thumbnail()) : ?>
-                        <?php
-                        the_post_thumbnail('large', [
-                            'class' => 'd-block',
-                            'data-no-lazy' => '1',
-                            'alt' => the_title_attribute(['echo' => false]),
-                        ]);
-                        ?>
+            <a class="tls-featured-card" href="<?php the_permalink(); ?>">
+                <div class="tls-featured-card-num">
+                    <?php printf( 'BOOK %02d', $fi ); ?>
+                    <?php if ( $cat_name ) echo ' &mdash; <span style="color:var(--tls-gold)">' . esc_html( strtoupper( $cat_name ) ) . '</span>'; ?>
+                </div>
+                <div class="tls-featured-card-cover">
+                    <?php if ( has_post_thumbnail() ) : ?>
+                        <?php the_post_thumbnail( 'medium', [ 'style' => 'max-width:120px;border-radius:2px;box-shadow:0 8px 28px rgba(0,0,0,.25);' ] ); ?>
                     <?php else : ?>
-                        <img
-                            src="<?php echo esc_url(get_template_directory_uri() . '/assets/img/default.jpg'); ?>"
-                            class="d-block"
-                            data-no-lazy="1"
-                            alt="<?php echo esc_attr(the_title_attribute(['echo' => false])); ?>" />
+                        <?php echo thetelos_render_book_cover( get_the_ID() ); ?>
                     <?php endif; ?>
+                </div>
+                <div class="tls-featured-card-divider"></div>
+                <div class="tls-featured-card-title"><?php the_title(); ?></div>
+                <div class="tls-featured-card-author"><?php echo esc_html( $auth ); ?></div>
+                <div class="tls-featured-card-desc"><?php echo esc_html( wp_trim_words( get_the_excerpt(), 22 ) ); ?></div>
+            </a>
+            <?php
+            $fi++;
+            endwhile;
+            wp_reset_postdata();
+            ?>
+        </div>
+        <?php else : ?>
+            <p style="color:var(--tls-muted);font-family:var(--tls-sans);">No featured posts found. Mark posts as sticky to feature them here.</p>
+        <?php endif; ?>
+    </div>
+</section>
 
-                    <div class="carousel-caption d-flex h-100 align-items-center">
-                        <h3 class="carousel-excerpt d-block">
-                            <span class="title d-block"><?php the_title(); ?></span>
-                            <span class="fontlight d-block hidden-md-down"><?php echo excerpt(35); ?></span>
-                            <span class="btn btn-simple"><?php esc_html_e('Read More', 'mediumish'); ?></span>
-                        </h3>
-                    </div>
+<!-- ══════════════════════════════════
+     BROWSE THE STACKS
+══════════════════════════════════ -->
+<?php
+$browse_cats = get_categories( [
+    'orderby'    => 'count',
+    'order'      => 'DESC',
+    'number'     => 4,
+    'hide_empty' => true,
+] );
+
+// Category icons map (slug → emoji)
+$cat_icons = [
+    'philosophy'   => '🏛️',
+    'history'      => '📜',
+    'science'      => '⚗️',
+    'art'          => '🎨',
+    'theology'     => '✝️',
+    'economics'    => '📊',
+    'literature'   => '📚',
+    'psychology'   => '🧠',
+    'politics'     => '⚖️',
+    'religion'     => '🕌',
+    'biography'    => '👤',
+    'mathematics'  => '∑',
+    'technology'   => '💡',
+    'music'        => '🎵',
+];
+?>
+
+<section class="tls-section">
+    <div class="container">
+        <div class="tls-browse-wrap">
+
+            <!-- Dark panel -->
+            <div class="tls-browse-dark">
+                <p class="tls-browse-dark-label">Navigation</p>
+                <h2 class="tls-browse-dark-title">Browse the<br>Eternal Stacks</h2>
+                <p class="tls-browse-dark-desc">
+                    Organized by epoch, ideology, and influence. Find the missing piece of your intellectual puzzle.
+                </p>
+                <a class="tls-browse-cta" href="<?php echo esc_url( home_url( '/' ) ); ?>">
+                    Open Collections
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                 </a>
             </div>
+
+            <!-- Category tiles grid -->
+            <div class="tls-cat-grid">
+                <?php
+                $active_set = false;
+                foreach ( $browse_cats as $bi => $bc ) :
+                    $icon  = $cat_icons[ $bc->slug ] ?? '📖';
+                    $active = ( ! $active_set && $bi === 1 ) ? 'tls-cat-active' : '';
+                    if ( $active ) $active_set = true;
+                ?>
+                <a class="tls-cat-tile <?php echo $active; ?>"
+                   href="<?php echo esc_url( get_category_link( $bc->term_id ) ); ?>">
+                    <span class="tls-cat-tile-icon"><?php echo $icon; ?></span>
+                    <span class="tls-cat-tile-name"><?php echo esc_html( $bc->name ); ?></span>
+                    <span class="tls-cat-tile-count"><?php echo number_format( $bc->count ); ?> volumes</span>
+                </a>
+                <?php endforeach; ?>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<!-- ══════════════════════════════════
+     LATEST ADDITIONS + CURATOR'S NOTE
+══════════════════════════════════ -->
+<?php
+$latest_q = new WP_Query( [
+    'post_type'           => 'post',
+    'post_status'         => 'publish',
+    'posts_per_page'      => 7,
+    'post__not_in'        => $seen_ids,
+    'ignore_sticky_posts' => 1,
+    'orderby'             => 'date',
+    'order'               => 'DESC',
+    'no_found_rows'       => true,
+] );
+?>
+
+<section class="tls-section">
+    <div class="container">
+        <p class="tls-section-label">Latest Additions</p>
+        <h2 class="tls-section-title" style="margin-bottom:36px;">Recent to the Archive</h2>
+
+        <div class="tls-latest-wrap">
+
+            <!-- Book list -->
+            <div>
+                <?php if ( $latest_q->have_posts() ) : ?>
+                <ul class="tls-latest-list">
+                    <?php while ( $latest_q->have_posts() ) : $latest_q->the_post(); ?>
+                    <li class="tls-latest-item">
+                        <div class="tls-latest-date">
+                            <strong><?php echo esc_html( get_the_date( 'j' ) ); ?></strong>
+                            <?php echo esc_html( strtoupper( get_the_date( 'M' ) ) ); ?>
+                        </div>
+                        <div class="tls-latest-body">
+                            <a class="tls-latest-title" href="<?php the_permalink(); ?>">
+                                <?php the_title(); ?>
+                            </a>
+                            <?php
+                            $l_authors = get_the_terms( get_the_ID(), 'authors' );
+                            $l_auth    = ( ! empty( $l_authors ) && ! is_wp_error( $l_authors ) ) ? $l_authors[0]->name : '';
+                            ?>
+                            <p class="tls-latest-meta">
+                                <?php if ( $l_auth ) echo esc_html( $l_auth ) . ' &mdash; '; ?>
+                                <?php echo esc_html( wp_trim_words( get_the_excerpt(), 16 ) ); ?>
+                            </p>
+                            <div class="tls-latest-tags">
+                                <?php
+                                $l_cats = get_the_category();
+                                foreach ( array_slice( $l_cats, 0, 2 ) as $lc ) :
+                                ?>
+                                <a class="tls-cat-badge" href="<?php echo esc_url( get_category_link( $lc->term_id ) ); ?>">
+                                    <?php echo esc_html( $lc->name ); ?>
+                                </a>
+                                <?php endforeach; ?>
+                                <?php if ( function_exists( 'thetelos_get_analysis_for_post' ) && thetelos_get_analysis_for_post( get_the_ID() ) ) : ?>
+                                <span class="tls-cat-badge" style="border-color:var(--tls-green);color:var(--tls-green);">Deep Analysis</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </li>
+                    <?php endwhile; wp_reset_postdata(); ?>
+                </ul>
+                <?php else : ?>
+                    <p style="color:var(--tls-muted);font-family:var(--tls-sans);">No posts found.</p>
+                <?php endif; ?>
+
+                <div style="margin-top:24px;">
+                    <a class="tls-cta-btn" href="<?php echo esc_url( home_url( '/?paged=2' ) ); ?>"
+                       style="display:inline-block;width:auto;padding:12px 32px;">
+                        View all summaries &rarr;
+                    </a>
+                </div>
+            </div>
+
+            <!-- Curator's Note -->
+            <aside class="tls-curator">
+                <div class="tls-curator-label">The Curator's Note</div>
+                <p class="tls-curator-quote">
+                    &ldquo;The purpose of The Telos is not to replace the reading of great works, but to provide the maps necessary to navigate the vast landscape of human thought.&rdquo;
+                </p>
+                <div class="tls-stats-label">Live Archive Stats</div>
+                <?php
+                $total_books   = wp_count_posts( 'post' )->publish;
+                $total_authors = wp_count_terms( [ 'taxonomy' => 'authors', 'hide_empty' => true ] );
+                $total_cats    = wp_count_terms( [ 'taxonomy' => 'category', 'hide_empty' => true ] );
+                if ( is_wp_error( $total_authors ) ) $total_authors = 0;
+                if ( is_wp_error( $total_cats ) )    $total_cats = 0;
+                ?>
+                <div class="tls-stats-row">
+                    <span>Total Summaries</span>
+                    <strong><?php echo number_format( $total_books ); ?></strong>
+                </div>
+                <div class="tls-stats-row">
+                    <span>Unique Authors</span>
+                    <strong><?php echo number_format( (int) $total_authors ); ?></strong>
+                </div>
+                <div class="tls-stats-row">
+                    <span>Categories</span>
+                    <strong><?php echo number_format( (int) $total_cats ); ?></strong>
+                </div>
+                <a class="tls-cta-btn" href="<?php echo esc_url( home_url( '/contact/' ) ); ?>">
+                    Request a Summary
+                </a>
+            </aside>
+
+        </div>
+    </div>
+</section>
+
+<?php endif; // is_home && !is_paged ?>
+
+<!-- ══════════════════════════════════
+     PAGINATED / ARCHIVE FALLBACK
+══════════════════════════════════ -->
+<?php if ( is_paged() || ! is_home() ) : ?>
+<section style="padding:56px 0;">
+    <div class="container">
+        <?php if ( is_search() ) : ?>
+        <div class="tls-search-header">
+            <p class="tls-search-for">Search results for</p>
+            <h1 class="tls-search-term"><?php echo esc_html( get_search_query() ); ?></h1>
+        </div>
+        <?php elseif ( is_archive() ) : ?>
+        <div class="tls-archive-hero" style="border-radius:var(--tls-radius);margin-bottom:36px;padding:48px 36px;">
+            <p class="tls-archive-eyebrow">Archive</p>
+            <h1 class="tls-archive-title"><?php echo esc_html( mediumish_archive_title() ); ?></h1>
+        </div>
+        <?php else : ?>
+        <h1 class="tls-section-title" style="margin-bottom:32px;">All Summaries</h1>
+        <?php endif; ?>
+
+        <?php
+        $main_q = new WP_Query( [
+            'post_type'   => 'post',
+            'post_status' => 'publish',
+            'paged'       => $paged,
+            'orderby'     => [ 'date' => 'DESC', 'ID' => 'DESC' ],
+        ] );
+        if ( $main_q->have_posts() ) :
+        ?>
+        <div class="tls-books-grid">
+            <?php while ( $main_q->have_posts() ) : $main_q->the_post(); ?>
+                <?php echo thetelos_book_card( get_the_ID() ); ?>
+            <?php endwhile; ?>
+        </div>
+        <div class="bottompagination">
             <?php
-            $i++;
-        endwhile;
+            if ( function_exists( 'wp_bootstrap_pagination' ) ) {
+                wp_bootstrap_pagination( [
+                    'custom_query'    => $main_q,
+                    'previous_string' => '&laquo;',
+                    'next_string'     => '&raquo;',
+                    'before_output'   => '<span class="navigation">',
+                    'after_output'    => '</span>',
+                ] );
+            } else {
+                the_posts_pagination( [ 'mid_size' => 2 ] );
+            }
+            ?>
+        </div>
+        <?php
+        else :
+        ?>
+            <p style="color:var(--tls-muted);font-family:var(--tls-sans);">
+                <?php _e( 'No posts matched your criteria.', 'mediumish' ); ?>
+            </p>
+        <?php
+        endif;
+        wp_reset_postdata();
         ?>
     </div>
-
-    <?php if ($count > 1): ?>
-        <a href="#main-slider"
-           class="carousel-control-prev"
-           data-slide="prev"
-           aria-label="<?php esc_attr_e('Previous slide', 'mediumish'); ?>">
-            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
-        </a>
-
-        <a href="#main-slider"
-           class="carousel-control-next"
-           data-slide="next"
-           aria-label="<?php esc_attr_e('Next slide', 'mediumish'); ?>">
-            <span class="carousel-control-next-icon" aria-hidden="true"></span>
-        </a>
-    <?php endif; ?>
-</div>
-	
-    <?php
-        endif;
-        wp_reset_postdata();
-    endif;  // slider
-    ?>
-
-
-
-    <?php
-    // =========================
-    // POSTS BY CATEGORIES
-    // =========================
-    // Collect up to $needed unique posts for a section, honoring $seen_ids.
-    // Pages through the category until it fills the quota or runs out.
-    // Collect up to $needed unique posts for a section, honoring $seen_ids.
-    // Uses paged (stable) pagination and keeps post__not_in constant to avoid skips.
-    if (!function_exists('wt_collect_unique_posts')) {
-        function wt_collect_unique_posts(array $base_args, int $needed, array $seen_ids): array
-        {
-            $collected = [];
-            $page = 1;
-            $per_page = max(10, $needed * 3);  // overfetch each page
-
-            // Build a constant exclusion list for the whole run
-            $constant_exclude = array_map('intval', $seen_ids);
-
-            while (count($collected) < $needed) {
-                $q = new WP_Query(array_merge($base_args, [
-                    'posts_per_page' => $per_page,
-                    'paged' => $page,  // stable paging
-                    'post__not_in' => $constant_exclude,  // DON'T mutate across passes
-                    'ignore_sticky_posts' => 1,
-                    'no_found_rows' => true,
-                    'orderby' => ['date' => 'DESC', 'ID' => 'DESC'],
-                    'order' => 'DESC',
-                ]));
-
-                if (!$q->have_posts()) {
-                    wp_reset_postdata();
-                    break;
-                }
-
-                while ($q->have_posts() && count($collected) < $needed) {
-                    $q->the_post();
-                    $id = get_the_ID();
-
-                    // Skip anything already in global seen or collected in this pass
-                    if (in_array($id, $constant_exclude, true)) {
-                        continue;
-                    }
-                    $dup = false;
-                    foreach ($collected as $p) {
-                        if ((int) $p->ID === (int) $id) {
-                            $dup = true;
-                            break;
-                        }
-                    }
-                    if ($dup) {
-                        continue;
-                    }
-
-                    $collected[] = get_post();
-                }
-
-                $page++;
-                $count = (int) $q->post_count;
-                wp_reset_postdata();
-                if ($count < $per_page) {
-                    break;
-                }  // no more posts
-            }
-
-            return $collected;
-        }
-    }
-
-    if ((int) $mediumish_postsbycategory_active === 0 && !empty($postcategories) && is_array($postcategories)):
-        foreach ($postcategories as $block):
-            // $category    = isset($block['categoryfield']) ? (int) $block['categoryfield'] : 0;
-            $rawCat = isset($block['categoryfield']) ? $block['categoryfield'] : '';
-            $category = wt_normalize_term_id($rawCat, 'category');  // accepts slug or ID
-            $postspp = isset($block['postsperpage']) ? max(1, (int) $block['postsperpage']) : 4;
-            $styleoption = isset($block['categorystyle']) ? (string) $block['categorystyle'] : 'style-1';
-
-            if ($category <= 0) {
-                continue;
-            }
-
-            // Top-up: get exactly $postspp unique posts if available
-            $picked = wt_collect_unique_posts([
-                'category__in' => [$category],
-            ], $postspp, $seen_ids);
-
-            if (empty($picked)) {
-                continue;
-            }
-
-            // Section title (only on first page)
-            if (!is_paged()):
-                ?>
-            <div class="section-title listpostsbycats">
-                <h2 class="d-flex justify-content-between align-items-center">
-                    <span><?php echo esc_html(get_cat_name($category)); ?> &nbsp;</span>
-                    <a class="d-block morefromcategory" href="<?php echo esc_url(get_category_link($category)); ?>">
-                        &nbsp; <i class="fa fa-angle-right"></i>
-                    </a>
-                </h2>
-            </div>
-        <?php endif;
-
-            global $post;  // ensure helpers see the right post
-
-            switch ($styleoption) {
-                // ================= style-1 =================
-                case 'style-1':
-                    // Hard-lock style-1 to 5 posts (1 big + 4 small)
-                    $postspp = 5;
-
-                    $picked = wt_collect_unique_posts([
-                        'category__in' => [$category],
-                    ], $postspp, $seen_ids);
-
-                    // Debug (optional): uncomment to verify fill
-                    // echo '<!-- style-1 wanted 5, got ' . count($picked) . ' for cat ' . $category . ' -->';
-
-                    if (!empty($picked)): ?>
-        <div class="row listrecent listpostsbycats thiscatstyle1 post-style-1">
-            <?php
-            global $post;
-
-            // Big highlight
-            $first = array_shift($picked);
-            $post = $first;
-            setup_postdata($post);
-            ?>
-            <div class="col-md-12 col-lg-4 grid-item" id="post-<?php the_ID(); ?>">
-                <?php echo mediumish_post_card_highlight_first(); ?>
-            </div>
-            <?php $seen_ids[] = (int) get_the_ID();
-            wp_reset_postdata(); ?>
-
-            <div class="col-md-12 col-lg-8">
-                <div class="row h-100">
-                    <?php
-                    // Always render up to 4 small cards
-                    $picked = array_slice($picked, 0, 4);
-                    foreach ($picked as $p):
-                        $post = $p;
-                        setup_postdata($post);
-                        ?>
-                        <div class="col-md-6 col-lg-6 grid-item" id="post-<?php the_ID(); ?>">
-                            <?php echo mediumish_post_card_after_highlight(); ?>
-                        </div>
-                        <?php $seen_ids[] = (int) get_the_ID(); ?>
-                    <?php endforeach;
-                    wp_reset_postdata(); ?>
-                </div>
-            </div>
-
-            <div class="clearfix"></div>
-        </div>
-    <?php endif;
-                    break;
-
-                // ================= style-2 =================
-                case 'style-2': ?>
-                <section class="featured-posts listpostsbycats post-style-2">
-                    <div class="row listfeaturedtag h-100">
-                        <?php foreach ($picked as $p):
-                            $post = $p;
-                            setup_postdata($post); ?>
-                            <div class="col-md-6 mb-30" id="post-<?php the_ID(); ?>">
-                                <?php echo mediumish_post_card_tall(); ?>
-                            </div>
-                            <?php $seen_ids[] = (int) get_the_ID(); ?>
-                        <?php endforeach;
-                        wp_reset_postdata(); ?>
-                    </div>
-                </section>
-                <?php
-                break;
-
-            // ================= style-3 =================
-            case 'style-3':
-                ?>
-                <section class="poststyle-3 post-style-3 listpostsbycats">
-                    <div class="row h-100">
-                        <?php foreach ($picked as $p):
-                            $post = $p;
-                            setup_postdata($post); ?>
-                            <div class="col-md-4 mb-30" id="post-<?php the_ID(); ?>">
-                                <?php echo mediumish_postbox_default(); ?>
-                            </div>
-                            <?php $seen_ids[] = (int) get_the_ID(); ?>
-                        <?php endforeach;
-                        wp_reset_postdata(); ?>
-                    </div>
-                </section>
-                <?php
-                break;
-
-            // ================= style-4 =================
-            case 'style-4':
-                ?>
-                <section class="post-style-4 listpostsbycats">
-                    <div class="row h-100">
-                        <?php foreach ($picked as $p):
-                            $post = $p;
-                            setup_postdata($post); ?>
-                            <div class="col-md-3 mb-30" id="post-<?php the_ID(); ?>">
-                                <?php echo mediumish_postbox_default(); ?>
-                            </div>
-                            <?php $seen_ids[] = (int) get_the_ID(); ?>
-                        <?php endforeach;
-                        wp_reset_postdata(); ?>
-                    </div>
-                </section>
-                <?php
-                break;
-
-            // ================= style-5 =================
-            case 'style-5':
-                ?>
-                <section class="post-style-5 listpostsbycats">
-                    <div class="row h-100">
-                        <?php foreach ($picked as $p):
-                            $post = $p;
-                            setup_postdata($post); ?>
-                            <div class="col-md-4 mb-30" id="post-<?php the_ID(); ?>">
-                                <?php echo mediumish_post_card_tall(); ?>
-                            </div>
-                            <?php $seen_ids[] = (int) get_the_ID(); ?>
-                        <?php endforeach;
-                        wp_reset_postdata(); ?>
-                    </div>
-                </section>
-                <?php
-                break;
-
-            // ================= style-6 =================
-            case 'style-6':
-                ?>
-                <section class="post-style-6 listpostsbycats">
-                    <div class="row h-100">
-                        <?php foreach ($picked as $p):
-                            $post = $p;
-                            setup_postdata($post); ?>
-                            <div class="col-md-6 mb-30" id="post-<?php the_ID(); ?>">
-                                <?php echo mediumish_postbox_default(); ?>
-                            </div>
-                            <?php $seen_ids[] = (int) get_the_ID(); ?>
-                        <?php endforeach;
-                        wp_reset_postdata(); ?>
-                    </div>
-                </section>
-                <?php
-                break;
-
-            // ================= default → style-1 =================
-            default:
-                ?>
-                <div class="row listrecent listpostsbycats thiscatstyle1 post-style-1">
-                    <?php
-                    // İlk kartı geri koy, hepsini eşit 4 sütunda göster
-                    array_unshift($picked, $first ?? null);
-                    foreach ($picked as $p):
-                        if (!$p) continue;
-                        $post = $p;
-                        setup_postdata($post); ?>
-                        <div class="col-md-6 col-lg-3 grid-item" id="post-<?php the_ID(); ?>">
-                            <?php echo mediumish_postbox_default(); ?>
-                        </div>
-                        <?php $seen_ids[] = (int) get_the_ID();
-                    endforeach;
-                    wp_reset_postdata(); ?>
-                </div>
-                <?php
-            }  // switch
-        endforeach;
-    endif;  // posts by categories
-    ?>
-
-
-<?php endif; // is_home ?>
-
-    <div class="clearfix"></div>
-
-    <!-- =========================
-         BLOG POSTS — ALL STORIES
-    ========================== -->
-    <section class="recent-posts">
-        <div class="section-title">
-            <h2>
-                <?php
-                if (is_search()) {
-                    echo 'Search results for: <span>' . esc_html(get_query_var('s')) . '</span>';
-                } elseif (is_archive()) {
-                    echo '<span>' . mediumish_archive_title() . '</span>';
-                } else {
-                    echo '<span>' . esc_html($mediumish_allstories) . '</span>';
-                }
-                ?>
-            </h2>
-        </div>
-
-        <?php
-        // Main list: only remaining posts, paginated, excluding everything seen
-        $main_q = new WP_Query([
-            'post_type' => 'post',
-            'post__not_in' => array_map('intval', $seen_ids),
-            'paged' => $paged,
-            'ignore_sticky_posts' => 1,
-            'orderby' => ['date' => 'DESC', 'ID' => 'DESC'],
-        ]);
-
-        if ($main_q->have_posts()):
-            ?>
-            <div class="row listrecent">
-                <?php while ($main_q->have_posts()):
-                    $main_q->the_post(); ?>
-                    <div class="col-md-6 col-lg-3 grid-item" id="post-<?php the_ID(); ?>">
-                        <?php echo mediumish_postbox_default(); ?>
-                    </div>
-                <?php endwhile; ?>
-            </div>
-
-            <div class="bottompagination">
-                <?php
-                if (function_exists('wp_bootstrap_pagination')) {
-                    wp_bootstrap_pagination([
-                        'custom_query' => true,
-                        'custom_query' => $main_q,
-                        'previous_string' => '<i class="fa fa-angle-double-left"></i>',
-                        'next_string' => '<i class="fa fa-angle-double-right"></i>',
-                        'before_output' => '<span class="navigation">',
-                        'after_output' => '</span>',
-                    ]);
-                } else {
-                    // Native fallback
-                    the_posts_pagination([
-                        'mid_size' => 2,
-                        'prev_text' => '&laquo;',
-                        'next_text' => '&raquo;',
-                    ]);
-                }
-                ?>
-            </div>
-        <?php else: ?>
-            <p><?php _e('Sorry, no posts matched your criteria.', 'mediumish'); ?></p>
-        <?php
-        endif;
-        wp_reset_postdata();
-        ?>
-    </section>
-
-    <!-- =========================
-         JUMBO CATEGORIES CLOUD
-    ========================== -->
-    <?php if ((int) $mediumish_homecategorycloud_active === 0): ?>
-        <div class="jumbotron fortags mt-4"<?php echo $mediumish_homecategorycloud_bg ? ' style="background-image:url(' . esc_url($mediumish_homecategorycloud_bg) . ');"' : ''; ?>>
-            <div class="row">
-                <div class="col-md-4 align-self-center text-center">
-                    <h2 class="hidden-sm-down text-white"><?php _e('Explore', 'mediumish'); ?> &rarr;</h2>
-                </div>
-                <div class="col-md-8 align-self-center text-center">
-                    <?php wp_tag_cloud(['taxonomy' => 'category']); ?>
-                </div>
-            </div>
-        </div>
-    <?php endif; ?>
-
-</div><!-- /.container -->
+</section>
+<?php endif; ?>
 
 </main>
 

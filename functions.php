@@ -355,6 +355,7 @@ add_action( 'pt-ocdi/after_import', 'wow_mediumish_after_import_setup' );
 // -----------------------------------------------------
 require_once get_template_directory() . '/inc/bootstrap/wp_bootstrap_pagination.php';
 require_once get_template_directory() . '/inc/bootstrap/wp_bootstrap_navwalker.php';
+require_once get_template_directory() . '/inc/thetelos-rating.php';
 function mediumish_load_customizer() {
     require_once get_template_directory() . '/inc/customizer.php';
 }
@@ -441,6 +442,45 @@ if ( ! function_exists( 'mediumish_enqueue_scripts' ) ) {
 
     add_action( 'wp_enqueue_scripts', 'mediumish_enqueue_scripts' );
 }
+
+// ──────────────────────────────────────────────────────────
+// TheTelos brand fonts (DM Serif Display + DM Sans)
+// ──────────────────────────────────────────────────────────
+function thetelos_enqueue_brand_fonts() {
+    wp_enqueue_style(
+        'thetelos-brand-fonts',
+        'https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap',
+        [],
+        null
+    );
+}
+add_action( 'wp_enqueue_scripts', 'thetelos_enqueue_brand_fonts', 5 );
+
+// ──────────────────────────────────────────────────────────
+// TheTelos custom CSS + JS
+// ──────────────────────────────────────────────────────────
+function thetelos_enqueue_custom_assets() {
+    wp_enqueue_style(
+        'thetelos-styles',
+        get_template_directory_uri() . '/assets/css/thetelos.css',
+        [ 'mediumish-style' ],
+        THEME_VERSION
+    );
+
+    wp_enqueue_script(
+        'thetelos-scripts',
+        get_template_directory_uri() . '/assets/js/thetelos.js',
+        [],
+        THEME_VERSION,
+        true
+    );
+
+    wp_localize_script( 'thetelos-scripts', 'thelosData', [
+        'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+        'nonce'   => wp_create_nonce( 'thetelos_rating' ),
+    ] );
+}
+add_action( 'wp_enqueue_scripts', 'thetelos_enqueue_custom_assets', 20 );
 
 add_filter( 'kirki_enqueue_google_fonts', '__return_empty_array' );
 /**
@@ -1732,6 +1772,66 @@ function mediumish_post_card_tall() {
     <?php 
 }
 
+// ──────────────────────────────────────────────────────────
+// TheTelos Book Card
+// ──────────────────────────────────────────────────────────
+function thetelos_book_card( $post_id ) {
+    $title     = get_the_title( $post_id );
+    $permalink = get_permalink( $post_id );
+    $cats      = get_the_category( $post_id );
+    $excerpt   = wp_trim_words( get_the_excerpt( $post_id ), 18 );
+    $authors   = get_the_terms( $post_id, 'authors' );
+    $author    = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0] : null;
+    $analysis  = function_exists( 'thetelos_get_analysis_for_post' ) ? thetelos_get_analysis_for_post( $post_id ) : null;
+    $rt        = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_reading_time( $post_id ) : mediumish_estimated_reading_time();
+
+    ob_start();
+    ?>
+    <article class="tls-book-card">
+        <div class="tls-book-card-cover">
+            <a href="<?php echo esc_url( $permalink ); ?>" tabindex="-1" aria-hidden="true">
+                <?php if ( has_post_thumbnail( $post_id ) ) : ?>
+                    <?php echo get_the_post_thumbnail( $post_id, [ 200, 300 ], [ 'alt' => esc_attr( $title ) ] ); ?>
+                <?php else : ?>
+                    <?php echo thetelos_render_book_cover( $post_id ); ?>
+                <?php endif; ?>
+            </a>
+        </div>
+        <div class="tls-book-card-body">
+            <?php if ( ! empty( $cats ) ) : ?>
+                <a class="tls-book-card-cat"
+                   href="<?php echo esc_url( get_category_link( $cats[0]->term_id ) ); ?>">
+                    <?php echo esc_html( $cats[0]->name ); ?>
+                </a>
+            <?php endif; ?>
+            <a class="tls-book-card-title" href="<?php echo esc_url( $permalink ); ?>">
+                <?php echo esc_html( $title ); ?>
+            </a>
+            <?php if ( $author ) : ?>
+                <a class="tls-book-card-author"
+                   href="<?php echo esc_url( get_term_link( $author ) ); ?>">
+                    <?php echo esc_html( $author->name ); ?>
+                </a>
+            <?php endif; ?>
+            <p class="tls-book-card-excerpt"><?php echo esc_html( $excerpt ); ?></p>
+            <div class="tls-book-card-footer">
+                <span class="tls-book-card-meta"><?php echo esc_html( $rt ); ?></span>
+                <?php if ( $analysis ) : ?>
+                    <a class="tls-analysis-badge"
+                       href="<?php echo esc_url( $permalink ); ?>#deep-analysis">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/>
+                        </svg>
+                        Deep Analysis
+                    </a>
+                <?php endif; ?>
+            </div>
+        </div>
+    </article>
+    <?php
+    return ob_get_clean();
+}
+
 // -----------------------------------------------------
 // Related Posts
 // -----------------------------------------------------
@@ -1773,15 +1873,12 @@ function mediumish_related_posts(  $args = array()  ) {
         'order'          => $args['order'],
     ) );
     if ( !empty( $related_posts ) ) {
-        echo '<div class="row justify-content-center listrecent listrelated">';
+        echo '<div class="tls-books-grid">';
         foreach ( $related_posts as $post ) {
             setup_postdata( $post );
-            echo '<div class="col-md-6 col-lg-3 mb-30">';
-            echo mediumish_postbox_default();
-            echo '</div>';
+            echo thetelos_book_card( $post->ID );
         }
         echo '</div>';
-        echo '<div class="clearfix"></div>';
     }
     wp_reset_postdata();
 }

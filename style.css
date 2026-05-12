@@ -1,0 +1,224 @@
+/*
+Theme Name: Mediumish
+Theme URI: https://www.wowthemes.net/themes/mediumish-wordpress/
+Author: WowThemesNet
+Author URI: https://wowthemes.net/
+Description: Looking for a WordPress theme that looks similar to the shape, layout and typography of Medium? Look no further! Mediumish is the perfect choice! A modern, responsive, clean hand-coded WordPress theme.
+Requires at least: 6.8
+Requires PHP: 7.2
+Version: 1.0.71
+License: GNU General Public License v3 or later
+License URI: http://www.gnu.org/licenses/gpl-3.0.html
+Tags: blog, entertainment, news
+Text Domain: mediumish
+*/
+
+/* ─────────────────────────────────────────
+   THE TELOS — Design System v2
+   Primary: DM Serif Display | Body: DM Sans
+───────────────────────────────────────── */
+:root {
+  --tls-bg:        #F5F3EE;
+  --tls-bg-card:   #FFFFFF;
+  --tls-bg-dark:   #1A1814;
+  --tls-gold:      #B8922A;
+  --tls-gold-light:#D4A840;
+  --tls-green:     #00ab6b;
+  --tls-muted:     #6B6560;
+  --tls-border:    #E2DECE;
+  --tls-serif:     'DM Serif Display', Georgia, serif;
+  --tls-sans:      'DM Sans', system-ui, -apple-system, sans-serif;
+  --tls-mono:      'SFMono-Regular', Consolas, monospace;
+  --tls-radius:    4px;
+  --tls-radius-lg: 8px;
+  --tls-shadow-sm: 0 1px 3px rgba(0,0,0,.07);
+  --tls-shadow:    0 4px 16px rgba(0,0,0,.09);
+  --tls-shadow-lg: 0 12px 40px rgba(0,0,0,.14);
+  --tls-nav-h:     64px;
+  --tls-container: 1200px;
+}
+
+/* ── Base Reset ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  overflow-x: hidden;
+  font-family: var(--tls-sans);
+  background: var(--tls-bg);
+  color: var(--tls-bg-dark);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6,
+.h1, .h2, .h3, .h4, .h5, .h6 {
+  font-family: var(--tls-serif);
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--tls-bg-dark);
+}
+
+a {
+  color: var(--tls-green);
+  transition: color .15s ease, opacity .15s ease;
+}
+a:hover { color: var(--tls-gold); text-decoration: none; }
+
+img { max-width: 100%; height: auto; display: block; }
+iframe { max-width: 100%; }
+figure { max-width: 100%; margin: 0; }
+figcaption { font-style: italic; font-size: 14px; color: var(--tls-muted); margin-top: 8px; }
+
+/* ── WordPress Alignment ── */
+.alignright  { float: right; margin: 0 0 1.2em 1.5em; }
+.alignleft   { float: left;  margin: 0 1.5em 1.2em 0; }
+.aligncenter { display: block; margin-left: auto; margin-right: auto; }
+
+/* ── Utility ── */
+.font400 { font-weight: 400 !important; }
+.muted   { opacity: .75; }
+.mb-30   { margin-bottom: 30px; }
+.mt-30   { margin-top: 30px; }
+
+/* ── Gallery ── */
+.gallery { margin-bottom: 1.5em; }
+.gallery-item { display: inline-block; text-align: center; vertical-align: top; width: 100%; }
+.gallery-columns-2 .gallery-item { max-width: 50%; }
+.gallery-columns-3 .gallery-item { max-width: 33.33%; }
+.gallery-columns-4 .gallery-item { max-width: 25%; }
+.gallery-caption { display: block; }
+
+/* ── Comments (keep functional) ── */
+h2.comments-title, h3.comment-reply-title { font-size: 16px; color: rgba(0,0,0,.68); }
+.says { display: none; }
+p.comment-notes { display: none; }
+.comment-respond { margin-top: 2rem; }
+.comment-form label { display: inline-block; }
+.comment-form input[type="checkbox"] { width: auto; margin-right: 4px; }
+#comments { margin: 3.5rem 0 0; }
+#comments .comment-metadata { font-size: 14px; margin-bottom: 15px; }
+#comments .comment-metadata a { color: rgba(0,0,0,.54); }
+#comments .fn { font-size: 15px; padding-left: 10px; font-weight: 600; }
+#comments .vcard img { border-radius: 50%; }
+ol.comment-list { list-style: none; padding-left: 0; }
+ol.children { list-style: none; padding-left: 15px; }
+.comment-list li.comment,
+.comment-form textarea,
+.comment-form input {
+  background: #fff;
+  box-shadow: var(--tls-shadow-sm);
+  border: 1px solid var(--tls-border);
+  border-radius: var(--tls-radius);
+  padding: 20px;
+  position: relative;
+}
+.comment-form input.submit {
+  background: var(--tls-bg-dark);
+  border-color: var(--tls-bg-dark);
+  color: #fff;
+  border-radius: var(--tls-radius);
+  font-size: .9rem;
+  font-family: var(--tls-sans);
+  margin-left: 0;
+  width: auto;
+  cursor: pointer;
+  padding: 8px 20px;
+  font-weight: 500;
+}
+.comment-form textarea, .comment-form input {
+  padding: 10px;
+  width: 100%;
+  font-size: 14px;
+  font-family: var(--tls-sans);
+}
+#comments .reply { position: absolute; right: 20px; bottom: 20px; }
+#comments .reply a {
+  border: 1px solid var(--tls-border);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 12px;
+  color: var(--tls-muted);
+  text-decoration: none;
+}
+#comments .reply a:hover { border-color: var(--tls-bg-dark); color: var(--tls-bg-dark); }
+
+/* ── Bootstrap container override ── */
+.container { max-width: var(--tls-container); }
+
+/* ── Site content offset for fixed header ── */
+.site-content { margin-top: var(--tls-nav-h); }
+.admin-bar .site-content { margin-top: calc(var(--tls-nav-h) + 32px); }
+.admin-bar .tls-header { top: 32px; }
+
+/* ── Legacy mediumish classes (keep for fallback) ── */
+.homecover { display: none; }
+.mediumnavigation { display: none; } /* replaced by tls-header */
+.graybg { background: var(--tls-bg); }
+.bottompagination { margin-top: 32px; }
+.bottompagination .navigation { display: flex; justify-content: center; gap: 4px; }
+.bottompagination .page-numbers {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 36px; height: 36px; border: 1px solid var(--tls-border);
+  border-radius: var(--tls-radius); font-size: 14px; color: var(--tls-muted);
+  text-decoration: none; font-family: var(--tls-sans); transition: all .15s;
+}
+.bottompagination .page-numbers.current,
+.bottompagination .page-numbers:hover {
+  background: var(--tls-bg-dark); border-color: var(--tls-bg-dark); color: #fff;
+}
+
+/* ── WP Block styles ── */
+.wp-block-image img { border-radius: var(--tls-radius); }
+.wp-block-quote { border-left: 3px solid var(--tls-gold); padding-left: 24px; }
+.wp-block-pullquote { border-top: 3px solid var(--tls-gold); border-bottom: 3px solid var(--tls-gold); }
+
+/* ── Search form ── */
+.search-form { display: flex; gap: 8px; }
+.search-form input[type="search"] {
+  flex: 1; padding: 10px 16px; border: 1px solid var(--tls-border);
+  border-radius: var(--tls-radius); font-family: var(--tls-sans); font-size: 15px;
+  background: #fff; color: var(--tls-bg-dark);
+}
+.search-form input[type="search"]:focus { outline: 2px solid var(--tls-gold); }
+.search-form button {
+  padding: 10px 20px; background: var(--tls-bg-dark); color: #fff;
+  border: none; border-radius: var(--tls-radius); cursor: pointer;
+  font-family: var(--tls-sans); font-size: 14px;
+}
+
+/* ── Pagination (wp native) ── */
+.nav-links { display: flex; gap: 8px; justify-content: center; margin-top: 40px; }
+.nav-links a, .nav-links span {
+  padding: 8px 16px; border: 1px solid var(--tls-border);
+  border-radius: var(--tls-radius); text-decoration: none;
+  color: var(--tls-muted); font-size: 14px; font-family: var(--tls-sans);
+}
+.nav-links .current { background: var(--tls-bg-dark); border-color: var(--tls-bg-dark); color: #fff; }
+.nav-links a:hover { border-color: var(--tls-bg-dark); color: var(--tls-bg-dark); }
+
+/* ── After post tags ── */
+.after-post-tags { margin: 2rem 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.post-categories, .aretags { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.post-categories a, .aretags a {
+  display: inline-block; padding: 4px 12px; border: 1px solid var(--tls-border);
+  border-radius: 20px; font-size: 12px; color: var(--tls-muted);
+  text-decoration: none; font-family: var(--tls-sans); transition: all .15s;
+}
+.post-categories a:hover, .aretags a:hover {
+  border-color: var(--tls-bg-dark); color: var(--tls-bg-dark);
+}
+
+/* ── Alertbar ── */
+.alertbar {
+  display: none; position: fixed; bottom: 0; left: 0; right: 0;
+  background: var(--tls-bg-dark); color: #fff; padding: 16px;
+  z-index: 999; text-align: center; font-size: 14px; font-family: var(--tls-sans);
+}
+.alertbar a { color: var(--tls-gold); }
+
+/* ── WP Admin bar ── */
+.admin-bar .tls-header { top: 32px; }
+@media (max-width: 782px) { .admin-bar .tls-header { top: 46px; } }
