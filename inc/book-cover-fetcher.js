@@ -1,119 +1,123 @@
 (function () {
     'use strict';
 
-    var el              = wp.element.createElement;
-    var useState        = wp.element.useState;
-    var useEffect       = wp.element.useEffect;
-    var registerPlugin  = wp.plugins.registerPlugin;
-    var useSelect       = wp.data.useSelect;
-    var useDispatch     = wp.data.useDispatch;
-    var Spinner         = wp.components.Spinner;
+    if ( ! wp || ! wp.plugins || ! wp.element ) return;
 
-    // WP 6.6+ moved PluginDocumentSettingPanel to wp.editor
+    var el             = wp.element.createElement;
+    var useState       = wp.element.useState;
+    var useEffect      = wp.element.useEffect;
+    var registerPlugin = wp.plugins.registerPlugin;
+    var useSelect      = wp.data.useSelect;
+    var useDispatch    = wp.data.useDispatch;
+    var Spinner        = wp.components.Spinner;
+
+    // WP 6.6+ → wp.editor, öncesi → wp.editPost
     var PluginDocumentSettingPanel =
-        (wp.editor  && wp.editor.PluginDocumentSettingPanel)  ||
-        (wp.editPost && wp.editPost.PluginDocumentSettingPanel);
+        ( wp.editor    && wp.editor.PluginDocumentSettingPanel )   ||
+        ( wp.editPost  && wp.editPost.PluginDocumentSettingPanel );
 
-    if (!PluginDocumentSettingPanel) return; // guard
+    if ( ! PluginDocumentSettingPanel ) {
+        console.warn( '[TCF] PluginDocumentSettingPanel not found.' );
+        return;
+    }
 
     function BookCoverPanel() {
 
-        var postTitle = useSelect(function (sel) {
-            return sel('core/editor').getEditedPostAttribute('title') || '';
-        });
+        var postTitle = useSelect( function ( sel ) {
+            return sel( 'core/editor' ).getEditedPostAttribute( 'title' ) || '';
+        } );
 
-        var postId = useSelect(function (sel) {
-            return sel('core/editor').getCurrentPostId();
-        });
+        var postId = useSelect( function ( sel ) {
+            return sel( 'core/editor' ).getCurrentPostId();
+        } );
 
-        var editPost = useDispatch('core/editor').editPost;
+        var editPost = useDispatch( 'core/editor' ).editPost;
 
-        var _s = useState({
-            query:       '',
-            ready:       false,
-            results:     [],
-            status:      '',
-            loading:     false,
-            setting:     false,
-            selected:    -1,
-        });
+        var _s = useState( {
+            query:    '',
+            ready:    false,
+            results:  [],
+            status:   '',
+            loading:  false,
+            setting:  false,
+            selected: -1,
+        } );
         var s   = _s[0];
-        var set = function (u) { _s[1](function (p) { return Object.assign({}, p, u); }); };
+        var set = function ( u ) {
+            _s[1]( function ( p ) { return Object.assign( {}, p, u ); } );
+        };
 
         // Başlıktan sorgu oluştur (bir kez)
-        useEffect(function () {
-            if (!s.ready && postTitle) {
-                set({ query: postTitle, ready: true });
+        useEffect( function () {
+            if ( ! s.ready && postTitle ) {
+                set( { query: postTitle, ready: true } );
             }
-        }, [postTitle]);
+        }, [ postTitle ] );
 
         // Başlık hazır olunca otomatik ara
-        useEffect(function () {
-            if (s.ready && s.query) {
-                doSearch(s.query);
+        useEffect( function () {
+            if ( s.ready && s.query ) {
+                doSearch( s.query );
             }
-        }, [s.ready]);
+        }, [ s.ready ] );
 
-        function doSearch(q) {
-            q = (q !== undefined ? q : s.query).trim();
-            if (!q) return;
+        function doSearch( q ) {
+            q = ( q !== undefined ? q : s.query ).trim();
+            if ( ! q ) return;
 
-            set({ loading: true, results: [], status: 'Searching…', selected: -1 });
+            set( { loading: true, results: [], status: 'Searching…', selected: -1 } );
 
             var fd = new FormData();
-            fd.append('action', 'thetelos_fetch_book_covers');
-            fd.append('nonce',  tcfData.nonce);
-            fd.append('q',      q);
+            fd.append( 'action', 'thetelos_fetch_book_covers' );
+            fd.append( 'nonce',  tcfData.nonce );
+            fd.append( 'q',      q );
 
-            fetch(ajaxurl, { method: 'POST', body: fd })
-                .then(function (r) { return r.json(); })
-                .then(function (res) {
-                    if (res.success && res.data && res.data.length) {
-                        set({ results: res.data, loading: false,
-                              status: res.data.length + ' cover(s) found — click to use' });
+            fetch( ajaxurl, { method: 'POST', body: fd } )
+                .then( function ( r ) { return r.json(); } )
+                .then( function ( res ) {
+                    if ( res.success && res.data && res.data.length ) {
+                        set( { results: res.data, loading: false,
+                               status: res.data.length + ' cover(s) found — click to use' } );
                     } else {
-                        set({ results: [], loading: false,
-                              status: 'No covers found. Try a different title.' });
+                        set( { results: [], loading: false,
+                               status: 'No covers found. Try a different title.' } );
                     }
-                })
-                .catch(function () {
-                    set({ loading: false, status: 'Network error.' });
-                });
+                } )
+                .catch( function () {
+                    set( { loading: false, status: 'Network error.' } );
+                } );
         }
 
-        function pickCover(cover, idx) {
+        function pickCover( cover, idx ) {
             var pid = postId || tcfData.postId;
-            if (!pid) {
-                set({ status: 'Please save the post first.' });
-                return;
-            }
-            set({ setting: true, selected: idx, status: 'Downloading cover…' });
+            if ( ! pid ) { set( { status: 'Please save the post first.' } ); return; }
+
+            set( { setting: true, selected: idx, status: 'Downloading cover…' } );
 
             var fd = new FormData();
-            fd.append('action',    'thetelos_set_book_cover');
-            fd.append('nonce',     tcfData.nonce);
-            fd.append('post_id',   pid);
-            fd.append('cover_url', cover.cover);
-            fd.append('title',     cover.title);
+            fd.append( 'action',    'thetelos_set_book_cover' );
+            fd.append( 'nonce',     tcfData.nonce );
+            fd.append( 'post_id',   pid );
+            fd.append( 'cover_url', cover.cover );
+            fd.append( 'title',     cover.title );
 
-            fetch(ajaxurl, { method: 'POST', body: fd })
-                .then(function (r) { return r.json(); })
-                .then(function (res) {
-                    if (res.success) {
-                        editPost({ featured_media: res.data.attachment_id });
-                        set({ setting: false, status: '✓ Featured image set!' });
+            fetch( ajaxurl, { method: 'POST', body: fd } )
+                .then( function ( r ) { return r.json(); } )
+                .then( function ( res ) {
+                    if ( res.success ) {
+                        editPost( { featured_media: res.data.attachment_id } );
+                        set( { setting: false, status: '✓ Featured image set!' } );
                     } else {
-                        set({ setting: false,
-                              status: 'Error: ' + (res.data || 'Unknown error') });
+                        set( { setting: false,
+                               status: 'Error: ' + ( res.data || 'Unknown error' ) } );
                     }
-                })
-                .catch(function () {
-                    set({ setting: false, status: 'Network error.' });
-                });
+                } )
+                .catch( function () {
+                    set( { setting: false, status: 'Network error.' } );
+                } );
         }
 
-        // ── Render ──────────────────────────────────────────────────
-        return el(PluginDocumentSettingPanel, {
+        return el( PluginDocumentSettingPanel, {
             name:        'thetelos-book-cover',
             title:       'Book Cover Fetcher',
             icon:        'book-alt',
@@ -121,83 +125,91 @@
         },
 
             // Arama satırı
-            el('div', { style: { display: 'flex', gap: '6px', marginBottom: '6px' } },
-                el('input', {
+            el( 'div', { style: { display: 'flex', gap: '6px', marginBottom: '6px' } },
+                el( 'input', {
                     type:        'text',
                     value:       s.query,
                     placeholder: 'Book title…',
-                    onChange:    function (e) { set({ query: e.target.value }); },
-                    onKeyDown:   function (e) { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } },
+                    onChange:    function ( e ) { set( { query: e.target.value } ); },
+                    onKeyDown:   function ( e ) {
+                        if ( e.key === 'Enter' ) { e.preventDefault(); doSearch(); }
+                    },
                     style: {
                         flex: 1, padding: '5px 8px', fontSize: '12px',
-                        border: '1px solid #8c8f94', borderRadius: '3px', boxSizing: 'border-box',
+                        border: '1px solid #8c8f94', borderRadius: '3px',
+                        boxSizing: 'border-box',
                     }
-                }),
-                el('button', {
+                } ),
+                el( 'button', {
                     type:     'button',
                     onClick:  function () { doSearch(); },
                     disabled: s.loading || s.setting,
                     style: {
-                        padding: '5px 10px', background: (s.loading || s.setting) ? '#aaa' : '#00ab6b',
+                        padding: '5px 10px',
+                        background: ( s.loading || s.setting ) ? '#aaa' : '#00ab6b',
                         color: '#fff', border: 'none', borderRadius: '3px',
-                        fontSize: '12px', cursor: (s.loading || s.setting) ? 'default' : 'pointer',
+                        fontSize: '12px',
+                        cursor: ( s.loading || s.setting ) ? 'default' : 'pointer',
                         flexShrink: 0,
                     }
-                }, s.loading ? '…' : 'Search')
+                }, s.loading ? '…' : 'Search' )
             ),
 
             // Durum mesajı
-            s.status && el('div', {
+            s.status && el( 'div', {
                 style: {
                     fontSize: '11px', marginBottom: '6px',
-                    color: s.status.startsWith('✓') ? '#00ab6b'
-                         : s.status.startsWith('Error')  ? '#cc1818'
+                    color: s.status.startsWith( '✓' ) ? '#00ab6b'
+                         : s.status.startsWith( 'Error' )  ? '#cc1818'
                          : '#888',
                 }
-            }, s.status),
+            }, s.status ),
 
-            // Yükleniyor
-            s.loading && el('div', { style: { textAlign: 'center', padding: '8px 0' } }, el(Spinner)),
+            // Yükleniyor spinner
+            s.loading && el( 'div', { style: { textAlign: 'center', padding: '8px 0' } },
+                el( Spinner )
+            ),
 
             // Kapak grid'i
-            !s.loading && s.results.length > 0 && el('div', {
+            ! s.loading && s.results.length > 0 && el( 'div', {
                 style: { display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '5px' }
             },
-                s.results.map(function (cover, i) {
-                    var isSel  = s.selected === i;
-                    var isDim  = s.setting && !isSel;
-                    return el('div', {
+                s.results.map( function ( cover, i ) {
+                    var isSel = s.selected === i;
+                    var isDim = s.setting && ! isSel;
+                    return el( 'div', {
                         key:     i,
-                        title:   cover.title + (cover.author ? ' — ' + cover.author : ''),
-                        onClick: function () { if (!s.setting) pickCover(cover, i); },
+                        title:   cover.title + ( cover.author ? ' — ' + cover.author : '' ),
+                        onClick: function () { if ( ! s.setting ) pickCover( cover, i ); },
                         style: {
-                            cursor:     s.setting ? 'default' : 'pointer',
-                            border:     isSel ? '2px solid #00ab6b' : '2px solid transparent',
+                            cursor:       s.setting ? 'default' : 'pointer',
+                            border:       isSel ? '2px solid #00ab6b' : '2px solid transparent',
                             borderRadius: '3px',
-                            overflow:   'hidden',
-                            opacity:    isDim ? 0.3 : 1,
-                            transition: 'all .15s',
-                            background: '#f0f0f0',
+                            overflow:     'hidden',
+                            opacity:      isDim ? 0.3 : 1,
+                            transition:   'all .15s',
+                            background:   '#f0f0f0',
                         }
                     },
-                        el('img', {
+                        el( 'img', {
                             src:     cover.cover,
                             alt:     cover.title,
                             loading: 'lazy',
                             style:   { width: '100%', height: '72px', objectFit: 'cover', display: 'block' }
-                        }),
-                        el('div', {
+                        } ),
+                        el( 'div', {
                             style: {
                                 fontSize: '9px', color: '#444',
                                 padding: '2px 3px 3px', lineHeight: '1.3',
                                 overflow: 'hidden', maxHeight: '24px',
                             }
-                        }, cover.title)
+                        }, cover.title )
                     );
-                })
+                } )
             )
         );
     }
 
-    registerPlugin('thetelos-book-cover', { render: BookCoverPanel });
-})();
+    registerPlugin( 'thetelos-book-cover', { render: BookCoverPanel } );
+
+} )();

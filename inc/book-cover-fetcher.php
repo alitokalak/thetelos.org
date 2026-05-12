@@ -14,13 +14,16 @@ add_action( 'enqueue_block_editor_assets', 'thetelos_cover_fetcher_enqueue' );
 
 function thetelos_cover_fetcher_enqueue() {
     $screen = get_current_screen();
-    if ( ! $screen || $screen->post_type !== 'post' ) return;
+    if ( ! $screen || ! $screen->is_block_editor() || $screen->post_type !== 'post' ) return;
+
+    $js_path = get_template_directory() . '/inc/book-cover-fetcher.js';
+    $version = file_exists( $js_path ) ? filemtime( $js_path ) : '1.2';
 
     wp_enqueue_script(
         'thetelos-cover-fetcher',
         get_template_directory_uri() . '/inc/book-cover-fetcher.js',
-        [ 'wp-plugins', 'wp-edit-post', 'wp-editor', 'wp-element', 'wp-data', 'wp-components' ],
-        '1.1',
+        [ 'wp-plugins', 'wp-edit-post', 'wp-element', 'wp-data', 'wp-components' ],
+        $version,
         true
     );
 
