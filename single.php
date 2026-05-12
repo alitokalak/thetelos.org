@@ -93,6 +93,44 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </a>
                 </div>
                 <?php endif; ?>
+
+                <!-- Rating (under cover) -->
+                <div class="tls-rating-block" style="margin-top:20px;text-align:center;">
+                    <div class="tls-rating-label">Rate this book</div>
+                    <div class="tls-stars" data-post-id="<?php echo (int) $post_id; ?>" role="group" aria-label="Book rating">
+                        <?php for ( $s = 1; $s <= 5; $s++ ) :
+                            $filled = $s <= round( $rating_avg ) ? ' filled' : '';
+                        ?>
+                        <svg class="tls-star<?php echo $filled; ?>" data-value="<?php echo $s; ?>"
+                             viewBox="0 0 24 24" fill="currentColor" aria-label="<?php echo $s; ?> star">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                        <?php endfor; ?>
+                    </div>
+                    <div class="tls-rating-count" style="margin-left:0;display:block;margin-top:4px;">
+                        <span class="tls-rating-avg"><?php echo $rating_avg > 0 ? number_format( $rating_avg, 1 ) : '—'; ?></span>
+                        <?php if ( $rating_cnt > 0 ) : ?>
+                        (<?php echo $rating_cnt; ?> rating<?php echo $rating_cnt !== 1 ? 's' : ''; ?>)
+                        <?php endif; ?>
+                    </div>
+                    <div class="tls-rating-msg"></div>
+                </div>
+
+                <!-- Reading status (under cover) -->
+                <div class="tls-read-status" role="group" aria-label="Reading status" style="margin-top:12px;flex-direction:column;align-items:stretch;">
+                    <button class="tls-status-btn" data-status="want" type="button" style="justify-content:center;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+                        Want to Read
+                    </button>
+                    <button class="tls-status-btn" data-status="reading" type="button" style="justify-content:center;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
+                        Currently Reading
+                    </button>
+                    <button class="tls-status-btn" data-status="read" type="button" style="justify-content:center;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        Read
+                    </button>
+                </div>
             </div>
 
             <!-- Metadata column -->
@@ -119,44 +157,6 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     <?php echo esc_html( $book_author->name ); ?>
                 </a>
                 <?php endif; ?>
-
-                <!-- Star rating -->
-                <div class="tls-rating-block">
-                    <div class="tls-rating-label">Rate this book</div>
-                    <div class="tls-stars" data-post-id="<?php echo (int) $post_id; ?>" role="group" aria-label="Book rating">
-                        <?php for ( $s = 1; $s <= 5; $s++ ) :
-                            $filled = $s <= round( $rating_avg ) ? ' filled' : '';
-                        ?>
-                        <svg class="tls-star<?php echo $filled; ?>" data-value="<?php echo $s; ?>"
-                             viewBox="0 0 24 24" fill="currentColor" aria-label="<?php echo $s; ?> star">
-                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-                        </svg>
-                        <?php endfor; ?>
-                    </div>
-                    <div class="tls-rating-count">
-                        <span class="tls-rating-avg"><?php echo $rating_avg > 0 ? number_format( $rating_avg, 1 ) : '—'; ?></span>
-                        <?php if ( $rating_cnt > 0 ) : ?>
-                        (<?php echo $rating_cnt; ?> rating<?php echo $rating_cnt !== 1 ? 's' : ''; ?>)
-                        <?php endif; ?>
-                    </div>
-                    <div class="tls-rating-msg"></div>
-                </div>
-
-                <!-- Reading status -->
-                <div class="tls-read-status" role="group" aria-label="Reading status">
-                    <button class="tls-status-btn" data-status="want" type="button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
-                        Want to Read
-                    </button>
-                    <button class="tls-status-btn" data-status="reading" type="button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
-                        Currently Reading
-                    </button>
-                    <button class="tls-status-btn" data-status="read" type="button">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                        Read
-                    </button>
-                </div>
 
                 <!-- Meta bar (reading time, date) -->
                 <div class="tls-book-meta-bar">

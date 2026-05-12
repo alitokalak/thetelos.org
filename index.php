@@ -32,7 +32,7 @@ function tls_push( &$seen, $id ) {
             Explore the World's<br><em>Great Book Summaries</em>
         </h1>
         <p class="tls-hero-desc">
-            A curated archive of the world's most influential texts, distilled for the modern scholar. Access centuries of wisdom in a focused digital environment.
+            A curated archive of the world's most influential texts, distilled for the modern scholar.
         </p>
 
         <!-- Search bar -->
@@ -46,25 +46,34 @@ function tls_push( &$seen, $id ) {
             <button type="submit">Explore</button>
         </form>
 
-        <!-- Popular tags -->
+        <!-- Category marquee -->
         <?php
-        $pop_tags = get_terms( [
+        $all_cats = get_terms( [
             'taxonomy'   => 'category',
             'orderby'    => 'count',
             'order'      => 'DESC',
-            'number'     => 6,
+            'number'     => 0,
             'hide_empty' => true,
         ] );
-        if ( ! empty( $pop_tags ) && ! is_wp_error( $pop_tags ) ) :
+        if ( ! empty( $all_cats ) && ! is_wp_error( $all_cats ) ) :
+            // Build pill HTML once, duplicate for seamless loop
+            ob_start();
+            foreach ( $all_cats as $pt ) :
         ?>
-        <div class="tls-hero-tags">
-            <span>Popular:</span>
-            <?php foreach ( $pop_tags as $pt ) : ?>
                 <a class="tls-tag-pill"
                    href="<?php echo esc_url( get_category_link( $pt->term_id ) ); ?>">
                     <?php echo esc_html( $pt->name ); ?>
                 </a>
-            <?php endforeach; ?>
+        <?php
+            endforeach;
+            $pills_html = ob_get_clean();
+        ?>
+        <div class="tls-hero-tags">
+            <span class="tls-hero-tags-label">Popular:</span>
+            <div class="tls-hero-tags-track">
+                <?php echo $pills_html; ?>
+                <?php echo $pills_html; /* duplicate for seamless loop */ ?>
+            </div>
         </div>
         <?php endif; ?>
     </div>
