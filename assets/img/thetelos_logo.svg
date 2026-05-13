@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 28" width="120" height="28">
+  <circle cx="12" cy="14" r="10" stroke="#1A1814" stroke-width="1.5" fill="none"/>
+  <line x1="2" y1="14" x2="22" y2="14" stroke="#1A1814" stroke-width="1.2"/>
+  <text x="28" y="19" font-family="Georgia,'Times New Roman',serif" font-size="13" fill="#1A1814" letter-spacing="2">thetelos</text>
+</svg>
