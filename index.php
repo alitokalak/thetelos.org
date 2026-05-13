@@ -37,13 +37,15 @@ function tls_push( &$seen, $id ) {
 
         <!-- Search bar -->
         <form class="tls-hero-search" role="search" method="get" action="<?php echo esc_url( home_url( '/' ) ); ?>">
-            <svg style="width:18px;height:18px;color:#bbb;margin-left:16px;flex-shrink:0;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="search" name="s"
                    placeholder="Search by author, title, or concept…"
                    value="<?php echo esc_attr( get_search_query() ); ?>"
                    autocomplete="off"
                    aria-label="Search the archive">
-            <button type="submit">Explore</button>
+            <button type="submit">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                Explore
+            </button>
         </form>
 
         <!-- Category marquee -->
@@ -69,7 +71,6 @@ function tls_push( &$seen, $id ) {
             $pills_html = ob_get_clean();
         ?>
         <div class="tls-hero-tags">
-            <span class="tls-hero-tags-label">Popular:</span>
             <div class="tls-hero-tags-track">
                 <?php echo $pills_html; ?>
                 <?php echo $pills_html; /* duplicate for seamless loop */ ?>
