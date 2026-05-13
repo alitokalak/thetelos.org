@@ -388,10 +388,10 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #EDEAE2;
-  padding: 24px 20px;
+  background: #1A1814;
   overflow: hidden;
-  min-height: 200px;
+  min-height: 195px;
+  padding: 20px;
 }
 .tls-book-card-cover a {
   display: flex;
@@ -403,14 +403,16 @@
   height: 155px;
   object-fit: cover;
   border-radius: 2px;
-  box-shadow: 0 4px 20px rgba(0,0,0,.22), 0 1px 6px rgba(0,0,0,.12);
+  box-shadow: 0 6px 20px rgba(0,0,0,.5);
   display: block;
 }
 .tls-book-card-cover .thetelos-book-cover {
   width: 110px !important;
   height: 155px !important;
   box-shadow: none !important;
+  border-radius: 3px !important;
 }
+.tls-book-card-cover .cover-frame-outer { display: none !important; }
 .tls-book-card-cover-wrap .tls-first-letter {
   position: absolute;
   font-family: var(--tls-serif);
@@ -546,12 +548,13 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #EDEAE2;
+  background: #1A1814;
   margin: -28px -28px 24px -28px;
   padding: 28px 20px;
-  min-height: 190px;
+  min-height: 210px;
   border-radius: 6px 6px 0 0;
 }
+.tls-featured-card-cover .cover-frame-outer { display: none !important; }
 .tls-featured-card-cover img {
   max-width: 120px;
   box-shadow: 0 8px 28px rgba(0,0,0,.25);
@@ -562,12 +565,13 @@
   height: 185px;
   object-fit: cover;
   border-radius: 2px;
-  box-shadow: 0 6px 24px rgba(0,0,0,.25);
+  box-shadow: 0 8px 28px rgba(0,0,0,.6);
 }
 .tls-featured-card-cover .thetelos-book-cover {
   width: 130px !important;
   height: 185px !important;
   box-shadow: none !important;
+  border-radius: 3px !important;
 }
 
 .tls-featured-card-cat {
