@@ -192,7 +192,7 @@
 ──────────────────────────────── */
 .tls-hero {
   background: var(--tls-bg);
-  padding: 60px 0 44px;
+  padding: 36px 0 40px;
   text-align: center;
   border-bottom: 1px solid var(--tls-border);
 }
@@ -271,6 +271,7 @@
   max-width: 660px;
   margin: 0 auto;
   overflow: hidden;
+  padding: 4px 0;
   -webkit-mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
   mask-image: linear-gradient(to right, transparent 0%, black 8%, black 92%, transparent 100%);
 }
@@ -278,7 +279,7 @@
   display: flex;
   gap: 8px;
   white-space: nowrap;
-  animation: tls-marquee 55s linear infinite;
+  animation: tls-marquee 80s linear infinite;
   will-change: transform;
 }
 .tls-hero-tags-track:hover { animation-play-state: paused; }
@@ -1401,7 +1402,7 @@
   .tls-mobile-toggle { display: flex; }
 }
 @media (max-width:768px) {
-  .tls-hero { padding: 72px 0 56px; }
+  .tls-hero { padding: 40px 0 36px; }
   .tls-section { padding: 40px 0; }
   .tls-latest-wrap { gap: 32px; }
   .tls-book-hero { padding: 40px 0 36px; }
