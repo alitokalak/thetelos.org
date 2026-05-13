@@ -165,7 +165,7 @@ function thetelos_render_book_cover( $post_id ) {
     $title  = preg_replace('/\s*[\(\(].*?[\)\)]/u', '', $title); // parantez içini kaldır
     $title  = preg_replace('/\s*[-–—].*$/u', '', $title);        // tireden sonrasını kaldır
     $title  = trim( $title );
-    $logo   = get_template_directory_uri() . '/thetelos_logo.svg';
+    $logo   = 'https://thetelos.org/thetelos_logo.svg';
     $author = thetelos_get_book_author( $post_id );
 
     ob_start();
