@@ -409,7 +409,7 @@
 .tls-book-card-cover .thetelos-book-cover {
   width: 110px !important;
   height: 155px !important;
-  padding: 10px !important;
+  padding: 13px 10px !important;
   box-shadow: 0 6px 24px rgba(0,0,0,.30) !important;
   border-radius: 3px !important;
 }
@@ -566,7 +566,7 @@
 .tls-featured-card-cover .thetelos-book-cover {
   width: 130px !important;
   height: 185px !important;
-  padding: 12px 10px !important;
+  padding: 14px 10px !important;
   box-shadow: 0 8px 32px rgba(0,0,0,.32) !important;
   border-radius: 3px !important;
 }

@@ -173,19 +173,15 @@ function thetelos_render_book_cover( $post_id ) {
     ?>
     <div class="thetelos-book-cover" style="background:<?php echo esc_attr($bg); ?>; width:160px; height:220px; padding:16px 10px; box-sizing:border-box; border-radius:3px; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:space-between; font-family:'DM Serif Display',Georgia,serif; flex-shrink:0; overflow:hidden;">
 
-        <?php /* İnce iç süsleme çerçevesi */ ?>
-        <div style="position:absolute;inset:8px;border:1px solid <?php echo esc_attr($border); ?>;opacity:0.30;border-radius:1px;pointer-events:none;z-index:1;"></div>
+        <?php /* İnce iç süsleme çerçevesi — inset küçük tutuldu ki kart boyutlarında da içeride kalsın */ ?>
+        <div style="position:absolute;inset:5px;border:1px solid <?php echo esc_attr($border); ?>;opacity:0.30;border-radius:1px;pointer-events:none;z-index:1;"></div>
 
-        <?php /* İnce yatay süsleme çizgisi — üst */ ?>
-        <div style="position:absolute;top:16px;left:16px;right:16px;height:1px;background:<?php echo esc_attr($border); ?>;opacity:0.20;z-index:1;"></div>
-        <div style="position:absolute;bottom:16px;left:16px;right:16px;height:1px;background:<?php echo esc_attr($border); ?>;opacity:0.20;z-index:1;"></div>
-
-        <div class="cover-author" style="color:<?php echo esc_attr($text); ?>;opacity:0.70;font-size:7.5px;letter-spacing:0.18em;text-align:center;text-transform:uppercase;z-index:2;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($author); ?></div>
+        <div class="cover-author" style="color:<?php echo esc_attr($text); ?>;opacity:0.85;font-size:8px;letter-spacing:0.16em;text-align:center;text-transform:uppercase;z-index:2;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($author); ?></div>
 
         <div class="cover-title" style="color:<?php echo esc_attr($text); ?>;font-size:clamp(11px,2vw,17px);font-weight:400;font-style:italic;text-align:center;line-height:1.35;z-index:2;padding:0 8px;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($title); ?></div>
 
         <div style="z-index:2;">
-            <img src="<?php echo esc_url($logo); ?>" alt="thetelos" style="height:12px;opacity:0.40;filter:brightness(0) invert(1);">
+            <img src="<?php echo esc_url($logo); ?>" alt="thetelos" style="height:13px;opacity:0.45;filter:brightness(0) invert(1);">
         </div>
 
     </div>
