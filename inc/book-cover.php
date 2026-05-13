@@ -180,7 +180,9 @@ function thetelos_render_book_cover( $post_id ) {
         <div class="cover-title" style="color:<?php echo esc_attr($text); ?>;font-size:clamp(11px,2vw,17px);font-weight:400;font-style:italic;text-align:center;line-height:1.35;z-index:2;padding:0 8px;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($title); ?></div>
 
         <div style="z-index:2;line-height:0;">
-            <img src="<?php echo esc_url($logo); ?>" alt="" style="height:13px;opacity:0.55;display:block;filter:brightness(0) invert(1);">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 9" width="62" height="9" style="overflow:visible;opacity:0.45;">
+                <text x="31" y="7.5" text-anchor="middle" font-family="'DM Serif Display',Georgia,serif" font-size="6.5" letter-spacing="2" fill="<?php echo esc_attr($text); ?>">thetelos</text>
+            </svg>
         </div>
 
     </div>
