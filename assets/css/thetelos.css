@@ -884,6 +884,22 @@
   box-shadow: 0 12px 40px rgba(0,0,0,.32) !important;
   border-radius: 4px !important;
 }
+/* Büyük kapak: çerçeve daha içeride, yazılar ve logo orantılı büyük */
+.tls-book-cover-shadow .thetelos-book-cover > div:first-child {
+  inset: 13px !important;
+}
+.tls-book-cover-shadow .thetelos-book-cover .cover-author {
+  font-size: 10px !important;
+  letter-spacing: 0.20em !important;
+  opacity: 0.85 !important;
+}
+.tls-book-cover-shadow .thetelos-book-cover .cover-title {
+  font-size: clamp(16px, 3vw, 24px) !important;
+}
+.tls-book-cover-shadow .thetelos-book-cover img {
+  height: 18px !important;
+  opacity: 0.50 !important;
+}
 .tls-book-cover-col {
   display: flex;
   flex-direction: column;
