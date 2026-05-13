@@ -878,8 +878,11 @@
   box-shadow: 0 12px 40px rgba(0,0,0,.28), 0 4px 12px rgba(0,0,0,.15);
 }
 .tls-book-cover-shadow .thetelos-book-cover {
-  box-shadow: none !important;
-  border-radius: 4px;
+  width: 200px !important;
+  height: 280px !important;
+  padding: 22px 16px !important;
+  box-shadow: 0 12px 40px rgba(0,0,0,.32) !important;
+  border-radius: 4px !important;
 }
 .tls-book-cover-col {
   display: flex;
