@@ -179,8 +179,8 @@ function thetelos_render_book_cover( $post_id ) {
 
         <div class="cover-title" style="color:<?php echo esc_attr($text); ?>;font-size:clamp(11px,2vw,17px);font-weight:400;font-style:italic;text-align:center;line-height:1.35;z-index:2;padding:0 8px;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($title); ?></div>
 
-        <div style="z-index:2;">
-            <img src="<?php echo esc_url($logo); ?>" alt="" style="height:13px;opacity:0.55;filter:invert(1) brightness(2);">
+        <div style="z-index:2;line-height:0;">
+            <img src="<?php echo esc_url($logo); ?>" alt="" style="height:13px;opacity:0.50;display:block;">
         </div>
 
     </div>
