@@ -171,36 +171,23 @@ function thetelos_render_book_cover( $post_id ) {
 
     ob_start();
     ?>
-    <div class="thetelos-book-cover" style="background:<?php echo esc_attr($bg); ?>; width:160px; height:220px; padding:12px; box-sizing:border-box; border-radius:3px; position:relative; display:flex; font-family:'DM Serif Display',Georgia,serif; flex-shrink:0;">
+    <div class="thetelos-book-cover" style="background:<?php echo esc_attr($bg); ?>; width:160px; height:220px; padding:10px; box-sizing:border-box; border-radius:3px; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:space-between; font-family:'DM Serif Display',Georgia,serif; flex-shrink:0; overflow:hidden;">
 
-        <?php /* Gürültü (noise) filtresi */ ?>
-        <svg style="position:absolute;width:0;height:0;">
-            <filter id="thetelos-noise-<?php echo (int)$post_id; ?>">
-                <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
-                <feColorMatrix type="saturate" values="0"/>
-                <feBlend in="SourceGraphic" mode="multiply" result="blend"/>
-                <feComposite in="blend" in2="SourceGraphic" operator="in"/>
-            </filter>
-        </svg>
+        <?php /* İnce iç süsleme çerçevesi */ ?>
+        <div style="position:absolute;inset:8px;border:1px solid <?php echo esc_attr($border); ?>;opacity:0.30;border-radius:1px;pointer-events:none;z-index:1;"></div>
 
-        <?php /* İç açık alan */ ?>
-        <div style="position:relative; flex:1; background:<?php echo esc_attr($text); ?>; border-radius:1px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:10px 8px; overflow:hidden;">
+        <?php /* İnce yatay süsleme çizgisi — üst */ ?>
+        <div style="position:absolute;top:16px;left:16px;right:16px;height:1px;background:<?php echo esc_attr($border); ?>;opacity:0.20;z-index:1;"></div>
+        <div style="position:absolute;bottom:16px;left:16px;right:16px;height:1px;background:<?php echo esc_attr($border); ?>;opacity:0.20;z-index:1;"></div>
 
-            <?php /* Noise overlay */ ?>
-            <div style="position:absolute;inset:0;background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/><feColorMatrix type=%22saturate%22 values=%220%22/></filter><rect width=%22200%22 height=%22200%22 filter=%22url(%23n)%22 opacity=%220.08%22/></svg>');opacity:0.6;pointer-events:none;z-index:0;"></div>
+        <div class="cover-author" style="color:<?php echo esc_attr($text); ?>;opacity:0.65;font-size:6.5px;letter-spacing:0.20em;text-align:center;text-transform:uppercase;z-index:2;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;margin-top:4px;"><?php echo esc_html($author); ?></div>
 
-            <?php /* İnce iç çerçeve */ ?>
-            <div style="position:absolute;inset:5px;border:1px solid <?php echo esc_attr($border); ?>;opacity:0.25;border-radius:1px;pointer-events:none;z-index:1;"></div>
+        <div class="cover-title" style="color:<?php echo esc_attr($text); ?>;font-size:clamp(11px,2vw,17px);font-weight:400;font-style:italic;text-align:center;line-height:1.35;z-index:2;padding:0 8px;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($title); ?></div>
 
-            <div class="cover-author" style="color:<?php echo esc_attr($subtext); ?>;font-size:7px;letter-spacing:0.18em;text-align:center;text-transform:uppercase;z-index:2;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($author); ?></div>
-
-            <div class="cover-title" style="color:<?php echo esc_attr($border); ?>;font-size:clamp(10px,2vw,16px);font-weight:400;font-style:italic;text-align:center;line-height:1.3;z-index:2;padding:0 6px;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($title); ?></div>
-
-            <div style="z-index:2;">
-                <img src="<?php echo esc_url($logo); ?>" alt="thetelos" style="height:10px;opacity:0.4;filter:brightness(0) invert(<?php echo (hexdec(substr($text,1,2)) > 128) ? '0' : '1'; ?>);">
-            </div>
-
+        <div style="z-index:2;margin-bottom:4px;">
+            <img src="<?php echo esc_url($logo); ?>" alt="thetelos" style="height:10px;opacity:0.35;filter:brightness(0) invert(1);">
         </div>
+
     </div>
     <?php
     return ob_get_clean();
