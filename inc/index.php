@@ -360,7 +360,11 @@ $cat_icons = [
      READING PATHS
 ══════════════════════════════════ -->
 <?php
-$reading_lists = function_exists('tls_get_reading_lists') ? tls_get_reading_lists(6) : [];
+$reading_lists = [];
+if ( function_exists('tls_get_reading_lists') ) {
+    wp_reset_postdata();
+    $reading_lists = tls_get_reading_lists(6);
+}
 if ( ! empty($reading_lists) ) :
 ?>
 <section class="tls-rl-section">
