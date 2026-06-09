@@ -23,7 +23,7 @@ jobs:
           username:         ${{ secrets.FTP_USER }}
           password:         ${{ secrets.FTP_PASS }}
           port:             21
-          protocol:         ftps
+          protocol:         ftp
           local-dir:        ./
           server-dir:       ${{ secrets.FTP_THEME_PATH }}
           exclude: |
@@ -44,7 +44,7 @@ jobs:
           username:         ${{ secrets.FTP_USER }}
           password:         ${{ secrets.FTP_PASS }}
           port:             21
-          protocol:         ftps
+          protocol:         ftp
           local-dir:        ./thetelos-panel/
           server-dir:       ${{ secrets.FTP_PANEL_PATH }}
           exclude: |
