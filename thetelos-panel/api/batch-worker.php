@@ -362,6 +362,21 @@ $meta = json_decode(trim($meta_text), true) ?? [];
 // ── Kapak bul ─────────────────────────────────────────────────────
 $cover_url = '';
 
+// cURL ile dış GET (allow_url_fopen kapalı olabilir)
+$bw_http_get = function($url, $binary = false) {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => ['User-Agent: Mozilla/5.0 (ThetelosBot)'],
+    ]);
+    $r = curl_exec($ch);
+    $c = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ($c >= 200 && $c < 300) ? $r : null;
+};
+
 // Google Books — intitle + inauthor (daha spesifik)
 $gb_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
     'q'          => 'intitle:"' . $book . '" inauthor:"' . $author . '"',
@@ -369,7 +384,7 @@ $gb_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
     'printType'  => 'books',
     'fields'     => 'items(volumeInfo(title,authors,imageLinks,industryIdentifiers))',
 ]);
-$gb = json_decode(@file_get_contents($gb_url), true);
+$gb = json_decode((string)$bw_http_get($gb_url), true);
 foreach ($gb['items'] ?? [] as $item) {
     $lnk = $item['volumeInfo']['imageLinks'] ?? [];
     $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
@@ -395,7 +410,7 @@ if (!$cover_url) {
         'printType'  => 'books',
         'fields'     => 'items(volumeInfo(imageLinks))',
     ]);
-    $gb2 = json_decode(@file_get_contents($gb2_url), true);
+    $gb2 = json_decode((string)$bw_http_get($gb2_url), true);
     foreach ($gb2['items'] ?? [] as $item) {
         $lnk = $item['volumeInfo']['imageLinks'] ?? [];
         $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
@@ -408,7 +423,7 @@ if (!$cover_url) {
 
 // Fallback: OpenLibrary
 if (!$cover_url) {
-    $ol = json_decode(@file_get_contents(
+    $ol = json_decode((string)$bw_http_get(
         'https://openlibrary.org/search.json?title=' . urlencode($book)
         . '&author=' . urlencode($author) . '&limit=4&fields=cover_i,title,author_name'
     ), true);
@@ -519,8 +534,7 @@ if ($cover_url) {
                 'lh6.googleusercontent.com'];
     $host = parse_url($cover_url, PHP_URL_HOST);
     if (in_array($host, $allowed)) {
-        $ctx = stream_context_create(['http'=>['timeout'=>15,'user_agent'=>'Mozilla/5.0']]);
-        $img = @file_get_contents($cover_url, false, $ctx);
+        $img = $bw_http_get($cover_url, true);
         if ($img && strlen($img) > 2000) {
             $fn = preg_replace('/[^a-z0-9]/', '-', strtolower($book)) . '.jpg';
             $cm = curl_init("$wp_api/media");

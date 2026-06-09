@@ -74,26 +74,65 @@ if ($err) { echo json_encode(['ok'=>false,'error'=>$err]); exit; }
 $items = lw_extract_json_array($raw);
 if (!$items) { echo json_encode(['ok'=>false,'error'=>'Liste ayrıştırılamadı. Yanıt: '.mb_substr($raw,0,200)]); exit; }
 
-// ── 2) OpenLibrary ile doğrula + zenginleştir ─────────────────────
+// ── 2) Doğrula + kapak getir (cURL — allow_url_fopen kapalı olabilir) ──
+function lw_http_get($url) {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 8,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => ['User-Agent: ThetelosBot/1.0 (+https://thetelos.org)'],
+    ]);
+    $r = curl_exec($ch);
+    $c = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ($c >= 200 && $c < 300) ? $r : null;
+}
+
 function lw_ol_verify($title, $author) {
-    $url = 'https://openlibrary.org/search.json?' . http_build_query([
+    // 1) OpenLibrary — başlık + yazar
+    $r = lw_http_get('https://openlibrary.org/search.json?' . http_build_query([
         'title'  => $title,
         'author' => $author,
         'limit'  => 1,
         'fields' => 'key,title,first_publish_year,cover_i',
-    ]);
-    $ctx = stream_context_create(['http'=>['timeout'=>6,'user_agent'=>'ThetelosBot/1.0 (thetelos.org)']]);
-    $r = @file_get_contents($url, false, $ctx);
-    if (!$r) return null;
-    $d = json_decode($r, true);
-    if (empty($d['docs'][0])) return null;
-    $doc = $d['docs'][0];
-    return [
-        'ol_key'      => $doc['key'] ?? '',
-        'ol_year'     => $doc['first_publish_year'] ?? null,
-        'cover'       => !empty($doc['cover_i']) ? "https://covers.openlibrary.org/b/id/{$doc['cover_i']}-M.jpg" : '',
-        'ol_title'    => $doc['title'] ?? '',
-    ];
+    ]));
+    if ($r) {
+        $d = json_decode($r, true);
+        if (!empty($d['docs'][0])) {
+            $doc = $d['docs'][0];
+            return [
+                'ol_key'   => $doc['key'] ?? '',
+                'ol_year'  => $doc['first_publish_year'] ?? null,
+                'cover'    => !empty($doc['cover_i']) ? "https://covers.openlibrary.org/b/id/{$doc['cover_i']}-M.jpg" : '',
+                'ol_title' => $doc['title'] ?? '',
+            ];
+        }
+    }
+
+    // 2) Google Books — kapak için (intitle + inauthor)
+    $r2 = lw_http_get('https://www.googleapis.com/books/v1/volumes?' . http_build_query([
+        'q'          => 'intitle:' . $title . ' inauthor:' . $author,
+        'maxResults' => 1,
+        'printType'  => 'books',
+        'fields'     => 'items(volumeInfo(imageLinks,publishedDate))',
+    ]));
+    if ($r2) {
+        $d2 = json_decode($r2, true);
+        $vi = $d2['items'][0]['volumeInfo'] ?? null;
+        if ($vi) {
+            $c = $vi['imageLinks']['thumbnail'] ?? ($vi['imageLinks']['smallThumbnail'] ?? '');
+            if ($c) {
+                $c = str_replace(['http://', '&edge=curl'], ['https://', ''], $c);
+                $c = preg_replace('/zoom=\d/', 'zoom=1', $c);
+                $yr = null;
+                if (!empty($vi['publishedDate']) && preg_match('/(\d{4})/', $vi['publishedDate'], $ym)) $yr = (int)$ym[1];
+                return ['ol_key'=>'', 'ol_year'=>$yr, 'cover'=>$c, 'ol_title'=>''];
+            }
+        }
+    }
+
+    return null;
 }
 
 $works = [];
