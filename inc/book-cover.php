@@ -160,47 +160,43 @@ function thetelos_render_book_cover( $post_id ) {
     $subtext = $palette[3];
 
     $title  = get_the_title( $post_id );
-    $author = thetelos_get_book_author( $post_id );
-    $title  = trim( str_ireplace( $author, '', $title ) );
-    $title  = preg_replace('/\s*[\(\(].*?[\)\)]/u', '', $title); // parantez içini kaldır
-    $title  = preg_replace('/\s*[-–—].*$/u', '', $title);        // tireden sonrasını kaldır
+    $title  = preg_replace('/\s*[\(\（].*$/u', '', $title);   // parantez ve sonrasını kaldır
+    $title  = preg_replace('/\s+[-–—].*$/u',  '', $title);   // boşluk+tire ve sonrasını kaldır
     $title  = trim( $title );
-    $logo   = home_url( '/thetelos_logo.svg' );
+
+    // Title uzunluğuna göre dinamik font size — sadece kapak içi için
+    $title_len = mb_strlen( $title );
+    if ( $title_len <= 30 )      $cover_title_size = '17px';
+    elseif ( $title_len <= 50 )  $cover_title_size = '14px';
+    elseif ( $title_len <= 70 )  $cover_title_size = '12px';
+    else                         $cover_title_size = '10px';
+
     $author = thetelos_get_book_author( $post_id );
-    $logo   = home_url( '/thetelos_logo.svg' );
 
     ob_start();
     ?>
-    <div class="thetelos-book-cover" style="background:<?php echo esc_attr($bg); ?>; width:160px; height:220px; padding:12px; box-sizing:border-box; border-radius:3px; position:relative; display:flex; font-family:'DM Serif Display',Georgia,serif; flex-shrink:0;">
+    <div class="thetelos-book-cover" style="background:<?php echo esc_attr($bg); ?>; width:160px; height:220px; padding:16px 10px; box-sizing:border-box; border-radius:3px; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:space-between; font-family:'DM Serif Display',Georgia,serif; flex-shrink:0; overflow:hidden;">
 
-        <?php /* Gürültü (noise) filtresi */ ?>
-        <svg style="position:absolute;width:0;height:0;">
-            <filter id="thetelos-noise-<?php echo (int)$post_id; ?>">
-                <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
-                <feColorMatrix type="saturate" values="0"/>
-                <feBlend in="SourceGraphic" mode="multiply" result="blend"/>
-                <feComposite in="blend" in2="SourceGraphic" operator="in"/>
-            </filter>
-        </svg>
+        <?php /* İnce iç süsleme çerçevesi — inset küçük tutuldu ki kart boyutlarında da içeride kalsın */ ?>
+        <div style="position:absolute;inset:5px;border:1px solid <?php echo esc_attr($border); ?>;opacity:0.30;border-radius:1px;pointer-events:none;z-index:1;"></div>
 
-        <?php /* İç açık alan */ ?>
-        <div style="position:relative; flex:1; background:<?php echo esc_attr($text); ?>; border-radius:1px; display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:10px 8px; overflow:hidden;">
+        <div class="cover-author" style="color:<?php echo esc_attr($text); ?>;opacity:0.85;font-size:8px;letter-spacing:0.16em;text-align:center;text-transform:uppercase;z-index:2;font-family:'DM Serif Display',Georgia,serif;font-style:normal;font-weight:400;text-decoration:none !important;"><?php echo esc_html($author); ?></div>
 
-            <?php /* Noise overlay */ ?>
-            <div style="position:absolute;inset:0;background-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22200%22 height=%22200%22><filter id=%22n%22><feTurbulence type=%22fractalNoise%22 baseFrequency=%220.9%22 numOctaves=%224%22 stitchTiles=%22stitch%22/><feColorMatrix type=%22saturate%22 values=%220%22/></filter><rect width=%22200%22 height=%22200%22 filter=%22url(%23n)%22 opacity=%220.08%22/></svg>');opacity:0.6;pointer-events:none;z-index:0;"></div>
+        <div class="cover-title" style="color:<?php echo esc_attr($text); ?>;font-size:<?php echo esc_attr($cover_title_size); ?>;font-weight:400;font-style:italic;text-align:center;line-height:1.35;z-index:2;padding:0 8px;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($title); ?></div>
 
-            <?php /* İnce iç çerçeve */ ?>
-            <div style="position:absolute;inset:5px;border:1px solid <?php echo esc_attr($border); ?>;opacity:0.25;border-radius:1px;pointer-events:none;z-index:1;"></div>
-
-            <div class="cover-author" style="color:<?php echo esc_attr($subtext); ?>;font-size:7px;letter-spacing:0.18em;text-align:center;text-transform:uppercase;z-index:2;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($author); ?></div>
-
-            <div class="cover-title" style="color:<?php echo esc_attr($border); ?>;font-size:clamp(10px,2vw,16px);font-weight:400;font-style:italic;text-align:center;line-height:1.3;z-index:2;padding:0 6px;font-family:'DM Serif Display',Georgia,serif;text-decoration:none !important;"><?php echo esc_html($title); ?></div>
-
-            <div style="z-index:2;">
-                <img src="<?php echo esc_url($logo); ?>" alt="thetelos" style="height:10px;opacity:0.4;filter:brightness(0) invert(<?php echo (hexdec(substr($text,1,2)) > 128) ? '0' : '1'; ?>);">
-            </div>
-
+        <div style="z-index:2;line-height:0;opacity:0.55;margin-bottom:1px;width:25%;display:flex;align-items:center;justify-content:center;">
+            <?php
+            $logo_path = get_template_directory() . '/assets/img/thetelos_logo.svg';
+            if ( file_exists( $logo_path ) ) {
+                $svg = file_get_contents( $logo_path );
+                $svg = preg_replace( '/<svg/', '<svg style="width:100%;height:auto;display:block;filter:brightness(0) invert(1);"', $svg, 1 );
+                echo $svg;
+            } else {
+                echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 9" width="62" height="9" style="overflow:visible;"><text x="31" y="7.5" text-anchor="middle" font-family="\'DM Serif Display\',Georgia,serif" font-size="6.5" letter-spacing="2" fill="' . esc_attr($text) . '">thetelos</text></svg>';
+            }
+            ?>
         </div>
+
     </div>
     <?php
     return ob_get_clean();

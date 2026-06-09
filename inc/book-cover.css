@@ -202,7 +202,7 @@
 
 .thetelos-book-cover .cover-title {
     color: var(--cover-text);
-    font-size: clamp(10px, 2vw, 18px);
+    /* font-size PHP tarafından inline olarak belirlenir (title uzunluğuna göre) */
     font-weight: 400;
     font-style: italic;
     text-align: center;

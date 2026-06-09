@@ -48,84 +48,120 @@ function thetelos_ajax_fetch_book_covers() {
         wp_send_json_error( 'Unauthorized', 403 );
     }
 
-    $query = isset( $_POST['q'] ) ? sanitize_text_field( wp_unslash( $_POST['q'] ) ) : '';
+    $query  = isset( $_POST['q'] )      ? sanitize_text_field( wp_unslash( $_POST['q'] ) )      : '';
+    $author = isset( $_POST['author'] ) ? sanitize_text_field( wp_unslash( $_POST['author'] ) ) : '';
+
     if ( strlen( $query ) < 2 ) {
         wp_send_json_error( 'Query too short' );
     }
 
-    $results = [];
+    // ── Sonucu skorla ─────────────────────────────────────────────────
+    // Başlıkta kitap kelimesi varsa +2, yazar adı varsa +3 (birlikte bulunursa en yüksek skor)
+    $score_result = function( $result_title, $result_authors ) use ( $query, $author ) {
+        $score = 0;
+        $rt    = strtolower( $result_title );
+        $ra    = strtolower( implode( ' ', (array) $result_authors ) );
 
-    // ── 1. Google Books API (birincil) ───────────────────────────────
-    $google_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query( [
-        'q'          => 'intitle:' . $query,
-        'maxResults' => 8,
-        'printType'  => 'books',
-        'fields'     => 'items(volumeInfo(title,authors,imageLinks))',
+        $book_words = array_filter( explode( ' ', strtolower( $query ) ), fn($w) => strlen($w) > 3 );
+        foreach ( $book_words as $w ) {
+            if ( strpos( $rt, $w ) !== false ) { $score += 2; break; }
+        }
+
+        if ( $author ) {
+            $auth_words = array_filter( explode( ' ', strtolower( $author ) ), fn($w) => strlen($w) > 2 );
+            foreach ( $auth_words as $w ) {
+                if ( strpos( $rt, $w ) !== false || strpos( $ra, $w ) !== false ) { $score += 3; break; }
+            }
+        }
+
+        return $score;
+    };
+
+    $raw_results = [];
+
+    // ── Sorgu sırası: en spesifikten en genele ─────────────────────────
+    $queries_to_try = array_filter( [
+        // 1. intitle + inauthor — hem kitap hem yazar geçiyorsa ideal
+        $author ? ( 'intitle:' . $query . ' inauthor:' . $author ) : '',
+        // 2. intitle + yazar serbest metin
+        $author ? ( 'intitle:' . $query . ' ' . $author ) : '',
+        // 3. Sadece intitle
+        'intitle:' . $query,
+        // 4. Serbest metin (en geniş, fallback)
+        $query,
     ] );
 
-    $response = wp_remote_get( $google_url, [ 'timeout' => 8 ] );
+    foreach ( $queries_to_try as $q ) {
+        if ( count( $raw_results ) >= 8 ) break;
 
-    if ( ! is_wp_error( $response ) && 200 === wp_remote_retrieve_response_code( $response ) ) {
+        $google_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query( [
+            'q'          => $q,
+            'maxResults' => 6,
+            'printType'  => 'books',
+            'fields'     => 'items(volumeInfo(title,authors,imageLinks))',
+        ] );
+
+        $response = wp_remote_get( $google_url, [ 'timeout' => 8 ] );
+        if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) continue;
+
         $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        foreach ( $body['items'] ?? [] as $item ) {
+            $info   = $item['volumeInfo'] ?? [];
+            $links  = $info['imageLinks'] ?? [];
+            $cover  = $links['thumbnail'] ?? ( $links['smallThumbnail'] ?? '' );
+            if ( ! $cover ) continue;
 
-        if ( ! empty( $body['items'] ) ) {
-            foreach ( $body['items'] as $item ) {
-                $info  = $item['volumeInfo'] ?? [];
-                $links = $info['imageLinks'] ?? [];
+            $cover = str_replace( 'http://', 'https://', $cover );
+            $cover = str_replace( '&edge=curl', '', $cover );
+            // Yüksek çözünürlük
+            $cover = preg_replace( '/zoom=\d/', 'zoom=3', $cover );
 
-                $cover = $links['thumbnail'] ?? ( $links['smallThumbnail'] ?? '' );
-                if ( ! $cover ) continue;
+            // Duplicate kontrolü
+            $already = array_filter( $raw_results, fn($r) => $r['cover'] === $cover );
+            if ( $already ) continue;
 
-                $cover = str_replace( 'http://', 'https://', $cover );
-                $cover = str_replace( '&edge=curl', '', $cover );
+            $result_title   = $info['title']   ?? '';
+            $result_authors = $info['authors'] ?? [];
 
-                $results[] = [
-                    'cover'  => esc_url_raw( $cover ),
-                    'title'  => sanitize_text_field( $info['title'] ?? '' ),
-                    'author' => sanitize_text_field(
-                        ! empty( $info['authors'] )
-                            ? implode( ', ', array_slice( $info['authors'], 0, 2 ) )
-                            : ''
-                    ),
-                    'source' => 'google',
-                ];
-
-                if ( count( $results ) >= 6 ) break;
-            }
+            $raw_results[] = [
+                'cover'  => esc_url_raw( $cover ),
+                'title'  => sanitize_text_field( $result_title ),
+                'author' => sanitize_text_field( implode( ', ', array_slice( $result_authors, 0, 2 ) ) ),
+                'source' => 'google',
+                'score'  => $score_result( $result_title, $result_authors ),
+            ];
         }
     }
 
-    // ── 2. Open Library (Google yetersizse fallback) ─────────────────
+    // ── Skora göre sırala ─────────────────────────────────────────────
+    usort( $raw_results, fn($a, $b) => $b['score'] - $a['score'] );
+
+    $results = array_map(
+        fn($r) => [ 'cover' => $r['cover'], 'title' => $r['title'], 'author' => $r['author'], 'source' => $r['source'] ],
+        array_slice( $raw_results, 0, 6 )
+    );
+
+    // ── Open Library fallback ─────────────────────────────────────────
     if ( count( $results ) < 3 ) {
+        $ol_q   = $query . ( $author ? ' ' . $author : '' );
         $ol_url = 'https://openlibrary.org/search.json?' . http_build_query( [
-            'title'  => $query,
-            'limit'  => 8,
+            'q'      => $ol_q,
+            'limit'  => 6,
             'fields' => 'key,title,author_name,cover_i',
         ] );
 
         $ol_response = wp_remote_get( $ol_url, [ 'timeout' => 8 ] );
-
         if ( ! is_wp_error( $ol_response ) && 200 === wp_remote_retrieve_response_code( $ol_response ) ) {
             $ol_body = json_decode( wp_remote_retrieve_body( $ol_response ), true );
-
-            if ( ! empty( $ol_body['docs'] ) ) {
-                foreach ( $ol_body['docs'] as $doc ) {
-                    if ( empty( $doc['cover_i'] ) ) continue;
-
-                    $cover_id = (int) $doc['cover_i'];
-                    $results[] = [
-                        'cover'  => "https://covers.openlibrary.org/b/id/{$cover_id}-M.jpg",
-                        'title'  => sanitize_text_field( $doc['title'] ?? '' ),
-                        'author' => sanitize_text_field(
-                            ! empty( $doc['author_name'] )
-                                ? implode( ', ', array_slice( $doc['author_name'], 0, 2 ) )
-                                : ''
-                        ),
-                        'source' => 'openlibrary',
-                    ];
-
-                    if ( count( $results ) >= 6 ) break;
-                }
+            foreach ( $ol_body['docs'] ?? [] as $doc ) {
+                if ( empty( $doc['cover_i'] ) ) continue;
+                $results[] = [
+                    'cover'  => 'https://covers.openlibrary.org/b/id/' . (int) $doc['cover_i'] . '-L.jpg',
+                    'title'  => sanitize_text_field( $doc['title'] ?? '' ),
+                    'author' => sanitize_text_field( implode( ', ', array_slice( $doc['author_name'] ?? [], 0, 2 ) ) ),
+                    'source' => 'openlibrary',
+                ];
+                if ( count( $results ) >= 6 ) break;
             }
         }
     }

@@ -22,12 +22,14 @@ function thetelos_register_analysis_cpt() {
             'not_found'          => 'No analyses found',
             'not_found_in_trash' => 'No analyses found in trash',
         ],
-        'public'       => true,
-        'show_ui'      => true,
-        'show_in_menu' => true,
-        'supports'     => [ 'title', 'editor', 'thumbnail', 'excerpt' ],
-        'menu_icon'    => 'dashicons-book-alt',
-        'rewrite'      => [ 'slug' => 'analysis', 'with_front' => false ],
+        'public'        => true,
+        'show_ui'       => true,
+        'show_in_menu'  => true,
+        'has_archive'   => true,
+        'show_in_rest'  => true,
+        'supports'      => [ 'title', 'editor', 'thumbnail', 'excerpt', 'custom-fields' ],
+        'menu_icon'     => 'dashicons-book-alt',
+        'rewrite'       => [ 'slug' => 'analysis', 'with_front' => false ],
     ]);
 }
 add_action( 'init', 'thetelos_register_analysis_cpt' );
@@ -292,4 +294,82 @@ function thetelos_get_analysis_for_post( $post_id ) {
     ]);
 
     return ! empty( $analyses ) ? $analyses[0] : null;
+}
+
+// -----------------------------------------------------
+// SEO: ?analysis= eski URL'leri /analysis/slug/ 'a 301 yönlendir
+// Sadece $_GET['analysis'] varsa tetiklenir — /analysis/slug/
+// URL'lerini yakalamaz, sonsuz döngü oluşmaz.
+// -----------------------------------------------------
+add_action( 'template_redirect', 'thetelos_redirect_old_analysis_urls' );
+function thetelos_redirect_old_analysis_urls() {
+    if ( ! isset( $_GET['analysis'] ) || '' === $_GET['analysis'] ) return;
+
+    $slug = sanitize_title( wp_unslash( $_GET['analysis'] ) );
+    if ( empty( $slug ) ) return;
+
+    $posts = get_posts([
+        'post_type'     => 'analysis',
+        'name'          => $slug,
+        'post_status'   => 'publish',
+        'numberposts'   => 1,
+        'no_found_rows' => true,
+    ]);
+
+    if ( ! empty( $posts ) ) {
+        wp_redirect( get_permalink( $posts[0]->ID ), 301 );
+        exit;
+    }
+
+    $posts_by_title = get_posts([
+        'post_type'     => 'analysis',
+        'post_status'   => 'publish',
+        'numberposts'   => 1,
+        'no_found_rows' => true,
+        's'             => str_replace( '-', ' ', $slug ),
+    ]);
+
+    if ( ! empty( $posts_by_title ) ) {
+        wp_redirect( get_permalink( $posts_by_title[0]->ID ), 301 );
+        exit;
+    }
+}
+
+// -----------------------------------------------------
+// SEO: Yoast entegrasyonu — Analysis CPT
+// Analysis sayfalarını sitemap'e dahil eder,
+// otomatik title ve meta description üretir.
+// -----------------------------------------------------
+add_action( 'init', 'thetelos_analysis_yoast_integration', 20 );
+function thetelos_analysis_yoast_integration() {
+    if ( ! defined( 'WPSEO_VERSION' ) ) return;
+
+    // Analysis'i Yoast sitemap'inden asla çıkarma
+    add_filter( 'wpseo_sitemap_exclude_post_type', function( $excluded, $post_type ) {
+        if ( $post_type === 'analysis' ) return false;
+        return $excluded;
+    }, 10, 2 );
+}
+
+// Yoast boş bırakırsa otomatik SEO title üret
+add_filter( 'wpseo_title', 'thetelos_analysis_seo_title' );
+function thetelos_analysis_seo_title( $title ) {
+    if ( ! is_singular( 'analysis' ) ) return $title;
+    $post = get_post();
+    if ( ! $post ) return $title;
+    if ( ! empty( $title ) ) return $title; // Yoast zaten ürettiyse dokunma
+    return $post->post_title . ' — Deep Analysis | ' . get_bloginfo( 'name' );
+}
+
+// Yoast boş bırakırsa otomatik meta description üret
+add_filter( 'wpseo_metadesc', 'thetelos_analysis_seo_desc' );
+function thetelos_analysis_seo_desc( $desc ) {
+    if ( ! is_singular( 'analysis' ) ) return $desc;
+    if ( ! empty( $desc ) ) return $desc; // Yoast doldurmuşsa dokunma
+    $post = get_post();
+    if ( ! $post ) return $desc;
+    $excerpt = $post->post_excerpt
+        ? $post->post_excerpt
+        : wp_trim_words( strip_tags( $post->post_content ), 28, '…' );
+    return $excerpt;
 }

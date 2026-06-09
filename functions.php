@@ -355,6 +355,7 @@ add_action( 'pt-ocdi/after_import', 'wow_mediumish_after_import_setup' );
 // -----------------------------------------------------
 require_once get_template_directory() . '/inc/bootstrap/wp_bootstrap_pagination.php';
 require_once get_template_directory() . '/inc/bootstrap/wp_bootstrap_navwalker.php';
+require_once get_template_directory() . '/inc/thetelos-rating.php';
 function mediumish_load_customizer() {
     require_once get_template_directory() . '/inc/customizer.php';
 }
@@ -362,6 +363,29 @@ require_once get_template_directory() . '/inc/book-cover.php';
 require_once get_template_directory() . '/inc/analysis-cpt.php';
 require_once get_template_directory() . '/inc/analysis-panel.php';
 require_once get_template_directory() . '/inc/book-cover-fetcher.php';
+require_once get_template_directory() . '/inc/og-cover.php';
+require_once get_template_directory() . '/inc/summary-request.php';
+require_once get_template_directory() . '/inc/ai-assistant.php';
+require_once get_template_directory() . '/inc/membership.php';
+require_once get_template_directory() . '/inc/reading-lists.php';
+
+/* Reading List CPT — fallback (dosya yüklenemezse) */
+add_action('init', function() {
+    if ( post_type_exists('tls_reading_list') ) return;
+    register_post_type('tls_reading_list', [
+        'labels' => [
+            'name'          => 'Reading Lists',
+            'singular_name' => 'Reading List',
+            'menu_name'     => '📚 Reading Lists',
+        ],
+        'public'        => false,
+        'show_ui'       => true,
+        'show_in_menu'  => true,
+        'menu_icon'     => 'dashicons-book-alt',
+        'supports'      => ['title'],
+        'menu_position' => 6,
+    ]);
+});
 
 add_action( 'init', 'mediumish_load_customizer', 1 );
 // -----------------------------------------------------
@@ -441,6 +465,60 @@ if ( ! function_exists( 'mediumish_enqueue_scripts' ) ) {
 
     add_action( 'wp_enqueue_scripts', 'mediumish_enqueue_scripts' );
 }
+
+// ──────────────────────────────────────────────────────────
+// TheTelos brand fonts (DM Serif Display + DM Sans)
+// ──────────────────────────────────────────────────────────
+function thetelos_enqueue_brand_fonts() {
+    wp_enqueue_style(
+        'thetelos-brand-fonts',
+        'https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap',
+        [],
+        null
+    );
+}
+add_action( 'wp_enqueue_scripts', 'thetelos_enqueue_brand_fonts', 5 );
+
+// ──────────────────────────────────────────────────────────
+// TheTelos custom CSS + JS
+// ──────────────────────────────────────────────────────────
+function thetelos_enqueue_custom_assets() {
+    wp_enqueue_style(
+        'thetelos-styles',
+        get_template_directory_uri() . '/assets/css/thetelos.css',
+        [ 'mediumish-style' ],
+        THEME_VERSION . '.m12'
+    );
+
+    wp_enqueue_script(
+        'thetelos-scripts',
+        get_template_directory_uri() . '/assets/js/thetelos.js',
+        [],
+        THEME_VERSION . '.m12',
+        true
+    );
+
+    $user     = wp_get_current_user();
+    $logged   = is_user_logged_in();
+
+    wp_localize_script( 'thetelos-scripts', 'thelosData', [
+        'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+        'nonce'   => wp_create_nonce( 'thetelos_rating' ),
+    ] );
+
+    wp_localize_script( 'thetelos-scripts', 'tlsAuth', [
+        'ajaxUrl'     => admin_url('admin-ajax.php'),
+        'isLoggedIn'  => $logged,
+        'profileUrl'  => home_url('/profile/'),
+        'statusNonce' => wp_create_nonce('tls_status_nonce'),
+        'authNonce'   => wp_create_nonce('tls_auth_nonce'),
+        'user'        => $logged ? [
+            'name'  => $user->display_name,
+            'email' => $user->user_email,
+        ] : null,
+    ] );
+}
+add_action( 'wp_enqueue_scripts', 'thetelos_enqueue_custom_assets', 20 );
 
 add_filter( 'kirki_enqueue_google_fonts', '__return_empty_array' );
 /**
@@ -1732,6 +1810,66 @@ function mediumish_post_card_tall() {
     <?php 
 }
 
+// ──────────────────────────────────────────────────────────
+// TheTelos Book Card
+// ──────────────────────────────────────────────────────────
+function thetelos_book_card( $post_id ) {
+    $title     = get_the_title( $post_id );
+    $permalink = get_permalink( $post_id );
+    $cats      = get_the_category( $post_id );
+    $excerpt   = wp_trim_words( get_the_excerpt( $post_id ), 18 );
+    $authors   = get_the_terms( $post_id, 'authors' );
+    $author    = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0] : null;
+    $analysis  = function_exists( 'thetelos_get_analysis_for_post' ) ? thetelos_get_analysis_for_post( $post_id ) : null;
+    $rt        = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_reading_time( $post_id ) : mediumish_estimated_reading_time();
+
+    ob_start();
+    ?>
+    <article class="tls-book-card">
+        <div class="tls-book-card-cover">
+            <a href="<?php echo esc_url( $permalink ); ?>" tabindex="-1" aria-hidden="true">
+                <?php if ( has_post_thumbnail( $post_id ) ) : ?>
+                    <?php echo get_the_post_thumbnail( $post_id, [ 200, 300 ], [ 'alt' => esc_attr( $title ) ] ); ?>
+                <?php else : ?>
+                    <?php echo thetelos_render_book_cover( $post_id ); ?>
+                <?php endif; ?>
+            </a>
+        </div>
+        <div class="tls-book-card-body">
+            <?php if ( ! empty( $cats ) ) : ?>
+                <a class="tls-book-card-cat"
+                   href="<?php echo esc_url( get_category_link( $cats[0]->term_id ) ); ?>">
+                    <?php echo esc_html( $cats[0]->name ); ?>
+                </a>
+            <?php endif; ?>
+            <a class="tls-book-card-title" href="<?php echo esc_url( $permalink ); ?>">
+                <?php echo esc_html( $title ); ?>
+            </a>
+            <?php if ( $author ) : ?>
+                <a class="tls-book-card-author"
+                   href="<?php echo esc_url( get_term_link( $author ) ); ?>">
+                    <?php echo esc_html( $author->name ); ?>
+                </a>
+            <?php endif; ?>
+            <p class="tls-book-card-excerpt"><?php echo esc_html( $excerpt ); ?></p>
+            <div class="tls-book-card-footer">
+                <span class="tls-book-card-meta"><?php echo esc_html( $rt ); ?></span>
+                <?php if ( $analysis ) : ?>
+                    <a class="tls-analysis-badge"
+                       href="<?php echo esc_url( $permalink ); ?>#deep-analysis">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25"/>
+                        </svg>
+                        Deep Analysis
+                    </a>
+                <?php endif; ?>
+            </div>
+        </div>
+    </article>
+    <?php
+    return ob_get_clean();
+}
+
 // -----------------------------------------------------
 // Related Posts
 // -----------------------------------------------------
@@ -1773,15 +1911,12 @@ function mediumish_related_posts(  $args = array()  ) {
         'order'          => $args['order'],
     ) );
     if ( !empty( $related_posts ) ) {
-        echo '<div class="row justify-content-center listrecent listrelated">';
+        echo '<div class="tls-books-grid">';
         foreach ( $related_posts as $post ) {
             setup_postdata( $post );
-            echo '<div class="col-md-6 col-lg-3 mb-30">';
-            echo mediumish_postbox_default();
-            echo '</div>';
+            echo thetelos_book_card( $post->ID );
         }
         echo '</div>';
-        echo '<div class="clearfix"></div>';
     }
     wp_reset_postdata();
 }
@@ -1991,3 +2126,352 @@ add_action('pre_get_posts','thetelos_smart_search',5);
 add_action('created_authors',function(){delete_transient('thetelos_all_authors');});
 add_action('deleted_authors',function(){delete_transient('thetelos_all_authors');});
 add_action('edited_authors',function(){delete_transient('thetelos_all_authors');});
+
+/* ══════════════════════════════════════════════════════════════
+   SUMMARY REQUEST SYSTEM
+   - CPT: tls_request (admin panelde görünür)
+   - AJAX handler: tls_submit_req
+   - Spam: honeypot + zaman kontrolü + rate limit
+══════════════════════════════════════════════════════════════ */
+
+/* 1. CPT kayıt */
+add_action( 'init', 'tls_register_request_cpt' );
+function tls_register_request_cpt() {
+    register_post_type( 'tls_request', [
+        'labels' => [
+            'name'          => 'Summary Requests',
+            'singular_name' => 'Summary Request',
+            'menu_name'     => 'Summary Requests',
+            'all_items'     => 'All Requests',
+        ],
+        'public'       => false,
+        'show_ui'      => true,
+        'show_in_menu' => true,
+        'menu_icon'    => 'dashicons-book-alt',
+        'menu_position'=> 25,
+        'supports'     => [ 'title' ],
+        'capabilities' => [ 'create_posts' => 'do_not_allow' ],
+        'map_meta_cap' => true,
+    ] );
+}
+
+/* 2. Admin kolonları */
+add_filter( 'manage_tls_request_posts_columns', function( $cols ) {
+    return [
+        'cb'         => $cols['cb'],
+        'title'      => 'Name',
+        'tls_email'  => 'Email',
+        'tls_author' => 'Author',
+        'tls_book'   => 'Book',
+        'tls_status' => 'Status',
+        'date'       => 'Date',
+    ];
+} );
+add_action( 'manage_tls_request_posts_custom_column', function( $col, $id ) {
+    $map = [
+        'tls_email'  => '_tls_email',
+        'tls_author' => '_tls_author',
+        'tls_book'   => '_tls_book',
+    ];
+    if ( isset( $map[ $col ] ) ) {
+        echo esc_html( get_post_meta( $id, $map[ $col ], true ) );
+    } elseif ( $col === 'tls_status' ) {
+        $s = get_post_meta( $id, '_tls_status', true ) ?: 'new';
+        $l = [ 'new' => '🟡 New', 'reviewed' => '🔵 Reviewed', 'done' => '✅ Done' ];
+        echo esc_html( $l[ $s ] ?? $s );
+    }
+}, 10, 2 );
+
+/* 3. Meta box */
+add_action( 'add_meta_boxes', function() {
+    add_meta_box( 'tls_req_detail', 'Request Details', 'tls_req_meta_box', 'tls_request', 'normal', 'high' );
+} );
+function tls_req_meta_box( $post ) {
+    $fields = [
+        'Email'       => get_post_meta( $post->ID, '_tls_email',  true ),
+        'Author'      => get_post_meta( $post->ID, '_tls_author', true ),
+        'Book'        => get_post_meta( $post->ID, '_tls_book',   true ),
+        'IP'          => get_post_meta( $post->ID, '_tls_ip',     true ),
+    ];
+    $status = get_post_meta( $post->ID, '_tls_status', true ) ?: 'new';
+    wp_nonce_field( 'tls_req_save', 'tls_req_nonce_field' );
+    echo '<table style="width:100%;border-collapse:collapse;">';
+    foreach ( $fields as $label => $val ) {
+        echo '<tr><td style="padding:7px 0;width:100px;color:#666;font-weight:600;">' . esc_html($label) . '</td>';
+        echo '<td>' . esc_html($val) . '</td></tr>';
+    }
+    echo '<tr><td style="padding:7px 0;color:#666;font-weight:600;">Status</td><td>';
+    echo '<select name="tls_req_status" style="padding:4px 8px;">';
+    foreach ( ['new'=>'New','reviewed'=>'Reviewed','done'=>'Done'] as $v => $l ) {
+        echo '<option value="' . esc_attr($v) . '"' . selected($status,$v,false) . '>' . esc_html($l) . '</option>';
+    }
+    echo '</select></td></tr></table>';
+}
+add_action( 'save_post_tls_request', function( $id ) {
+    if ( ! isset($_POST['tls_req_nonce_field']) ) return;
+    if ( ! wp_verify_nonce($_POST['tls_req_nonce_field'], 'tls_req_save') ) return;
+    if ( defined('DOING_AUTOSAVE') && DOING_AUTOSAVE ) return;
+    if ( isset($_POST['tls_req_status']) ) {
+        update_post_meta( $id, '_tls_status', sanitize_text_field($_POST['tls_req_status']) );
+    }
+} );
+
+/* 4. AJAX handler */
+add_action( 'wp_ajax_tls_submit_req',        'tls_handle_req' );
+add_action( 'wp_ajax_nopriv_tls_submit_req', 'tls_handle_req' );
+function tls_handle_req() {
+    if ( ! check_ajax_referer( 'tls_req_nonce', 'nonce', false ) ) {
+        wp_send_json_error( ['message' => 'Security check failed.'], 403 );
+    }
+    /* Honeypot */
+    if ( ! empty( $_POST['tls_hp'] ) ) {
+        wp_send_json_success( ['message' => 'ok'] );
+        return;
+    }
+    /* Zaman kontrolü */
+    if ( ! is_user_logged_in() && (int)( $_POST['tls_time'] ?? 0 ) && time() - (int)$_POST['tls_time'] < 2 ) {
+        wp_send_json_error( ['message' => 'Please slow down.'] );
+        return;
+    }
+    /* Rate limit */
+    $ip  = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '' );
+    $key = 'tls_r_' . md5( $ip );
+    if ( (int) get_transient( $key ) >= 5 ) {
+        wp_send_json_error( ['message' => 'Too many requests. Try again later.'] );
+        return;
+    }
+    /* Alanlar */
+    $name   = sanitize_text_field( $_POST['tls_name']   ?? '' );
+    $email  = sanitize_email(      $_POST['tls_email']  ?? '' );
+    $author = sanitize_text_field( $_POST['tls_author'] ?? '' );
+    $book   = sanitize_text_field( $_POST['tls_book']   ?? '' );
+
+    if ( ! $name || ! is_email($email) || ! $author || ! $book ) {
+        wp_send_json_error( ['message' => 'Please fill in all required fields.'] );
+        return;
+    }
+    /* Kaydet */
+    $pid = wp_insert_post( [
+        'post_type'   => 'tls_request',
+        'post_title'  => $name,
+        'post_status' => 'publish',
+    ] );
+    if ( is_wp_error($pid) ) {
+        wp_send_json_error( ['message' => 'Could not save. Please try again.'] );
+        return;
+    }
+    update_post_meta( $pid, '_tls_email',  $email );
+    update_post_meta( $pid, '_tls_author', $author );
+    update_post_meta( $pid, '_tls_book',   $book );
+    update_post_meta( $pid, '_tls_status', 'new' );
+    update_post_meta( $pid, '_tls_ip',     $ip );
+
+    set_transient( $key, (int) get_transient($key) + 1, HOUR_IN_SECONDS );
+
+    /* Email */
+    wp_mail(
+        get_option('admin_email'),
+        '[thetelos] New Request: ' . $book,
+        "Name: {$name}\nEmail: {$email}\nAuthor: {$author}\nBook: {$book}\n\nAdmin: " . admin_url("post.php?post={$pid}&action=edit")
+    );
+
+    wp_send_json_success( ['message' => 'ok'] );
+}
+
+/* ── Helper — post'un alıntılarını döndür (AI tarafından doldurulur) ── */
+function tls_get_quotes( int $post_id ): array {
+    return (array)( get_post_meta( $post_id, '_tls_quotes', true ) ?: [] );
+}
+
+/* ══════════════════════════════════════════════
+   NEWSLETTER SUBSCRIBER SİSTEMİ
+   - Mailler wp_options'da saklanır
+   - Admin → Tools → Newsletter Subscribers
+══════════════════════════════════════════════ */
+
+/* AJAX kayıt */
+add_action('wp_ajax_tls_newsletter_subscribe',        'tls_handle_newsletter');
+add_action('wp_ajax_nopriv_tls_newsletter_subscribe', 'tls_handle_newsletter');
+
+function tls_handle_newsletter() {
+    if ( ! check_ajax_referer('tls_newsletter', 'nonce', false) )
+        wp_send_json_error(['message' => 'Security check failed.']);
+
+    $email = sanitize_email($_POST['email'] ?? '');
+    if ( ! is_email($email) )
+        wp_send_json_error(['message' => 'Please enter a valid email address.']);
+
+    $subscribers = get_option('tls_newsletter_subscribers', []);
+
+    // Zaten kayıtlıysa
+    foreach ($subscribers as $sub) {
+        if ($sub['email'] === $email) {
+            wp_send_json_success(['message' => 'Already subscribed!']);
+        }
+    }
+
+    $subscribers[] = [
+        'email' => $email,
+        'date'  => current_time('Y-m-d H:i:s'),
+        'ip'    => sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? ''),
+    ];
+
+    update_option('tls_newsletter_subscribers', $subscribers);
+    wp_send_json_success(['message' => 'Subscribed!']);
+}
+
+/* Admin sayfası */
+add_action('admin_menu', function() {
+    add_management_page(
+        'Newsletter Subscribers',
+        '📧 Newsletter',
+        'manage_options',
+        'tls-newsletter',
+        'tls_newsletter_admin_page'
+    );
+});
+
+function tls_newsletter_admin_page() {
+    // Silme işlemi
+    if ( isset($_POST['tls_delete_email']) && check_admin_referer('tls_nl_delete') ) {
+        $email = sanitize_email($_POST['tls_delete_email']);
+        $subs  = get_option('tls_newsletter_subscribers', []);
+        $subs  = array_filter($subs, fn($s) => $s['email'] !== $email);
+        update_option('tls_newsletter_subscribers', array_values($subs));
+        echo '<div class="notice notice-success"><p>Removed: ' . esc_html($email) . '</p></div>';
+    }
+
+    $subscribers = get_option('tls_newsletter_subscribers', []);
+    ?>
+    <div class="wrap">
+        <h1>📧 Newsletter Subscribers <span style="font-size:14px;color:#666;">(<?php echo count($subscribers); ?> total)</span></h1>
+
+        <?php if (empty($subscribers)) : ?>
+            <p>No subscribers yet.</p>
+        <?php else : ?>
+
+        <!-- Export CSV -->
+        <p>
+            <a href="<?php echo admin_url('tools.php?page=tls-newsletter&export=csv'); ?>" class="button">
+                ⬇ Export CSV
+            </a>
+        </p>
+
+        <table class="widefat striped" style="max-width:700px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Email</th>
+                    <th>Date</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach (array_reverse($subscribers) as $i => $sub) : ?>
+                <tr>
+                    <td><?php echo count($subscribers) - $i; ?></td>
+                    <td><?php echo esc_html($sub['email']); ?></td>
+                    <td><?php echo esc_html($sub['date']); ?></td>
+                    <td>
+                        <form method="post" style="display:inline;">
+                            <?php wp_nonce_field('tls_nl_delete'); ?>
+                            <input type="hidden" name="tls_delete_email" value="<?php echo esc_attr($sub['email']); ?>">
+                            <button type="submit" class="button-link" style="color:#b91c1c;"
+                                onclick="return confirm('Remove this subscriber?')">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+    <?php
+
+    // CSV export
+    if ( isset($_GET['export']) && $_GET['export'] === 'csv' ) {
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="newsletter-subscribers.csv"');
+        echo "Email,Date\n";
+        foreach ($subscribers as $sub) {
+            echo esc_html($sub['email']) . ',' . esc_html($sub['date']) . "\n";
+        }
+        exit;
+    }
+}
+
+// -----------------------------------------------------
+// SEO: Yoast — Custom "authors" taxonomy entegrasyonu
+// custom-post-type-ui ile kayıtlı authors taxonomy'sini
+// Yoast'a tanıtır: sitemap dahil edilir, Search Appearance
+// panelinde görünür hale gelir.
+// -----------------------------------------------------
+add_action( 'init', 'thetelos_authors_yoast_integration', 20 );
+function thetelos_authors_yoast_integration() {
+    if ( ! defined( 'WPSEO_VERSION' ) ) return;
+
+    // Authors taxonomy'sini Yoast sitemap'ine dahil et
+    add_filter( 'wpseo_sitemap_exclude_taxonomy', function( $excluded, $taxonomy ) {
+        if ( $taxonomy === 'authors' ) return false;
+        return $excluded;
+    }, 10, 2 );
+}
+
+// Authors taxonomy sayfaları için otomatik SEO title
+add_filter( 'wpseo_title', 'thetelos_authors_taxonomy_seo_title' );
+function thetelos_authors_taxonomy_seo_title( $title ) {
+    if ( ! is_tax( 'authors' ) ) return $title;
+    if ( ! empty( $title ) ) return $title;
+    $term = get_queried_object();
+    if ( ! $term ) return $title;
+    return $term->name . ' Book Summaries | ' . get_bloginfo( 'name' );
+}
+
+// Authors taxonomy sayfaları için otomatik meta description
+add_filter( 'wpseo_metadesc', 'thetelos_authors_taxonomy_seo_desc' );
+function thetelos_authors_taxonomy_seo_desc( $desc ) {
+    if ( ! is_tax( 'authors' ) ) return $desc;
+    if ( ! empty( $desc ) ) return $desc;
+    $term = get_queried_object();
+    if ( ! $term ) return $desc;
+    if ( ! empty( $term->description ) ) return $term->description;
+    return 'Explore book summaries and key insights from ' . $term->name . ' on The Telos.';
+}
+
+// -----------------------------------------------------
+// SEO: 301 Redirects — Eski ve hatalı URL'ler
+// Tüm kalıcı yönlendirmeler buradan yönetilir.
+// Yeni redirect eklemek için sadece $redirects dizisine
+// 'eski-url' => 'yeni-url' formatında satır ekle.
+// -----------------------------------------------------
+add_action( 'template_redirect', 'thetelos_seo_redirects' );
+function thetelos_seo_redirects() {
+    $redirects = [
+        // Türkçe sayfalar → İngilizce
+        '/yazarlar/'                          => '/authors/',
+        '/gizlilik-ilkesi/'                   => '/privacy-policy/',
+        '/ornek-sayfa/'                       => '/about/',
+
+        // Eski WordPress author URL → authors taxonomy
+        '/author/ad392f64cca76908d723/'       => '/authors/',
+        '/author/ad392f64cca76908d723/page/10/' => '/authors/',
+
+        // Pagination 404'leri → kategori ana sayfaları
+        '/category/history-of-philosophy/page/8/' => '/category/history-of-philosophy/',
+        '/category/science/page/3/'           => '/category/science/',
+        '/category/metaphysics/page/4/'       => '/category/metaphysics/',
+        '/authors/plato/page/3/'              => '/authors/plato/',
+        '/page/10/'                           => '/',
+    ];
+
+    $request = isset( $_SERVER['REQUEST_URI'] )
+        ? rtrim( parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH ), '/' ) . '/'
+        : '';
+
+    foreach ( $redirects as $old => $new ) {
+        if ( $request === $old ) {
+            wp_redirect( home_url( $new ), 301 );
+            exit;
+        }
+    }
+}

@@ -21,6 +21,33 @@
         return;
     }
 
+    // ── Başlık temizleme: kitap adı + yazar adını ayır ──────────────
+    function parseTitle( raw ) {
+        var t = raw;
+        // Parantez içlerini sil: (القانون في الطب), (Al-Qanun fi al-Tibb) vb.
+        t = t.replace( /\([^)]*\)/g, '' );
+        // Latin dışı karakterleri at
+        t = t.replace( /[^\x00-\x7F]/g, ' ' );
+        // "-Yazar-" kalıbını yakala ve ayır
+        var author = '';
+        var m = t.match( /-([^-]{2,40})-\s*$/ );
+        if ( m ) {
+            author = m[1].trim();
+            t = t.slice( 0, m.index );
+        }
+        // "Kitap Adı - Yazar" veya "Kitap Adı – Yazar" kalıbı
+        if ( ! author ) {
+            var d = t.match( /^(.+?)\s+[-\u2013\u2014]\s+(.{2,40})$/ );
+            if ( d && d[2].trim().split( ' ' ).length <= 4 ) {
+                author = d[2].trim();
+                t = d[1].trim();
+            }
+        }
+        t      = t.replace( /\s+/g, ' ' ).trim();
+        author = author.replace( /\s+/g, ' ' ).trim();
+        return { title: t, author: author };
+    }
+
     function BookCoverPanel() {
 
         var postTitle = useSelect( function ( sel ) {
@@ -33,7 +60,6 @@
 
         var editPost = useDispatch( 'core/editor' ).editPost;
 
-        // İlk aramanın yapılıp yapılmadığını izle
         var initialDone = useRef( false );
 
         var _s = useState( {
@@ -54,32 +80,35 @@
             var q = postTitle.trim();
             if ( ! q || q.length < 4 ) return;
 
-            // Arama alanını her zaman başlıkla güncelle
+            var parsed = parseTitle( q );
             set( { query: q } );
 
             if ( ! initialDone.current ) {
-                // İlk yükleme: 400ms sonra ara (Gutenberg'in stabil olması için)
                 initialDone.current = true;
-                var initTimer = setTimeout( function () { doSearch( q ); }, 400 );
+                var initTimer = setTimeout( function () { doSearch( parsed.title, parsed.author ); }, 400 );
                 return function () { clearTimeout( initTimer ); };
             } else {
-                // Sonraki değişiklikler: 800ms debounce
-                var changeTimer = setTimeout( function () { doSearch( q ); }, 800 );
+                var changeTimer = setTimeout( function () { doSearch( parsed.title, parsed.author ); }, 800 );
                 return function () { clearTimeout( changeTimer ); };
             }
         }, [ postTitle ] );
 
         // ── Arama fonksiyonu ────────────────────────────────────────
-        function doSearch( q ) {
-            q = ( q !== undefined ? q : s.query ).trim();
-            if ( ! q ) return;
+        function doSearch( titleArg, authorArg ) {
+            var parsed = parseTitle( titleArg !== undefined ? titleArg : s.query );
+            var cleanTitle  = titleArg  !== undefined ? titleArg  : parsed.title;
+            var cleanAuthor = authorArg !== undefined ? authorArg : parsed.author;
+
+            cleanTitle = cleanTitle.trim();
+            if ( ! cleanTitle ) return;
 
             set( { loading: true, results: [], status: 'Searching…', selected: -1 } );
 
             var fd = new FormData();
-            fd.append( 'action', 'thetelos_fetch_book_covers' );
-            fd.append( 'nonce',  tcfData.nonce );
-            fd.append( 'q',      q );
+            fd.append( 'action',  'thetelos_fetch_book_covers' );
+            fd.append( 'nonce',   tcfData.nonce );
+            fd.append( 'q',       cleanTitle );
+            fd.append( 'author',  cleanAuthor || '' );
 
             fetch( ajaxurl, { method: 'POST', body: fd } )
                 .then( function ( r ) { return r.json(); } )

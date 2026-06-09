@@ -1,0 +1,231 @@
+<?php
+session_start();
+require_once __DIR__ . '/config.php';
+if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
+?>
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Thetelos Content Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="tls-shell">
+
+  <aside class="tls-sidebar">
+    <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
+    <nav class="tls-nav">
+      <a href="panel.php" class="active"><span class="ico">✍</span> İçerik Üret</a>
+      <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
+      <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
+      <a href="settings.php"><span class="ico">⚙</span> Ayarlar</a>
+      <a href="<?= rtrim(WP_URL,'/') ?>/wp-admin/" target="_blank"><span class="ico">🔗</span> WP Admin</a>
+      <a href="<?= rtrim(WP_URL,'/') ?>/" target="_blank"><span class="ico">↗</span> Siteyi Gör</a>
+    </nav>
+    <div class="tls-sidebar-footer"><a href="index.php?logout=1">Çıkış Yap</a></div>
+  </aside>
+
+  <main class="tls-main">
+    <div class="tls-header">
+      <div>
+        <h2 id="page-title">Tek Kitap</h2>
+        <p id="page-desc">Kitap adı ve yazar girerek özet veya analiz üretin</p>
+      </div>
+      <div class="tabs-top">
+        <button class="tab-top-btn active" data-mode="single">✍ Tek Kitap</button>
+        <button class="tab-top-btn" data-mode="bulk">📋 Toplu Liste</button>
+      </div>
+    </div>
+
+    <!-- ── API Provider Toggle ── -->
+    <div class="api-toggle-bar">
+      <span class="api-toggle-label">API:</span>
+      <div class="api-toggle-group">
+        <button class="api-btn active" data-provider="anthropic">
+          <span class="api-dot anthropic"></span> Anthropic
+        </button>
+        <button class="api-btn" data-provider="deepseek">
+          <span class="api-dot deepseek"></span> DeepSeek
+        </button>
+      </div>
+      <div class="api-sub-group" id="api-sub-anthropic">
+        <button class="api-sub-btn active" data-model="claude-haiku-4-5-20251001" data-label="haiku">Haiku <span class="api-sub-hint">Hızlı</span></button>
+        <button class="api-sub-btn" data-model="claude-sonnet-4-20250514" data-label="sonnet">Sonnet <span class="api-sub-hint">Kaliteli</span></button>
+      </div>
+      <span class="api-active-label" id="api-active-label">claude-haiku</span>
+    </div>
+
+    <div id="gen-notif"  class="notif"></div>
+    <div id="bulk-notif" class="notif"></div>
+
+    <!-- ══ TEK KİTAP ══════════════════════════════════════ -->
+    <div id="mode-single">
+
+      <div class="card">
+        <div class="card-title">İçerik Tipi & Kitap Bilgisi</div>
+        <div class="type-toggle">
+          <input type="radio" name="type" id="t-summary"  value="summary"  checked>
+          <label for="t-summary">📄 Özet</label>
+          <input type="radio" name="type" id="t-analysis" value="analysis">
+          <label for="t-analysis">🔍 Analiz</label>
+        </div>
+        <div class="form-row">
+          <div>
+            <label for="book_title">Kitap Adı</label>
+            <input type="text" id="book_title" placeholder="Örn: Meditations">
+          </div>
+          <div>
+            <label for="author_name">Yazar Adı</label>
+            <input type="text" id="author_name" placeholder="Örn: Marcus Aurelius">
+          </div>
+        </div>
+
+        <!-- Kelime Sayısı Ayarı -->
+        <div class="token-control">
+          <div class="token-header">
+            <label>Kaç kelime yazılsın?</label>
+            <span id="token-display" class="token-val">3.000 kelime</span>
+          </div>
+          <input type="range" id="token-slider" min="500" max="8000" step="500" value="3000"
+            oninput="updateTokenDisplay(this.value)">
+          <div class="token-marks">
+            <span>500</span>
+            <span>2K</span>
+            <span>4K</span>
+            <span>6K</span>
+            <span>8K</span>
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-top:14px">
+          <div>
+            <label for="post_status">Yayın Durumu</label>
+            <select id="post_status">
+              <option value="draft">Taslak olarak kaydet</option>
+              <option value="publish">Direkt yayınla</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="btn-generate">✦ İçerik Üret</button>
+      </div>
+
+      <!-- İşlem durumu -->
+      <div id="job-status-wrap" style="display:none" class="card">
+        <div class="card-title">İşlem Durumu</div>
+        <div class="loading-row">
+          <span class="loader"></span>
+          <span id="job-status-text">Kuyrukta bekliyor...</span>
+        </div>
+        <div class="progress-wrap" style="margin-top:8px">
+          <div class="progress-bar" id="job-progress-bar" style="width:30%;animation:pulse 1.5s ease-in-out infinite"></div>
+        </div>
+      </div>
+
+      <!-- Sonuçlar -->
+      <div id="single-result" style="display:none">
+
+        <div id="gen-stats" class="card" style="padding:16px 24px"></div>
+
+        <div class="card" id="cover-card">
+          <div class="card-title">Kitap Kapağı <span style="color:var(--muted);font-weight:400;font-size:11px">— doğru olanı seçin</span></div>
+          <div class="cover-grid" id="cover-grid"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Otomatik Tespit Edilenler <span style="color:var(--muted);font-weight:400;font-size:11px">— düzenleyebilirsiniz</span></div>
+          <div class="form-row one"><div>
+            <label>Kategoriler</label>
+            <div class="cat-tags" id="cat-tags"></div>
+          </div></div>
+          <div class="form-row one"><div>
+            <label for="field_excerpt">Excerpt</label>
+            <input type="text" id="field_excerpt" data-maxlen="155">
+          </div></div>
+          <div class="form-row one"><div>
+            <label for="field_meta_desc">Yoast Meta Description</label>
+            <input type="text" id="field_meta_desc" data-maxlen="155">
+          </div></div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">İçerik Önizlemesi</div>
+          <div class="preview-box" id="preview-content"></div>
+        </div>
+
+        <div style="display:flex;gap:12px;margin-bottom:24px">
+          <button class="btn btn-green" id="btn-publish">🚀 WordPress'e Yayınla</button>
+          <button class="btn btn-ghost" id="btn-reset">↺ Yeni Kitap</button>
+        </div>
+        <div id="publish-result"></div>
+      </div>
+
+    </div><!-- /mode-single -->
+
+    <!-- ══ TOPLU LİSTE ════════════════════════════════════ -->
+    <div id="mode-bulk" style="display:none">
+
+      <div class="card">
+        <div class="card-title">Dosya Yükle</div>
+        <div class="upload-zone" id="upload-zone">
+          <div class="icon">📂</div>
+          <p>CSV veya XLSX dosyasını buraya sürükle ya da tıkla</p>
+          <p style="font-size:11px;margin-top:6px;color:#555">Format: <strong>Kitap Adı | Yazar</strong> (başlık satırı opsiyonel)</p>
+        </div>
+        <input type="file" id="bulk-file" accept=".csv,.xlsx" style="display:none">
+      </div>
+
+      <div class="card">
+        <div class="card-title">Toplu Ayarlar</div>
+        <div class="type-toggle">
+          <input type="radio" name="bulk_type" id="bt-summary"  value="summary"  checked>
+          <label for="bt-summary">📄 Özet</label>
+          <input type="radio" name="bulk_type" id="bt-analysis" value="analysis">
+          <label for="bt-analysis">🔍 Analiz</label>
+        </div>
+
+        <div class="token-control" style="margin-bottom:16px">
+          <div class="token-header">
+            <label>Kaç kelime yazılsın? (tüm liste için)</label>
+            <span id="bulk-token-display" class="token-val">3.000 kelime</span>
+          </div>
+          <input type="range" id="bulk-token-slider" min="500" max="8000" step="500" value="3000"
+            oninput="updateBulkTokenDisplay(this.value)">
+          <div class="token-marks">
+            <span>500</span><span>2K</span><span>4K</span><span>6K</span><span>8K</span>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div>
+            <label for="bulk_post_status">Yayın Durumu</label>
+            <select id="bulk_post_status">
+              <option value="draft">Taslak olarak kaydet</option>
+              <option value="publish">Direkt yayınla</option>
+            </select>
+          </div>
+          <div style="display:flex;align-items:flex-end">
+            <button class="btn btn-primary" id="btn-bulk-run" disabled style="width:100%;justify-content:center">▶ Toplu İşlemi Başlat</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="bulk-progress-wrap" style="display:none" class="card">
+        <div class="card-title">İlerleme</div>
+        <div class="progress-wrap"><div class="progress-bar" id="bulk-bar" style="width:0%"></div></div>
+        <div class="progress-label" id="bulk-bar-label">Bekleniyor...</div>
+        <div id="bulk-summary" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
+      </div>
+
+      <div id="bulk-preview"></div>
+    </div>
+
+  </main>
+</div>
+<script src="assets/app.js"></script>
+<script>updateTokenDisplay(3000);updateBulkTokenDisplay(3000);</script>
+</body>
+</html>

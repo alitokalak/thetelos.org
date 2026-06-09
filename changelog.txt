@@ -1,0 +1,146 @@
+=== Mediumish Updates ===
+
+== Changelog ==
+
+== 1.0.71 - October 5, 2025 =
+- Freemius SDK update
+- compatibility PHP 8+
+- compatibility WordPress 6.8+
+- forked Kirki for compatibility
+- updated Google Fonts library
+- Font Awesome 7
+
+== 1.0.60 - September 14, 2023 =
+- added pagination inside articles
+- added option for max article post container
+- updated library Freemius SDK v2.5.12
+- other CSS changes
+
+== 1.0.59 - July 20, 2023 =
+- minor CSS changes
+
+== 1.0.58 - July 20, 2023 =
+- fixed Estimated Reading Time function Mandarin characters
+- removed theme's meta tag description if SEO Yoast plugin is active
+
+== 1.0.57 - July 18, 2023 =
+- updated with Freemius SDK v2.5.10
+
+== 1.0.56 - July 18, 2023 =
+- updated with Freemius SDK v2.5.9
+
+== 1.0.55 - March 31, 2023 =
+- updated with Freemius SDK v2.5.6
+
+== 1.0.54 =
+- completely remove account menu on white-label active
+
+== 1.0.53 =
+- updated with Freemius SDK v2.5.5
+
+== 1.0.52 =
+- updated for full compatibility with Kirki Customizer v4
+- added more options in Customizer
+- changes in CSS
+- updated Font Awesome for v6
+- verified PHP8 compatibility
+
+= 1.0.51
+- updated color selection in customizer
+- added one click demo importer
+- implemented automatic theme updater, plugin for this purpose no longer needed
+
+= 1.0.50
+- removed dark bg on active menu item in responsive modern
+- added option in Customizer for article headline typography
+
+= 1.0.49
+- users are required to empty cache after this update
+- CSS modification, bg thumbnails to img
+- fixed missing escaping
+- fixed Kirki fonts
+- removed header and footer scripts/analytics, users should now use WP repo plugins for this task
+- added page typography in Customizer
+
+= 1.0.48
+- tweaks for related posts thumb height
+
+= 1.0.47
+- tweaks for 1920x1080 resolution
+
+= 1.0.45
+- optimized for 1920x1080 resolution
+- added option to change "All stories" text in Customizer/Mediumish/Misc
+
+= 1.0.44
+- avoid duplicated posts on home
+
+= 1.0.43
+- fixed bold style on Kirki activation
+
+= 1.0.42
+- added Gutenberg compatibility
+- option to hide featured image on post, but still visible on thumbnails.
+
+= 1.0.41
+- fixed external avatars on author pages
+
+= 1.0.40
+- iframe responsive
+- added print media class
+- fixed small css issue with comments cookie consent
+
+= 1.0.4
+- added optional sidebar in posts
+
+= 1.0.39
+- fixed a bug with wp admin bar on mobile
+
+= 1.0.38
+- fixed a bug with Applause button on mobile
+
+= 1.0.37
+- limit title by words instead of characters
+- fixed missing closing tag for header social (thank you, Alex)
+
+= 1.0.36
+- fixed minor css and reversed to code editor for tracking codes with javascript supported
+- removed inside article banner
+
+= 1.0.35
+- added textarea for tracking codes instead of code editor
+
+= 1.0.34
+- added Yoast breadcrumb support
+- added WP Rocket slider image lazy skip
+- added Applause button
+- added non gravatar images style
+- added option - word limit for cards title in Customize/Misc
+
+= 1.0.33
+- added social border colour option
+- added minor responsive css tweaks
+
+= 1.0.32
+- Added Checkbox for Slider by Recent Posts
+- Added Submit Button Colour Option (works for Contact form 7 and Bottom Alert Bar buttons as well)
+- Added Social Share Icons Colour Option
+- Added Sendy integration (search from your dashboard the plugin "Sendy – API Integration", activate it, go to Settings/Sendy API and enter the details; then simply paste the shortcode [sendy] in Customize/Articles/Bottom Alert Bar. The subscribe form will appear integrated with theme's design.)
+- Added WooCommerce compatibility
+
+= 1.0.31
+* More options in Customizer
+    - new color scheme section (slider button, article links, blockquote border, comments accent color, footer links etc.) 
+    - post cards hide meta option
+    - option to hide categories and tags in article
+    - new social share Linkedin share, Google+ Share
+* Share & author box, in smaller device, comes right after article instead of top.
+
+= 1.0.3
+* Fixed: home title not displaying correctly on some websites
+
+= 1.0.2 =
+* Fixed: footer copyrights not displaying correctly on some websites
+
+= 1.0.0 =
+* Released
