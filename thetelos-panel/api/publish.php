@@ -13,6 +13,7 @@ $excerpt     = trim($_POST['excerpt']          ?? '');
 $meta_desc   = trim($_POST['meta_description'] ?? '');
 $categories  = json_decode($_POST['categories'] ?? '[]', true) ?: [];
 $quotes      = json_decode($_POST['quotes']    ?? '[]', true) ?: [];
+$cover_url   = trim($_POST['cover_url']        ?? '');
 
 if (!$book || !$content) {
     echo json_encode(['ok'=>false,'error'=>'Kitap adı ve içerik zorunludur.']);

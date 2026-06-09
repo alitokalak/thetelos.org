@@ -37,7 +37,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       </div>
       <div class="tabs-top">
         <button class="tab-top-btn active" data-mode="single">✍ Tek Kitap</button>
-        <button class="tab-top-btn" data-mode="bulk">📋 Toplu Liste</button>
+        <button class="tab-top-btn" data-mode="bulk">📋 Toplu Batch</button>
       </div>
     </div>
 
@@ -84,7 +84,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           </div>
         </div>
 
-        <!-- Kelime Sayısı Ayarı -->
         <div class="token-control">
           <div class="token-header">
             <label>Kaç kelime yazılsın?</label>
@@ -93,11 +92,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <input type="range" id="token-slider" min="500" max="8000" step="500" value="3000"
             oninput="updateTokenDisplay(this.value)">
           <div class="token-marks">
-            <span>500</span>
-            <span>2K</span>
-            <span>4K</span>
-            <span>6K</span>
-            <span>8K</span>
+            <span>500</span><span>2K</span><span>4K</span><span>6K</span><span>8K</span>
           </div>
         </div>
 
@@ -127,14 +122,11 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
       <!-- Sonuçlar -->
       <div id="single-result" style="display:none">
-
         <div id="gen-stats" class="card" style="padding:16px 24px"></div>
-
         <div class="card" id="cover-card">
           <div class="card-title">Kitap Kapağı <span style="color:var(--muted);font-weight:400;font-size:11px">— doğru olanı seçin</span></div>
           <div class="cover-grid" id="cover-grid"></div>
         </div>
-
         <div class="card">
           <div class="card-title">Otomatik Tespit Edilenler <span style="color:var(--muted);font-weight:400;font-size:11px">— düzenleyebilirsiniz</span></div>
           <div class="form-row one"><div>
@@ -150,12 +142,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <input type="text" id="field_meta_desc" data-maxlen="155">
           </div></div>
         </div>
-
         <div class="card">
           <div class="card-title">İçerik Önizlemesi</div>
           <div class="preview-box" id="preview-content"></div>
         </div>
-
         <div style="display:flex;gap:12px;margin-bottom:24px">
           <button class="btn btn-green" id="btn-publish">🚀 WordPress'e Yayınla</button>
           <button class="btn btn-ghost" id="btn-reset">↺ Yeni Kitap</button>
@@ -165,26 +155,34 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
     </div><!-- /mode-single -->
 
-    <!-- ══ TOPLU LİSTE ════════════════════════════════════ -->
+    <!-- ══ TOPLU BATCH ═══════════════════════════════════ -->
     <div id="mode-bulk" style="display:none">
 
       <div class="card">
-        <div class="card-title">Dosya Yükle</div>
+        <div class="card-title">
+          Dosya Yükle
+          <span class="badge badge-gold" id="batch-total-badge" style="display:none;margin-left:8px">0 kitap</span>
+        </div>
         <div class="upload-zone" id="upload-zone">
           <div class="icon">📂</div>
           <p>CSV veya XLSX dosyasını buraya sürükle ya da tıkla</p>
-          <p style="font-size:11px;margin-top:6px;color:#555">Format: <strong>Kitap Adı | Yazar</strong> (başlık satırı opsiyonel)</p>
+          <p style="font-size:11px;margin-top:6px;color:#555">Format: <strong>Kitap Adı | Yazar</strong> — birden fazla dosya yükleyebilirsiniz</p>
         </div>
-        <input type="file" id="bulk-file" accept=".csv,.xlsx" style="display:none">
+        <input type="file" id="bulk-file" accept=".csv,.xlsx" multiple style="display:none">
+        <div id="file-list" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+        <div style="display:flex;gap:8px;margin-top:10px" id="upload-actions" style="display:none">
+          <button class="btn btn-ghost btn-sm" id="btn-add-more">+ Dosya Ekle</button>
+          <button class="btn btn-ghost btn-sm" id="btn-clear-list" style="color:var(--red)">✕ Listeyi Temizle</button>
+        </div>
       </div>
 
       <div class="card">
-        <div class="card-title">Toplu Ayarlar</div>
+        <div class="card-title">Batch Ayarları</div>
         <div class="type-toggle">
           <input type="radio" name="bulk_type" id="bt-summary"  value="summary"  checked>
           <label for="bt-summary">📄 Özet</label>
           <input type="radio" name="bulk_type" id="bt-analysis" value="analysis">
-          <label for="bt-analysis">🔍 Analiz</label>
+          <label for="bt-analysis">🔍 Derin Analiz</label>
         </div>
 
         <div class="token-control" style="margin-bottom:16px">
@@ -207,16 +205,35 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <option value="publish">Direkt yayınla</option>
             </select>
           </div>
-          <div style="display:flex;align-items:flex-end">
-            <button class="btn btn-primary" id="btn-bulk-run" disabled style="width:100%;justify-content:center">▶ Toplu İşlemi Başlat</button>
+          <div>
+            <label>Paralel Worker Sayısı</label>
+            <select id="bulk_workers">
+              <option value="1">1 worker (yavaş, güvenli)</option>
+              <option value="2">2 worker</option>
+              <option value="3" selected>3 worker (önerilen)</option>
+              <option value="5">5 worker (hızlı)</option>
+            </select>
           </div>
         </div>
+
+        <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-batch-start" disabled>▶ Batch İşlemi Başlat</button>
+          <button class="btn btn-ghost" id="btn-batch-pause" style="display:none">⏸ Duraklat</button>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">
+          ℹ Sunucu taraflı batch — tarayıcıyı kapatsan bile işleme devam eder.
+          Sayfayı yeniden açarak devam edebilirsin.
+        </p>
       </div>
 
-      <div id="bulk-progress-wrap" style="display:none" class="card">
-        <div class="card-title">İlerleme</div>
+      <!-- İlerleme -->
+      <div id="batch-progress-wrap" style="display:none" class="card">
+        <div class="card-title">İlerleme
+          <span id="batch-status-badge" class="badge badge-gold" style="margin-left:8px">Çalışıyor</span>
+        </div>
         <div class="progress-wrap"><div class="progress-bar" id="bulk-bar" style="width:0%"></div></div>
         <div class="progress-label" id="bulk-bar-label">Bekleniyor...</div>
+        <div id="batch-worker-status" style="margin-top:8px;font-size:12px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap"></div>
         <div id="bulk-summary" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
       </div>
 

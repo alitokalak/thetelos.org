@@ -39,6 +39,7 @@ function md2html(text) {
   }
   flush(); return html;
 }
+const delay = ms => new Promise(r => setTimeout(r, ms));
 
 /* ── Token Slider ─────────────────────────────────── */
 function tokenInfo(val) {
@@ -48,6 +49,7 @@ function tokenInfo(val) {
 }
 function updateTokenDisplay(val) {
   const el = document.getElementById('token-display');
+  if (!el) return;
   el.textContent = tokenInfo(val);
   el.style.color = parseInt(val) >= 3000 ? 'var(--green)' : 'var(--gold)';
   const pct = ((val - 500) / (8000 - 500)) * 100;
@@ -56,6 +58,7 @@ function updateTokenDisplay(val) {
 }
 function updateBulkTokenDisplay(val) {
   const el = document.getElementById('bulk-token-display');
+  if (!el) return;
   el.textContent = tokenInfo(val);
   el.style.color = parseInt(val) >= 3000 ? 'var(--green)' : 'var(--gold)';
   const pct = ((val - 500) / (8000 - 500)) * 100;
@@ -65,8 +68,8 @@ function updateBulkTokenDisplay(val) {
 
 /* ── Mod Geçişi ───────────────────────────────────── */
 const modeTitles = {
-  single: ['Tek Kitap', 'Kitap adı ve yazar girerek özet veya analiz üretin'],
-  bulk:   ['Toplu Liste', 'CSV veya XLSX yükleyerek yüzlerce kitabı sırayla işleyin'],
+  single: ['Tek Kitap',    'Kitap adı ve yazar girerek özet veya analiz üretin'],
+  bulk:   ['Toplu Batch',  'CSV/XLSX yükleyerek binlerce kitabı sunucu taraflı paralel işleyin'],
 };
 document.querySelectorAll('.tab-top-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -134,15 +137,13 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   state = { content:'', categories:[], selectedCover:'', quotes:[] };
 
   const isDeepSeek = activeProvider === 'deepseek';
-  const providerLabel = isDeepSeek ? 'DeepSeek' : 'Claude';
 
   document.getElementById('single-result').style.display = '';
   document.getElementById('gen-stats').innerHTML = '';
   document.getElementById('preview-content').innerHTML =
-    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${providerLabel} içerik üretiyor${isDeepSeek ? ' (Part 1/2)' : ''}...</span></div>`;
+    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${isDeepSeek ? 'DeepSeek içerik üretiyor (Part 1/2)' : 'Claude içerik üretiyor'}...</span></div>`;
   document.getElementById('cover-card').style.display = 'none';
 
-  // ── SSE stream fonksiyonu — tek bir generate.php çağrısı ────────
   function runStream(extraParams, onDone, onError) {
     const fd = new FormData();
     fd.append('book_title',   book);
@@ -153,8 +154,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
     fd.append('api_model',    activeModel);
     if (extraParams) Object.entries(extraParams).forEach(([k,v]) => fd.append(k, v));
 
-    let streamText = '';
-    let buffer = '';
+    let streamText = '', buffer = '';
 
     fetch(API('generate.php'), {method:'POST', body:fd})
       .then(response => {
@@ -162,7 +162,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
         if (ct.includes('application/json')) {
           return response.json().then(data => onError(data.error || 'Hata'));
         }
-        const reader  = response.body.getReader();
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
         function read() {
@@ -175,7 +175,6 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
             buffer += decoder.decode(value, {stream:true});
             const lines = buffer.split('\n');
             buffer = lines.pop();
-
             for (let i = 0; i < lines.length; i++) {
               const line = lines[i].trim();
               if (!line) continue;
@@ -186,7 +185,6 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
                 let evData;
                 try { evData = JSON.parse(dataLine.slice(6)); } catch(e) { i++; continue; }
                 i++;
-
                 if (evName === 'chunk') {
                   streamText += evData.text;
                   state.content = streamText;
@@ -213,62 +211,40 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
       .catch(err => onError('Hata: ' + err.message));
   }
 
-  // ── DeepSeek: iki parçalı üretim ────────────────────────────────
   if (isDeepSeek) {
     runStream({ part: '1' }, (part1Raw, stats1) => {
-      // %%PART1_END%% işaretini temizle (varsa), Part 1 içeriğini al
       const part1 = part1Raw.replace(/%%PART1_END%%/g, '').trim();
-
-      // Part 1'in tüm içeriğini bağlam olarak gönder (PHP H3 başlıklarını çıkaracak)
-      const part1_tail = part1.slice(-300);
-
-      // Part 2 başlıyor
       const st = document.getElementById('stream-status');
       if (st) st.textContent = 'DeepSeek içerik üretiyor (Part 2/2)...';
-
-      // Part 2 preview'a eklenecek — mevcut içeriğin üzerine
       let combined = part1;
       document.getElementById('preview-content').innerHTML = md2html(combined);
 
-      runStream({ part: '2', part1_content: part1 }, (part2Raw, stats2) => {
-        // H1 ve H2 başlığını Part 2'den temizle (tekrar yazılmışsa)
-        let part2 = part2Raw.replace(/^#[^\n]*\n/m, '').replace(/^##[^\n]*\n/m, '').trim();
-
+      runStream({ part: '2', part1_content: part1 }, (part2Raw) => {
+        let part2 = part2Raw.replace(/%%PART[12]_(?:END|START)%%/g, '').trim();
+        part2 = part2.replace(/^#[^\n]*\n/m, '').replace(/^##[^\n]*\n/m, '').trim();
         combined = part1 + '\n\n' + part2;
-
-        // Tüm PART işaretlerini temizle
-        combined = combined.replace(/%%PART[12]_END%%/g, '');
-        combined = combined.replace(/%%PART[12]_START%%/g, '');
-
-        // DeepSeek meta notlarını temizle
+        combined = combined.replace(/%%PART[12]_(?:END|START)%%/g, '');
         combined = combined.replace(/\[Note:[^\]]*\]/gi, '');
         combined = combined.replace(/\[Already[^\]]*\]/gi, '');
-        combined = combined.replace(/\[This[^\]]*\]/gi, '');
         combined = combined.replace(/\[.*?already.*?\]/gis, '');
         combined = combined.replace(/\[.*?covered.*?\]/gis, '');
         combined = combined.replace(/\[.*?Part 1.*?\]/gis, '');
-        combined = combined.replace(/\[.*?structure.*?\]/gis, '');
-        // Fazla boş satırları temizle
         combined = combined.replace(/\n{4,}/g, '\n\n\n').trim();
         state.content = combined;
         document.getElementById('preview-content').innerHTML = md2html(combined);
-
-        const totalWords = (stats1.word_count || 0) + (stats2.word_count || 0)
-          || combined.split(/\s+/).filter(Boolean).length;
-
+        const totalWords = combined.split(/\s+/).filter(Boolean).length;
         setLoading(btn, false);
         document.getElementById('gen-stats').innerHTML = `
           <div class="stats-bar">
             <div class="stat"><div class="stat-label">Kelime</div><div class="stat-value">${totalWords.toLocaleString('tr')}</div></div>
             <div class="stat"><div class="stat-label">Durum</div><div class="stat-value"><span class="badge badge-green">2/2 tamamlandı</span></div></div>
           </div>`;
-        notify('gen-notif', `✓ İçerik hazır — ${totalWords.toLocaleString('tr')} kelime. Meta ve kategoriler yükleniyor...`, 'ok');
+        notify('gen-notif', `✓ İçerik hazır — ${totalWords.toLocaleString('tr')} kelime.`, 'ok');
         fetchMeta(book, author, type, state.content);
-      }, err => {
-        // Part 2 başarısız — Part 1 ile devam et
+      }, () => {
         state.content = part1;
         setLoading(btn, false);
-        notify('gen-notif', `⚠ Part 2 alınamadı, Part 1 kullanılıyor. Hata: ${err}`, 'warn');
+        notify('gen-notif', '⚠ Part 2 alınamadı, Part 1 ile devam ediliyor.', 'warn');
         fetchMeta(book, author, type, state.content);
       });
     }, err => {
@@ -277,7 +253,6 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
       document.getElementById('single-result').style.display = 'none';
     });
 
-  // ── Anthropic: tek parça üretim (değişmedi) ─────────────────────
   } else {
     runStream({}, (content, evData) => {
       state.content = content;
@@ -293,7 +268,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
             </div></div>
           </div>`;
       }
-      notify('gen-notif', `✓ İçerik hazır — ${(evData.word_count || content.split(/\s+/).filter(Boolean).length || 0).toLocaleString('tr')} kelime. Meta ve kategoriler yükleniyor...`, 'ok');
+      notify('gen-notif', `✓ İçerik hazır — ${(evData.word_count||content.split(/\s+/).filter(Boolean).length||0).toLocaleString('tr')} kelime.`, 'ok');
       fetchMeta(book, author, type, state.content);
     }, err => {
       setLoading(btn, false);
@@ -301,18 +276,14 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
       document.getElementById('single-result').style.display = 'none';
     });
   }
-
-  return;
 });
 
 async function pollJob(job_id, btn) {
   try {
     const res = await fetch(API('check-job.php?job_id=') + job_id).then(r => r.json());
     if (!res.ok) return;
-
     const job = res.job;
     const statusEl = document.getElementById('job-status-text');
-
     if (job.status === 'processing') {
       statusEl.textContent = 'Claude içerik yazıyor...';
     } else if (job.status === 'done') {
@@ -326,20 +297,14 @@ async function pollJob(job_id, btn) {
       setLoading(btn, false);
       notify('gen-notif', '✗ ' + job.error, 'err');
     }
-  } catch(e) { /* ağ hatası, tekrar dene */ }
+  } catch(e) {}
 }
 
 function renderResult(data) {
-  // content zaten stream'den state.content'e yazıldı
   if (data.categories) state.categories = data.categories;
-
   const cacheInfo = (data.cache_read||0) > 0
     ? `<div style="font-size:12px;color:var(--green);margin-top:6px">⚡ Cache: ${data.cache_read.toLocaleString()} token tasarruf</div>`
     : '';
-  const maxWarn = data.stop_reason === 'max_tokens'
-    ? `<div style="background:#f0a04018;border:1px solid #f0a04055;border-radius:7px;padding:10px 14px;margin-top:10px;font-size:13px;color:#f0c070">
-        ⚠ Token sınırına çarptı. Slider'ı artırın ve tekrar üretin.</div>` : '';
-
   document.getElementById('gen-stats').innerHTML = `
     <div class="stats-bar">
       <div class="stat"><div class="stat-label">Kelime</div><div class="stat-value">${(data.word_count||0).toLocaleString('tr')}</div></div>
@@ -348,50 +313,36 @@ function renderResult(data) {
       <div class="stat"><div class="stat-label">Durum</div><div class="stat-value" style="font-size:13px">
         <span class="badge ${data.stop_reason==='end_turn'?'badge-green':data.stop_reason==='max_tokens'?'badge-red':'badge-gold'}">${data.stop_reason||'—'}</span>
       </div></div>
-    </div>${cacheInfo}${maxWarn}`;
-
-  if (data.covers && data.covers.length) {
-    document.getElementById('cover-card').style.display = '';
-    renderCovers(data.covers);
-  }
+    </div>${cacheInfo}`;
+  if (data.covers && data.covers.length) { document.getElementById('cover-card').style.display=''; renderCovers(data.covers); }
   if (data.categories && data.categories.length) renderCatTags(data.categories);
-
   const excEl  = document.getElementById('field_excerpt');
   const metaEl = document.getElementById('field_meta_desc');
   if (excEl  && data.excerpt)          { excEl.value  = data.excerpt;          excEl.dispatchEvent(new Event('input')); }
   if (metaEl && data.meta_description) { metaEl.value = data.meta_description; metaEl.dispatchEvent(new Event('input')); }
-
   notify('gen-notif', `✓ Tamamlandı — ${(data.word_count||0).toLocaleString('tr')} kelime`, 'ok');
 }
 
-/* ── Meta & Kapak — ayrı çağrı ───────────────────── */
 async function fetchMeta(book, author, type, content) {
   try {
     const res = await postData(API('get-meta.php'), {
       book_title: book, author_name: author, type,
       content: content.substring(0, 3000),
       api_provider: activeProvider,
-      api_model:    activeModel
+      api_model:    activeModel,
     });
     if (!res.ok) return;
-    if (res.categories && res.categories.length) {
-      state.categories = res.categories;
-      renderCatTags(res.categories);
-    }
-    if (res.covers && res.covers.length) {
-      document.getElementById('cover-card').style.display = '';
-      renderCovers(res.covers);
-    }
+    if (res.categories && res.categories.length) { state.categories = res.categories; renderCatTags(res.categories); }
+    if (res.covers && res.covers.length) { document.getElementById('cover-card').style.display=''; renderCovers(res.covers); }
     if (res.quotes) state.quotes = res.quotes;
     const excEl  = document.getElementById('field_excerpt');
     const metaEl = document.getElementById('field_meta_desc');
     if (excEl  && res.excerpt)          { excEl.value  = res.excerpt;          excEl.dispatchEvent(new Event('input')); }
     if (metaEl && res.meta_description) { metaEl.value = res.meta_description; metaEl.dispatchEvent(new Event('input')); }
-    notify('gen-notif', `✓ Tamamlandı — meta ve kategoriler eklendi`, 'ok');
-  } catch(e) { }
+    notify('gen-notif', '✓ Meta ve kategoriler eklendi', 'ok');
+  } catch(e) {}
 }
 
-/* ── Kapak Grid ───────────────────────────────────── */
 function renderCovers(covers) {
   const grid = document.getElementById('cover-grid');
   if (!covers || !covers.length) {
@@ -414,7 +365,6 @@ function selectCover(el, url) {
   state.selectedCover = url;
 }
 
-/* ── Kategori Etiketleri ─────────────────────────── */
 function renderCatTags(cats) {
   const el = document.getElementById('cat-tags');
   if (!cats || !cats.length) { el.innerHTML = '<span style="color:var(--muted);font-size:12px">Kategori tespit edilemedi</span>'; return; }
@@ -435,16 +385,14 @@ function toggleCat(el) {
   }
 }
 
-/* ── Publish ──────────────────────────────────────── */
 document.getElementById('btn-publish')?.addEventListener('click', async () => {
   if (!state.content) { notify('gen-notif','Önce içerik üretin.','err'); return; }
-  const btn  = document.getElementById('btn-publish');
+  const btn    = document.getElementById('btn-publish');
   const book   = document.getElementById('book_title').value.trim();
   const author = document.getElementById('author_name').value.trim();
   const type   = document.querySelector('input[name=type]:checked')?.value || 'summary';
   const status = document.getElementById('post_status')?.value || 'draft';
   const cats   = [...document.querySelectorAll('.cat-tag.active')].map(t => t.dataset.slug);
-
   setLoading(btn, true, 'Yayınlanıyor...');
   const res = await postData(API('publish.php'), {
     book_title: book, author_name: author, content: state.content, type,
@@ -456,9 +404,7 @@ document.getElementById('btn-publish')?.addEventListener('click', async () => {
     quotes:      JSON.stringify(state.quotes || []),
   });
   setLoading(btn, false);
-
   if (!res.ok) { notify('gen-notif', res.error, 'err'); return; }
-
   document.getElementById('publish-result').innerHTML = `
     <div class="card">
       <div style="color:var(--green);font-size:16px;font-weight:600;margin-bottom:12px">✓ Yayınlandı</div>
@@ -486,8 +432,21 @@ document.getElementById('btn-reset')?.addEventListener('click', () => {
   state = { content:'', categories:[], selectedCover:'', quotes:[] };
 });
 
-/* ══ BULK ════════════════════════════════════════════ */
-let bulkBooks = [];
+/* ── Char counter ─────────────────────────────────── */
+document.querySelectorAll('[data-maxlen]').forEach(el => {
+  const max = +el.dataset.maxlen;
+  const cnt = document.createElement('div'); cnt.className = 'char-count';
+  el.parentNode.appendChild(cnt);
+  const upd = () => { cnt.textContent=`${el.value.length}/${max}`; cnt.className='char-count'+(el.value.length>max*.9?' warn':''); };
+  el.addEventListener('input', upd); upd();
+});
+
+/* ══ TOPLU BATCH ═════════════════════════════════════ */
+let batchBooks    = [];   // merged book list from all uploaded files
+let batchId       = null;
+let batchRunning  = false;
+let batchPaused   = false;
+let uploadedFiles = [];
 
 const uploadZone = document.getElementById('upload-zone');
 const fileInput  = document.getElementById('bulk-file');
@@ -497,28 +456,75 @@ uploadZone?.addEventListener('dragover', e => { e.preventDefault(); uploadZone.c
 uploadZone?.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
 uploadZone?.addEventListener('drop', e => {
   e.preventDefault(); uploadZone.classList.remove('dragover');
-  const f = e.dataTransfer.files[0]; if(f){ fileInput.files = e.dataTransfer.files; uploadFile(f); }
+  const files = [...e.dataTransfer.files];
+  files.forEach(f => uploadFile(f));
 });
-fileInput?.addEventListener('change', () => { if(fileInput.files[0]) uploadFile(fileInput.files[0]); });
+fileInput?.addEventListener('change', () => {
+  [...fileInput.files].forEach(f => uploadFile(f));
+  fileInput.value = '';
+});
+
+document.getElementById('btn-add-more')?.addEventListener('click', () => fileInput.click());
+
+document.getElementById('btn-clear-list')?.addEventListener('click', () => {
+  batchBooks = [];
+  uploadedFiles = [];
+  renderBulkTable([]);
+  updateBatchBadge();
+  document.getElementById('btn-batch-start').disabled = true;
+  document.getElementById('file-list').innerHTML = '';
+  document.getElementById('upload-actions').style.display = 'none';
+  notify('bulk-notif', 'Liste temizlendi.', 'ok');
+});
 
 async function uploadFile(file) {
-  const fd = new FormData(); fd.append('bulk_file', file);
-  uploadZone.innerHTML = '<div class="loading-row"><span class="loader"></span> Dosya okunuyor...</div>';
+  const fd = new FormData();
+  fd.append('bulk_file', file);
   const res = await fetch(API('bulk-upload.php'), {method:'POST', body:fd}).then(r=>r.json());
-  if (!res.ok) { notify('bulk-notif', res.error, 'err'); resetUploadZone(); return; }
-  bulkBooks = res.books;
-  document.getElementById('btn-bulk-run').disabled = false;
-  renderBulkTable(res.books);
-  notify('bulk-notif', `✓ ${res.count} kitap yüklendi.`, 'ok');
+  if (!res.ok) { notify('bulk-notif', res.error, 'err'); return; }
+
+  // Listeye ekle (dedup by title+author)
+  const existing = new Set(batchBooks.map(b => (b.book_title + '||' + b.author_name).toLowerCase()));
+  let added = 0;
+  for (const bk of res.books) {
+    const key = (bk.book_title + '||' + bk.author_name).toLowerCase();
+    if (!existing.has(key)) { batchBooks.push(bk); existing.add(key); added++; }
+  }
+
+  uploadedFiles.push(file.name);
+  updateFileList();
+  updateBatchBadge();
+  renderBulkTable(batchBooks);
+  document.getElementById('btn-batch-start').disabled = false;
+  document.getElementById('upload-actions').style.display = 'flex';
+  notify('bulk-notif', `✓ ${file.name}: ${added} kitap eklendi. Toplam: ${batchBooks.length}`, 'ok');
 }
-function resetUploadZone() {
-  uploadZone.innerHTML = '<div class="icon">📂</div><p>CSV veya XLSX dosyasını buraya sürükle ya da tıkla</p><p style="font-size:11px;margin-top:6px;color:#555">Format: <strong>Kitap Adı | Yazar</strong></p>';
+
+function updateFileList() {
+  const el = document.getElementById('file-list');
+  if (!el) return;
+  el.innerHTML = uploadedFiles.map(f => `<span style="margin-right:10px">📄 ${f}</span>`).join('');
 }
+
+function updateBatchBadge() {
+  const badge = document.getElementById('batch-total-badge');
+  if (!badge) return;
+  if (batchBooks.length > 0) {
+    badge.textContent = batchBooks.length.toLocaleString('tr') + ' kitap';
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
 function renderBulkTable(books) {
-  resetUploadZone();
-  document.getElementById('bulk-preview').innerHTML = `
+  const preview = document.getElementById('bulk-preview');
+  if (!preview) return;
+  if (!books.length) { preview.innerHTML = ''; return; }
+  preview.innerHTML = `
     <div class="card">
-      <div class="card-title">${books.length} kitap yüklendi</div>
+      <div class="card-title">${books.length.toLocaleString('tr')} kitap listesi</div>
+      <div style="overflow-x:auto">
       <table class="bulk-table">
         <thead><tr><th>#</th><th>Kitap</th><th>Yazar</th><th>Durum</th></tr></thead>
         <tbody>${books.map((b,i)=>`
@@ -527,204 +533,169 @@ function renderBulkTable(books) {
           <td class="status-cell"><span class="badge badge-gray">Bekliyor</span></td></tr>`).join('')}
         </tbody>
       </table>
+      </div>
     </div>`;
 }
 
-document.getElementById('btn-bulk-run')?.addEventListener('click', async () => {
-  if (!bulkBooks.length) { notify('bulk-notif','Önce dosya yükleyin.','err'); return; }
-  const type   = document.querySelector('input[name=bulk_type]:checked')?.value || 'summary';
-  const status = document.getElementById('bulk_post_status')?.value || 'draft';
-  const tokens = document.getElementById('bulk-token-slider').value;
-  const btn    = document.getElementById('btn-bulk-run');
+/* ── Batch Başlat ─────────────────────────────────── */
+document.getElementById('btn-batch-start')?.addEventListener('click', async () => {
+  if (!batchBooks.length) { notify('bulk-notif','Önce dosya yükleyin.','err'); return; }
+  if (batchRunning) return;
 
-  setLoading(btn, true, 'Çalışıyor...');
-  document.getElementById('bulk-progress-wrap').style.display = '';
+  const type        = document.querySelector('input[name=bulk_type]:checked')?.value || 'summary';
+  const status      = document.getElementById('bulk_post_status')?.value || 'draft';
+  const tokens      = document.getElementById('bulk-token-slider').value;
+  const workerCount = parseInt(document.getElementById('bulk_workers')?.value || '3');
+  const btn         = document.getElementById('btn-batch-start');
 
-  let done=0, ok=0, fail=0;
-  const total = bulkBooks.length;
+  setLoading(btn, true, 'Batch oluşturuluyor...');
 
-  const delay = ms => new Promise(r => setTimeout(r, ms));
+  // Sunucuda batch oluştur
+  const res = await postData(API('batch-create.php'), {
+    books:        JSON.stringify(batchBooks),
+    type,
+    post_status:  status,
+    max_tokens:   tokens,
+    api_provider: activeProvider,
+  });
 
-  for (const bk of bulkBooks) {
-    const idx = bulkBooks.indexOf(bk);
-    setRowStatus(idx, 'working', activeProvider === 'deepseek' ? 'Part 1 üretiliyor...' : 'İçerik üretiliyor...');
+  if (!res.ok) {
+    setLoading(btn, false);
+    notify('bulk-notif', res.error, 'err');
+    return;
+  }
 
-    let content = null;
-    let attempts = 0;
+  batchId      = res.batch_id;
+  batchRunning = true;
+  batchPaused  = false;
 
-    // Hata durumunda 1 kez retry yap
-    while (attempts < 2 && content === null) {
-      try {
-        if (attempts > 0) {
-          setRowStatus(idx, 'working', 'Tekrar deneniyor...');
-          await delay(3000);
-        }
-        content = await bulkGenerateSSE(bk.book_title, bk.author_name, type, tokens);
-      } catch(e) {
-        attempts++;
-        if (attempts >= 2) {
-          done++; fail++;
-          setRowStatus(idx, 'err', '✗ ' + e.message);
-          content = 'FAILED';
-        }
-      }
-    }
+  document.getElementById('batch-progress-wrap').style.display = '';
+  document.getElementById('btn-batch-pause').style.display = '';
+  setLoading(btn, false);
+  btn.disabled = true;
+  btn.innerHTML = '✓ Batch Çalışıyor';
 
-    if (content === 'FAILED') {
-      const pct = Math.round((done/total)*100);
-      document.getElementById('bulk-bar').style.width = pct + '%';
-      document.getElementById('bulk-bar-label').textContent = `${done} / ${total} — %${pct}`;
-      await delay(1000);
+  notify('bulk-notif', `✓ Batch oluşturuldu (${res.total} kitap). ${workerCount} worker başlatılıyor...`, 'ok');
+
+  // N paralel worker başlat
+  const workers = Array.from({length: workerCount}, (_, i) => runBatchWorker(i + 1, workerCount));
+  await Promise.all(workers);
+
+  // Tamamlandı
+  batchRunning = false;
+  document.getElementById('btn-batch-pause').style.display = 'none';
+  document.getElementById('batch-status-badge').textContent = 'Tamamlandı';
+  document.getElementById('batch-status-badge').className = 'badge badge-green';
+  btn.disabled = false;
+  btn.innerHTML = '▶ Yeni Batch Başlat';
+
+  // Final durum
+  await updateBatchUI();
+  notify('bulk-notif', 'Batch tamamlandı!', 'ok');
+});
+
+/* ── Duraklat / Devam ─────────────────────────────── */
+document.getElementById('btn-batch-pause')?.addEventListener('click', () => {
+  batchPaused = !batchPaused;
+  const btn = document.getElementById('btn-batch-pause');
+  btn.innerHTML = batchPaused ? '▶ Devam Et' : '⏸ Duraklat';
+  document.getElementById('batch-status-badge').textContent = batchPaused ? 'Duraklatıldı' : 'Çalışıyor';
+  document.getElementById('batch-status-badge').className = batchPaused ? 'badge badge-gray' : 'badge badge-gold';
+  notify('bulk-notif', batchPaused ? 'Batch duraklatıldı. Devam için tekrar tıkla.' : 'Batch devam ediyor.', 'ok');
+});
+
+/* ── Worker ───────────────────────────────────────── */
+async function runBatchWorker(workerNum, total) {
+  const statusWrap = document.getElementById('batch-worker-status');
+  const id = `worker-lbl-${workerNum}`;
+
+  if (statusWrap && !document.getElementById(id)) {
+    const span = document.createElement('span');
+    span.id = id;
+    span.textContent = `W${workerNum}: Başlatılıyor...`;
+    statusWrap.appendChild(span);
+  }
+
+  const setW = txt => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `W${workerNum}: ${txt}`;
+  };
+
+  while (batchRunning) {
+    // Duraklat kontrolü
+    if (batchPaused) {
+      setW('Bekliyor...');
+      await delay(2000);
       continue;
     }
 
+    setW('İşleniyor...');
+
     try {
-      setRowStatus(idx, 'working', 'Yayınlanıyor...');
+      const res = await postData(API('batch-worker.php'), { batch_id: batchId });
 
-      // 2. Meta
-      const metaRes = await postData(API('get-meta.php'), {
-        book_title: bk.book_title, author_name: bk.author_name, type,
-        content: content.substring(0, 3000),
-        api_provider: activeProvider,
-        api_model:    activeModel
-      });
-
-      // 3. Publish
-      const pubRes = await postData(API('publish.php'), {
-        book_title:       bk.book_title,
-        author_name:      bk.author_name,
-        content:          content,
-        type,
-        post_status:      status,
-        excerpt:          metaRes.excerpt          || '',
-        meta_description: metaRes.meta_description || '',
-        categories:       JSON.stringify(metaRes.categories || []),
-        cover_url:        (metaRes.covers || [])[0]?.url || '',
-        quotes:           JSON.stringify(metaRes.quotes || []),
-      });
-
-      done++;
-      const pct = Math.round((done/total)*100);
-      document.getElementById('bulk-bar').style.width = pct + '%';
-      document.getElementById('bulk-bar-label').textContent = `${done} / ${total} — %${pct}`;
-
-      if (pubRes.ok) {
-        ok++;
-        setRowStatus(idx, 'ok', `✓ <a href="${pubRes.edit_url}" target="_blank">#${pubRes.post_id}</a>${pubRes.cover_set?' 🖼':''}`);
-      } else {
-        fail++;
-        setRowStatus(idx, 'err', '✗ ' + (pubRes.error||'Yayın hatası'));
+      if (res.status === 'no_more' || res.status === 'cancelled') {
+        setW('Bitti ✓');
+        break;
       }
+      if (res.status === 'retry') {
+        setW('Kilit bekleniyor...');
+        await delay(800);
+        continue;
+      }
+      if (res.status === 'error') {
+        setW('Hata: ' + (res.error || '?'));
+        await delay(2000);
+        continue;
+      }
+
+      // 'done' — UI güncelle
+      const label = res.ok
+        ? `✓ #${res.post_id}${res.cover_set?' 🖼':''}`
+        : (res.error === 'duplicate' ? '⊘ Mevcut' : '✗ Hata');
+      setW(label);
+      await updateBatchUI();
+
     } catch(e) {
-      done++;
-      fail++;
-      setRowStatus(idx, 'err', '✗ ' + e.message);
+      setW('Ağ hatası — tekrar deniyor...');
+      await delay(3000);
     }
-
-    // Kitaplar arası 2 saniye bekle — API rate limit için
-    if (idx < total - 1) await delay(2000);
   }
 
-  setLoading(btn, false);
-  document.getElementById('bulk-summary').innerHTML =
-    `<span class="badge badge-green">${ok} başarılı</span>&nbsp;<span class="badge badge-red">${fail} hatalı</span>`;
-  notify('bulk-notif', `Tamamlandı: ${ok} başarılı, ${fail} hatalı`, fail?'warn':'ok');
-});
-
-// Bulk için SSE generate — DeepSeek'te iki parçalı, Anthropic'te tek parça
-function bulkGenerateSSE(bookTitle, authorName, type, tokens) {
-
-  // Tek bir SSE stream'i çalıştır ve içeriği döndür
-  function runStream(extraParams) {
-    return new Promise((resolve, reject) => {
-      const fd = new FormData();
-      fd.append('book_title',   bookTitle);
-      fd.append('author_name',  authorName);
-      fd.append('type',         type);
-      fd.append('max_tokens',   tokens);
-      fd.append('api_provider', activeProvider);
-      fd.append('api_model',    activeModel);
-      if (extraParams) Object.entries(extraParams).forEach(([k,v]) => fd.append(k, v));
-
-      let content = '';
-      fetch(API('generate.php'), {method:'POST', body:fd})
-        .then(response => {
-          const reader  = response.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-
-          function read() {
-            reader.read().then(({done, value}) => {
-              if (done) { resolve(content); return; }
-              buffer += decoder.decode(value, {stream:true});
-              const lines = buffer.split('\n');
-              buffer = lines.pop();
-              for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (!line) continue;
-                if (line.startsWith('event: ')) {
-                  const evName   = line.slice(7).trim();
-                  const dataLine = (lines[i+1]||'').trim();
-                  if (!dataLine.startsWith('data: ')) continue;
-                  try {
-                    const evData = JSON.parse(dataLine.slice(6));
-                    if (evName === 'chunk') content += evData.text;
-                    else if (evName === 'done')  { resolve(content); return; }
-                    else if (evName === 'error') { reject(new Error(evData.error)); return; }
-                  } catch(e) {}
-                  i++;
-                }
-              }
-              read();
-            }).catch(e => { if (content) resolve(content); else reject(e); });
-          }
-          read();
-        }).catch(reject);
-    });
-  }
-
-  // DeepSeek: iki parçalı üretim
-  if (activeProvider === 'deepseek') {
-    return runStream({ part: '1' }).then(part1Raw => {
-      const part1 = part1Raw.replace(/%%PART[12]_END%%/g, '').trim();
-      return runStream({ part: '2', part1_content: part1 }).then(part2Raw => {
-        let part2 = part2Raw.replace(/%%PART[12]_END%%/g, '').trim();
-        // H1/H2 tekrarını temizle
-        part2 = part2.replace(/^#[^\n]*\n+/m, '').replace(/^##[^\n]*\n+/m, '').trim();
-        let combined = part1 + '\n\n' + part2;
-        // Meta notları temizle
-        combined = combined.replace(/\[Note:[^\]]*\]/gi, '');
-        combined = combined.replace(/\[Already[^\]]*\]/gi, '');
-        combined = combined.replace(/\[This[^\]]*\]/gi, '');
-        combined = combined.replace(/\[.*?already.*?\]/gis, '');
-        combined = combined.replace(/\[.*?covered.*?\]/gis, '');
-        combined = combined.replace(/\[.*?Part 1.*?\]/gis, '');
-        combined = combined.replace(/\[.*?structure.*?\]/gis, '');
-        combined = combined.replace(/\n{4,}/g, '\n\n\n').trim();
-        return combined;
-      }).catch(() => part1); // Part 2 başarısız olursa Part 1 ile devam et
-    });
-  }
-
-  // Anthropic: tek parça
-  return runStream({});
+  setW('Bitti');
 }
 
+/* ── Batch UI Güncelle ────────────────────────────── */
+async function updateBatchUI() {
+  if (!batchId) return;
+  try {
+    const res = await fetch(API('batch-status.php?batch_id=') + batchId).then(r => r.json());
+    if (!res.ok) return;
+    const b = res.batch;
 
-async function waitForJob(job_id, idx) {
-  return new Promise(resolve => {
-    const timer = setInterval(async () => {
-      try {
-        const res = await fetch(API('check-job.php?job_id=') + job_id).then(r => r.json());
-        if (!res.ok) return;
-        const job = res.job;
-        if (job.status === 'done' || job.status === 'error') {
-          clearInterval(timer);
-          resolve(job);
-        }
-      } catch(e) {}
-    }, 4000);
-  });
+    const pct = b.total > 0 ? Math.round((b.done / b.total) * 100) : 0;
+    document.getElementById('bulk-bar').style.width = pct + '%';
+    document.getElementById('bulk-bar-label').textContent =
+      `${b.done.toLocaleString('tr')} / ${b.total.toLocaleString('tr')} — %${pct}`;
+
+    document.getElementById('bulk-summary').innerHTML =
+      `<span class="badge badge-green">✓ ${b.ok} başarılı</span>&nbsp;`
+      + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
+      + (b.total - b.done > 0 ? `<span class="badge badge-gray">⏳ ${(b.total-b.done).toLocaleString('tr')} bekliyor</span>` : '');
+
+    // Satır durumlarını güncelle
+    b.books.forEach((bk, i) => {
+      const st  = bk.status;
+      const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?'working':'gray';
+      const lbl = st==='done'
+        ? `✓ <a href="${bk.edit_url}" target="_blank">#${bk.post_id}</a>${bk.cover_set?' 🖼':''}`
+        : st==='error'     ? '✗ ' + (bk.error||'Hata')
+        : st==='duplicate' ? '⊘ Zaten var'
+        : st==='processing'? 'İşleniyor...'
+        : 'Bekliyor';
+      setRowStatus(i, cls, lbl);
+    });
+  } catch(e) {}
 }
 
 function setRowStatus(idx, st, html) {
@@ -733,12 +704,3 @@ function setRowStatus(idx, st, html) {
   const cls = st==='ok'?'badge-green':st==='err'?'badge-red':st==='working'?'badge-gold':'badge-gray';
   cell.innerHTML = `<span class="badge ${cls}">${html}</span>`;
 }
-
-/* ── Char counter ─────────────────────────────────── */
-document.querySelectorAll('[data-maxlen]').forEach(el => {
-  const max = +el.dataset.maxlen;
-  const cnt = document.createElement('div'); cnt.className = 'char-count';
-  el.parentNode.appendChild(cnt);
-  const upd = () => { cnt.textContent=`${el.value.length}/${max}`; cnt.className='char-count'+(el.value.length>max*.9?' warn':''); };
-  el.addEventListener('input', upd); upd();
-});
