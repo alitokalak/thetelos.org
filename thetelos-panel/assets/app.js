@@ -120,6 +120,82 @@ document.querySelectorAll('.api-sub-btn').forEach(btn => {
   });
 });
 
+// DeepSeek'in bıraktığı meta notlarını ve PART işaretlerini temizle
+function cleanGenerated(text) {
+  return text
+    .replace(/%%PART[0-9]*_(?:END|START)%%/gi, '')
+    .replace(/%%PART_END%%/gi, '')
+    .replace(/\[Note:[^\]]*\]/gi, '')
+    .replace(/\[Already[^\]]*\]/gi, '')
+    .replace(/\[.*?already.*?\]/gis, '')
+    .replace(/\[.*?covered.*?\]/gis, '')
+    .replace(/\[.*?Part \d.*?\]/gis, '')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+// Tek bir generate.php SSE çağrısı — Promise döner, canlı önizleme için onLive çağırır
+function runGenerateStream(params, onLive) {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    Object.entries(params).forEach(([k, v]) => fd.append(k, v));
+
+    let streamText = '', buffer = '', stats = {};
+
+    fetch(API('generate.php'), { method: 'POST', body: fd })
+      .then(response => {
+        const ct = response.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          return response.json().then(data => reject(new Error(data.error || 'Hata')));
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        function read() {
+          reader.read().then(({ done, value }) => {
+            if (done) {
+              if (!streamText) reject(new Error('İçerik üretilemedi.'));
+              else resolve({ text: streamText, stats });
+              return;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (!line) continue;
+              if (line.startsWith('event: ')) {
+                const evName = line.slice(7).trim();
+                const dataLine = (lines[i + 1] || '').trim();
+                if (!dataLine.startsWith('data: ')) continue;
+                let evData;
+                try { evData = JSON.parse(dataLine.slice(6)); } catch (e) { i++; continue; }
+                i++;
+                if (evName === 'chunk') {
+                  streamText += evData.text;
+                  if (onLive) onLive(streamText);
+                } else if (evName === 'status') {
+                  const st = document.getElementById('stream-status');
+                  if (st) st.textContent = evData.msg;
+                } else if (evName === 'error') {
+                  reject(new Error(evData.error));
+                } else if (evName === 'done') {
+                  stats = evData;
+                }
+              }
+            }
+            read();
+          }).catch(err => {
+            if (streamText) resolve({ text: streamText, stats });
+            else reject(new Error('Bağlantı kesildi: ' + err.message));
+          });
+        }
+        read();
+      })
+      .catch(err => reject(new Error('Hata: ' + err.message)));
+  });
+}
+
 document.getElementById('btn-generate')?.addEventListener('click', async () => {
   const book   = document.getElementById('book_title').value.trim();
   const author = document.getElementById('author_name').value.trim();
@@ -137,144 +213,89 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   state = { content:'', categories:[], selectedCover:'', quotes:[] };
 
   const isDeepSeek = activeProvider === 'deepseek';
+  const parts = isDeepSeek ? (parseInt(document.getElementById('parts-select')?.value) || 2) : 1;
+  const preview = document.getElementById('preview-content');
 
   document.getElementById('single-result').style.display = '';
   document.getElementById('gen-stats').innerHTML = '';
-  document.getElementById('preview-content').innerHTML =
-    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${isDeepSeek ? 'DeepSeek içerik üretiyor (Part 1/2)' : 'Claude içerik üretiyor'}...</span></div>`;
+  preview.innerHTML =
+    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${isDeepSeek ? `DeepSeek içerik üretiyor (Part 1/${parts})` : 'Claude içerik üretiyor'}...</span></div>`;
   document.getElementById('cover-card').style.display = 'none';
 
-  function runStream(extraParams, onDone, onError) {
-    const fd = new FormData();
-    fd.append('book_title',   book);
-    fd.append('author_name',  author);
-    fd.append('type',         type);
-    fd.append('max_tokens',   tokens);
-    fd.append('api_provider', activeProvider);
-    fd.append('api_model',    activeModel);
-    if (extraParams) Object.entries(extraParams).forEach(([k,v]) => fd.append(k, v));
+  const baseParams = {
+    book_title:   book,
+    author_name:  author,
+    type:         type,
+    max_tokens:   tokens,
+    api_provider: activeProvider,
+    api_model:    activeModel,
+  };
 
-    let streamText = '', buffer = '';
+  try {
+    let finalContent = '';
+    let finalStats = {};
 
-    fetch(API('generate.php'), {method:'POST', body:fd})
-      .then(response => {
-        const ct = response.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-          return response.json().then(data => onError(data.error || 'Hata'));
+    if (isDeepSeek && parts > 1) {
+      // ── Çok parçalı üretim ──────────────────────────────
+      let accumulated = '';
+      for (let k = 1; k <= parts; k++) {
+        const st = document.getElementById('stream-status');
+        if (st) st.textContent = `DeepSeek içerik üretiyor (Part ${k}/${parts})...`;
+
+        const { text } = await runGenerateStream(
+          { ...baseParams, part: k, parts: parts, prev_content: accumulated },
+          (live) => {
+            const merged = accumulated ? (accumulated + '\n\n' + live) : live;
+            preview.innerHTML = md2html(cleanGenerated(merged));
+            preview.scrollTop = 9999;
+          }
+        );
+
+        let piece = cleanGenerated(text);
+        if (k > 1) {
+          // sonraki parçalardan kazara yazılan H1/H2 başlıklarını temizle
+          piece = piece.replace(/^#[^\n]*\n+/m, '').replace(/^##[^\n]*\n+/m, '').trim();
         }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        function read() {
-          reader.read().then(({done, value}) => {
-            if (done) {
-              if (!streamText) onError('İçerik üretilemedi.');
-              else onDone(streamText, {});
-              return;
-            }
-            buffer += decoder.decode(value, {stream:true});
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i].trim();
-              if (!line) continue;
-              if (line.startsWith('event: ')) {
-                const evName   = line.slice(7).trim();
-                const dataLine = (lines[i+1] || '').trim();
-                if (!dataLine.startsWith('data: ')) continue;
-                let evData;
-                try { evData = JSON.parse(dataLine.slice(6)); } catch(e) { i++; continue; }
-                i++;
-                if (evName === 'chunk') {
-                  streamText += evData.text;
-                  state.content = streamText;
-                  document.getElementById('preview-content').innerHTML = md2html(streamText);
-                  document.getElementById('preview-content').scrollTop = 9999;
-                } else if (evName === 'status') {
-                  const st = document.getElementById('stream-status');
-                  if (st) st.textContent = evData.msg;
-                } else if (evName === 'error') {
-                  onError(evData.error);
-                } else if (evName === 'done') {
-                  onDone(streamText, evData);
-                }
-              }
-            }
-            read();
-          }).catch(err => {
-            if (streamText) onDone(streamText, {});
-            else onError('Bağlantı kesildi: ' + err.message);
-          });
-        }
-        read();
-      })
-      .catch(err => onError('Hata: ' + err.message));
-  }
-
-  if (isDeepSeek) {
-    runStream({ part: '1' }, (part1Raw, stats1) => {
-      const part1 = part1Raw.replace(/%%PART1_END%%/g, '').trim();
-      const st = document.getElementById('stream-status');
-      if (st) st.textContent = 'DeepSeek içerik üretiyor (Part 2/2)...';
-      let combined = part1;
-      document.getElementById('preview-content').innerHTML = md2html(combined);
-
-      runStream({ part: '2', part1_content: part1 }, (part2Raw) => {
-        let part2 = part2Raw.replace(/%%PART[12]_(?:END|START)%%/g, '').trim();
-        part2 = part2.replace(/^#[^\n]*\n/m, '').replace(/^##[^\n]*\n/m, '').trim();
-        combined = part1 + '\n\n' + part2;
-        combined = combined.replace(/%%PART[12]_(?:END|START)%%/g, '');
-        combined = combined.replace(/\[Note:[^\]]*\]/gi, '');
-        combined = combined.replace(/\[Already[^\]]*\]/gi, '');
-        combined = combined.replace(/\[.*?already.*?\]/gis, '');
-        combined = combined.replace(/\[.*?covered.*?\]/gis, '');
-        combined = combined.replace(/\[.*?Part 1.*?\]/gis, '');
-        combined = combined.replace(/\n{4,}/g, '\n\n\n').trim();
-        state.content = combined;
-        document.getElementById('preview-content').innerHTML = md2html(combined);
-        const totalWords = combined.split(/\s+/).filter(Boolean).length;
-        setLoading(btn, false);
-        document.getElementById('gen-stats').innerHTML = `
-          <div class="stats-bar">
-            <div class="stat"><div class="stat-label">Kelime</div><div class="stat-value">${totalWords.toLocaleString('tr')}</div></div>
-            <div class="stat"><div class="stat-label">Durum</div><div class="stat-value"><span class="badge badge-green">2/2 tamamlandı</span></div></div>
-          </div>`;
-        notify('gen-notif', `✓ İçerik hazır — ${totalWords.toLocaleString('tr')} kelime.`, 'ok');
-        fetchMeta(book, author, type, state.content);
-      }, () => {
-        state.content = part1;
-        setLoading(btn, false);
-        notify('gen-notif', '⚠ Part 2 alınamadı, Part 1 ile devam ediliyor.', 'warn');
-        fetchMeta(book, author, type, state.content);
-      });
-    }, err => {
-      setLoading(btn, false);
-      notify('gen-notif', err, 'err');
-      document.getElementById('single-result').style.display = 'none';
-    });
-
-  } else {
-    runStream({}, (content, evData) => {
-      state.content = content;
-      setLoading(btn, false);
-      if (evData.word_count) {
-        document.getElementById('gen-stats').innerHTML = `
-          <div class="stats-bar">
-            <div class="stat"><div class="stat-label">Kelime</div><div class="stat-value">${(evData.word_count||0).toLocaleString('tr')}</div></div>
-            <div class="stat"><div class="stat-label">Girdi Token</div><div class="stat-value">${(evData.input_tokens||0).toLocaleString()}</div></div>
-            <div class="stat"><div class="stat-label">Çıktı Token</div><div class="stat-value">${(evData.output_tokens||0).toLocaleString()}</div></div>
-            <div class="stat"><div class="stat-label">Durum</div><div class="stat-value" style="font-size:13px">
-              <span class="badge ${evData.stop_reason==='end_turn'?'badge-green':evData.stop_reason==='max_tokens'?'badge-red':'badge-gold'}">${evData.stop_reason||'—'}</span>
-            </div></div>
-          </div>`;
+        accumulated = accumulated ? (accumulated + '\n\n' + piece) : piece;
+        preview.innerHTML = md2html(accumulated);
       }
-      notify('gen-notif', `✓ İçerik hazır — ${(evData.word_count||content.split(/\s+/).filter(Boolean).length||0).toLocaleString('tr')} kelime.`, 'ok');
-      fetchMeta(book, author, type, state.content);
-    }, err => {
-      setLoading(btn, false);
-      notify('gen-notif', err, 'err');
-      document.getElementById('single-result').style.display = 'none';
-    });
+      finalContent = accumulated;
+
+    } else {
+      // ── Tek parça (Anthropic veya DeepSeek 1 parça) ─────
+      const { text, stats } = await runGenerateStream(
+        { ...baseParams },
+        (live) => { preview.innerHTML = md2html(live); preview.scrollTop = 9999; }
+      );
+      finalContent = cleanGenerated(text);
+      finalStats = stats || {};
+    }
+
+    state.content = finalContent;
+    preview.innerHTML = md2html(finalContent);
+    setLoading(btn, false);
+
+    const totalWords = finalStats.word_count || finalContent.split(/\s+/).filter(Boolean).length;
+    const partsBadge = (isDeepSeek && parts > 1)
+      ? `<div class="stat"><div class="stat-label">Parça</div><div class="stat-value"><span class="badge badge-green">${parts}/${parts} tamamlandı</span></div></div>`
+      : (finalStats.stop_reason
+        ? `<div class="stat"><div class="stat-label">Durum</div><div class="stat-value" style="font-size:13px"><span class="badge ${finalStats.stop_reason==='end_turn'?'badge-green':finalStats.stop_reason==='max_tokens'?'badge-red':'badge-gold'}">${finalStats.stop_reason}</span></div></div>`
+        : '');
+
+    document.getElementById('gen-stats').innerHTML = `
+      <div class="stats-bar">
+        <div class="stat"><div class="stat-label">Kelime</div><div class="stat-value">${totalWords.toLocaleString('tr')}</div></div>
+        ${finalStats.input_tokens ? `<div class="stat"><div class="stat-label">Girdi Token</div><div class="stat-value">${finalStats.input_tokens.toLocaleString()}</div></div>` : ''}
+        ${finalStats.output_tokens ? `<div class="stat"><div class="stat-label">Çıktı Token</div><div class="stat-value">${finalStats.output_tokens.toLocaleString()}</div></div>` : ''}
+        ${partsBadge}
+      </div>`;
+    notify('gen-notif', `✓ İçerik hazır — ${totalWords.toLocaleString('tr')} kelime. Meta yükleniyor...`, 'ok');
+    fetchMeta(book, author, type, state.content);
+
+  } catch (err) {
+    setLoading(btn, false);
+    notify('gen-notif', err.message || String(err), 'err');
+    document.getElementById('single-result').style.display = 'none';
   }
 });
 
@@ -546,6 +567,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   const status      = document.getElementById('bulk_post_status')?.value || 'draft';
   const tokens      = document.getElementById('bulk-token-slider').value;
   const workerCount = parseInt(document.getElementById('bulk_workers')?.value || '3');
+  const parts       = parseInt(document.getElementById('bulk-parts-select')?.value || '2');
   const btn         = document.getElementById('btn-batch-start');
 
   setLoading(btn, true, 'Batch oluşturuluyor...');
@@ -557,6 +579,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
     post_status:  status,
     max_tokens:   tokens,
     api_provider: activeProvider,
+    parts:        parts,
   });
 
   if (!res.ok) {

@@ -32,14 +32,81 @@ if (!$template) {
     exit;
 }
 
-$part         = trim($_POST['part']         ?? '');   // '1', '2', veya boş
-$part1_content = trim($_POST['part1_content'] ?? '');  // Part 2 için bağlam
+// ── Çok parçalı üretim parametreleri ─────────────────────────────
+// part  = kaçıncı parça (1-based). 0/boş = tek seferde
+// parts = toplam parça sayısı (1-4)
+// prev_content = önceki parçaların birleştirilmiş içeriği (bağlam için)
+$part  = (int)($_POST['part']  ?? 0);
+$parts = max(1, min(4, (int)($_POST['parts'] ?? 1)));
+$prev_content = trim($_POST['prev_content'] ?? '');
+// Geriye dönük uyumluluk: eski çağrılar part='1'/'2' ve part1_content gönderiyordu
+if ($prev_content === '' && !empty($_POST['part1_content'])) {
+    $prev_content = trim($_POST['part1_content']);
+}
+if ($part < 1 && $parts > 1) $part = 1;
+
+// Her parça için hedef kelime sayısı (toplam / parça)
+$part_words = $parts > 1 ? (int)ceil($target_words / $parts) : $target_words;
+
+// 1'den N'e kesir adı (yarısı, üçte biri, dörtte biri)
+function tls_fraction_name($n) {
+    switch ($n) {
+        case 2: return 'half';
+        case 3: return 'third';
+        case 4: return 'quarter';
+        default: return "1/{$n}";
+    }
+}
+
+// Belirli bir parça için dinamik talimat üret (bağlam + akış korunur)
+function tls_part_instruction($k, $n, $headings, $tail, $part_words) {
+    $frac    = tls_fraction_name($n);
+    $covered = '';
+    foreach ($headings as $h) $covered .= "   ✗ {$h}\n";
+
+    if ($k === 1) {
+        return "\n\n=== MULTI-PART GENERATION (PART 1 of {$n}) ===\n"
+             . "You are writing PART 1 of {$n} of a single continuous piece.\n"
+             . "• Begin with the H1 (# **Title — Author**) then the H2 (## **Subtitle**), then the first ### sections in order.\n"
+             . "• Cover approximately the first {$frac} of the complete work (~{$part_words} words for this part).\n"
+             . "• Develop every section fully per the format rules. Do NOT write any conclusion — more parts follow.\n"
+             . "• End naturally at a ### section boundary. Your ABSOLUTE FINAL LINE must be exactly:\n%%PART_END%%";
+    }
+
+    if ($k < $n) {
+        return "\n\n=== MULTI-PART GENERATION (PART {$k} of {$n}) ===\n"
+             . "You are writing PART {$k} of {$n} — a direct, seamless continuation of the text already written.\n"
+             . "STRICT RULES:\n"
+             . "1. DO NOT rewrite the H1 or H2 heading.\n"
+             . "2. The following sections are FULLY COMPLETE — do NOT revisit, repeat, summarize, or expand them:\n{$covered}"
+             . "3. Continue with the NEXT new ### sections not listed above. Cover roughly the next {$frac} of the work (~{$part_words} words).\n"
+             . "4. Do NOT write a conclusion — there are still more parts after this one.\n"
+             . "5. Maintain the exact same voice, depth, and format as before.\n"
+             . "6. End at a ### section boundary. Your ABSOLUTE FINAL LINE must be exactly:\n%%PART_END%%\n"
+             . "\nThe text so far ended here (continue seamlessly from this exact point — do NOT repeat it):\n...{$tail}";
+    }
+
+    // Son parça
+    return "\n\n=== MULTI-PART GENERATION (FINAL PART {$n} of {$n}) ===\n"
+         . "You are writing the FINAL PART ({$n} of {$n}) — a direct, seamless continuation.\n"
+         . "STRICT RULES:\n"
+         . "1. DO NOT rewrite the H1 or H2 heading.\n"
+         . "2. The following sections are FULLY COMPLETE — do NOT revisit, repeat, or expand them:\n{$covered}"
+         . "3. Continue with ALL remaining ### sections and COMPLETE the work fully.\n"
+         . "4. Maintain the exact same voice, depth, and format as before.\n"
+         . "5. Apply the closing rule: end with the final substantive point — no summary paragraph, no closing sentence.\n"
+         . "\nThe text so far ended here (continue seamlessly from this exact point — do NOT repeat it):\n...{$tail}";
+}
 
 $prompt = str_replace(
     ['{book_title}','{author_name}','{BOOK_TITLE}','{AUTHOR_NAME}'],
     [$book,$author,$book,$author],
     $template
-) . "\n\nBook: {$book}\nAuthor: {$author}\nTarget length: approximately {$target_words} words.";
+) . "\n\nBook: {$book}\nAuthor: {$author}";
+
+if ($parts <= 1) {
+    $prompt .= "\nTarget length: approximately {$target_words} words.";
+}
 
 // ── Web search ile kaynak metin bul ──────────────────────────────
 function fetch_source_text($book, $author) {
@@ -117,10 +184,10 @@ function fetch_source_text($book, $author) {
     return ['url' => $found_url, 'text' => $found_text];
 }
 
-// Web search — sadece DeepSeek için çalıştır (Anthropic kendi bilgisini kullanır)
+// Web search — sadece DeepSeek için ve ilk parçada (veya tek seferde) çalıştır
 $source_text = '';
 $source_url  = '';
-if ($api_provider === 'deepseek' && !$part || $part === '1') {
+if ($api_provider === 'deepseek' && ($parts <= 1 || $part === 1)) {
     $source = fetch_source_text($book, $author);
     $source_text = $source['text'];
     $source_url  = $source['url'];
@@ -134,26 +201,15 @@ if ($source_text) {
              . "\n=== END SOURCE TEXT ===\n";
 }
 
-if ($part === '1') {
-    $prompt .= "\n\nIMPORTANT: You are writing PART 1 of 2. Write the first half of the book only. Cover roughly half the book's content. End your response naturally at a section boundary — stop mid-book, not at the end. Do NOT write a conclusion or closing paragraph.";
-} elseif ($part === '2') {
-    $prompt .= "\n\nIMPORTANT: You are writing PART 2 of 2 — the direct continuation of a summary already written. STRICT RULES:\n"
-             . "1. DO NOT write the H1 or H2 heading.\n"
-             . "2. DO NOT introduce or re-summarize topics from Part 1. Each topic listed below is FULLY AND COMPLETELY FINISHED — do not revisit, expand, or repeat any of them.\n"
-             . "3. Start immediately with the NEXT new ### section that was NOT covered in Part 1.\n"
-             . "4. This is a seamless continuation — write as if you are picking up exactly where Part 1 ended.\n";
-
-    if ($part1_content) {
-        preg_match_all('/^### (.+)$/m', $part1_content, $matches);
+// ── Çok parçalı talimatı ekle ────────────────────────────────────
+if ($parts > 1) {
+    $headings = [];
+    if ($prev_content !== '') {
+        preg_match_all('/^### (.+)$/m', $prev_content, $matches);
         $headings = $matches[1] ?? [];
-        if ($headings) {
-            $prompt .= "\nThe following sections are FULLY COMPLETE — DO NOT touch them again:\n";
-            foreach ($headings as $h) {
-                $prompt .= "✗ {$h}\n";
-            }
-        }
-        $prompt .= "\nPart 1 ended mid-text here (continue from this exact point):\n..." . mb_substr($part1_content, -500);
     }
+    $tail = $prev_content !== '' ? mb_substr($prev_content, -700) : '';
+    $prompt .= tls_part_instruction($part, $parts, $headings, $tail, $part_words);
 }
 
 // SSE başlat

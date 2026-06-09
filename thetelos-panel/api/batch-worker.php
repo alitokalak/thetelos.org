@@ -74,6 +74,7 @@ $type         = $batch['type'];
 $target_words = max(500, min(8000, (int)$batch['max_tokens']));
 $post_status  = $batch['post_status'];
 $api_provider = $batch['api_provider'] ?? 'deepseek';
+$parts        = max(1, min(4, (int)($batch['parts'] ?? 2)));
 
 $auth   = 'Basic ' . base64_encode(WP_USER . ':' . WP_APP_PASS);
 $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
@@ -190,71 +191,103 @@ if (!$template) {
     exit;
 }
 
+// ── Çok parçalı talimat yardımcıları ─────────────────────────────
+function bw_fraction($n) {
+    switch ($n) { case 2: return 'half'; case 3: return 'third'; case 4: return 'quarter'; default: return "1/{$n}"; }
+}
+function bw_part_instruction($k, $n, $headings, $tail, $part_words) {
+    if ($n <= 1) {
+        return "\nTarget length: approximately {$part_words} words.";
+    }
+    $frac = bw_fraction($n);
+    $covered = '';
+    foreach ($headings as $h) $covered .= "   ✗ {$h}\n";
+
+    if ($k === 1) {
+        return "\n\n=== MULTI-PART GENERATION (PART 1 of {$n}) ===\n"
+             . "You are writing PART 1 of {$n} of a single continuous piece.\n"
+             . "• Begin with the H1 (# **Title — Author**) then the H2 (## **Subtitle**), then the first ### sections in order.\n"
+             . "• Cover approximately the first {$frac} of the complete work (~{$part_words} words for this part).\n"
+             . "• Develop every section fully per the format rules. Do NOT write any conclusion — more parts follow.\n"
+             . "• End naturally at a ### section boundary. Your ABSOLUTE FINAL LINE must be exactly:\n%%PART_END%%";
+    }
+    if ($k < $n) {
+        return "\n\n=== MULTI-PART GENERATION (PART {$k} of {$n}) ===\n"
+             . "You are writing PART {$k} of {$n} — a direct, seamless continuation of the text already written.\n"
+             . "STRICT RULES:\n"
+             . "1. DO NOT rewrite the H1 or H2 heading.\n"
+             . "2. The following sections are FULLY COMPLETE — do NOT revisit, repeat, summarize, or expand them:\n{$covered}"
+             . "3. Continue with the NEXT new ### sections not listed above. Cover roughly the next {$frac} of the work (~{$part_words} words).\n"
+             . "4. Do NOT write a conclusion — there are still more parts after this one.\n"
+             . "5. Maintain the exact same voice, depth, and format as before.\n"
+             . "6. End at a ### section boundary. Your ABSOLUTE FINAL LINE must be exactly:\n%%PART_END%%\n"
+             . "\nThe text so far ended here (continue seamlessly from this exact point — do NOT repeat it):\n...{$tail}";
+    }
+    return "\n\n=== MULTI-PART GENERATION (FINAL PART {$n} of {$n}) ===\n"
+         . "You are writing the FINAL PART ({$n} of {$n}) — a direct, seamless continuation.\n"
+         . "STRICT RULES:\n"
+         . "1. DO NOT rewrite the H1 or H2 heading.\n"
+         . "2. The following sections are FULLY COMPLETE — do NOT revisit, repeat, or expand them:\n{$covered}"
+         . "3. Continue with ALL remaining ### sections and COMPLETE the work fully.\n"
+         . "4. Maintain the exact same voice, depth, and format as before.\n"
+         . "5. Apply the closing rule: end with the final substantive point — no summary paragraph, no closing sentence.\n"
+         . "\nThe text so far ended here (continue seamlessly from this exact point — do NOT repeat it):\n...{$tail}";
+}
+
 // ── İçerik üretimi ───────────────────────────────────────────────
 $content   = '';
 $gen_error = '';
 
 if ($api_provider === 'deepseek') {
 
-    // Part 1
-    $p1 = $template
-        . "\n\nBook: {$book}\nAuthor: {$author}\nTarget length: approximately {$target_words} words."
-        . "\n\nIMPORTANT: You are writing PART 1 of 2. Write the first half only. End naturally at a section boundary. Your absolute final line must be exactly:\n%%PART1_END%%";
+    // N parçalı üretim — her parça öncekinin bağlamıyla devam eder
+    $accumulated = '';
+    $part_words  = (int)ceil($target_words / max(1, $parts));
 
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS => json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>16000,'messages'=>[['role'=>'user','content'=>$p1]]]),
-    ]);
-    $raw1 = curl_exec($ch); $err1 = curl_error($ch); curl_close($ch);
-
-    if ($err1 || !$raw1) {
-        $gen_error = 'DeepSeek Part 1 bağlantı hatası: ' . $err1;
-    } else {
-        $d1 = json_decode($raw1, true);
-        if (isset($d1['error'])) {
-            $gen_error = 'DeepSeek Part 1: ' . ($d1['error']['message'] ?? 'API hatası');
-        } else {
-            $part1 = trim($d1['choices'][0]['message']['content'] ?? '');
-            $part1 = str_replace('%%PART1_END%%', '', $part1);
-
-            // Part 2 — mevcut H3 başlıklarını çıkar
-            preg_match_all('/^### (.+)$/m', $part1, $m);
-            $headings = $m[1] ?? [];
-
-            $p2  = $template
-                . "\n\nBook: {$book}\nAuthor: {$author}"
-                . "\n\nIMPORTANT: You are writing PART 2 of 2 — the direct continuation. STRICT RULES:\n"
-                . "1. DO NOT write the H1 or H2 heading.\n"
-                . "2. The following sections are FULLY COMPLETE — do NOT revisit them:\n";
-            foreach ($headings as $h) $p2 .= "   ✗ {$h}\n";
-            $p2 .= "3. Start immediately with the next ### section not listed above.\n"
-                . "4. Write as if continuing seamlessly from Part 1.\n"
-                . "\nPart 1 ended here (continue from this exact point):\n..."
-                . mb_substr($part1, -600);
-
-            $ch2 = curl_init(DEEPSEEK_API_URL);
-            curl_setopt_array($ch2, [
-                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-                CURLOPT_POSTFIELDS => json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>16000,'messages'=>[['role'=>'user','content'=>$p2]]]),
-            ]);
-            $raw2 = curl_exec($ch2); $err2 = curl_error($ch2); curl_close($ch2);
-
-            if ($err2 || !$raw2) {
-                // Part 2 başarısız → Part 1 ile devam et
-                $content = $part1;
-            } else {
-                $d2 = json_decode($raw2, true);
-                $part2 = trim($d2['choices'][0]['message']['content'] ?? '');
-                // Part 2'den H1/H2 başlıklarını temizle
-                $part2 = preg_replace('/^# [^\n]+\n+/m', '', $part2, 1);
-                $part2 = preg_replace('/^## [^\n]+\n+/m', '', $part2, 1);
-                $content = $part1 . "\n\n" . ltrim($part2);
-            }
-            $content = bw_clean_content($content);
+    for ($k = 1; $k <= $parts; $k++) {
+        $headings = [];
+        if ($accumulated !== '') {
+            preg_match_all('/^### (.+)$/m', $accumulated, $mh);
+            $headings = $mh[1] ?? [];
         }
+        $tail = $accumulated !== '' ? mb_substr($accumulated, -700) : '';
+
+        $pr = $template
+            . "\n\nBook: {$book}\nAuthor: {$author}"
+            . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
+
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>16000,'messages'=>[['role'=>'user','content'=>$pr]]]),
+        ]);
+        $raw  = curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
+
+        if ($cerr || !$raw) {
+            if ($k === 1) $gen_error = "DeepSeek Part {$k} bağlantı hatası: {$cerr}";
+            break; // sonraki parçalar denenmez; eldeki içerikle devam edilir
+        }
+        $dd = json_decode($raw, true);
+        if (isset($dd['error'])) {
+            if ($k === 1) $gen_error = "DeepSeek Part {$k}: " . ($dd['error']['message'] ?? 'API hatası');
+            break;
+        }
+        $piece = trim($dd['choices'][0]['message']['content'] ?? '');
+        $piece = str_replace('%%PART_END%%', '', $piece);
+        if ($piece === '') break;
+
+        if ($k > 1) {
+            // Sonraki parçalarda kazara yazılan H1/H2 başlıklarını temizle
+            $piece = preg_replace('/^# [^\n]+\n+/m',  '', $piece, 1);
+            $piece = preg_replace('/^## [^\n]+\n+/m', '', $piece, 1);
+            $piece = ltrim($piece);
+        }
+        $accumulated = $accumulated === '' ? $piece : ($accumulated . "\n\n" . $piece);
+    }
+
+    if ($accumulated !== '') {
+        $content = bw_clean_content($accumulated);
     }
 
 } else {

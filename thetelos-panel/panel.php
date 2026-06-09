@@ -104,6 +104,14 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <option value="publish">Direkt yayınla</option>
             </select>
           </div>
+          <div>
+            <label for="parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek)</span></label>
+            <select id="parts-select">
+              <option value="2" selected>2 parça</option>
+              <option value="3">3 parça (daha uzun)</option>
+              <option value="4">4 parça (en uzun)</option>
+            </select>
+          </div>
         </div>
         <button class="btn btn-primary" id="btn-generate">✦ İçerik Üret</button>
       </div>
@@ -212,6 +220,17 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <option value="2">2 worker</option>
               <option value="3" selected>3 worker (önerilen)</option>
               <option value="5">5 worker (hızlı)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-top:14px">
+          <div>
+            <label for="bulk-parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek — uzun içerik için)</span></label>
+            <select id="bulk-parts-select">
+              <option value="2" selected>2 parça</option>
+              <option value="3">3 parça (daha uzun)</option>
+              <option value="4">4 parça (en uzun)</option>
             </select>
           </div>
         </div>

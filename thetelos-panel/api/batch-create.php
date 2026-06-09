@@ -8,6 +8,7 @@ $type         = trim($_POST['type']         ?? 'summary');
 $post_status  = trim($_POST['post_status']  ?? 'draft');
 $max_tokens   = max(500, min(8000, (int)($_POST['max_tokens'] ?? 3000)));
 $api_provider = trim($_POST['api_provider'] ?? 'deepseek');
+$parts        = max(1, min(4, (int)($_POST['parts'] ?? 2)));
 $books_json   = trim($_POST['books']        ?? '[]');
 
 $books = json_decode($books_json, true);
@@ -36,6 +37,7 @@ $batch = [
     'post_status'  => $post_status,
     'max_tokens'   => $max_tokens,
     'api_provider' => $api_provider,
+    'parts'        => $parts,
     'total'        => count($books),
     'done'         => 0,
     'ok'           => 0,
