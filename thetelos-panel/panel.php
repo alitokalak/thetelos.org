@@ -38,6 +38,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <div class="tabs-top">
         <button class="tab-top-btn active" data-mode="single">✍ Tek Kitap</button>
         <button class="tab-top-btn" data-mode="bulk">📋 Toplu Batch</button>
+        <button class="tab-top-btn" data-mode="builder">🧱 Liste Oluştur</button>
       </div>
     </div>
 
@@ -257,6 +258,87 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       </div>
 
       <div id="bulk-preview"></div>
+    </div>
+
+    <!-- ══ LİSTE OLUŞTUR ═══════════════════════════════════ -->
+    <div id="mode-builder" style="display:none">
+
+      <div class="card">
+        <div class="card-title">Liste Kaynağı</div>
+        <div class="type-toggle">
+          <input type="radio" name="builder_mode" id="bm-author" value="author" checked>
+          <label for="bm-author">👤 Yazara Göre</label>
+          <input type="radio" name="builder_mode" id="bm-category" value="category">
+          <label for="bm-category">🗂️ Kategoriye Göre</label>
+        </div>
+
+        <!-- Yazara göre -->
+        <div id="builder-author-box">
+          <div class="form-row one"><div>
+            <label for="builder-author">Yazar Adı</label>
+            <input type="text" id="builder-author" placeholder="Örn: Augustine of Hippo">
+          </div></div>
+          <button class="btn btn-primary" id="btn-fetch-works">📚 Tüm Eserlerini Getir</button>
+        </div>
+
+        <!-- Kategoriye göre -->
+        <div id="builder-category-box" style="display:none">
+          <div class="form-row">
+            <div>
+              <label for="builder-category">Kategori</label>
+              <input type="text" id="builder-category" placeholder="Örn: Philosophy">
+            </div>
+            <div>
+              <label for="builder-author-count">Kaç yazar?</label>
+              <input type="number" id="builder-author-count" value="40" min="5" max="150">
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-fetch-authors">👥 Önemli Yazarları Getir</button>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)">
+          <input type="checkbox" id="builder-verify" checked>
+          OpenLibrary ile doğrula + kapak/yıl getir
+        </label>
+      </div>
+
+      <div id="builder-notif" class="notif"></div>
+
+      <!-- Yazar listesi (kategoriye göre modda) -->
+      <div id="builder-authors-card" class="card" style="display:none">
+        <div class="card-title">Yazarlar <span id="builder-authors-count" style="color:var(--muted);font-weight:400;font-size:11px"></span></div>
+        <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-green btn-sm" id="btn-fetch-all-works">⚡ Tüm Yazarların Eserlerini Getir</button>
+          <span style="font-size:11px;color:var(--muted);align-self:center">(tek tek de getirebilirsin)</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="bulk-table" id="builder-authors-table">
+            <thead><tr><th>#</th><th>Yazar</th><th>Dönem</th><th>Not</th><th>İşlem</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Toplanan kitap listesi -->
+      <div id="builder-list-card" class="card" style="display:none">
+        <div class="card-title">
+          Oluşturulan Liste
+          <span id="builder-list-count" class="badge badge-gold" style="margin-left:8px">0 kitap</span>
+          <span id="builder-list-verified" class="badge badge-green" style="margin-left:4px;display:none"></span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-primary btn-sm" id="btn-builder-to-batch">📋 Toplu Batch'e Aktar</button>
+          <button class="btn btn-ghost btn-sm" id="btn-builder-csv">⬇ CSV İndir</button>
+          <button class="btn btn-ghost btn-sm" id="btn-builder-clear" style="color:var(--red)">✕ Temizle</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="bulk-table" id="builder-list-table">
+            <thead><tr><th>#</th><th>Kapak</th><th>Kitap</th><th>Yazar</th><th>Yıl</th><th>✓</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
 
   </main>

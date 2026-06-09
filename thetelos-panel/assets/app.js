@@ -68,16 +68,18 @@ function updateBulkTokenDisplay(val) {
 
 /* ── Mod Geçişi ───────────────────────────────────── */
 const modeTitles = {
-  single: ['Tek Kitap',    'Kitap adı ve yazar girerek özet veya analiz üretin'],
-  bulk:   ['Toplu Batch',  'CSV/XLSX yükleyerek binlerce kitabı sunucu taraflı paralel işleyin'],
+  single:  ['Tek Kitap',     'Kitap adı ve yazar girerek özet veya analiz üretin'],
+  bulk:    ['Toplu Batch',   'CSV/XLSX yükleyerek binlerce kitabı sunucu taraflı paralel işleyin'],
+  builder: ['Liste Oluştur', 'Kategori/yazar bazlı kitap listesi üret — LLM küratör + OpenLibrary doğrulama'],
 };
 document.querySelectorAll('.tab-top-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-top-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     const mode = btn.dataset.mode;
-    document.getElementById('mode-single').style.display = mode === 'single' ? '' : 'none';
-    document.getElementById('mode-bulk').style.display   = mode === 'bulk'   ? '' : 'none';
+    document.getElementById('mode-single').style.display  = mode === 'single'  ? '' : 'none';
+    document.getElementById('mode-bulk').style.display    = mode === 'bulk'    ? '' : 'none';
+    document.getElementById('mode-builder').style.display = mode === 'builder' ? '' : 'none';
     document.getElementById('page-title').textContent = modeTitles[mode][0];
     document.getElementById('page-desc').textContent  = modeTitles[mode][1];
   });
@@ -727,3 +729,168 @@ function setRowStatus(idx, st, html) {
   const cls = st==='ok'?'badge-green':st==='err'?'badge-red':st==='working'?'badge-gold':'badge-gray';
   cell.innerHTML = `<span class="badge ${cls}">${html}</span>`;
 }
+
+/* ══ LİSTE OLUŞTUR (Builder) ═════════════════════════════ */
+let builderAuthors = [];   // [{author, era, note}]
+let builderList    = [];   // [{title, author, year, verified, cover}]
+
+// Mod geçişi: yazara göre / kategoriye göre
+document.querySelectorAll('input[name=builder_mode]').forEach(r => {
+  r.addEventListener('change', () => {
+    const m = document.querySelector('input[name=builder_mode]:checked')?.value;
+    document.getElementById('builder-author-box').style.display   = m === 'author'   ? '' : 'none';
+    document.getElementById('builder-category-box').style.display = m === 'category' ? '' : 'none';
+  });
+});
+
+// Tek yazarın eserlerini getir
+document.getElementById('btn-fetch-works')?.addEventListener('click', async () => {
+  const author = document.getElementById('builder-author').value.trim();
+  if (!author) { notify('builder-notif','Yazar adı girin.','err'); return; }
+  const btn = document.getElementById('btn-fetch-works');
+  setLoading(btn, true, 'Eserler getiriliyor...');
+  const added = await fetchAuthorWorks(author);
+  setLoading(btn, false);
+  if (added >= 0) notify('builder-notif', `✓ ${author}: ${added} eser eklendi.`, 'ok');
+});
+
+// Kategorinin yazarlarını getir
+document.getElementById('btn-fetch-authors')?.addEventListener('click', async () => {
+  const category = document.getElementById('builder-category').value.trim();
+  const count    = document.getElementById('builder-author-count').value || 40;
+  if (!category) { notify('builder-notif','Kategori girin.','err'); return; }
+  const btn = document.getElementById('btn-fetch-authors');
+  setLoading(btn, true, 'Yazarlar getiriliyor...');
+  const res = await postData(API('list-authors.php'), {
+    category, count, api_provider: activeProvider,
+  });
+  setLoading(btn, false);
+  if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
+  builderAuthors = res.authors;
+  renderBuilderAuthors();
+  notify('builder-notif', `✓ ${res.count} yazar getirildi. İstediğinin eserlerini getir.`, 'ok');
+});
+
+function renderBuilderAuthors() {
+  document.getElementById('builder-authors-card').style.display = '';
+  document.getElementById('builder-authors-count').textContent = `(${builderAuthors.length})`;
+  const tb = document.querySelector('#builder-authors-table tbody');
+  tb.innerHTML = builderAuthors.map((a,i) => `
+    <tr id="bauthor-${i}">
+      <td style="color:var(--muted)">${i+1}</td>
+      <td><strong>${a.author}</strong></td>
+      <td style="color:var(--muted);font-size:12px">${a.era||''}</td>
+      <td style="color:var(--muted);font-size:12px">${a.note||''}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="fetchOneAuthor(${i})">📚 Eserleri</button></td>
+    </tr>`).join('');
+}
+
+window.fetchOneAuthor = async function(i) {
+  const a = builderAuthors[i];
+  if (!a) return;
+  const cell = document.querySelector(`#bauthor-${i} td:last-child`);
+  if (cell) cell.innerHTML = '<span class="loader"></span>';
+  const added = await fetchAuthorWorks(a.author);
+  if (cell) cell.innerHTML = `<span class="badge badge-green">+${added}</span>`;
+};
+
+// "Tüm yazarların eserlerini getir" — sırayla
+document.getElementById('btn-fetch-all-works')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-fetch-all-works');
+  setLoading(btn, true, 'Hepsi getiriliyor...');
+  for (let i = 0; i < builderAuthors.length; i++) {
+    const cell = document.querySelector(`#bauthor-${i} td:last-child`);
+    if (cell) cell.innerHTML = '<span class="loader"></span>';
+    const added = await fetchAuthorWorks(builderAuthors[i].author);
+    if (cell) cell.innerHTML = `<span class="badge badge-green">+${added}</span>`;
+  }
+  setLoading(btn, false);
+  notify('builder-notif', `✓ Tamamlandı — toplam ${builderList.length} kitap.`, 'ok');
+});
+
+// Bir yazarın eserlerini çek ve listeye ekle (dedup)
+async function fetchAuthorWorks(author) {
+  const verify = document.getElementById('builder-verify').checked ? '1' : '0';
+  try {
+    const res = await postData(API('list-works.php'), {
+      author, api_provider: activeProvider, verify,
+    });
+    if (!res.ok) { notify('builder-notif', res.error, 'err'); return 0; }
+    const existing = new Set(builderList.map(b => (b.title+'||'+b.author).toLowerCase()));
+    let added = 0;
+    for (const w of res.works) {
+      const key = (w.title+'||'+author).toLowerCase();
+      if (existing.has(key)) continue;
+      existing.add(key);
+      builderList.push({
+        title: w.title, author: author, year: w.year || '',
+        verified: w.verified, cover: w.cover || '',
+      });
+      added++;
+    }
+    renderBuilderList();
+    return added;
+  } catch(e) {
+    notify('builder-notif', 'Hata: ' + e.message, 'err');
+    return 0;
+  }
+}
+
+function renderBuilderList() {
+  document.getElementById('builder-list-card').style.display = builderList.length ? '' : 'none';
+  document.getElementById('builder-list-count').textContent = `${builderList.length} kitap`;
+  const vCount = builderList.filter(b => b.verified).length;
+  const vBadge = document.getElementById('builder-list-verified');
+  if (vCount > 0) { vBadge.style.display = ''; vBadge.textContent = `✓ ${vCount} doğrulandı`; }
+  else vBadge.style.display = 'none';
+
+  const tb = document.querySelector('#builder-list-table tbody');
+  tb.innerHTML = builderList.map((b,i) => `
+    <tr id="brow-list-${i}">
+      <td style="color:var(--muted)">${i+1}</td>
+      <td>${b.cover ? `<img src="${b.cover}" style="width:32px;height:46px;object-fit:cover;border-radius:3px" onerror="this.style.display='none'">` : '—'}</td>
+      <td>${b.title}</td>
+      <td style="color:var(--muted)">${b.author}</td>
+      <td style="color:var(--muted)">${b.year||''}</td>
+      <td>${b.verified ? '<span class="badge badge-green">✓</span>' : '<span class="badge badge-gray">?</span>'}</td>
+      <td><button class="btn btn-ghost btn-sm" onclick="removeBuilderRow(${i})" style="color:var(--red)">✕</button></td>
+    </tr>`).join('');
+}
+
+window.removeBuilderRow = function(i) {
+  builderList.splice(i, 1);
+  renderBuilderList();
+};
+
+// Toplu Batch'e aktar
+document.getElementById('btn-builder-to-batch')?.addEventListener('click', () => {
+  if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
+  batchBooks = builderList.map(b => ({ book_title: b.title, author_name: b.author, category: '' }));
+  updateBatchBadge();
+  renderBulkTable(batchBooks);
+  document.getElementById('btn-batch-start').disabled = false;
+  // Toplu Batch sekmesine geç
+  document.querySelector('.tab-top-btn[data-mode=bulk]')?.click();
+  notify('bulk-notif', `✓ ${batchBooks.length} kitap batch'e aktarıldı. Ayarları seçip başlat.`, 'ok');
+});
+
+// CSV indir
+document.getElementById('btn-builder-csv')?.addEventListener('click', () => {
+  if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
+  let csv = 'Kitap Adı,Yazar Adı,Yıl\n';
+  csv += builderList.map(b =>
+    `"${(b.title||'').replace(/"/g,'""')}","${(b.author||'').replace(/"/g,'""')}","${b.year||''}"`
+  ).join('\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'thetelos-liste.csv';
+  a.click();
+});
+
+// Listeyi temizle
+document.getElementById('btn-builder-clear')?.addEventListener('click', () => {
+  builderList = [];
+  renderBuilderList();
+  notify('builder-notif', 'Liste temizlendi.', 'ok');
+});
