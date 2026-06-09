@@ -57,8 +57,8 @@ function lw_extract_json_array($text) {
     return is_array($arr) ? $arr : null;
 }
 
-// ── 1) Yazarın tüm eserleri ───────────────────────────────────────
-$prompt = "List the COMPLETE works of the author \"{$author}\".\n"
+// ── 1) Yazarın tüm eserleri — model "başka yok" diyene kadar döngü ──
+$base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "For EACH work provide:\n"
     . "- the English title\n"
     . "- the original-language title (if different), e.g. Latin/Greek/German/French\n"
@@ -68,11 +68,46 @@ $prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
     . "[{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
 
-list($raw, $err) = lw_call_llm($provider, $prompt, 6000);
-if ($err) { echo json_encode(['ok'=>false,'error'=>$err]); exit; }
+$items      = [];
+$seen       = [];
+$max_rounds = 6;
+$first_err  = '';
 
-$items = lw_extract_json_array($raw);
-if (!$items) { echo json_encode(['ok'=>false,'error'=>'Liste ayrıştırılamadı. Yanıt: '.mb_substr($raw,0,200)]); exit; }
+for ($round = 1; $round <= $max_rounds; $round++) {
+    if ($round === 1) {
+        $prompt = $base_prompt;
+    } else {
+        // Şimdiye kadar listelenenleri ver, SADECE eksik kalanları iste
+        $already = implode("\n", array_map(fn($w) => '- ' . $w['title'], $items));
+        $prompt  = "The author is \"{$author}\".\n"
+            . "These works have ALREADY been listed:\n{$already}\n\n"
+            . "Now list ONLY ADDITIONAL works by this author that are NOT in the list above. "
+            . "Do not repeat any listed work. If there are no more works, return an empty array [].\n"
+            . "Same JSON format: [{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
+    }
+
+    list($raw, $err) = lw_call_llm($provider, $prompt, 8000);
+    if ($err) { if ($round === 1) { $first_err = $err; } break; }
+
+    $batch = lw_extract_json_array($raw);
+    if (!is_array($batch)) { if ($round === 1) { $first_err = 'Liste ayrıştırılamadı.'; } break; }
+
+    $added = 0;
+    foreach ($batch as $it) {
+        $t = trim($it['title'] ?? '');
+        if ($t === '') continue;
+        $k = mb_strtolower($t);
+        if (isset($seen[$k])) continue;
+        $seen[$k] = true;
+        $items[] = $it;
+        $added++;
+    }
+
+    if ($added === 0) break;          // model'in ekleyecek yeni eseri kalmadı
+    if (count($items) >= 250) break;  // güvenlik üst sınırı
+}
+
+if (!$items) { echo json_encode(['ok'=>false,'error'=>$first_err ?: 'Liste alınamadı.']); exit; }
 
 // ── 2) Doğrula + kapak getir (cURL — allow_url_fopen kapalı olabilir) ──
 function lw_http_get($url) {
