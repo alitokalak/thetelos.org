@@ -157,17 +157,21 @@ if ($mode === 'verify') {
 /* ════════════════ MODE: list ════════════════ */
 $base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "For EACH work provide:\n"
-    . "- the standard English title by which the work is known in scholarship\n"
-    . "- the original-language title (if different), e.g. Latin/Greek/German/French/Arabic/Hebrew\n"
-    . "- the approximate first publication or composition year (integer)\n"
+    . "- \"title\": the standard English title by which the work is known in scholarship\n"
+    . "- \"original\": the original-language title, romanized into Latin letters "
+    . "(e.g. Arabic/Hebrew/Greek transliterated). ALWAYS provide this; if the work was originally written in English, repeat the English title.\n"
+    . "- \"year\": the approximate first publication or composition year (integer)\n"
     . "Include all significant books, treatises and major works in roughly chronological order. "
     . "Exclude minor letters and fragments unless they are major standalone works.\n"
     . "CRITICAL RULES:\n"
     . "- Only list works that genuinely belong to this author. If you are not sure a work is really his, do NOT include it.\n"
     . "- Each distinct work must appear EXACTLY ONCE. Do NOT list the same work twice under different English renderings, "
-    . "translations or labels such as '(alternative)', '(Hebrew version)', '(summary)'. Merge variants into one entry.\n"
+    . "translations or labels such as '(alternative)', '(Hebrew version)', '(summary)'.\n"
+    . "- For a multi-volume work, you MAY list each volume as its own entry, naming it like \"Work Title (Volume 1)\", \"Work Title (Volume 2)\". "
+    . "But do NOT list BOTH the whole work AND its volumes/parts — pick the volume level OR the whole, not both. "
+    . "Do NOT break a single book into its internal chapters or sub-sections.\n"
     . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
-    . "[{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
+    . "[{\"title\":\"English Title\",\"original\":\"Romanized Original Title\",\"year\":1234}]";
 
 $items      = [];
 $seen       = [];
