@@ -986,9 +986,9 @@ document.getElementById('btn-builder-to-batch')?.addEventListener('click', () =>
 // CSV indir
 document.getElementById('btn-builder-csv')?.addEventListener('click', () => {
   if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
-  let csv = 'Kitap Adı,Yazar Adı,Yıl\n';
+  let csv = 'Kitap Adı,Yazar Adı,Yıl,Kapak\n';
   csv += builderList.map(b =>
-    `"${workLabel(b).replace(/"/g,'""')}","${(b.author||'').replace(/"/g,'""')}","${b.year||''}"`
+    `"${workLabel(b).replace(/"/g,'""')}","${(b.author||'').replace(/"/g,'""')}","${b.year||''}","${b.cover||''}"`
   ).join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');

@@ -74,10 +74,21 @@ if ($ext === 'csv') {
 
 $books = [];
 foreach ($rows as $r) {
+    // Kapak: satırdaki herhangi bir hücrede http(s) URL varsa onu kullan
+    // (builder CSV'sinde 4. sütun, ama sütun sırası değişse de bulunur).
+    $cover = '';
+    foreach ($r as $cell) {
+        $cell = trim((string)$cell);
+        if (preg_match('#^https?://#i', $cell)) { $cover = $cell; break; }
+    }
+    // 3. sütun: salt yıl (4 haneli sayı) veya URL ise kategori DEĞİLDİR.
+    $cat = trim($r[2] ?? '');
+    if (preg_match('/^\d{3,4}$/', $cat) || preg_match('#^https?://#i', $cat)) $cat = '';
     $books[] = [
         'book_title'  => trim($r[0] ?? ''),
         'author_name' => trim($r[1] ?? ''),
-        'category'    => trim($r[2] ?? ''),
+        'category'    => $cat,
+        'cover'       => $cover,
     ];
 }
 
