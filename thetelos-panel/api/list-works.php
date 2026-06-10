@@ -70,6 +70,17 @@ function lw_extract_json_array($text) {
     return null;
 }
 
+// Dedup için başlık normalleştir: aksanları kaldır, parantez içini at, yalnız harf/rakam bırak
+function lw_norm($s) {
+    $s = (string)$s;
+    $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+    if ($t !== false && $t !== '') $s = $t;
+    $s = strtolower($s);
+    $s = preg_replace('/\([^)]*\)/', ' ', $s);   // parantez içi varyantları at
+    $s = preg_replace('/[^a-z0-9]+/', ' ', $s);  // sadece harf/rakam
+    return trim(preg_replace('/\s+/', ' ', $s));
+}
+
 // ── cURL GET (allow_url_fopen kapalı olabilir) ────────────────────
 function lw_http_get($url) {
     $ch = curl_init($url);
@@ -177,7 +188,8 @@ $base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "[{\"title\":\"English Title\",\"original\":\"Romanized Original Title\",\"year\":1234}]";
 
 $items      = [];
-$seen       = [];
+$seen       = [];   // normalize edilmiş İngilizce başlık
+$seen_orig  = [];   // normalize edilmiş orijinal başlık
 $max_rounds = 5;
 $first_err  = '';
 $started    = microtime(true);
@@ -209,9 +221,12 @@ for ($round = 1; $round <= $max_rounds; $round++) {
     foreach ($batch as $it) {
         $t = trim($it['title'] ?? '');
         if ($t === '') continue;
-        $k = mb_strtolower($t);
-        if (isset($seen[$k])) continue;
-        $seen[$k] = true;
+        $ne = lw_norm($t);                          // İngilizce başlık
+        $no = lw_norm($it['original'] ?? '');       // orijinal başlık
+        if ($ne !== '' && isset($seen[$ne])) continue;          // aynı İngilizce ad
+        if ($no !== '' && isset($seen_orig[$no])) continue;     // aynı orijinal ad = aynı eser
+        if ($ne !== '') $seen[$ne] = true;
+        if ($no !== '') $seen_orig[$no] = true;
         $items[] = $it;
         $added++;
     }
