@@ -32,12 +32,14 @@ if ($author === '') { echo json_encode(['ok'=>false,'error'=>'Yazar adı zorunlu
 function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
     $attempt = function($provider, $prompt, $max_tokens) {
         if ($provider === 'anthropic') {
+            // Haiku: kanon bilgisi yeterli, Sonnet'ten 3-4 kat hızlı (sunucu
+            // timeout'una takılmaz) ve çok daha ucuz.
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true,
                 CURLOPT_TIMEOUT=>85, CURLOPT_CONNECTTIMEOUT=>10,
                 CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-                CURLOPT_POSTFIELDS=>json_encode(['model'=>ANTHROPIC_MODEL,'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
+                CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
             ]);
             $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
             if ($e || !$r) return ['', 'Anthropic: '.($e ?: 'boş yanıt'), false];
@@ -274,6 +276,7 @@ $first_err = '';
 // Tek çağrı yap (temperature=0 → tutarlı sonuç).
 // Yanıt token limitiyle kesilmişse bir kez daha devam isteği gönder.
 for ($round = 1; $round <= 2; $round++) {
+    set_time_limit(110);   // her tur için süreyi sıfırla — iki tur üst üste 120sn sınırını aşıp 500 veriyordu
     [$raw, $err, $truncated] = lw_call_llm($provider, $prompt, 6000);
     if ($err) { $first_err = $err; break; }
 
