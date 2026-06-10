@@ -237,6 +237,12 @@ if ($mode === 'verify') {
 }
 
 /* ════════════════ MODE: list ════════════════ */
+// Eser listesi DOĞRULUK ister (kanon bilgisi, şüpheli/tekrar eseri ayıklama).
+// DeepSeek kanonu zayıf hatırlayıp dubia/spuria ve tekrar çeviri ekliyordu;
+// bu yüzden liste üretimini DAİMA Claude (Anthropic) ile yapıyoruz — model
+// kanonu çok daha doğru biliyor. İçerik üretimi (pahalı kısım) DeepSeek'te kalır.
+// Maliyet ihmal edilebilir: yazar başına tek çağrı, ~5K token.
+$provider = 'anthropic';
 $prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "BE EXHAUSTIVE. Include every distinct standalone work the author produced across ALL the fields they wrote in "
     . "(for example: philosophical, religious/legal, scientific, medical, and major letters/epistles). "
