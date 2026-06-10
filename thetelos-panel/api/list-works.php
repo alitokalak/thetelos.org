@@ -170,19 +170,21 @@ if ($mode === 'verify') {
 
 /* ════════════════ MODE: list ════════════════ */
 $prompt = "List the COMPLETE works of the author \"{$author}\".\n"
+    . "BE EXHAUSTIVE. Include every distinct standalone work the author produced across ALL the fields they wrote in "
+    . "(for example: philosophical, religious/legal, scientific, medical, and major letters/epistles). "
+    . "A prolific author typically has between 15 and 40 distinct works — do not stop at only the few most famous ones.\n"
     . "For EACH work provide:\n"
     . "- \"title\": the standard English title by which the work is known in scholarship\n"
     . "- \"original\": the original-language title, romanized into Latin letters "
     . "(e.g. Arabic/Hebrew/Greek transliterated). ALWAYS provide this; if the work was originally written in English, repeat the English title.\n"
     . "- \"year\": the approximate first publication or composition year (integer)\n"
-    . "Include all significant books, treatises and major works in roughly chronological order. "
-    . "Exclude minor letters and fragments unless they are major standalone works.\n"
+    . "List them in roughly chronological order.\n"
     . "CRITICAL RULES:\n"
     . "- Only list works that genuinely belong to THIS exact author. If you are not certain, omit it.\n"
     . "- The \"title\" field must contain ONLY the work's name — never add '(alternative)', '(variant)', '(also known as)' etc.\n"
     . "- Each distinct text EXACTLY ONCE. If the same work is known by multiple English titles, pick ONE.\n"
     . "- A multi-volume work may be listed per volume (e.g. \"Work Title (Volume 1)\"), BUT never list BOTH the whole work AND its individual volumes/chapters.\n"
-    . "- Do NOT split a single book into its internal chapters, sections, or laws (e.g. if an author wrote a legal code, list the code as ONE entry, not its 30 subsections).\n"
+    . "- Do NOT split a single book into its internal chapters, sections, or laws (e.g. a legal code is ONE entry, not its 30 subsections).\n"
     . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
     . "[{\"title\":\"English Title\",\"original\":\"Romanized Original Title\",\"year\":1234}]";
 
