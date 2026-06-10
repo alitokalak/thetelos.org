@@ -191,7 +191,7 @@ if ($mode === 'exists') {
         $nt = lw_norm($search);
         $found = null;
         foreach (['posts','analysis'] as $ep) {
-            $hits = $wp_get("$wp_api/$ep?search=" . urlencode($search) . '&per_page=10&status=any');
+            $hits = $wp_get("$wp_api/$ep?search=" . urlencode($search) . '&per_page=10&status=publish,draft,pending,private,future');
             foreach ($hits ?? [] as $p) {
                 $ptitle = html_entity_decode(strip_tags($p['title']['rendered'] ?? ''));
                 $pn = lw_norm(preg_replace('/\s*-\s*'.preg_quote($author,'/').'\s*$/i', '', $ptitle));
