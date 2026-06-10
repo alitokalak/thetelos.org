@@ -15,6 +15,8 @@
 session_start();
 require_once dirname(__DIR__) . '/config.php';
 if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
+session_write_close();   // KRİTİK: session kilidini hemen bırak — yoksa uzun süren
+                         // drain döngüsü boyunca batch-status.php gibi istekler bloke olur.
 
 ignore_user_abort(true);
 @ini_set('max_execution_time', '0');
