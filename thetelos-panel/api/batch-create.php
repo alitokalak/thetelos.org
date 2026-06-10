@@ -45,6 +45,7 @@ $batch = [
     'books'        => array_map(fn($b) => [
         'book_title'  => trim($b['book_title']  ?? ''),
         'author_name' => trim($b['author_name'] ?? ''),
+        'cover_url'   => trim($b['cover']        ?? ''),
         'status'      => 'pending',
         'post_id'     => null,
         'post_url'    => null,

@@ -204,6 +204,11 @@ function bw_part_instruction($k, $n, $headings, $tail, $part_words) {
 function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $book         = $batch['books'][$idx]['book_title'];
     $author       = $batch['books'][$idx]['author_name'];
+    $pre_cover    = trim($batch['books'][$idx]['cover_url'] ?? '');
+    // Dış aramalar (Google Books / OpenLibrary / dedup) için başlığın
+    // sonundaki "(Orijinal Ad)" parantezini at — yoksa eşleşme bulunamıyor.
+    $search_book  = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book));
+    if ($search_book === '') $search_book = $book;
     $type         = $batch['type'];
     $target_words = max(500, min(8000, (int)$batch['max_tokens']));
     $post_status  = $batch['post_status'];
@@ -350,7 +355,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $meta = json_decode(trim($meta_text), true) ?? [];
 
     // ── Kapak bul (cURL) ───────────────────────────────────────────
-    $cover_url = '';
+    // Builder'da zaten bulunmuş/doğrulanmış kapak varsa onu kullan; yoksa ara.
+    $cover_url = $pre_cover;
     $bw_http_get = function($url) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -363,29 +369,31 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         return ($c >= 200 && $c < 300) ? $r : null;
     };
 
-    $gb_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
-        'q'=>'intitle:"'.$book.'" inauthor:"'.$author.'"','maxResults'=>5,'printType'=>'books',
-        'fields'=>'items(volumeInfo(title,authors,imageLinks,industryIdentifiers))',
-    ]);
-    $gb = json_decode((string)$bw_http_get($gb_url), true);
-    foreach ($gb['items'] ?? [] as $item) {
-        $lnk = $item['volumeInfo']['imageLinks'] ?? [];
-        $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
-        if (!$c) continue;
-        $authors = array_map('strtolower', $item['volumeInfo']['authors'] ?? []);
-        $author_match = false;
-        $author_words = array_filter(explode(' ', strtolower($author)), fn($w) => strlen($w) > 2);
-        foreach ($authors as $a) {
-            foreach ($author_words as $w) { if (strpos($a, $w) !== false) { $author_match = true; break 2; } }
+    if (!$cover_url) {
+        $gb_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
+            'q'=>'intitle:"'.$search_book.'" inauthor:"'.$author.'"','maxResults'=>5,'printType'=>'books',
+            'fields'=>'items(volumeInfo(title,authors,imageLinks,industryIdentifiers))',
+        ]);
+        $gb = json_decode((string)$bw_http_get($gb_url), true);
+        foreach ($gb['items'] ?? [] as $item) {
+            $lnk = $item['volumeInfo']['imageLinks'] ?? [];
+            $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
+            if (!$c) continue;
+            $authors = array_map('strtolower', $item['volumeInfo']['authors'] ?? []);
+            $author_match = false;
+            $author_words = array_filter(explode(' ', strtolower($author)), fn($w) => strlen($w) > 2);
+            foreach ($authors as $a) {
+                foreach ($author_words as $w) { if (strpos($a, $w) !== false) { $author_match = true; break 2; } }
+            }
+            if (!$author_match && !empty($authors)) continue;
+            $c = str_replace(['http://','&edge=curl'], ['https://',''], $c);
+            $cover_url = preg_replace('/zoom=\d/', 'zoom=3', $c);
+            break;
         }
-        if (!$author_match && !empty($authors)) continue;
-        $c = str_replace(['http://','&edge=curl'], ['https://',''], $c);
-        $cover_url = preg_replace('/zoom=\d/', 'zoom=3', $c);
-        break;
     }
     if (!$cover_url) {
         $gb2 = json_decode((string)$bw_http_get('https://www.googleapis.com/books/v1/volumes?' . http_build_query([
-            'q'=>$book.' '.$author,'maxResults'=>3,'printType'=>'books','fields'=>'items(volumeInfo(imageLinks))',
+            'q'=>$search_book.' '.$author,'maxResults'=>3,'printType'=>'books','fields'=>'items(volumeInfo(imageLinks))',
         ])), true);
         foreach ($gb2['items'] ?? [] as $item) {
             $lnk = $item['volumeInfo']['imageLinks'] ?? [];
@@ -398,7 +406,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
     if (!$cover_url) {
         $ol = json_decode((string)$bw_http_get(
-            'https://openlibrary.org/search.json?title=' . urlencode($book)
+            'https://openlibrary.org/search.json?title=' . urlencode($search_book)
             . '&author=' . urlencode($author) . '&limit=4&fields=cover_i,title,author_name'
         ), true);
         foreach ($ol['docs'] ?? [] as $doc) {
