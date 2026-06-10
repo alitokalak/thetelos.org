@@ -67,6 +67,13 @@ fflush($fp);
 flock($fp, LOCK_UN);
 fclose($fp);
 
+// ── Tarayıcıya HEMEN dön, ağır işi arka planda yap ────────────────
+// (Cloudflare ~100sn bağlantı limitini aşmamak için kritik)
+echo json_encode(['status'=>'started','idx'=>$idx]);
+while (ob_get_level() > 0) { @ob_end_flush(); }
+@flush();
+if (function_exists('fastcgi_finish_request')) { fastcgi_finish_request(); }
+
 // ── İşlenecek kitap bilgileri ─────────────────────────────────────
 $book         = $batch['books'][$idx]['book_title'];
 $author       = $batch['books'][$idx]['author_name'];

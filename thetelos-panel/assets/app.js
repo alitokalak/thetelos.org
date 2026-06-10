@@ -654,40 +654,51 @@ async function runBatchWorker(workerNum, total) {
       continue;
     }
 
-    setW('İşleniyor...');
-
+    let res;
     try {
-      const res = await postData(API('batch-worker.php'), { batch_id: batchId });
-
-      if (res.status === 'no_more' || res.status === 'cancelled') {
-        setW('Bitti ✓');
-        break;
-      }
-      if (res.status === 'retry') {
-        setW('Kilit bekleniyor...');
-        await delay(800);
-        continue;
-      }
-      if (res.status === 'error') {
-        setW('Hata: ' + (res.error || '?'));
-        await delay(2000);
-        continue;
-      }
-
-      // 'done' — UI güncelle
-      const label = res.ok
-        ? `✓ #${res.post_id}${res.cover_set?' 🖼':''}`
-        : (res.error === 'duplicate' ? '⊘ Mevcut' : '✗ Hata');
-      setW(label);
-      await updateBatchUI();
-
+      setW('Kitap alınıyor...');
+      // batch-worker artık kitabı alıp HEMEN dönüyor, ağır işi arka planda yapıyor
+      res = await postData(API('batch-worker.php'), { batch_id: batchId });
     } catch(e) {
-      setW('Ağ hatası — tekrar deniyor...');
-      await delay(3000);
+      setW('Bağlantı hatası — bekliyor...');
+      await delay(4000);
+      continue;
     }
+
+    if (res.status === 'no_more' || res.status === 'cancelled') { setW('Bitti ✓'); break; }
+    if (res.status === 'retry') { setW('Sıra bekleniyor...'); await delay(800); continue; }
+
+    if (res.status === 'started') {
+      // Bu kitap arka planda işleniyor — bitene kadar durumu izle
+      setW(`#${res.idx + 1} işleniyor...`);
+      await waitForBookDone(res.idx, setW);
+      continue;
+    }
+
+    // beklenmedik yanıt
+    await delay(2000);
   }
 
   setW('Bitti');
+}
+
+// Belirli bir kitabın arka plan işlemi bitene kadar durumu sorgula
+async function waitForBookDone(idx, setW) {
+  const terminal = ['done', 'error', 'duplicate'];
+  for (let t = 0; t < 300; t++) {            // ~ güvenlik: 300 × 4s = 20 dk
+    if (!batchRunning) return;
+    let b;
+    try {
+      const r = await fetch(API('batch-status.php?batch_id=') + batchId).then(x => x.json());
+      if (r.ok) { b = r.batch; renderBatchStatus(b); }
+    } catch(e) {}
+    if (b && terminal.includes(b.books[idx]?.status)) {
+      const st = b.books[idx].status;
+      if (setW) setW(st === 'done' ? '✓ tamam' : st === 'duplicate' ? '⊘ mevcut' : '✗ hata');
+      return;
+    }
+    await delay(4000);
+  }
 }
 
 /* ── Batch UI Güncelle ────────────────────────────── */
@@ -695,32 +706,33 @@ async function updateBatchUI() {
   if (!batchId) return;
   try {
     const res = await fetch(API('batch-status.php?batch_id=') + batchId).then(r => r.json());
-    if (!res.ok) return;
-    const b = res.batch;
-
-    const pct = b.total > 0 ? Math.round((b.done / b.total) * 100) : 0;
-    document.getElementById('bulk-bar').style.width = pct + '%';
-    document.getElementById('bulk-bar-label').textContent =
-      `${b.done.toLocaleString('tr')} / ${b.total.toLocaleString('tr')} — %${pct}`;
-
-    document.getElementById('bulk-summary').innerHTML =
-      `<span class="badge badge-green">✓ ${b.ok} başarılı</span>&nbsp;`
-      + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
-      + (b.total - b.done > 0 ? `<span class="badge badge-gray">⏳ ${(b.total-b.done).toLocaleString('tr')} bekliyor</span>` : '');
-
-    // Satır durumlarını güncelle
-    b.books.forEach((bk, i) => {
-      const st  = bk.status;
-      const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?'working':'gray';
-      const lbl = st==='done'
-        ? `✓ <a href="${bk.edit_url}" target="_blank">#${bk.post_id}</a>${bk.cover_set?' 🖼':''}`
-        : st==='error'     ? '✗ ' + (bk.error||'Hata')
-        : st==='duplicate' ? '⊘ Zaten var'
-        : st==='processing'? 'İşleniyor...'
-        : 'Bekliyor';
-      setRowStatus(i, cls, lbl);
-    });
+    if (res.ok) renderBatchStatus(res.batch);
   } catch(e) {}
+}
+
+function renderBatchStatus(b) {
+  if (!b) return;
+  const pct = b.total > 0 ? Math.round((b.done / b.total) * 100) : 0;
+  document.getElementById('bulk-bar').style.width = pct + '%';
+  document.getElementById('bulk-bar-label').textContent =
+    `${b.done.toLocaleString('tr')} / ${b.total.toLocaleString('tr')} — %${pct}`;
+
+  document.getElementById('bulk-summary').innerHTML =
+    `<span class="badge badge-green">✓ ${b.ok} başarılı</span>&nbsp;`
+    + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
+    + (b.total - b.done > 0 ? `<span class="badge badge-gray">⏳ ${(b.total-b.done).toLocaleString('tr')} bekliyor</span>` : '');
+
+  b.books.forEach((bk, i) => {
+    const st  = bk.status;
+    const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?'working':'gray';
+    const lbl = st==='done'
+      ? `✓ <a href="${bk.edit_url}" target="_blank">#${bk.post_id}</a>${bk.cover_set?' 🖼':''}`
+      : st==='error'     ? '✗ ' + (bk.error||'Hata')
+      : st==='duplicate' ? '⊘ Zaten var'
+      : st==='processing'? 'İşleniyor...'
+      : 'Bekliyor';
+    setRowStatus(i, cls, lbl);
+  });
 }
 
 function setRowStatus(idx, st, html) {
