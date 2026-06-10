@@ -362,6 +362,7 @@ require_once get_template_directory() . '/inc/book-cover.php';
 require_once get_template_directory() . '/inc/analysis-cpt.php';
 require_once get_template_directory() . '/inc/analysis-panel.php';
 require_once get_template_directory() . '/inc/book-cover-fetcher.php';
+require_once get_template_directory() . '/inc/seo.php';
 
 add_action( 'init', 'mediumish_load_customizer', 1 );
 // -----------------------------------------------------
@@ -1134,10 +1135,12 @@ function mediumish_custom_get_meta_excerpt() {
 
 function mediumish_custom_add_meta_description_tag() {
     ?>
-    <meta name="description" content="<?php 
+    <meta name="description" content="<?php
     if ( is_single() || is_page() ) {
         $excerpt = mediumish_custom_get_meta_excerpt( get_the_ID() );
         echo $excerpt;
+    } elseif ( function_exists( 'thetelos_seo_get_description' ) ) {
+        echo esc_attr( thetelos_seo_get_description() );
     } else {
         bloginfo( 'description' );
     }
