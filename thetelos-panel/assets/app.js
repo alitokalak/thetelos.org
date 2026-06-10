@@ -17,7 +17,14 @@ function setLoading(btn, state, label='') {
 async function postData(url, data) {
   const fd = new FormData();
   for (const [k,v] of Object.entries(data)) fd.append(k, v);
-  return fetch(url, {method:'POST', body:fd}).then(r => r.json());
+  const r = await fetch(url, {method:'POST', body:fd});
+  const text = await r.text();
+  try { return JSON.parse(text); }
+  catch(_) {
+    // Sunucu JSON yerine HTML hata sayfası döndürdü (timeout / 502 / 503)
+    const code = r.status;
+    throw new Error(code >= 500 ? `Sunucu hatası (${code}) — lütfen tekrar dene.` : `Beklenmeyen yanıt (${code})`);
+  }
 }
 function md2html(text) {
   if (!text) return '';

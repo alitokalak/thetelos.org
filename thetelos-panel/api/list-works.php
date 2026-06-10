@@ -13,9 +13,11 @@
 session_start();
 require_once dirname(__DIR__) . '/config.php';
 if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
+session_write_close();  // Session kilidini hemen bırak — uzun LLM çağrıları boyunca kilide gerek yok
 header('Content-Type: application/json');
 @ini_set('display_errors', 0);
-set_time_limit(300);
+@ini_set('log_errors', 1);
+set_time_limit(120);
 
 $author = trim($_POST['author'] ?? '');
 $provider = trim($_POST['api_provider'] ?? 'deepseek');
