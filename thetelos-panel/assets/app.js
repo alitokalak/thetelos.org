@@ -841,7 +841,7 @@ async function fetchAuthorWorks(author) {
       if (existing.has(key)) continue;
       existing.add(key);
       const row = {
-        title: w.title, author: author, year: w.year || '',
+        title: w.title, original: w.original || '', author: author, year: w.year || '',
         verified: false, cover: '',
       };
       builderList.push(row);
@@ -878,6 +878,11 @@ async function fetchAuthorWorks(author) {
   }
 }
 
+// Yayın başlığı: "English Title (Original Title)" — orijinal varsa ekle
+function workLabel(b) {
+  return b.original ? `${b.title} (${b.original})` : b.title;
+}
+
 function renderBuilderList() {
   document.getElementById('builder-list-card').style.display = builderList.length ? '' : 'none';
   document.getElementById('builder-list-count').textContent = `${builderList.length} kitap`;
@@ -891,7 +896,7 @@ function renderBuilderList() {
     <tr id="brow-list-${i}">
       <td style="color:var(--muted)">${i+1}</td>
       <td>${b.cover ? `<img src="${b.cover}" style="width:32px;height:46px;object-fit:cover;border-radius:3px" onerror="this.style.display='none'">` : '—'}</td>
-      <td>${b.title}</td>
+      <td>${workLabel(b)}</td>
       <td style="color:var(--muted)">${b.author}</td>
       <td style="color:var(--muted)">${b.year||''}</td>
       <td>${b.verified ? '<span class="badge badge-green">✓</span>' : '<span class="badge badge-gray">?</span>'}</td>
@@ -907,7 +912,7 @@ window.removeBuilderRow = function(i) {
 // Toplu Batch'e aktar
 document.getElementById('btn-builder-to-batch')?.addEventListener('click', () => {
   if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
-  batchBooks = builderList.map(b => ({ book_title: b.title, author_name: b.author, category: '' }));
+  batchBooks = builderList.map(b => ({ book_title: workLabel(b), author_name: b.author, category: '' }));
   updateBatchBadge();
   renderBulkTable(batchBooks);
   document.getElementById('btn-batch-start').disabled = false;
@@ -921,7 +926,7 @@ document.getElementById('btn-builder-csv')?.addEventListener('click', () => {
   if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
   let csv = 'Kitap Adı,Yazar Adı,Yıl\n';
   csv += builderList.map(b =>
-    `"${(b.title||'').replace(/"/g,'""')}","${(b.author||'').replace(/"/g,'""')}","${b.year||''}"`
+    `"${workLabel(b).replace(/"/g,'""')}","${(b.author||'').replace(/"/g,'""')}","${b.year||''}"`
   ).join('\n');
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');

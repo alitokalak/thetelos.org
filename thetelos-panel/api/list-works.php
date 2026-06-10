@@ -157,11 +157,15 @@ if ($mode === 'verify') {
 /* ════════════════ MODE: list ════════════════ */
 $base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "For EACH work provide:\n"
-    . "- the English title\n"
-    . "- the original-language title (if different), e.g. Latin/Greek/German/French\n"
+    . "- the standard English title by which the work is known in scholarship\n"
+    . "- the original-language title (if different), e.g. Latin/Greek/German/French/Arabic/Hebrew\n"
     . "- the approximate first publication or composition year (integer)\n"
     . "Include all significant books, treatises and major works in roughly chronological order. "
     . "Exclude minor letters and fragments unless they are major standalone works.\n"
+    . "CRITICAL RULES:\n"
+    . "- Only list works that genuinely belong to this author. If you are not sure a work is really his, do NOT include it.\n"
+    . "- Each distinct work must appear EXACTLY ONCE. Do NOT list the same work twice under different English renderings, "
+    . "translations or labels such as '(alternative)', '(Hebrew version)', '(summary)'. Merge variants into one entry.\n"
     . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
     . "[{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
 
@@ -182,7 +186,9 @@ for ($round = 1; $round <= $max_rounds; $round++) {
         $prompt  = "The author is \"{$author}\".\n"
             . "These works have ALREADY been listed:\n{$already}\n\n"
             . "Now list ONLY ADDITIONAL works by this author that are NOT in the list above. "
-            . "Do not repeat any listed work. If there are no more works, return an empty array [].\n"
+            . "Do not repeat any listed work, and do not list translation/variant duplicates of works already listed. "
+            . "Only include works you are genuinely sure belong to this author. "
+            . "If there are no more works, return an empty array [].\n"
             . "Same JSON format: [{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
     }
 
