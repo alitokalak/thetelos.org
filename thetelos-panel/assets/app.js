@@ -803,7 +803,9 @@ window.fetchOneAuthor = async function(i) {
   const cell = document.querySelector(`#bauthor-${i} td:last-child`);
   if (cell) cell.innerHTML = '<span class="loader"></span>';
   const added = await fetchAuthorWorks(a.author);
-  if (cell) cell.innerHTML = `<span class="badge badge-green">+${added}</span>`;
+  if (cell) cell.innerHTML = added < 0
+    ? `<span class="badge badge-gray">hata</span>`
+    : `<span class="badge badge-green">+${added}</span>`;
 };
 
 // "Tüm yazarların eserlerini getir" — sırayla
@@ -814,7 +816,9 @@ document.getElementById('btn-fetch-all-works')?.addEventListener('click', async 
     const cell = document.querySelector(`#bauthor-${i} td:last-child`);
     if (cell) cell.innerHTML = '<span class="loader"></span>';
     const added = await fetchAuthorWorks(builderAuthors[i].author);
-    if (cell) cell.innerHTML = `<span class="badge badge-green">+${added}</span>`;
+    if (cell) cell.innerHTML = added < 0
+      ? `<span class="badge badge-gray">hata</span>`
+      : `<span class="badge badge-green">+${added}</span>`;
   }
   setLoading(btn, false);
   notify('builder-notif', `✓ Tamamlandı — toplam ${builderList.length} kitap.`, 'ok');
@@ -822,29 +826,55 @@ document.getElementById('btn-fetch-all-works')?.addEventListener('click', async 
 
 // Bir yazarın eserlerini çek ve listeye ekle (dedup)
 async function fetchAuthorWorks(author) {
-  const verify = document.getElementById('builder-verify').checked ? '1' : '0';
+  const doVerify = document.getElementById('builder-verify').checked;
   try {
+    // 1) Listeyi hızlıca getir (sadece LLM, doğrulama yok — Cloudflare timeout'a takılmaz)
     const res = await postData(API('list-works.php'), {
-      author, api_provider: activeProvider, verify,
+      author, api_provider: activeProvider, mode: 'list',
     });
-    if (!res.ok) { notify('builder-notif', res.error, 'err'); return 0; }
+    if (!res.ok) { notify('builder-notif', res.error || 'Liste alınamadı.', 'err'); return -1; }
+
     const existing = new Set(builderList.map(b => (b.title+'||'+b.author).toLowerCase()));
-    let added = 0;
+    const newRows = [];
     for (const w of res.works) {
       const key = (w.title+'||'+author).toLowerCase();
       if (existing.has(key)) continue;
       existing.add(key);
-      builderList.push({
+      const row = {
         title: w.title, author: author, year: w.year || '',
-        verified: w.verified, cover: w.cover || '',
-      });
-      added++;
+        verified: false, cover: '',
+      };
+      builderList.push(row);
+      newRows.push(row);
     }
     renderBuilderList();
-    return added;
+
+    // 2) Kapak/yıl doğrulamasını parça parça (6'lı) yap — her istek 100s altında kalır
+    if (doVerify && newRows.length) {
+      for (let i = 0; i < newRows.length; i += 6) {
+        const chunk = newRows.slice(i, i + 6);
+        try {
+          const vr = await postData(API('list-works.php'), {
+            author, mode: 'verify',
+            titles: JSON.stringify(chunk.map(r => r.title)),
+          });
+          if (vr.ok && vr.results) {
+            for (const r of vr.results) {
+              const row = chunk.find(c => c.title === r.title);
+              if (!row) continue;
+              row.verified = !!r.verified;
+              if (r.cover) row.cover = r.cover;
+              if (r.year && !row.year) row.year = r.year;
+            }
+            renderBuilderList();
+          }
+        } catch(_) { /* doğrulama hatası listeyi engellemez */ }
+      }
+    }
+    return newRows.length;
   } catch(e) {
     notify('builder-notif', 'Hata: ' + e.message, 'err');
-    return 0;
+    return -1;
   }
 }
 

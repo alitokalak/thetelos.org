@@ -1,8 +1,14 @@
 <?php
 /**
- * list-works.php — Bir yazarın TÜM eserlerini üret (LLM) + OpenLibrary ile doğrula/zenginleştir.
- * POST: author, api_provider (deepseek|anthropic), verify (1|0)
- * Dönüş: { ok, author, works:[{title, original, year, verified, cover, ol_key}] }
+ * list-works.php — Yazarın eserlerini üret (LLM) veya OpenLibrary ile doğrula.
+ *
+ * İki mod (Cloudflare ~100s timeout'u aşmamak için ayrıldı):
+ *   mode=list   : Sadece LLM ile eser listesi (hızlı, doğrulama yok).
+ *                 POST: author, api_provider
+ *                 Dönüş: { ok, author, count, works:[{title, original, year}] }
+ *   mode=verify : Bir grup başlığı OpenLibrary/Google ile doğrula + kapak getir.
+ *                 POST: author, titles (JSON array), api_provider
+ *                 Dönüş: { ok, results:[{title, verified, cover, year, ol_key}] }
  */
 session_start();
 require_once dirname(__DIR__) . '/config.php';
@@ -11,9 +17,9 @@ header('Content-Type: application/json');
 @ini_set('display_errors', 0);
 set_time_limit(300);
 
-$author   = trim($_POST['author'] ?? '');
+$author = trim($_POST['author'] ?? '');
 $provider = trim($_POST['api_provider'] ?? 'deepseek');
-$verify   = ($_POST['verify'] ?? '1') === '1';
+$mode = trim($_POST['mode'] ?? 'list');
 
 if ($author === '') { echo json_encode(['ok'=>false,'error'=>'Yazar adı zorunlu.']); exit; }
 
@@ -22,7 +28,7 @@ function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
     if ($provider === 'anthropic') {
         $ch = curl_init('https://api.anthropic.com/v1/messages');
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>180,
+            CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>120,
             CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
             CURLOPT_POSTFIELDS=>json_encode(['model'=>ANTHROPIC_MODEL,'max_tokens'=>$max_tokens,'messages'=>[['role'=>'user','content'=>$prompt]]]),
         ]);
@@ -35,7 +41,7 @@ function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
     // deepseek
     $ch = curl_init(DEEPSEEK_API_URL);
     curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>180,
+        CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>120,
         CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
         CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>$max_tokens,'messages'=>[['role'=>'user','content'=>$prompt]]]),
     ]);
@@ -46,75 +52,30 @@ function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
     return [$d['choices'][0]['message']['content'] ?? '', ''];
 }
 
-// JSON dizisini güvenli ayıkla (markdown fence / fazla metin temizle)
+// JSON dizisini güvenli ayıkla (markdown fence / fazla metin / kesik JSON temizle)
 function lw_extract_json_array($text) {
     $text = preg_replace('/```json|```/i', '', $text);
     $s = strpos($text, '[');
+    if ($s === false) return null;
     $e = strrpos($text, ']');
-    if ($s === false || $e === false || $e <= $s) return null;
-    $json = substr($text, $s, $e - $s + 1);
+    $json = ($e !== false && $e > $s) ? substr($text, $s, $e - $s + 1) : substr($text, $s);
     $arr = json_decode($json, true);
-    return is_array($arr) ? $arr : null;
+    if (is_array($arr)) return $arr;
+    // Kesik JSON onarımı: son tam nesneye kadar kırp ve diziyi kapat
+    if (($lastObj = strrpos($json, '}')) !== false) {
+        $repaired = substr($json, 0, $lastObj + 1) . ']';
+        $arr = json_decode($repaired, true);
+        if (is_array($arr)) return $arr;
+    }
+    return null;
 }
 
-// ── 1) Yazarın tüm eserleri — model "başka yok" diyene kadar döngü ──
-$base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
-    . "For EACH work provide:\n"
-    . "- the English title\n"
-    . "- the original-language title (if different), e.g. Latin/Greek/German/French\n"
-    . "- the approximate first publication or composition year (integer)\n"
-    . "Include all significant books, treatises and major works in roughly chronological order. "
-    . "Exclude minor letters and fragments unless they are major standalone works.\n"
-    . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
-    . "[{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
-
-$items      = [];
-$seen       = [];
-$max_rounds = 6;
-$first_err  = '';
-
-for ($round = 1; $round <= $max_rounds; $round++) {
-    if ($round === 1) {
-        $prompt = $base_prompt;
-    } else {
-        // Şimdiye kadar listelenenleri ver, SADECE eksik kalanları iste
-        $already = implode("\n", array_map(fn($w) => '- ' . $w['title'], $items));
-        $prompt  = "The author is \"{$author}\".\n"
-            . "These works have ALREADY been listed:\n{$already}\n\n"
-            . "Now list ONLY ADDITIONAL works by this author that are NOT in the list above. "
-            . "Do not repeat any listed work. If there are no more works, return an empty array [].\n"
-            . "Same JSON format: [{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
-    }
-
-    list($raw, $err) = lw_call_llm($provider, $prompt, 8000);
-    if ($err) { if ($round === 1) { $first_err = $err; } break; }
-
-    $batch = lw_extract_json_array($raw);
-    if (!is_array($batch)) { if ($round === 1) { $first_err = 'Liste ayrıştırılamadı.'; } break; }
-
-    $added = 0;
-    foreach ($batch as $it) {
-        $t = trim($it['title'] ?? '');
-        if ($t === '') continue;
-        $k = mb_strtolower($t);
-        if (isset($seen[$k])) continue;
-        $seen[$k] = true;
-        $items[] = $it;
-        $added++;
-    }
-
-    if ($added === 0) break;          // model'in ekleyecek yeni eseri kalmadı
-    if (count($items) >= 250) break;  // güvenlik üst sınırı
-}
-
-if (!$items) { echo json_encode(['ok'=>false,'error'=>$first_err ?: 'Liste alınamadı.']); exit; }
-
-// ── 2) Doğrula + kapak getir (cURL — allow_url_fopen kapalı olabilir) ──
+// ── cURL GET (allow_url_fopen kapalı olabilir) ────────────────────
 function lw_http_get($url) {
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 8,
+        CURLOPT_TIMEOUT        => 6,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTPHEADER     => ['User-Agent: ThetelosBot/1.0 (+https://thetelos.org)'],
     ]);
@@ -170,42 +131,102 @@ function lw_ol_verify($title, $author) {
     return null;
 }
 
-$works = [];
-$max_items = 120; // güvenlik üst sınırı
-$n = 0;
-foreach ($items as $it) {
-    if ($n >= $max_items) break;
-    $title    = trim($it['title'] ?? '');
-    $original = trim($it['original'] ?? '');
-    $year     = isset($it['year']) ? (int)$it['year'] : null;
-    if ($title === '') continue;
-
-    $row = [
-        'title'    => $title,
-        'original' => ($original && stripos($original, $title) === false) ? $original : '',
-        'year'     => $year,
-        'verified' => false,
-        'cover'    => '',
-        'ol_key'   => '',
-    ];
-
-    if ($verify) {
-        $v = lw_ol_verify($title, $author);
+/* ════════════════ MODE: verify ════════════════ */
+if ($mode === 'verify') {
+    $titles = json_decode($_POST['titles'] ?? '[]', true);
+    if (!is_array($titles)) { echo json_encode(['ok'=>false,'error'=>'titles geçersiz.']); exit; }
+    $titles = array_slice($titles, 0, 10); // güvenli üst sınır (10×~12s < 100s)
+    $results = [];
+    foreach ($titles as $t) {
+        $t = trim((string)$t);
+        if ($t === '') continue;
+        $row = ['title'=>$t, 'verified'=>false, 'cover'=>'', 'year'=>null, 'ol_key'=>''];
+        $v = lw_ol_verify($t, $author);
         if ($v) {
             $row['verified'] = true;
             $row['cover']    = $v['cover'];
             $row['ol_key']   = $v['ol_key'];
-            if (!$row['year'] && $v['ol_year']) $row['year'] = $v['ol_year'];
+            $row['year']     = $v['ol_year'];
         }
+        $results[] = $row;
     }
-    $works[] = $row;
-    $n++;
+    echo json_encode(['ok'=>true, 'results'=>$results], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+/* ════════════════ MODE: list ════════════════ */
+$base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
+    . "For EACH work provide:\n"
+    . "- the English title\n"
+    . "- the original-language title (if different), e.g. Latin/Greek/German/French\n"
+    . "- the approximate first publication or composition year (integer)\n"
+    . "Include all significant books, treatises and major works in roughly chronological order. "
+    . "Exclude minor letters and fragments unless they are major standalone works.\n"
+    . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
+    . "[{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
+
+$items      = [];
+$seen       = [];
+$max_rounds = 5;
+$first_err  = '';
+$started    = microtime(true);
+
+for ($round = 1; $round <= $max_rounds; $round++) {
+    // Cloudflare ~100s sınırı: süreyi aşmamak için döngüyü erken bitir
+    if ($round > 1 && (microtime(true) - $started) > 70) break;
+
+    if ($round === 1) {
+        $prompt = $base_prompt;
+    } else {
+        $already = implode("\n", array_map(fn($w) => '- ' . $w['title'], $items));
+        $prompt  = "The author is \"{$author}\".\n"
+            . "These works have ALREADY been listed:\n{$already}\n\n"
+            . "Now list ONLY ADDITIONAL works by this author that are NOT in the list above. "
+            . "Do not repeat any listed work. If there are no more works, return an empty array [].\n"
+            . "Same JSON format: [{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
+    }
+
+    list($raw, $err) = lw_call_llm($provider, $prompt, 4000);
+    if ($err) { if ($round === 1) { $first_err = $err; } break; }
+
+    $batch = lw_extract_json_array($raw);
+    if (!is_array($batch)) { if ($round === 1) { $first_err = 'Liste ayrıştırılamadı.'; } break; }
+
+    $added = 0;
+    foreach ($batch as $it) {
+        $t = trim($it['title'] ?? '');
+        if ($t === '') continue;
+        $k = mb_strtolower($t);
+        if (isset($seen[$k])) continue;
+        $seen[$k] = true;
+        $items[] = $it;
+        $added++;
+    }
+
+    if ($added === 0) break;
+    if (count($items) >= 250) break;
+}
+
+if (!$items) { echo json_encode(['ok'=>false,'error'=>$first_err ?: 'Liste alınamadı.']); exit; }
+
+$works = [];
+foreach ($items as $it) {
+    $title = trim($it['title'] ?? '');
+    if ($title === '') continue;
+    $original = trim($it['original'] ?? '');
+    $works[] = [
+        'title'    => $title,
+        'original' => ($original && stripos($original, $title) === false) ? $original : '',
+        'year'     => isset($it['year']) ? (int)$it['year'] : null,
+        'verified' => false,
+        'cover'    => '',
+        'ol_key'   => '',
+    ];
 }
 
 echo json_encode([
-    'ok'       => true,
-    'author'   => $author,
-    'count'    => count($works),
-    'verified' => count(array_filter($works, fn($w)=>$w['verified'])),
-    'works'    => $works,
+    'ok'     => true,
+    'author' => $author,
+    'count'  => count($works),
+    'works'  => $works,
 ], JSON_UNESCAPED_UNICODE);
