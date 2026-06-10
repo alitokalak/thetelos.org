@@ -24,32 +24,35 @@ $mode = trim($_POST['mode'] ?? 'list');
 if ($author === '') { echo json_encode(['ok'=>false,'error'=>'Yazar adı zorunlu.']); exit; }
 
 // ── LLM çağrısı (JSON döndüren, stream değil) ─────────────────────
+// Dönüş: [text, error, truncated]  (truncated=true → token limiti nedeniyle kesildi)
 function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
     if ($provider === 'anthropic') {
         $ch = curl_init('https://api.anthropic.com/v1/messages');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>120,
             CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>ANTHROPIC_MODEL,'max_tokens'=>$max_tokens,'messages'=>[['role'=>'user','content'=>$prompt]]]),
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>ANTHROPIC_MODEL,'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
         ]);
         $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
-        if ($e || !$r) return ['', 'Anthropic: '.$e];
+        if ($e || !$r) return ['', 'Anthropic: '.$e, false];
         $d = json_decode($r, true);
-        if (isset($d['error'])) return ['', 'Anthropic: '.($d['error']['message']??'hata')];
-        return [$d['content'][0]['text'] ?? '', ''];
+        if (isset($d['error'])) return ['', 'Anthropic: '.($d['error']['message']??'hata'), false];
+        $trunc = ($d['stop_reason'] ?? '') === 'max_tokens';
+        return [$d['content'][0]['text'] ?? '', '', $trunc];
     }
     // deepseek
     $ch = curl_init(DEEPSEEK_API_URL);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>120,
         CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>$max_tokens,'messages'=>[['role'=>'user','content'=>$prompt]]]),
+        CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
     ]);
     $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
-    if ($e || !$r) return ['', 'DeepSeek: '.$e];
+    if ($e || !$r) return ['', 'DeepSeek: '.$e, false];
     $d = json_decode($r, true);
-    if (isset($d['error'])) return ['', 'DeepSeek: '.($d['error']['message']??'hata')];
-    return [$d['choices'][0]['message']['content'] ?? '', ''];
+    if (isset($d['error'])) return ['', 'DeepSeek: '.($d['error']['message']??'hata'), false];
+    $trunc = ($d['choices'][0]['finish_reason'] ?? '') === 'length';
+    return [$d['choices'][0]['message']['content'] ?? '', '', $trunc];
 }
 
 // JSON dizisini güvenli ayıkla (markdown fence / fazla metin / kesik JSON temizle)
@@ -166,7 +169,7 @@ if ($mode === 'verify') {
 }
 
 /* ════════════════ MODE: list ════════════════ */
-$base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
+$prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "For EACH work provide:\n"
     . "- \"title\": the standard English title by which the work is known in scholarship\n"
     . "- \"original\": the original-language title, romanized into Latin letters "
@@ -175,47 +178,27 @@ $base_prompt = "List the COMPLETE works of the author \"{$author}\".\n"
     . "Include all significant books, treatises and major works in roughly chronological order. "
     . "Exclude minor letters and fragments unless they are major standalone works.\n"
     . "CRITICAL RULES:\n"
-    . "- Only list works that genuinely belong to THIS exact author. If you are not certain, omit it. "
-    . "Never include works by a different, similarly named or related author.\n"
-    . "- The \"title\" field must contain ONLY the work's name. NEVER add qualifiers such as "
-    . "'(variant of listed)', '(alternative)', '(also known as)', '(Hebrew version)', '(summary)'.\n"
-    . "- Each distinct text must appear EXACTLY ONCE. If the same work is known by two different English "
-    . "titles or translations, pick ONE and list it only once.\n"
-    . "- For a multi-volume work, you MAY list each volume as its own entry, naming it like \"Work Title (Volume 1)\", \"Work Title (Volume 2)\". "
-    . "But do NOT list BOTH the whole work AND its volumes/parts — pick the volume level OR the whole, not both. "
-    . "Do NOT break a single book into its internal chapters or sub-sections.\n"
+    . "- Only list works that genuinely belong to THIS exact author. If you are not certain, omit it.\n"
+    . "- The \"title\" field must contain ONLY the work's name — never add '(alternative)', '(variant)', '(also known as)' etc.\n"
+    . "- Each distinct text EXACTLY ONCE. If the same work is known by multiple English titles, pick ONE.\n"
+    . "- A multi-volume work may be listed per volume (e.g. \"Work Title (Volume 1)\"), BUT never list BOTH the whole work AND its individual volumes/chapters.\n"
+    . "- Do NOT split a single book into its internal chapters, sections, or laws (e.g. if an author wrote a legal code, list the code as ONE entry, not its 30 subsections).\n"
     . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
     . "[{\"title\":\"English Title\",\"original\":\"Romanized Original Title\",\"year\":1234}]";
 
-$items      = [];
-$seen       = [];   // normalize edilmiş İngilizce başlık
-$seen_orig  = [];   // normalize edilmiş orijinal başlık
-$max_rounds = 5;
-$first_err  = '';
-$started    = microtime(true);
+$items     = [];
+$seen      = [];   // normalize edilmiş İngilizce başlık
+$seen_orig = [];   // normalize edilmiş orijinal başlık
+$first_err = '';
 
-for ($round = 1; $round <= $max_rounds; $round++) {
-    // Cloudflare ~100s sınırı: süreyi aşmamak için döngüyü erken bitir
-    if ($round > 1 && (microtime(true) - $started) > 70) break;
-
-    if ($round === 1) {
-        $prompt = $base_prompt;
-    } else {
-        $already = implode("\n", array_map(fn($w) => '- ' . $w['title'], $items));
-        $prompt  = "The author is \"{$author}\".\n"
-            . "These works have ALREADY been listed:\n{$already}\n\n"
-            . "Now list ONLY ADDITIONAL works by this author that are NOT in the list above. "
-            . "Do not repeat any listed work, and do not list translation/variant duplicates of works already listed. "
-            . "Only include works you are genuinely sure belong to this author. "
-            . "If there are no more works, return an empty array [].\n"
-            . "Same JSON format: [{\"title\":\"English Title\",\"original\":\"Original Title\",\"year\":1234}]";
-    }
-
-    list($raw, $err) = lw_call_llm($provider, $prompt, 4000);
-    if ($err) { if ($round === 1) { $first_err = $err; } break; }
+// Tek çağrı yap (temperature=0 → tutarlı sonuç).
+// Yanıt token limitiyle kesilmişse bir kez daha devam isteği gönder.
+for ($round = 1; $round <= 2; $round++) {
+    [$raw, $err, $truncated] = lw_call_llm($provider, $prompt, 6000);
+    if ($err) { $first_err = $err; break; }
 
     $batch = lw_extract_json_array($raw);
-    if (!is_array($batch)) { if ($round === 1) { $first_err = 'Liste ayrıştırılamadı.'; } break; }
+    if (!is_array($batch)) { $first_err = 'Liste ayrıştırılamadı.'; break; }
 
     $added = 0;
     foreach ($batch as $it) {
@@ -231,8 +214,13 @@ for ($round = 1; $round <= $max_rounds; $round++) {
         $added++;
     }
 
-    if ($added === 0) break;
     if (count($items) >= 250) break;
+    // Sadece yanıt token limitiyle kesilmişse devam et; yoksa tek turda kal
+    if (!$truncated) break;
+    // Devam turu: kesildiği yerden JSON'u tamamlamasını iste
+    $prompt = "Continue the JSON array from where you stopped. Do NOT restart from the beginning. "
+        . "Output ONLY the remaining items as valid JSON array entries, starting with [ if needed, ending with ].\n"
+        . "Same format: [{\"title\":\"...\",\"original\":\"...\",\"year\":0}]";
 }
 
 if (!$items) { echo json_encode(['ok'=>false,'error'=>$first_err ?: 'Liste alınamadı.']); exit; }
