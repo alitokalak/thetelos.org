@@ -117,6 +117,46 @@ function bw_update_book($batch_file, $idx, $updates) {
     flock($fp, LOCK_UN); fclose($fp);
 }
 
+/* ── Başlık kök eşleştirme (JS titleTokens/titlesSame ile aynı mantık) ── */
+function bw_title_tokens($s) {
+    static $stop = null;
+    if ($stop === null) {
+        $stop = array_flip(explode(' ',
+            'against those attack book books gospel epistle epistles letter letters saint part parts four '
+          . 'commentary commentaries exposition expositions expositio commentaria commentarium '
+          . 'compendium treatise office feast officium rule '
+          . 'sentencia sententia sentencie super libri liber librum libros '
+          . 'quaestiones quaestio questiones questio disputatae disputata disputatio quaestione '
+          . 'litteram litera evangelium evangelii evangelio epistola epistolas epistolam festo '
+          . 'aristotle aristotles aristotelis'));
+    }
+    $s = mb_strtolower($s, 'UTF-8');
+    $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+    if ($t !== false && $t !== '') $s = $t;
+    $s = preg_replace('/[^a-z0-9]+/', ' ', $s);
+    $out = [];
+    foreach (explode(' ', $s) as $w) {
+        if (strlen($w) >= 4 && !isset($stop[$w])) $out[] = $w;
+    }
+    return $out;
+}
+function bw_tok_match($a, $b) {
+    if ($a === $b) return true;
+    $n = min(strlen($a), strlen($b));
+    if ($n < 5) return false;
+    $k = 0; while ($k < $n && $a[$k] === $b[$k]) $k++;
+    return $k >= 5;
+}
+function bw_titles_same($ta, $tb) {
+    if (!$ta || !$tb) return false;
+    $small = count($ta) <= count($tb) ? $ta : $tb;
+    $big   = count($ta) <= count($tb) ? $tb : $ta;
+    $m = 0;
+    foreach ($small as $x) { foreach ($big as $y) { if (bw_tok_match($x, $y)) { $m++; break; } } }
+    $min = count($small);
+    return $m >= 2 || ($m >= 1 && $m === $min);
+}
+
 function bw_clean_content($text) {
     $text = preg_replace('/%%PART[12]_(?:END|START)%%/i', '', $text);
     $text = preg_replace('/%%PART_END%%/i', '', $text);
@@ -216,24 +256,37 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $parts        = max(1, min(4, (int)($batch['parts'] ?? 2)));
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
 
-    // ── Dedup kontrolü ────────────────────────────────────────────
-    // Temiz İngilizce adla ara (parantezli Latince ad WP aramasını bozuyordu),
-    // hem tam ad hem temiz ad ile eşleşmeyi dene → tekrar yazmayı güvenle önle.
-    [$existing] = bw_wp("$wp_api/$ep?search=" . urlencode($search_book) . '&per_page=10', 'GET', [], $auth);
-    if (!empty($existing) && is_array($existing)) {
-        foreach ($existing as $p) {
-            $title = html_entity_decode(strip_tags($p['title']['rendered'] ?? ''));
-            $title_match = (stripos($title, $book) !== false) || (stripos($title, $search_book) !== false);
-            if ($title_match && (!$author || stripos($title, $author) !== false)) {
-                bw_update_book($batch_file, $idx, [
-                    'status'   => 'duplicate',
-                    'post_id'  => $p['id'],
-                    'edit_url' => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $p['id'] . '&action=edit',
-                    'error'    => 'Zaten mevcut',
-                ]);
-                return;
-            }
+    // ── Dedup kontrolü (kök bazlı eşleştirme) ─────────────────────
+    // Aynı eser farklı İngilizce çeviriyle yazılmış olabilir
+    // ("Commentary on Aristotle's Physics" ≈ "Exposition of the Physics of Aristotle").
+    // Bu yüzden başlıkları anlamlı kelime köklerine indirip örtüşmeye göre eşleştir.
+    $cand_tokens = bw_title_tokens($book);
+    // Yazarın sitedeki tüm eserlerini topla (yazar terimi + ada göre arama)
+    $dup = null;
+    [$aterms] = bw_wp("$wp_api/authors?search=" . urlencode($author) . '&per_page=10', 'GET', [], $auth);
+    $atid = null;
+    foreach ($aterms ?? [] as $t) { if (strtolower($t['name'] ?? '') === strtolower($author)) { $atid = $t['id']; break; } }
+    if ($atid === null && !empty($aterms[0]['id'])) $atid = $aterms[0]['id'];
+
+    foreach (['posts','analysis'] as $dep) {
+        $url = $atid !== null
+            ? "$wp_api/$dep?authors=$atid&per_page=100&status=publish,draft,pending,private,future"
+            : "$wp_api/$dep?search=" . urlencode($search_book) . '&per_page=20&status=publish,draft,pending,private,future';
+        [$rows] = bw_wp($url, 'GET', [], $auth);
+        foreach ($rows ?? [] as $p) {
+            $pt = html_entity_decode(strip_tags($p['title']['rendered'] ?? ''));
+            $pt = preg_replace('/\s*[-–]\s*' . preg_quote($author, '/') . '\s*$/i', '', $pt);
+            if (bw_titles_same($cand_tokens, bw_title_tokens($pt))) { $dup = $p; break 2; }
         }
+    }
+    if ($dup) {
+        bw_update_book($batch_file, $idx, [
+            'status'   => 'duplicate',
+            'post_id'  => $dup['id'],
+            'edit_url' => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $dup['id'] . '&action=edit',
+            'error'    => 'Zaten mevcut',
+        ]);
+        return;
     }
 
     // ── Prompt ────────────────────────────────────────────────────

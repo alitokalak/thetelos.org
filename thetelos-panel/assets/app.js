@@ -57,6 +57,38 @@ function normTitle(s) {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+// Aynı eseri farklı çevirilerde tanımak için: başlığı anlamlı kelime köklerine indir.
+// "Commentary on Aristotle's Physics" ≈ "Exposition of the Physics of Aristotle" → her ikisi {physics, physicorum}
+const TITLE_STOP = new Set((
+  'against those attack book books gospel epistle epistles letter letters saint part parts four '
++ 'commentary commentaries exposition expositions expositio commentaria commentarium '
++ 'compendium treatise office feast officium rule '
++ 'sentencia sententia sentencie super libri liber librum libros '
++ 'quaestiones quaestio questiones questio disputatae disputata disputatio quaestione '
++ 'litteram litera evangelium evangelii evangelio epistola epistolas epistolam festo '
++ 'aristotle aristotles aristotelis'
+).split(/\s+/).filter(Boolean));
+
+function titleTokens(s) {
+  s = (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  s = s.replace(/[^a-z0-9]+/g, ' ');
+  return s.split(' ').filter(w => w.length >= 4 && !TITLE_STOP.has(w));
+}
+function tokMatch(a, b) {
+  if (a === b) return true;
+  let k = 0; const n = Math.min(a.length, b.length);
+  while (k < n && a[k] === b[k]) k++;
+  return k >= 5;  // aynı kök (ör. physicorum/physicam, posterior/posteriorum)
+}
+function titlesSame(ta, tb) {
+  if (!ta.length || !tb.length) return false;
+  const small = ta.length <= tb.length ? ta : tb;
+  const big   = ta.length <= tb.length ? tb : ta;
+  let m = 0;
+  for (const x of small) { if (big.some(y => tokMatch(x, y))) m++; }
+  return m >= 2 || (m >= 1 && m === small.length);
+}
+
 /* ── Token Slider ─────────────────────────────────── */
 function tokenInfo(val) {
   const w = parseInt(val);
@@ -858,13 +890,14 @@ async function fetchAuthorWorks(author) {
     }
     renderBuilderList();
 
-    // Sitede zaten var mı? — yazarın TÜM mevcut eserlerini TEK istekle çek, yerel eşleştir
+    // Sitede zaten var mı? — yazarın TÜM mevcut eserlerini TEK istekle çek, kök bazlı eşleştir
     try {
       const er = await postData(API('list-works.php'), { author, mode: 'exists' });
       if (er.ok && Array.isArray(er.existing)) {
+        const ex = er.existing.map(e => ({ ...e, tok: titleTokens(e.title) }));
         for (const row of newRows) {
-          const n = normTitle(row.title);
-          const hit = er.existing.find(e => e.norm && (e.norm === n || e.norm.includes(n) || n.includes(e.norm)));
+          const rt = titleTokens(workLabel(row));
+          const hit = ex.find(e => titlesSame(rt, e.tok));
           if (hit) { row.exists = true; row.post_url = hit.post_url || ''; }
         }
         renderBuilderList();
