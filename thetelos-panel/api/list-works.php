@@ -161,6 +161,50 @@ function lw_ol_verify($title, $author) {
     return null;
 }
 
+/* ════════════════ MODE: exists (sitede zaten var mı?) ════════════════ */
+if ($mode === 'exists') {
+    $titles = json_decode($_POST['titles'] ?? '[]', true);
+    if (!is_array($titles)) { echo json_encode(['ok'=>false,'error'=>'titles geçersiz.']); exit; }
+    $titles = array_slice($titles, 0, 60);
+    $auth   = 'Basic ' . base64_encode(WP_USER . ':' . WP_APP_PASS);
+    $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
+
+    $wp_get = function($url) use ($auth) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>15,
+            CURLOPT_HTTPHEADER=>['Authorization: '.$auth],
+        ]);
+        $r = curl_exec($ch); $c = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        return ($c>=200 && $c<300) ? json_decode($r, true) : null;
+    };
+
+    $results = [];
+    foreach ($titles as $t) {
+        $t = trim((string)$t);
+        if ($t === '') continue;
+        // Parantezli orijinal adı at — temiz İngilizce adla ara
+        $search = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $t));
+        if ($search === '') $search = $t;
+        $nt = lw_norm($search);
+        $found = null;
+        foreach (['posts','analysis'] as $ep) {
+            $hits = $wp_get("$wp_api/$ep?search=" . urlencode($search) . '&per_page=10&status=any');
+            foreach ($hits ?? [] as $p) {
+                $ptitle = html_entity_decode(strip_tags($p['title']['rendered'] ?? ''));
+                $pn = lw_norm(preg_replace('/\s*-\s*'.preg_quote($author,'/').'\s*$/i', '', $ptitle));
+                if ($nt !== '' && strpos($pn, $nt) !== false) {
+                    $found = ['id'=>$p['id'], 'link'=>$p['link'] ?? ''];
+                    break 2;
+                }
+            }
+        }
+        $results[] = ['title'=>$t, 'exists'=>(bool)$found, 'post_id'=>$found['id'] ?? null, 'post_url'=>$found['link'] ?? ''];
+    }
+    echo json_encode(['ok'=>true, 'results'=>$results], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 /* ════════════════ MODE: verify ════════════════ */
 if ($mode === 'verify') {
     $titles = json_decode($_POST['titles'] ?? '[]', true);

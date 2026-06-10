@@ -835,12 +835,32 @@ async function fetchAuthorWorks(author) {
       existing.add(key);
       const row = {
         title: w.title, original: w.original || '', author: author, year: w.year || '',
-        verified: false, cover: '',
+        verified: false, cover: '', exists: false, post_url: '',
       };
       builderList.push(row);
       newRows.push(row);
     }
     renderBuilderList();
+
+    // Sitede zaten var mı? — parça parça kontrol et, işaretle
+    for (let i = 0; i < newRows.length; i += 20) {
+      const chunk = newRows.slice(i, i + 20);
+      try {
+        const er = await postData(API('list-works.php'), {
+          author, mode: 'exists',
+          titles: JSON.stringify(chunk.map(r => workLabel(r))),
+        });
+        if (er.ok && er.results) {
+          for (const r of er.results) {
+            const row = chunk.find(c => workLabel(c) === r.title);
+            if (!row) continue;
+            row.exists = !!r.exists;
+            row.post_url = r.post_url || '';
+          }
+          renderBuilderList();
+        }
+      } catch(_) {}
+    }
 
     // 2) Kapak/yıl doğrulamasını parça parça (6'lı) yap — her istek 100s altında kalır
     if (doVerify && newRows.length) {
@@ -892,7 +912,9 @@ function renderBuilderList() {
       <td>${workLabel(b)}</td>
       <td style="color:var(--muted)">${b.author}</td>
       <td style="color:var(--muted)">${b.year||''}</td>
-      <td>${b.verified ? '<span class="badge badge-green">✓</span>' : '<span class="badge badge-gray">?</span>'}</td>
+      <td>${b.exists
+        ? `<span class="badge badge-gray">⊘ Sitede var</span>`
+        : (b.verified ? '<span class="badge badge-green">✓</span>' : '<span class="badge badge-gray">?</span>')}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="removeBuilderRow(${i})" style="color:var(--red)">✕</button></td>
     </tr>`).join('');
 }
@@ -905,13 +927,17 @@ window.removeBuilderRow = function(i) {
 // Toplu Batch'e aktar
 document.getElementById('btn-builder-to-batch')?.addEventListener('click', () => {
   if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
-  batchBooks = builderList.map(b => ({ book_title: workLabel(b), author_name: b.author, category: '', cover: b.cover || '' }));
+  // Sitede zaten olanları atla — sadece eksikleri aktar
+  const missing = builderList.filter(b => !b.exists);
+  if (!missing.length) { notify('builder-notif','Tüm eserler sitede zaten var, eklenecek yeni eser yok.','ok'); return; }
+  const skipped = builderList.length - missing.length;
+  batchBooks = missing.map(b => ({ book_title: workLabel(b), author_name: b.author, category: '', cover: b.cover || '' }));
   updateBatchBadge();
   renderBulkTable(batchBooks);
   document.getElementById('btn-batch-start').disabled = false;
   // Toplu Batch sekmesine geç
   document.querySelector('.tab-top-btn[data-mode=bulk]')?.click();
-  notify('bulk-notif', `✓ ${batchBooks.length} kitap batch'e aktarıldı. Ayarları seçip başlat.`, 'ok');
+  notify('bulk-notif', `✓ ${batchBooks.length} eksik kitap batch'e aktarıldı${skipped ? ` (${skipped} tanesi sitede zaten var, atlandı)` : ''}. Ayarları seçip başlat.`, 'ok');
 });
 
 // CSV indir
