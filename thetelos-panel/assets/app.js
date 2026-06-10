@@ -469,6 +469,7 @@ let batchBooks    = [];   // merged book list from all uploaded files
 let batchId       = null;
 let batchRunning  = false;
 let batchPaused   = false;
+let batchWorkerCount = 3;
 let uploadedFiles = [];
 
 const uploadZone = document.getElementById('upload-zone');
@@ -602,9 +603,13 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
 
   notify('bulk-notif', `✓ Batch oluşturuldu (${res.total} kitap). ${workerCount} worker başlatılıyor...`, 'ok');
 
-  // N paralel worker başlat
-  const workers = Array.from({length: workerCount}, (_, i) => runBatchWorker(i + 1, workerCount));
-  await Promise.all(workers);
+  // Sunucu tarafı drain worker'ları ATEŞLE (bekleme yok — Cloudflare kesse bile
+  // ignore_user_abort sayesinde sunucu kuyruğu arka planda boşaltır)
+  batchWorkerCount = workerCount;
+  fireDrainWorkers(workerCount);
+
+  // Durumu sorgulayarak ilerlemeyi izle
+  await pollBatchUntilDone();
 
   // Tamamlandı
   batchRunning = false;
@@ -614,89 +619,72 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   btn.disabled = false;
   btn.innerHTML = '▶ Yeni Batch Başlat';
 
-  // Final durum
   await updateBatchUI();
   notify('bulk-notif', 'Batch tamamlandı!', 'ok');
 });
 
 /* ── Duraklat / Devam ─────────────────────────────── */
-document.getElementById('btn-batch-pause')?.addEventListener('click', () => {
+document.getElementById('btn-batch-pause')?.addEventListener('click', async () => {
   batchPaused = !batchPaused;
   const btn = document.getElementById('btn-batch-pause');
   btn.innerHTML = batchPaused ? '▶ Devam Et' : '⏸ Duraklat';
   document.getElementById('batch-status-badge').textContent = batchPaused ? 'Duraklatıldı' : 'Çalışıyor';
   document.getElementById('batch-status-badge').className = batchPaused ? 'badge badge-gray' : 'badge badge-gold';
-  notify('bulk-notif', batchPaused ? 'Batch duraklatıldı. Devam için tekrar tıkla.' : 'Batch devam ediyor.', 'ok');
+
+  // Sunucu durumunu güncelle (drain worker'lar bunu kontrol eder)
+  await postData(API('batch-control.php'), {
+    batch_id: batchId, action: batchPaused ? 'pause' : 'resume',
+  }).catch(() => {});
+
+  if (batchPaused) {
+    notify('bulk-notif', 'Batch duraklatıldı. Devam için tekrar tıkla.', 'ok');
+  } else {
+    // Devam: worker'ları yeniden ateşle
+    fireDrainWorkers(batchWorkerCount);
+    notify('bulk-notif', 'Batch devam ediyor.', 'ok');
+  }
 });
 
-/* ── Worker ───────────────────────────────────────── */
-async function runBatchWorker(workerNum, total) {
+/* ── Drain Worker'ları ateşle ─────────────────────────
+ * Her istek sunucuda kuyruğu boşaltır; tarayıcı YANITI BEKLEMEZ.
+ * Cloudflare bağlantıyı kesse bile (ignore_user_abort) sunucu çalışmaya devam eder.
+ */
+function fireDrainWorkers(count) {
   const statusWrap = document.getElementById('batch-worker-status');
-  const id = `worker-lbl-${workerNum}`;
-
-  if (statusWrap && !document.getElementById(id)) {
-    const span = document.createElement('span');
-    span.id = id;
-    span.textContent = `W${workerNum}: Başlatılıyor...`;
-    statusWrap.appendChild(span);
+  if (statusWrap) statusWrap.textContent = `${count} worker arka planda çalışıyor — ilerleme aşağıda.`;
+  for (let i = 0; i < count; i++) {
+    postData(API('batch-worker.php'), { batch_id: batchId }).catch(() => {});
   }
-
-  const setW = txt => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = `W${workerNum}: ${txt}`;
-  };
-
-  while (batchRunning) {
-    // Duraklat kontrolü
-    if (batchPaused) {
-      setW('Bekliyor...');
-      await delay(2000);
-      continue;
-    }
-
-    let res;
-    try {
-      setW('Kitap alınıyor...');
-      // batch-worker artık kitabı alıp HEMEN dönüyor, ağır işi arka planda yapıyor
-      res = await postData(API('batch-worker.php'), { batch_id: batchId });
-    } catch(e) {
-      setW('Bağlantı hatası — bekliyor...');
-      await delay(4000);
-      continue;
-    }
-
-    if (res.status === 'no_more' || res.status === 'cancelled') { setW('Bitti ✓'); break; }
-    if (res.status === 'retry') { setW('Sıra bekleniyor...'); await delay(800); continue; }
-
-    if (res.status === 'started') {
-      // Bu kitap arka planda işleniyor — bitene kadar durumu izle
-      setW(`#${res.idx + 1} işleniyor...`);
-      await waitForBookDone(res.idx, setW);
-      continue;
-    }
-
-    // beklenmedik yanıt
-    await delay(2000);
-  }
-
-  setW('Bitti');
 }
 
-// Belirli bir kitabın arka plan işlemi bitene kadar durumu sorgula
-async function waitForBookDone(idx, setW) {
-  const terminal = ['done', 'error', 'duplicate'];
-  for (let t = 0; t < 300; t++) {            // ~ güvenlik: 300 × 4s = 20 dk
-    if (!batchRunning) return;
-    let b;
+/* ── Durum sorgulama döngüsü (watchdog'lu) ─────────────
+ * İlerlemeyi gösterir; uzun süre ilerleme yoksa worker'ları yeniden ateşler.
+ */
+async function pollBatchUntilDone() {
+  let lastDone = -1;
+  let lastChange = Date.now();
+
+  while (batchRunning) {
+    if (batchPaused) { await delay(2000); continue; }
+
+    let b = null;
     try {
       const r = await fetch(API('batch-status.php?batch_id=') + batchId).then(x => x.json());
       if (r.ok) { b = r.batch; renderBatchStatus(b); }
     } catch(e) {}
-    if (b && terminal.includes(b.books[idx]?.status)) {
-      const st = b.books[idx].status;
-      if (setW) setW(st === 'done' ? '✓ tamam' : st === 'duplicate' ? '⊘ mevcut' : '✗ hata');
-      return;
+
+    if (b) {
+      if (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total) break;
+
+      // Watchdog: ilerleme değiştiyse zamanlayıcıyı sıfırla
+      if (b.done !== lastDone) { lastDone = b.done; lastChange = Date.now(); }
+      // 90 sn'dir ilerleme yok ve hâlâ bekleyen var → worker'ları yeniden ateşle
+      else if (!batchPaused && (Date.now() - lastChange) > 90000 && b.done < b.total) {
+        fireDrainWorkers(batchWorkerCount);
+        lastChange = Date.now();
+      }
     }
+
     await delay(4000);
   }
 }
