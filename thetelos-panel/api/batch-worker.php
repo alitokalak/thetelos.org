@@ -124,9 +124,10 @@ function bw_title_tokens($s) {
         $stop = array_flip(explode(' ',
             'against those attack book books gospel epistle epistles letter letters saint part parts four '
           . 'commentary commentaries exposition expositions expositio commentaria commentarium '
-          . 'compendium treatise office feast officium rule '
+          . 'compendium treatise office feast officium rule introduction '
           . 'sentencia sententia sentencie super libri liber librum libros '
           . 'quaestiones quaestio questiones questio disputatae disputata disputatio quaestione '
+          . 'questions question disputed disputation '
           . 'litteram litera evangelium evangelii evangelio epistola epistolas epistolam festo '
           . 'aristotle aristotles aristotelis'));
     }
