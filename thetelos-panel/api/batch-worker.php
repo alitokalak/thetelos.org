@@ -217,11 +217,14 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
 
     // ── Dedup kontrolü ────────────────────────────────────────────
-    [$existing] = bw_wp("$wp_api/$ep?search=" . urlencode($book) . '&per_page=5', 'GET', [], $auth);
+    // Temiz İngilizce adla ara (parantezli Latince ad WP aramasını bozuyordu),
+    // hem tam ad hem temiz ad ile eşleşmeyi dene → tekrar yazmayı güvenle önle.
+    [$existing] = bw_wp("$wp_api/$ep?search=" . urlencode($search_book) . '&per_page=10', 'GET', [], $auth);
     if (!empty($existing) && is_array($existing)) {
         foreach ($existing as $p) {
             $title = html_entity_decode(strip_tags($p['title']['rendered'] ?? ''));
-            if (stripos($title, $book) !== false && (!$author || stripos($title, $author) !== false)) {
+            $title_match = (stripos($title, $book) !== false) || (stripos($title, $search_book) !== false);
+            if ($title_match && (!$author || stripos($title, $author) !== false)) {
                 bw_update_book($batch_file, $idx, [
                     'status'   => 'duplicate',
                     'post_id'  => $p['id'],
