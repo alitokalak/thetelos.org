@@ -473,6 +473,14 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             if (!$tid) {
                 [$nt] = bw_wp("$wp_api/authors", 'POST', ['name'=>$author,'description'=>$bio], $auth);
                 $tid = $nt['id'] ?? null;
+                // Race condition: another worker may have just created this term — retry GET
+                if (!$tid) {
+                    usleep(300000);
+                    [$retry] = bw_wp("$wp_api/authors?search=" . urlencode($author) . '&per_page=10', 'GET', [], $auth);
+                    foreach ($retry ?? [] as $t) {
+                        if (strtolower($t['name']) === strtolower($author)) { $tid = $t['id']; break; }
+                    }
+                }
             } elseif ($bio) {
                 bw_wp("$wp_api/authors/$tid", 'POST', ['description'=>$bio], $auth);
             }
@@ -539,6 +547,7 @@ while (true) {
     bw_process_book($batch_file, $idx, $batch, $auth, $wp_api);
     $processed++;
     if ($processed >= 5000) break;                          // güvenlik üst sınırı
+    sleep(3);                                               // kitaplar arası bekleme — sunucu yükü azaltır
 }
 
 echo json_encode(['status'=>'no_more','processed'=>$processed]);

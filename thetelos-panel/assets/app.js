@@ -469,7 +469,7 @@ let batchBooks    = [];   // merged book list from all uploaded files
 let batchId       = null;
 let batchRunning  = false;
 let batchPaused   = false;
-let batchWorkerCount = 3;
+let batchWorkerCount = 1;
 let uploadedFiles = [];
 
 const uploadZone = document.getElementById('upload-zone');
@@ -569,7 +569,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   const type        = document.querySelector('input[name=bulk_type]:checked')?.value || 'summary';
   const status      = document.getElementById('bulk_post_status')?.value || 'draft';
   const tokens      = document.getElementById('bulk-token-slider').value;
-  const workerCount = parseInt(document.getElementById('bulk_workers')?.value || '3');
+  const workerCount = parseInt(document.getElementById('bulk_workers')?.value || '1');
   const parts       = parseInt(document.getElementById('bulk-parts-select')?.value || '2');
   const btn         = document.getElementById('btn-batch-start');
 
@@ -663,6 +663,7 @@ function fireDrainWorkers(count) {
 async function pollBatchUntilDone() {
   let lastDone = -1;
   let lastChange = Date.now();
+  let pollFailures = 0;
 
   while (batchRunning) {
     if (batchPaused) { await delay(2000); continue; }
@@ -670,8 +671,12 @@ async function pollBatchUntilDone() {
     let b = null;
     try {
       const r = await fetch(API('batch-status.php?batch_id=') + batchId).then(x => x.json());
-      if (r.ok) { b = r.batch; renderBatchStatus(b); }
-    } catch(e) {}
+      if (r.ok) { b = r.batch; renderBatchStatus(b); pollFailures = 0; }
+    } catch(e) {
+      pollFailures++;
+      const sw = document.getElementById('batch-worker-status');
+      if (sw && pollFailures >= 2) sw.textContent = 'Sunucu meşgul, durum sorgusu bekleniyor...';
+    }
 
     if (b) {
       if (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total) break;
