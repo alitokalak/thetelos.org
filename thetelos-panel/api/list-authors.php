@@ -14,7 +14,8 @@ set_time_limit(120);
 
 $category = trim($_POST['category'] ?? '');
 $count    = max(5, min(150, (int)($_POST['count'] ?? 40)));
-$provider = trim($_POST['api_provider'] ?? 'deepseek');
+// Yazar listesi için DeepSeek yeterli ve hızlı; Claude sadece eser listesinde (list-works) kullanılır.
+$provider = 'deepseek';
 
 if ($category === '') { echo json_encode(['ok'=>false,'error'=>'Kategori zorunlu.']); exit; }
 
