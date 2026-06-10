@@ -48,6 +48,15 @@ function md2html(text) {
 }
 const delay = ms => new Promise(r => setTimeout(r, ms));
 
+// Başlık normalleştir (PHP lw_norm ile uyumlu): aksan kaldır, parantez içini at, yalnız harf/rakam
+function normTitle(s) {
+  s = (s || '').toString().toLowerCase();
+  s = s.normalize('NFD').replace(/[̀-ͯ]/g, '');  // aksanları kaldır
+  s = s.replace(/\([^)]*\)/g, ' ');                        // parantez içi
+  s = s.replace(/[^a-z0-9]+/g, ' ');                       // yalnız harf/rakam
+  return s.replace(/\s+/g, ' ').trim();
+}
+
 /* ── Token Slider ─────────────────────────────────── */
 function tokenInfo(val) {
   const w = parseInt(val);
@@ -849,25 +858,18 @@ async function fetchAuthorWorks(author) {
     }
     renderBuilderList();
 
-    // Sitede zaten var mı? — parça parça kontrol et, işaretle
-    for (let i = 0; i < newRows.length; i += 20) {
-      const chunk = newRows.slice(i, i + 20);
-      try {
-        const er = await postData(API('list-works.php'), {
-          author, mode: 'exists',
-          titles: JSON.stringify(chunk.map(r => workLabel(r))),
-        });
-        if (er.ok && er.results) {
-          for (const r of er.results) {
-            const row = chunk.find(c => workLabel(c) === r.title);
-            if (!row) continue;
-            row.exists = !!r.exists;
-            row.post_url = r.post_url || '';
-          }
-          renderBuilderList();
+    // Sitede zaten var mı? — yazarın TÜM mevcut eserlerini TEK istekle çek, yerel eşleştir
+    try {
+      const er = await postData(API('list-works.php'), { author, mode: 'exists' });
+      if (er.ok && Array.isArray(er.existing)) {
+        for (const row of newRows) {
+          const n = normTitle(row.title);
+          const hit = er.existing.find(e => e.norm && (e.norm === n || e.norm.includes(n) || n.includes(e.norm)));
+          if (hit) { row.exists = true; row.post_url = hit.post_url || ''; }
         }
-      } catch(_) {}
-    }
+        renderBuilderList();
+      }
+    } catch(_) {}
 
     // 2) Kapak/yıl doğrulamasını parça parça (6'lı) yap — her istek 100s altında kalır
     if (doVerify && newRows.length) {
