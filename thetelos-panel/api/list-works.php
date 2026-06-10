@@ -25,34 +25,50 @@ if ($author === '') { echo json_encode(['ok'=>false,'error'=>'Yazar adı zorunlu
 
 // ── LLM çağrısı (JSON döndüren, stream değil) ─────────────────────
 // Dönüş: [text, error, truncated]  (truncated=true → token limiti nedeniyle kesildi)
+// TIMEOUT 85sn: Cloudflare ~100sn'de bağlantıyı kesip HTML hata sayfası döndürüyor;
+// ondan önce cURL'i keserek temiz JSON hata mesajı döndürmüş oluyoruz.
 function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
-    if ($provider === 'anthropic') {
-        $ch = curl_init('https://api.anthropic.com/v1/messages');
+    $attempt = function($provider, $prompt, $max_tokens) {
+        if ($provider === 'anthropic') {
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true,
+                CURLOPT_TIMEOUT=>85, CURLOPT_CONNECTTIMEOUT=>10,
+                CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
+                CURLOPT_POSTFIELDS=>json_encode(['model'=>ANTHROPIC_MODEL,'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
+            ]);
+            $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
+            if ($e || !$r) return ['', 'Anthropic: '.($e ?: 'boş yanıt'), false];
+            $d = json_decode($r, true);
+            if (isset($d['error'])) return ['', 'Anthropic: '.($d['error']['message']??'hata'), false];
+            $trunc = ($d['stop_reason'] ?? '') === 'max_tokens';
+            return [$d['content'][0]['text'] ?? '', '', $trunc];
+        }
+        // deepseek
+        $ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>120,
-            CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>ANTHROPIC_MODEL,'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
+            CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true,
+            CURLOPT_TIMEOUT=>85, CURLOPT_CONNECTTIMEOUT=>10,
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
         ]);
         $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
-        if ($e || !$r) return ['', 'Anthropic: '.$e, false];
+        if ($e || !$r) return ['', 'DeepSeek: '.($e ?: 'boş yanıt'), false];
         $d = json_decode($r, true);
-        if (isset($d['error'])) return ['', 'Anthropic: '.($d['error']['message']??'hata'), false];
-        $trunc = ($d['stop_reason'] ?? '') === 'max_tokens';
-        return [$d['content'][0]['text'] ?? '', '', $trunc];
+        if (isset($d['error'])) return ['', 'DeepSeek: '.($d['error']['message']??'hata'), false];
+        $trunc = ($d['choices'][0]['finish_reason'] ?? '') === 'length';
+        return [$d['choices'][0]['message']['content'] ?? '', '', $trunc];
+    };
+
+    $t0 = microtime(true);
+    [$text, $err, $trunc] = $attempt($provider, $prompt, $max_tokens);
+    $elapsed = microtime(true) - $t0;
+    // Sadece HIZLI başarısızlıkta (geçici bağlantı kopması) bir kez yeniden dene.
+    // İlk deneme timeout'a kadar sürdüyse tekrar deneme — Cloudflare sınırını aşar.
+    if ($err && stripos($err, 'hata') === false && $elapsed < 25) {
+        [$text, $err, $trunc] = $attempt($provider, $prompt, $max_tokens);
     }
-    // deepseek
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>120,
-        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
-    ]);
-    $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
-    if ($e || !$r) return ['', 'DeepSeek: '.$e, false];
-    $d = json_decode($r, true);
-    if (isset($d['error'])) return ['', 'DeepSeek: '.($d['error']['message']??'hata'), false];
-    $trunc = ($d['choices'][0]['finish_reason'] ?? '') === 'length';
-    return [$d['choices'][0]['message']['content'] ?? '', '', $trunc];
+    return [$text, $err, $trunc];
 }
 
 // JSON dizisini güvenli ayıkla (markdown fence / fazla metin / kesik JSON temizle)
