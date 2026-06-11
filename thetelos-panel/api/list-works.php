@@ -165,6 +165,35 @@ function lw_ol_verify($title, $author) {
     return null;
 }
 
+/* ════════════════ MODE: authors_exist — sitedeki TÜM yazar terimlerini döndür ════════════════
+ * Yazar listesi render edildikten sonra JS bu listeyi çekip hangi yazarların sitede
+ * zaten olduğunu badge ile gösterir.
+ * Dönüş: { ok, authors:["lowercase name", ...] }
+ */
+if ($mode === 'authors_exist') {
+    $auth   = 'Basic ' . base64_encode(WP_USER . ':' . WP_APP_PASS);
+    $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
+    $wp_get = function($url) use ($auth) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>20, CURLOPT_CONNECTTIMEOUT=>10,
+            CURLOPT_HTTPHEADER=>['Authorization: '.$auth],
+        ]);
+        $r = curl_exec($ch); $c = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        return ($c>=200 && $c<300) ? json_decode($r, true) : null;
+    };
+    $names = []; $page = 1;
+    while ($page <= 20) {
+        $terms = $wp_get("$wp_api/authors?per_page=100&page=$page&_fields=name&hide_empty=true");
+        if (!is_array($terms) || empty($terms)) break;
+        foreach ($terms as $t) { if (!empty($t['name'])) $names[] = strtolower($t['name']); }
+        if (count($terms) < 100) break;
+        $page++;
+    }
+    echo json_encode(['ok'=>true, 'authors'=>$names], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 /* ════════════════ MODE: exists (yazarın sitedeki TÜM eserlerini tek seferde getir) ════════════════
  * Dönüş: { ok, existing:[ {norm, title, post_id, post_url} ] }
  * İstemci normalleştirilmiş başlıkla yerel eşleştirme yapar (tek istek = hızlı).
@@ -183,13 +212,13 @@ if ($mode === 'exists') {
         return ($c>=200 && $c<300) ? json_decode($r, true) : null;
     };
 
-    // Yazar terimini bul
+    // Yazar terimini bul — sadece tam ad eşleşmesi; yanlış yazara fallback yapma
     $tid = null;
     $terms = $wp_get("$wp_api/authors?search=" . urlencode($author) . '&per_page=10');
     foreach ($terms ?? [] as $t) {
         if (strtolower($t['name'] ?? '') === strtolower($author)) { $tid = $t['id']; break; }
     }
-    if ($tid === null && !empty($terms[0]['id'])) $tid = $terms[0]['id'];
+    // $tid null kalırsa yazarın sitede hiç eseri yok demek — exists=[]} döndür, hata değil
 
     $existing = [];
     $collect = function($posts) use (&$existing, $author) {

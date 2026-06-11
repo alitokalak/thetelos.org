@@ -785,8 +785,9 @@ function setRowStatus(idx, st, html) {
 }
 
 /* ══ LİSTE OLUŞTUR (Builder) ═════════════════════════════ */
-let builderAuthors = [];   // [{author, era, note}]
-let builderList    = [];   // [{title, author, year, verified, cover}]
+let builderAuthors      = [];   // [{author, era, note, onSite}]
+let builderList         = [];   // [{title, author, year, verified, cover}]
+let builderAuthorsOffset = 0;   // sayfalama: şu ana kadar kaç yazar yüklendi
 
 // Mod geçişi: yazara göre / kategoriye göre
 document.querySelectorAll('input[name=builder_mode]').forEach(r => {
@@ -815,13 +816,16 @@ document.getElementById('btn-fetch-authors')?.addEventListener('click', async ()
   if (!category) { notify('builder-notif','Kategori girin.','err'); return; }
   const btn = document.getElementById('btn-fetch-authors');
   setLoading(btn, true, 'Yazarlar getiriliyor...');
+  builderAuthorsOffset = 0;
   const res = await postData(API('list-authors.php'), {
-    category, count, api_provider: activeProvider,
+    category, count, offset: 0, api_provider: activeProvider,
   });
   setLoading(btn, false);
   if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
   builderAuthors = res.authors;
+  builderAuthorsOffset = res.authors.length;
   renderBuilderAuthors();
+  checkAuthorsOnSite();
   notify('builder-notif', `✓ ${res.count} yazar getirildi. İstediğinin eserlerini getir.`, 'ok');
 });
 
@@ -829,24 +833,72 @@ function renderBuilderAuthors() {
   document.getElementById('builder-authors-card').style.display = '';
   document.getElementById('builder-authors-count').textContent = `(${builderAuthors.length})`;
   const tb = document.querySelector('#builder-authors-table tbody');
-  tb.innerHTML = builderAuthors.map((a,i) => `
-    <tr id="bauthor-${i}">
+  tb.innerHTML = builderAuthors.map((a,i) => {
+    const siteBadge = a.onSite
+      ? `<span class="badge badge-green" title="Bu yazarın eserleri sitede mevcut">✓ Sitede var</span>`
+      : '';
+    return `<tr id="bauthor-${i}">
       <td style="color:var(--muted)">${i+1}</td>
-      <td><strong>${a.author}</strong></td>
+      <td><strong>${a.author}</strong> ${siteBadge}</td>
       <td style="color:var(--muted);font-size:12px">${a.era||''}</td>
       <td style="color:var(--muted);font-size:12px">${a.note||''}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="fetchOneAuthor(${i})">📚 Eserleri</button></td>
-    </tr>`).join('');
+      <td class="action-cell"><button class="btn btn-ghost btn-sm" onclick="fetchOneAuthor(${i})">📚 Eserleri</button></td>
+    </tr>`;
+  }).join('');
+
+  // Sonraki 100 butonu
+  let nextBtn = document.getElementById('btn-next-authors');
+  if (!nextBtn) {
+    nextBtn = document.createElement('button');
+    nextBtn.id = 'btn-next-authors';
+    nextBtn.className = 'btn btn-ghost btn-sm';
+    nextBtn.style.marginTop = '8px';
+    document.getElementById('builder-authors-card').appendChild(nextBtn);
+  }
+  const category = document.getElementById('builder-category').value.trim();
+  const count = parseInt(document.getElementById('builder-author-count').value || '40');
+  nextBtn.textContent = `Sonraki ${count} yazar (${builderAuthorsOffset + 1}–${builderAuthorsOffset + count})`;
+  nextBtn.onclick = async () => {
+    setLoading(nextBtn, true, 'Yükleniyor...');
+    try {
+      const res = await postData(API('list-authors.php'), {
+        category, count, offset: builderAuthorsOffset, api_provider: activeProvider,
+      });
+      if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
+      builderAuthors = builderAuthors.concat(res.authors);
+      builderAuthorsOffset += res.authors.length;
+      renderBuilderAuthors();
+      checkAuthorsOnSite();
+      notify('builder-notif', `✓ ${res.count} yazar daha eklendi. Toplam: ${builderAuthors.length}`, 'ok');
+    } catch(e) { notify('builder-notif', e.message, 'err'); }
+    setLoading(nextBtn, false);
+  };
+}
+
+// Sitedeki yazar terimlerini çek — eşleşenlere "Sitede var" rozeti koy
+async function checkAuthorsOnSite() {
+  try {
+    const res = await postData(API('list-works.php'), { author: '_', mode: 'authors_exist' });
+    if (!res.ok || !Array.isArray(res.authors)) return;
+    const siteSet = new Set(res.authors);
+    let changed = false;
+    builderAuthors.forEach(a => {
+      const was = a.onSite;
+      a.onSite = siteSet.has(a.author.toLowerCase());
+      if (a.onSite !== was) changed = true;
+    });
+    if (changed) renderBuilderAuthors();
+  } catch(_) {}
 }
 
 window.fetchOneAuthor = async function(i) {
   const a = builderAuthors[i];
   if (!a) return;
-  const cell = document.querySelector(`#bauthor-${i} td:last-child`);
+  const cell = document.querySelector(`#bauthor-${i} .action-cell`);
   if (cell) cell.innerHTML = '<span class="loader"></span>';
-  const added = await fetchAuthorWorks(a.author);
+  const [added, errMsg] = await fetchAuthorWorks(a.author);
   if (cell) cell.innerHTML = added < 0
-    ? `<span class="badge badge-gray">hata</span>`
+    ? `<span class="badge badge-gray" title="${errMsg||''}">hata</span>`
     : `<span class="badge badge-green">+${added}</span>`;
 };
 
@@ -855,11 +907,11 @@ document.getElementById('btn-fetch-all-works')?.addEventListener('click', async 
   const btn = document.getElementById('btn-fetch-all-works');
   setLoading(btn, true, 'Hepsi getiriliyor...');
   for (let i = 0; i < builderAuthors.length; i++) {
-    const cell = document.querySelector(`#bauthor-${i} td:last-child`);
+    const cell = document.querySelector(`#bauthor-${i} .action-cell`);
     if (cell) cell.innerHTML = '<span class="loader"></span>';
-    const added = await fetchAuthorWorks(builderAuthors[i].author);
+    const [added, errMsg] = await fetchAuthorWorks(builderAuthors[i].author);
     if (cell) cell.innerHTML = added < 0
-      ? `<span class="badge badge-gray">hata</span>`
+      ? `<span class="badge badge-gray" title="${errMsg||''}">hata</span>`
       : `<span class="badge badge-green">+${added}</span>`;
   }
   setLoading(btn, false);
@@ -874,7 +926,7 @@ async function fetchAuthorWorks(author) {
     const res = await postData(API('list-works.php'), {
       author, api_provider: activeProvider, mode: 'list',
     });
-    if (!res.ok) { notify('builder-notif', res.error || 'Liste alınamadı.', 'err'); return -1; }
+    if (!res.ok) { notify('builder-notif', res.error || 'Liste alınamadı.', 'err'); return [-1, res.error||'Liste alınamadı']; }
 
     const existing = new Set(builderList.map(b => (b.title+'||'+b.author).toLowerCase()));
     const newRows = [];
@@ -927,10 +979,10 @@ async function fetchAuthorWorks(author) {
         } catch(_) { /* doğrulama hatası listeyi engellemez */ }
       }
     }
-    return newRows.length;
+    return [newRows.length, ''];
   } catch(e) {
     notify('builder-notif', 'Hata: ' + e.message, 'err');
-    return -1;
+    return [-1, e.message];
   }
 }
 

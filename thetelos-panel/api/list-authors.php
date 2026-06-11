@@ -14,7 +14,7 @@ set_time_limit(120);
 
 $category = trim($_POST['category'] ?? '');
 $count    = max(5, min(150, (int)($_POST['count'] ?? 40)));
-// Yazar listesi için DeepSeek yeterli ve hızlı; Claude sadece eser listesinde (list-works) kullanılır.
+$offset   = max(0, (int)($_POST['offset'] ?? 0));   // sayfalama: kaçıncı sıradan başla
 $provider = 'deepseek';
 
 if ($category === '') { echo json_encode(['ok'=>false,'error'=>'Kategori zorunlu.']); exit; }
@@ -62,9 +62,15 @@ function la_extract_json_array($text) {
     return null;
 }
 
-$prompt = "List the {$count} most important and influential authors in the field of \"{$category}\" across all of history, "
+$rank_start = $offset + 1;
+$rank_end   = $offset + $count;
+$prompt = "List ranks {$rank_start} through {$rank_end} of the most important and influential authors "
+    . "in the field of \"{$category}\" across all of history, "
     . "whose body of work merits scholarly publication and study.\n"
-    . "Order them by overall importance/influence.\n"
+    . ($offset > 0
+        ? "IMPORTANT: Do NOT repeat the top {$offset} authors already listed. Start from rank {$rank_start}.\n"
+        : "")
+    . "Order them by overall importance/influence (rank {$rank_start} = {$rank_start}th most important).\n"
     . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
     . "[{\"author\":\"Full Name\",\"era\":\"period or century\",\"note\":\"one short phrase on their significance\"}]";
 
@@ -88,6 +94,7 @@ foreach ($items as $it) {
 echo json_encode([
     'ok'       => true,
     'category' => $category,
+    'offset'   => $offset,
     'count'    => count($authors),
     'authors'  => $authors,
 ], JSON_UNESCAPED_UNICODE);
