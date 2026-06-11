@@ -800,6 +800,7 @@ function setRowStatus(idx, st, html) {
 let builderAuthors      = [];   // [{author, era, note, onSite}]
 let builderList         = [];   // [{title, author, year, verified, cover}]
 let builderAuthorsOffset = 0;   // sayfalama: şu ana kadar kaç yazar yüklendi
+let builderShowExisting  = false; // "sitede var" eserleri göster/gizle
 
 // Mod geçişi: yazara göre / kategoriye göre
 document.querySelectorAll('input[name=builder_mode]').forEach(r => {
@@ -937,12 +938,18 @@ window.fetchOneAuthor = async function(i) {
     : `<span class="badge badge-green">+${added}</span>`;
 };
 
-// "Tüm yazarların eserlerini getir" — sırayla
+// "Tüm yazarların eserlerini getir" — sırayla, sitede olan yazarları atla
 document.getElementById('btn-fetch-all-works')?.addEventListener('click', async () => {
   const btn = document.getElementById('btn-fetch-all-works');
   setLoading(btn, true, 'Hepsi getiriliyor...');
+  let skipped = 0;
   for (let i = 0; i < builderAuthors.length; i++) {
     const cell = document.querySelector(`#bauthor-${i} .action-cell`);
+    if (builderAuthors[i].onSite) {
+      skipped++;
+      if (cell) cell.innerHTML = `<span class="badge badge-gray" title="Yazar zaten sitede">atlandı</span>`;
+      continue;
+    }
     if (cell) cell.innerHTML = '<span class="loader"></span>';
     const [added, errMsg] = await fetchAuthorWorks(builderAuthors[i].author);
     if (cell) cell.innerHTML = added < 0
@@ -950,7 +957,10 @@ document.getElementById('btn-fetch-all-works')?.addEventListener('click', async 
       : `<span class="badge badge-green">+${added}</span>`;
   }
   setLoading(btn, false);
-  notify('builder-notif', `✓ Tamamlandı — toplam ${builderList.length} kitap.`, 'ok');
+  const msg = skipped > 0
+    ? `✓ Tamamlandı — ${builderList.length} kitap (${skipped} sitede olan yazar atlandı).`
+    : `✓ Tamamlandı — toplam ${builderList.length} kitap.`;
+  notify('builder-notif', msg, 'ok');
 });
 
 // Bir yazarın eserlerini çek ve listeye ekle (dedup)
@@ -1028,15 +1038,32 @@ function workLabel(b) {
 
 function renderBuilderList() {
   document.getElementById('builder-list-card').style.display = builderList.length ? '' : 'none';
-  document.getElementById('builder-list-count').textContent = `${builderList.length} kitap`;
-  const vCount = builderList.filter(b => b.verified).length;
+
+  const existsCount = builderList.filter(b => b.exists).length;
+  const newCount    = builderList.length - existsCount;
+  const vCount      = builderList.filter(b => b.verified).length;
+
+  // Sayaç: "212 kitap (45 sitede var, gizlendi)"
+  let countText = `${builderList.length} kitap`;
+  if (existsCount > 0 && !builderShowExisting) countText += ` · ${newCount} yeni (${existsCount} sitede var, gizlendi)`;
+  else if (existsCount > 0)                     countText += ` · ${existsCount} sitede var`;
+  document.getElementById('builder-list-count').textContent = countText;
+
   const vBadge = document.getElementById('builder-list-verified');
   if (vCount > 0) { vBadge.style.display = ''; vBadge.textContent = `✓ ${vCount} doğrulandı`; }
   else vBadge.style.display = 'none';
 
+  // Toggle butonu
+  const toggleBtn = document.getElementById('btn-toggle-existing');
+  if (toggleBtn) {
+    toggleBtn.style.display = existsCount > 0 ? '' : 'none';
+    toggleBtn.textContent = builderShowExisting ? '⊘ Sitede olanları gizle' : `⊘ Sitede olanları göster (${existsCount})`;
+  }
+
   const tb = document.querySelector('#builder-list-table tbody');
-  tb.innerHTML = builderList.map((b,i) => `
-    <tr id="brow-list-${i}">
+  tb.innerHTML = builderList.map((b, i) => {
+    if (!builderShowExisting && b.exists) return '';
+    return `<tr id="brow-list-${i}">
       <td style="color:var(--muted)">${i+1}</td>
       <td>${b.cover ? `<img src="${b.cover}" style="width:32px;height:46px;object-fit:cover;border-radius:3px" onerror="this.style.display='none'">` : '—'}</td>
       <td>${workLabel(b)}</td>
@@ -1046,8 +1073,14 @@ function renderBuilderList() {
         ? `<span class="badge badge-gray">⊘ Sitede var</span>`
         : (b.verified ? '<span class="badge badge-green">✓</span>' : '<span class="badge badge-gray">?</span>')}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="removeBuilderRow(${i})" style="color:var(--red)">✕</button></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
+
+document.getElementById('btn-toggle-existing')?.addEventListener('click', () => {
+  builderShowExisting = !builderShowExisting;
+  renderBuilderList();
+});
 
 window.removeBuilderRow = function(i) {
   builderList.splice(i, 1);

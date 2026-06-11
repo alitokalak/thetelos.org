@@ -330,6 +330,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <button class="btn btn-primary btn-sm" id="btn-builder-to-batch">📋 Toplu Batch'e Aktar</button>
           <button class="btn btn-ghost btn-sm" id="btn-builder-csv">⬇ CSV İndir</button>
           <button class="btn btn-ghost btn-sm" id="btn-builder-clear" style="color:var(--red)">✕ Temizle</button>
+          <button class="btn btn-ghost btn-sm" id="btn-toggle-existing" style="display:none">⊘ Sitede olanları göster</button>
         </div>
         <div style="overflow-x:auto">
           <table class="bulk-table" id="builder-list-table">
