@@ -889,12 +889,15 @@ function renderBuilderAuthors() {
   nextBtn.onclick = async () => {
     setLoading(nextBtn, true, 'Yükleniyor...');
     try {
+      const fetchCount = Math.min(count, 50);
       const res = await postData(API('list-authors.php'), {
-        category, count, offset: builderAuthorsOffset, api_provider: activeProvider,
+        category, count: fetchCount, offset: builderAuthorsOffset, api_provider: activeProvider,
       });
       if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
-      builderAuthors = builderAuthors.concat(res.authors);
-      builderAuthorsOffset += res.authors.length;
+      const have = new Set(builderAuthors.map(a => a.author.toLowerCase()));
+      const fresh = res.authors.filter(a => !have.has(a.author.toLowerCase()));
+      builderAuthors = builderAuthors.concat(fresh);
+      builderAuthorsOffset += fetchCount;
       renderBuilderAuthors();
       checkAuthorsOnSite();
       notify('builder-notif', `✓ ${res.count} yazar daha eklendi. Toplam: ${builderAuthors.length}`, 'ok');
