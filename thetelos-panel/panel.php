@@ -11,7 +11,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 <title>Thetelos Content Panel</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css">
+<link rel="stylesheet" href="assets/style.css?v=<?= @filemtime(__DIR__.'/assets/style.css') ?: time() ?>">
 </head>
 <body>
 <div class="tls-shell">
@@ -343,7 +343,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
   </main>
 </div>
-<script src="assets/app.js"></script>
+<script src="assets/app.js?v=<?= @filemtime(__DIR__.'/assets/app.js') ?: time() ?>"></script>
 <script>updateTokenDisplay(3000);updateBulkTokenDisplay(3000);</script>
 </body>
 </html>
