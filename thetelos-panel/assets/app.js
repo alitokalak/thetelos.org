@@ -812,21 +812,26 @@ document.getElementById('btn-fetch-works')?.addEventListener('click', async () =
 // Kategorinin yazarlarını getir
 document.getElementById('btn-fetch-authors')?.addEventListener('click', async () => {
   const category = document.getElementById('builder-category').value.trim();
-  const count    = document.getElementById('builder-author-count').value || 40;
+  const count    = parseInt(document.getElementById('builder-author-count').value || '40');
   if (!category) { notify('builder-notif','Kategori girin.','err'); return; }
   const btn = document.getElementById('btn-fetch-authors');
   setLoading(btn, true, 'Yazarlar getiriliyor...');
   builderAuthorsOffset = 0;
-  const res = await postData(API('list-authors.php'), {
-    category, count, offset: 0, api_provider: activeProvider,
-  });
-  setLoading(btn, false);
-  if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
-  builderAuthors = res.authors;
-  builderAuthorsOffset = res.authors.length;
-  renderBuilderAuthors();
-  checkAuthorsOnSite();
-  notify('builder-notif', `✓ ${res.count} yazar getirildi. İstediğinin eserlerini getir.`, 'ok');
+  try {
+    const res = await postData(API('list-authors.php'), {
+      category, count, offset: 0, api_provider: activeProvider,
+    });
+    if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
+    builderAuthors = res.authors;
+    builderAuthorsOffset = res.authors.length;
+    renderBuilderAuthors();
+    checkAuthorsOnSite();
+    notify('builder-notif', `✓ ${res.count} yazar getirildi. İstediğinin eserlerini getir.`, 'ok');
+  } catch(e) {
+    notify('builder-notif', 'Hata: ' + e.message, 'err');
+  } finally {
+    setLoading(btn, false);
+  }
 });
 
 function renderBuilderAuthors() {

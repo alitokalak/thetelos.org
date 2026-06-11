@@ -62,23 +62,51 @@ function la_extract_json_array($text) {
     return null;
 }
 
-$rank_start = $offset + 1;
-$rank_end   = $offset + $count;
-$prompt = "List ranks {$rank_start} through {$rank_end} of the most important and influential authors "
-    . "in the field of \"{$category}\" across all of history, "
-    . "whose body of work merits scholarly publication and study.\n"
-    . ($offset > 0
-        ? "IMPORTANT: Do NOT repeat the top {$offset} authors already listed. Start from rank {$rank_start}.\n"
-        : "")
-    . "Order them by overall importance/influence (rank {$rank_start} = {$rank_start}th most important).\n"
-    . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
-    . "[{\"author\":\"Full Name\",\"era\":\"period or century\",\"note\":\"one short phrase on their significance\"}]";
+// 100+ yazar tek seferde DeepSeek'i 85sn sınırını zorlayabilir; 50'şerli turlarla ilerle.
+$batch_size = 50;
+$items = [];
+$seen_names = [];
+$first_err = '';
 
-list($raw, $err) = la_call_llm($provider, $prompt, 6000);
-if ($err) { echo json_encode(['ok'=>false,'error'=>$err]); exit; }
+$total_fetched = 0;
+while ($total_fetched < $count) {
+    set_time_limit(110);
+    $batch_count = min($batch_size, $count - $total_fetched);
+    $rank_start  = $offset + $total_fetched + 1;
+    $rank_end    = $offset + $total_fetched + $batch_count;
 
-$items = la_extract_json_array($raw);
-if (!$items) { echo json_encode(['ok'=>false,'error'=>'Liste ayrıştırılamadı. Yanıt: '.mb_substr($raw,0,200)]); exit; }
+    $already = $total_fetched > 0 || $offset > 0
+        ? "IMPORTANT: Do NOT include any of the top " . ($offset + $total_fetched) . " already listed. Start from rank {$rank_start}.\n"
+        : "";
+
+    $prompt = "List ranks {$rank_start} through {$rank_end} of the most important and influential authors "
+        . "in the field of \"{$category}\" across all of history, "
+        . "whose body of work merits scholarly publication and study.\n"
+        . $already
+        . "Order strictly by overall importance/influence.\n"
+        . "Return ONLY a valid JSON array — no prose, no markdown fences:\n"
+        . "[{\"author\":\"Full Name\",\"era\":\"period or century\",\"note\":\"one short phrase on their significance\"}]";
+
+    [$raw, $err] = la_call_llm($provider, $prompt, 4000);
+    if ($err) { $first_err = $err; break; }
+
+    $batch = la_extract_json_array($raw);
+    if (!$batch) { $first_err = 'Liste ayrıştırılamadı.'; break; }
+
+    $added = 0;
+    foreach ($batch as $it) {
+        $name = trim($it['author'] ?? '');
+        if ($name === '' || isset($seen_names[strtolower($name)])) continue;
+        $seen_names[strtolower($name)] = true;
+        $items[] = $it;
+        $added++;
+    }
+    $total_fetched += $batch_count;
+    if ($added === 0) break; // boş tur, dur
+}
+
+if (!$items && $first_err) { echo json_encode(['ok'=>false,'error'=>$first_err]); exit; }
+if (!$items) { echo json_encode(['ok'=>false,'error'=>'Liste alınamadı.']); exit; }
 
 $authors = [];
 foreach ($items as $it) {
