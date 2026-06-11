@@ -14,11 +14,23 @@ function setLoading(btn, state, label='') {
   if (state) { btn._orig = btn.innerHTML; btn.innerHTML = `<span class="loader"></span> ${label||'İşleniyor...'}`; }
   else { btn.innerHTML = btn._orig || btn.innerHTML; }
 }
-async function postData(url, data) {
+async function postData(url, data, timeoutMs = 150000) {
   const fd = new FormData();
   for (const [k,v] of Object.entries(data)) fd.append(k, v);
-  const r = await fetch(url, {method:'POST', body:fd});
-  const text = await r.text();
+  // Mutlak zaman aşımı: sunucu hiç yanıt vermese bile istek en geç timeoutMs'de düşer,
+  // buton sonsuza kadar "yükleniyor"da kalamaz.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let r, text;
+  try {
+    r = await fetch(url, {method:'POST', body:fd, signal: ctrl.signal});
+    text = await r.text();
+  } catch(e) {
+    if (e.name === 'AbortError') throw new Error('Zaman aşımı — sunucu yanıt vermedi, tekrar dene.');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   try { return JSON.parse(text); }
   catch(_) {
     // Sunucu JSON yerine HTML hata sayfası döndürdü (timeout / 502 / 503)
@@ -809,24 +821,35 @@ document.getElementById('btn-fetch-works')?.addEventListener('click', async () =
   if (added >= 0) notify('builder-notif', `✓ ${author}: ${added} eser eklendi.`, 'ok');
 });
 
-// Kategorinin yazarlarını getir
+// Kategorinin yazarlarını getir — 50'şerlik AYRI isteklerle (her biri Cloudflare 100sn sınırına sığar)
 document.getElementById('btn-fetch-authors')?.addEventListener('click', async () => {
   const category = document.getElementById('builder-category').value.trim();
-  const count    = parseInt(document.getElementById('builder-author-count').value || '40');
+  const total    = parseInt(document.getElementById('builder-author-count').value || '40');
   if (!category) { notify('builder-notif','Kategori girin.','err'); return; }
   const btn = document.getElementById('btn-fetch-authors');
   setLoading(btn, true, 'Yazarlar getiriliyor...');
+  builderAuthors = [];
   builderAuthorsOffset = 0;
   try {
-    const res = await postData(API('list-authors.php'), {
-      category, count, offset: 0, api_provider: activeProvider,
-    });
-    if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
-    builderAuthors = res.authors;
-    builderAuthorsOffset = res.authors.length;
-    renderBuilderAuthors();
-    checkAuthorsOnSite();
-    notify('builder-notif', `✓ ${res.count} yazar getirildi. İstediğinin eserlerini getir.`, 'ok');
+    while (builderAuthorsOffset < total) {
+      const chunk = Math.min(50, total - builderAuthorsOffset);
+      btn.innerHTML = `<span class="loader"></span> Yazarlar getiriliyor... (${builderAuthorsOffset}/${total})`;
+      const res = await postData(API('list-authors.php'), {
+        category, count: chunk, offset: builderAuthorsOffset, api_provider: activeProvider,
+      });
+      if (!res.ok) { notify('builder-notif', res.error, 'err'); break; }
+      // Önceki turlarla mükerrer olanları ele
+      const have = new Set(builderAuthors.map(a => a.author.toLowerCase()));
+      const fresh = res.authors.filter(a => !have.has(a.author.toLowerCase()));
+      builderAuthors = builderAuthors.concat(fresh);
+      builderAuthorsOffset += chunk;
+      renderBuilderAuthors();   // her turda ekrana yansıt — kullanıcı ilerlemeyi görür
+      if (!fresh.length) break; // model yeni isim üretemiyor, dur
+    }
+    if (builderAuthors.length) {
+      checkAuthorsOnSite();
+      notify('builder-notif', `✓ ${builderAuthors.length} yazar getirildi. İstediğinin eserlerini getir.`, 'ok');
+    }
   } catch(e) {
     notify('builder-notif', 'Hata: ' + e.message, 'err');
   } finally {
