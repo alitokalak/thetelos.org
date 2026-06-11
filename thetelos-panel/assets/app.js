@@ -884,23 +884,27 @@ function renderBuilderAuthors() {
     document.getElementById('builder-authors-card').appendChild(nextBtn);
   }
   const category = document.getElementById('builder-category').value.trim();
-  const count = parseInt(document.getElementById('builder-author-count').value || '40');
-  nextBtn.textContent = `Sonraki ${count} yazar (${builderAuthorsOffset + 1}–${builderAuthorsOffset + count})`;
+  nextBtn.textContent = `Sonraki 50 yazar (${builderAuthorsOffset + 1}–${builderAuthorsOffset + 50})`;
   nextBtn.onclick = async () => {
     setLoading(nextBtn, true, 'Yükleniyor...');
     try {
-      const fetchCount = Math.min(count, 50);
       const res = await postData(API('list-authors.php'), {
-        category, count: fetchCount, offset: builderAuthorsOffset, api_provider: activeProvider,
+        category, count: 50, offset: builderAuthorsOffset, api_provider: activeProvider,
       });
       if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
       const have = new Set(builderAuthors.map(a => a.author.toLowerCase()));
       const fresh = res.authors.filter(a => !have.has(a.author.toLowerCase()));
       builderAuthors = builderAuthors.concat(fresh);
-      builderAuthorsOffset += fetchCount;
+      builderAuthorsOffset += 50;
       renderBuilderAuthors();
       checkAuthorsOnSite();
-      notify('builder-notif', `✓ ${res.count} yazar daha eklendi. Toplam: ${builderAuthors.length}`, 'ok');
+      if (fresh.length < 10) {
+        notify('builder-notif',
+          `Yalnız ${fresh.length} YENİ isim geldi — "${category}" kategorisi tükeniyor. `
+          + `Alt kategori dene: ethics, metaphysics, ancient philosophy, political philosophy...`, 'err');
+      } else {
+        notify('builder-notif', `✓ ${fresh.length} yeni yazar eklendi. Toplam: ${builderAuthors.length}`, 'ok');
+      }
     } catch(e) { notify('builder-notif', e.message, 'err'); }
     setLoading(nextBtn, false);
   };
