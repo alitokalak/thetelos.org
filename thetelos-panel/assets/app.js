@@ -1185,6 +1185,7 @@ async function loadQueueList() {
           ${q.status === 'building' ? `<button class="btn btn-primary btn-sm" onclick="continueBuilding('${q.id}',${q.authors_built||0},${q.authors_total||50})">⚙ Oluşturmayı Devam Ettir</button>` : ''}
           ${q.status === 'running'  ? `<button class="btn btn-primary btn-sm" onclick="resumeQueue('${q.id}')">▶ İşlemi Başlat</button>` : ''}
           ${q.status === 'done'     ? `<span class="badge badge-green">✓ Tamamlandı</span>` : ''}
+          ${q.total > 0 ? `<a class="btn btn-ghost btn-sm" href="api/queue-export.php?batch_id=${q.id}" download>⬇ CSV İndir</a>` : ''}
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteQueue('${q.id}')">✕ Sil</button>
         </div>
       </div>`;
@@ -1204,9 +1205,12 @@ document.getElementById('btn-queue-create')?.addEventListener('click', async () 
   setLoading(btn, true, 'Yazarlar getiriliyor...');
   try {
     // Adım 1: yazar listesi al (10-15s)
+    const type        = document.getElementById('queue-type')?.value        || 'summary';
+    const post_status = document.getElementById('queue-post-status')?.value || 'draft';
+    const max_tokens  = document.getElementById('queue-max-tokens')?.value  || 3000;
+    const parts       = document.getElementById('queue-parts')?.value       || 2;
     const res = await postData(API('queue-create.php'), {
-      category, author_count: count,
-      type: 'summary', post_status: 'draft', max_tokens: 3000,
+      category, author_count: count, type, post_status, max_tokens, parts,
     }, 90000);
     if (!res.ok) { notify('queue-create-notif', res.error || 'Hata.', 'err'); return; }
 

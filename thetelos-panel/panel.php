@@ -359,6 +359,38 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <label class="form-label">Yazar sayısı (max 50)</label>
             <input type="number" class="form-input" id="queue-author-count" value="50" min="10" max="50" style="width:90px">
           </div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+          <div>
+            <label class="form-label">İçerik Türü</label>
+            <select class="form-input" id="queue-type">
+              <option value="summary">Özet</option>
+              <option value="analysis">Analiz</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Yayın Durumu</label>
+            <select class="form-input" id="queue-post-status">
+              <option value="draft">Taslak</option>
+              <option value="publish">Yayınla</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Kelime sayısı</label>
+            <select class="form-input" id="queue-max-tokens">
+              <option value="1500">~1000 kelime</option>
+              <option value="3000" selected>~2000 kelime</option>
+              <option value="5000">~3500 kelime</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Aşama</label>
+            <select class="form-input" id="queue-parts">
+              <option value="1">1 aşama</option>
+              <option value="2" selected>2 aşama</option>
+              <option value="3">3 aşama</option>
+            </select>
+          </div>
           <button class="btn btn-primary" id="btn-queue-create">▶ Kuyruğa Ekle</button>
         </div>
         <div id="queue-create-notif" class="notif" style="margin-top:10px"></div>
