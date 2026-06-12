@@ -362,6 +362,7 @@ require_once get_template_directory() . '/inc/book-cover.php';
 require_once get_template_directory() . '/inc/analysis-cpt.php';
 require_once get_template_directory() . '/inc/analysis-panel.php';
 require_once get_template_directory() . '/inc/book-cover-fetcher.php';
+require_once get_template_directory() . '/inc/firestore-browser.php';
 
 add_action( 'init', 'mediumish_load_customizer', 1 );
 // -----------------------------------------------------
