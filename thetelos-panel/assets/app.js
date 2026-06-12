@@ -1142,3 +1142,99 @@ document.getElementById('btn-builder-clear')?.addEventListener('click', () => {
   renderBuilderList();
   notify('builder-notif', 'Liste temizlendi.', 'ok');
 });
+
+/* ══ OTOMATİK KUYRUK ════════════════════════════════════════════ */
+
+// Sayfa yüklenince kuyruk modunu kontrol et
+if (new URLSearchParams(location.search).get('mode') === 'queue') {
+  document.querySelectorAll('[id^="mode-"]').forEach(el => el.style.display = 'none');
+  const qEl = document.getElementById('mode-queue');
+  if (qEl) qEl.style.display = '';
+  loadQueueList();
+}
+
+async function loadQueueList() {
+  const body = document.getElementById('queue-list-body');
+  if (!body) return;
+  try {
+    const res = await postData(API('queue-list.php'), {});
+    if (!res.ok || !res.queues.length) {
+      body.innerHTML = '<p style="color:var(--muted);font-size:13px">Henüz kuyruk yok.</p>';
+      return;
+    }
+    body.innerHTML = res.queues.map(q => {
+      const pct   = q.total > 0 ? Math.round(q.done / q.total * 100) : 0;
+      const color = q.status === 'done' ? 'var(--green)' : q.status === 'error' ? 'var(--red)' : 'var(--gold)';
+      const statusLabel = {building:'Oluşturuluyor',running:'Çalışıyor',done:'Tamamlandı',error:'Hata',paused:'Duraklatıldı'}[q.status] || q.status;
+      return `<div class="card" style="margin-bottom:10px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <div>
+            <strong>${q.category}</strong>
+            <span class="badge" style="background:${color};color:#fff;margin-left:8px">${statusLabel}</span>
+          </div>
+          <div style="font-size:12px;color:var(--muted)">${new Date(q.created_at*1000).toLocaleString('tr-TR')}</div>
+        </div>
+        ${q.build_msg ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${q.build_msg}</div>` : ''}
+        <div style="margin-top:8px">
+          <div style="background:#2a2a2a;border-radius:4px;height:6px;overflow:hidden">
+            <div style="background:var(--green);height:100%;width:${pct}%;transition:width 0.3s"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${q.done}/${q.total} işlendi · ${q.ok} başarılı · ${q.failed} hata</div>
+        </div>
+        ${q.status === 'running' || q.status === 'paused' ? `
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="resumeQueue('${q.id}')">▶ Devam Et</button>
+          <button class="btn btn-ghost btn-sm" onclick="window.location='panel.php'">📋 Batch'e Aktar</button>
+        </div>` : ''}
+        ${q.status === 'done' ? `
+        <div style="margin-top:10px">
+          <button class="btn btn-ghost btn-sm" onclick="window.location='panel.php'">✓ Tamamlandı</button>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) {
+    body.innerHTML = `<p style="color:var(--red);font-size:13px">Yüklenemedi: ${e.message}</p>`;
+  }
+}
+
+// Kuyruk oluştur
+document.getElementById('btn-queue-create')?.addEventListener('click', async () => {
+  const category = document.getElementById('queue-category')?.value.trim();
+  const count    = document.getElementById('queue-author-count')?.value || 50;
+  if (!category) { notify('queue-create-notif', 'Kategori girin.', 'err'); return; }
+
+  const btn = document.getElementById('btn-queue-create');
+  setLoading(btn, true, 'Oluşturuluyor...');
+  try {
+    const res = await postData(API('queue-create.php'), {
+      category, author_count: count,
+      type: 'summary', post_status: 'draft', max_tokens: 3000,
+    }, 20000);
+    if (!res.ok) { notify('queue-create-notif', res.error || 'Hata.', 'err'); return; }
+    notify('queue-create-notif',
+      `✓ Kuyruk oluşturuldu (${res.batch_id}) — arka planda yazarlar ve eserler getiriliyor...`, 'ok');
+    setTimeout(loadQueueList, 3000);
+    // Her 5 saniyede listeyi güncelle
+    const poll = setInterval(async () => {
+      await loadQueueList();
+      const listRes = await postData(API('queue-list.php'), {});
+      const q = listRes.queues?.find(q => q.id === res.batch_id);
+      if (q && q.status !== 'building') clearInterval(poll);
+    }, 5000);
+    setTimeout(() => clearInterval(poll), 300000); // max 5dk
+  } catch(e) {
+    notify('queue-create-notif', e.message, 'err');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
+document.getElementById('btn-queue-refresh')?.addEventListener('click', loadQueueList);
+
+async function resumeQueue(batchId) {
+  // Mevcut batch sistemini kullan — batch_id ile batch-worker.php'yi tetikle
+  try {
+    await postData(API('batch-worker.php'), { batch_id: batchId }, 10000);
+    notify('queue-create-notif', '✓ İşlem devam ediyor — batch-status ile takip edilebilir.', 'ok');
+  } catch(_) {}
+}

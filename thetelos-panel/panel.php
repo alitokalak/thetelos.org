@@ -20,6 +20,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
     <nav class="tls-nav">
       <a href="panel.php" class="active"><span class="ico">✍</span> İçerik Üret</a>
+      <a href="panel.php?mode=queue"><span class="ico">📋</span> Kuyruk</a>
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
       <a href="settings.php"><span class="ico">⚙</span> Ayarlar</a>
@@ -340,6 +341,35 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         </div>
       </div>
 
+    </div>
+
+    <!-- ══ OTOMATİK KUYRUK ══════════════════════════════════ -->
+    <div id="mode-queue" style="display:none">
+      <div class="card">
+        <div class="card-title">Kategori Kuyruğu</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+          Kategori adı gir → sistem yazarları ve eserlerini sunucuda otomatik üretir → tarayıcı kapansa da devam eder.
+        </p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <div style="flex:1;min-width:200px">
+            <label class="form-label">Kategori</label>
+            <input type="text" class="form-input" id="queue-category" placeholder="ör: philosophy, ethics, medieval literature">
+          </div>
+          <div>
+            <label class="form-label">Yazar sayısı (max 50)</label>
+            <input type="number" class="form-input" id="queue-author-count" value="50" min="10" max="50" style="width:90px">
+          </div>
+          <button class="btn btn-primary" id="btn-queue-create">▶ Kuyruğa Ekle</button>
+        </div>
+        <div id="queue-create-notif" class="notif" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card" id="queue-list-card">
+        <div class="card-title">Kayıtlı Kuyruklar <button class="btn btn-ghost btn-sm" id="btn-queue-refresh" style="margin-left:8px">↺</button></div>
+        <div id="queue-list-body">
+          <p style="color:var(--muted);font-size:13px">Yükleniyor...</p>
+        </div>
+      </div>
     </div>
 
   </main>
