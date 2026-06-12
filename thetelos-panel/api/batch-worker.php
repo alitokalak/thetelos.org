@@ -602,66 +602,24 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     ]);
 }
 
-/* ════════════════ YAZAR ÖN KONTROLÜ ════════════════
- * Batch başlamadan önce tüm unique yazarları bir kez kontrol et.
- * Sitede >= 1 eseri olan yazarların TÜM kitaplarını direkt "duplicate" yap.
- * Bu sayede her kitap için tek tek WP sorgusu atmak yerine yazar başına 1 sorgu yeterli.
+/* ════════════════ CRASH RECOVERY ════════════════
+ * Önceki çalışmada çöken worker'ın "processing" bıraktığı kitapları
+ * tekrar "pending" yap ki işlenebilsin.
  */
-(function() use ($batch_file, $auth, $wp_api) {
+(function() use ($batch_file) {
     $fp = fopen($batch_file, 'r+');
     if (!flock($fp, LOCK_EX)) { fclose($fp); return; }
     fseek($fp, 0); $raw = ''; while (!feof($fp)) $raw .= fread($fp, 65536);
     $b = json_decode($raw, true);
     if (!$b) { flock($fp, LOCK_UN); fclose($fp); return; }
-
-    // Unique yazarları topla (sadece pending kitapları olanlar)
-    $authors = [];
-    foreach ($b['books'] as $book) {
-        if (($book['status'] ?? '') === 'pending') {
-            $a = trim($book['author_name'] ?? '');
-            if ($a) $authors[$a] = true;
-        }
-    }
-
-    // Her yazar için WP'yi bir kez sorgula
-    $on_site = [];
-    foreach (array_keys($authors) as $author) {
-        [$terms] = bw_wp("$wp_api/authors?search=" . urlencode($author) . '&per_page=5', 'GET', [], $auth);
-        $atid = null;
-        foreach ($terms ?? [] as $t) {
-            if (mb_strtolower($t['name'] ?? '') === mb_strtolower($author)) { $atid = $t['id']; break; }
-        }
-        if (!$atid && !empty($terms[0]['id'])) $atid = $terms[0]['id'];
-        if (!$atid) continue;
-        // Yazarın en az 1 yayınlanmış/taslak eseri var mı?
-        foreach (['posts', 'analysis'] as $ep) {
-            [$rows] = bw_wp("$wp_api/$ep?authors=$atid&per_page=1&status=publish,draft", 'GET', [], $auth);
-            if (!empty($rows[0]['id'])) { $on_site[$author] = true; break; }
-        }
-    }
-
-    if (empty($on_site)) { flock($fp, LOCK_UN); fclose($fp); return; }
-
-    // Sitede olan yazarların pending kitaplarını toplu duplicate yap
     $changed = false;
     foreach ($b['books'] as $i => $book) {
-        if (($book['status'] ?? '') !== 'pending') continue;
-        $a = trim($book['author_name'] ?? '');
-        if (isset($on_site[$a])) {
-            $b['books'][$i]['status'] = 'duplicate';
-            $b['books'][$i]['error']  = 'Yazar sitede mevcut';
+        if (($book['status'] ?? '') === 'processing') {
+            $b['books'][$i]['status'] = 'pending';
             $changed = true;
         }
     }
-
     if ($changed) {
-        $done = $ok = $failed = 0;
-        foreach ($b['books'] as $bk) {
-            if (in_array($bk['status'], ['done','error','duplicate'])) $done++;
-            if ($bk['status'] === 'done')  $ok++;
-            if ($bk['status'] === 'error') $failed++;
-        }
-        $b['done'] = $done; $b['ok'] = $ok; $b['failed'] = $failed;
         fseek($fp, 0); ftruncate($fp, 0);
         fwrite($fp, json_encode($b, JSON_UNESCAPED_UNICODE));
         fflush($fp);
