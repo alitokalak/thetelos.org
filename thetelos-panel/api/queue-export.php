@@ -8,9 +8,14 @@ $file = dirname(__DIR__) . '/jobs/' . $batch_id . '.json';
 if (!file_exists($file)) { http_response_code(404); exit; }
 $batch = json_decode(file_get_contents($file), true);
 $books = $batch['books'] ?? [];
-$category = preg_replace('/[^a-z0-9_]/', '', strtolower($batch['category'] ?? 'export'));
+$cat_raw   = $batch['category']      ?? 'export';
+$offset    = (int)($batch['author_offset'] ?? 0);
+$aut_total = (int)($batch['authors_total'] ?? 50);
+$cat_slug  = ucfirst(preg_replace('/\s+/', '_', trim($cat_raw)));
+$range_end = $offset + $aut_total;
+$filename  = "{$cat_slug}_{$offset}-{$range_end}.csv";
 header('Content-Type: text/csv; charset=utf-8');
-header('Content-Disposition: attachment; filename="thetelos-' . $category . '.csv"');
+header('Content-Disposition: attachment; filename="' . $filename . '"');
 echo "\xEF\xBB\xBF"; // UTF-8 BOM
 echo "Kitap Adı,Yazar Adı,Yıl,Kapak\n";
 foreach ($books as $b) {

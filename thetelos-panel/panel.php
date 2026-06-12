@@ -19,8 +19,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
   <aside class="tls-sidebar">
     <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
     <nav class="tls-nav">
-      <a href="panel.php" class="active"><span class="ico">✍</span> İçerik Üret</a>
-      <a href="panel.php?mode=queue"><span class="ico">📋</span> Kuyruk</a>
+      <a href="panel.php" <?= ($_GET['mode']??'') !== 'queue' ? 'class="active"' : '' ?>><span class="ico">✍</span> İçerik Üret</a>
+      <a href="panel.php?mode=queue" <?= ($_GET['mode']??'') === 'queue' ? 'class="active"' : '' ?>><span class="ico">📋</span> Kuyruk</a>
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
       <a href="settings.php"><span class="ico">⚙</span> Ayarlar</a>
