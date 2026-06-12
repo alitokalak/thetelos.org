@@ -156,7 +156,43 @@ document.querySelectorAll('.tab-top-btn').forEach(btn => {
 const _initMode = new URLSearchParams(location.search).get('mode');
 if (_initMode && modeTitles[_initMode]) switchMode(_initMode);
 
-/* ══ TEK KİTAP ══════════════════════════════════════ */
+/* ── Aktif işlem göstergesi (her 10sn kontrol) ── */
+async function checkActiveJobs() {
+  try {
+    const res = await postData(API('server-status.php'), {});
+    const bar  = document.getElementById('active-jobs-bar');
+    const list = document.getElementById('active-jobs-list');
+    if (!bar || !list) return;
+    if (!res.ok || !res.active || res.active.length === 0) {
+      bar.style.display = 'none'; return;
+    }
+    bar.style.display = '';
+    list.innerHTML = res.active.map(j => {
+      const pct = j.total > 0 ? Math.round(j.done / j.total * 100) : 0;
+      return `<div style="margin-top:4px">
+        <strong>${j.category || j.id}</strong> — ${j.done}/${j.total} işlendi · ${j.ok} başarılı · ${j.failed} hata · ${j.books_processing} aktif
+        <div style="background:#2a2a2a;border-radius:3px;height:4px;margin-top:3px;overflow:hidden">
+          <div style="background:var(--gold);height:100%;width:${pct}%;transition:width 0.5s"></div>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(_) {}
+}
+async function stopAllJobs() {
+  if (!confirm('Tüm çalışan batch\'ler durdurulacak. Emin misin?')) return;
+  try {
+    const res = await postData(API('server-status.php'), {});
+    for (const j of res.active || []) {
+      await postData(API('batch-cancel.php'), { batch_id: j.id });
+    }
+    document.getElementById('active-jobs-bar').style.display = 'none';
+    notify('gen-notif', 'Tüm işlemler durduruldu.', 'ok');
+  } catch(_) {}
+}
+checkActiveJobs();
+setInterval(checkActiveJobs, 10000);
+
+
 let state = { content:'', categories:[], selectedCover:'', quotes:[] };
 let pollTimer = null;
 

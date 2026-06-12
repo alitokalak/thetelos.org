@@ -44,6 +44,18 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       </div>
     </div>
 
+    <!-- ── Aktif İşlem Göstergesi ── -->
+    <div id="active-jobs-bar" style="display:none;background:#1a1a1a;border:1px solid #333;border-radius:8px;padding:10px 16px;margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1s infinite"></span>
+          <strong style="font-size:13px">Arka planda çalışan işlem var</strong>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="stopAllJobs()" style="color:var(--red)">⛔ Tümünü Durdur</button>
+      </div>
+      <div id="active-jobs-list" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+    </div>
+
     <!-- ── API Provider Toggle ── -->
     <div class="api-toggle-bar">
       <span class="api-toggle-label">API:</span>
