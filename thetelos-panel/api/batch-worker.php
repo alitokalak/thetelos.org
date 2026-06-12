@@ -102,7 +102,7 @@ function bw_update_book($batch_file, $idx, $updates) {
         foreach ($updates as $k => $v) $batch['books'][$idx][$k] = $v;
         $done = $ok = $failed = 0;
         foreach ($batch['books'] as $b) {
-            if (in_array($b['status'], ['done','error','duplicate'])) $done++;
+            if (in_array($b['status'], ['done','error'])) $done++;
             if ($b['status'] === 'done')  $ok++;
             if ($b['status'] === 'error') $failed++;
         }
@@ -256,39 +256,6 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $api_provider = $batch['api_provider'] ?? 'deepseek';
     $parts        = max(1, min(4, (int)($batch['parts'] ?? 2)));
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
-
-    // ── Dedup kontrolü (kök bazlı eşleştirme) ─────────────────────
-    // Aynı eser farklı İngilizce çeviriyle yazılmış olabilir
-    // ("Commentary on Aristotle's Physics" ≈ "Exposition of the Physics of Aristotle").
-    // Bu yüzden başlıkları anlamlı kelime köklerine indirip örtüşmeye göre eşleştir.
-    $cand_tokens = bw_title_tokens($book);
-    // Yazarın sitedeki tüm eserlerini topla (yazar terimi + ada göre arama)
-    $dup = null;
-    [$aterms] = bw_wp("$wp_api/authors?search=" . urlencode($author) . '&per_page=10', 'GET', [], $auth);
-    $atid = null;
-    foreach ($aterms ?? [] as $t) { if (strtolower($t['name'] ?? '') === strtolower($author)) { $atid = $t['id']; break; } }
-    if ($atid === null && !empty($aterms[0]['id'])) $atid = $aterms[0]['id'];
-
-    foreach (['posts','analysis'] as $dep) {
-        $url = $atid !== null
-            ? "$wp_api/$dep?authors=$atid&per_page=100&status=publish,draft,pending,private,future"
-            : "$wp_api/$dep?search=" . urlencode($search_book) . '&per_page=20&status=publish,draft,pending,private,future';
-        [$rows] = bw_wp($url, 'GET', [], $auth);
-        foreach ($rows ?? [] as $p) {
-            $pt = html_entity_decode(strip_tags($p['title']['rendered'] ?? ''));
-            $pt = preg_replace('/\s*[-–]\s*' . preg_quote($author, '/') . '\s*$/i', '', $pt);
-            if (bw_titles_same($cand_tokens, bw_title_tokens($pt))) { $dup = $p; break 2; }
-        }
-    }
-    if ($dup) {
-        bw_update_book($batch_file, $idx, [
-            'status'   => 'duplicate',
-            'post_id'  => $dup['id'],
-            'edit_url' => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $dup['id'] . '&action=edit',
-            'error'    => 'Zaten mevcut',
-        ]);
-        return;
-    }
 
     // ── Prompt ────────────────────────────────────────────────────
     $prompts  = file_exists(PROMPTS_FILE) ? json_decode(file_get_contents(PROMPTS_FILE), true) : [];
