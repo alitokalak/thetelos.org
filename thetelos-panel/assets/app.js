@@ -964,26 +964,30 @@ document.getElementById('btn-fetch-all-works')?.addEventListener('click', async 
 });
 
 // Bir yazarın eserlerini çek ve listeye ekle (dedup)
-// Önce Firebase'i dener, sonuç yoksa LLM'e geçer.
+// Öncelik: 1) Firebase  2) OpenLibrary  3) LLM (DeepSeek)
 async function fetchAuthorWorks(author) {
   const doVerify = document.getElementById('builder-verify').checked;
   try {
-    // 1) Firebase'den hızlı çekmeyi dene
     let worksRaw = null;
     let source = 'llm';
-    try {
-      const fb = await postData(API('firebase-search.php'), { author, limit: 300 }, 15000);
-      if (fb.ok && fb.works && fb.works.length > 0) {
-        worksRaw = fb.works;
-        source = 'firebase';
-      }
-    } catch(_) { /* Firebase erişilemez, LLM'e geç */ }
 
-    // 2) Firebase sonuç vermediyse LLM kullan
+    // 1) Firebase /yazarlar/ — indexer çalıştırıldıysa anlık gelir
+    try {
+      const fb = await postData(API('firebase-search.php'), { author, limit: 200 }, 12000);
+      if (fb.ok && fb.works && fb.works.length > 0) { worksRaw = fb.works; source = 'firebase'; }
+    } catch(_) {}
+
+    // 2) OpenLibrary public API — ücretsiz, kapak resimli
     if (!worksRaw) {
-      const res = await postData(API('list-works.php'), {
-        author, api_provider: activeProvider, mode: 'list',
-      });
+      try {
+        const ol = await postData(API('openlibrary-search.php'), { author, limit: 50 }, 25000);
+        if (ol.ok && ol.works && ol.works.length > 0) { worksRaw = ol.works; source = 'openlibrary'; }
+      } catch(_) {}
+    }
+
+    // 3) LLM fallback — son çare
+    if (!worksRaw) {
+      const res = await postData(API('list-works.php'), { author, api_provider: activeProvider, mode: 'list' });
       if (!res.ok) { notify('builder-notif', res.error || 'Liste alınamadı.', 'err'); return [-1, res.error||'Liste alınamadı']; }
       worksRaw = res.works;
     }
@@ -995,13 +999,13 @@ async function fetchAuthorWorks(author) {
       existing.add(key);
       const row = {
         title: w.title, original: w.original || '', author: author, year: w.year || '',
-        verified: false, cover: '', exists: false, post_url: '',
+        verified: false, cover: w.cover || '', exists: false, post_url: '',
       };
       builderList.push(row);
       newRows.push(row);
     }
     renderBuilderList();
-    if (source === 'firebase') notify('builder-notif', `✓ ${author}: ${newRows.length} eser (Firebase).`, 'ok');
+    if (source !== 'llm') notify('builder-notif', `✓ ${author}: ${newRows.length} eser (${source}).`, 'ok');
 
     // Sitede zaten var mı? — yazarın TÜM mevcut eserlerini TEK istekle çek, kök bazlı eşleştir
     try {
