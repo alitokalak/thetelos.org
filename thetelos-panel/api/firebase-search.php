@@ -25,41 +25,39 @@ if ($author === '') {
     exit;
 }
 
-// Firebase REST: orderBy + equalTo (index gerektirir)
-function firebase_search_by_author($author_name, $limit) {
-    $url = FIREBASE_URL . '/kitaplar.json'
-         . '?orderBy=' . urlencode('"yazar_adi"')
-         . '&equalTo=' . urlencode('"' . $author_name . '"')
-         . '&limitToFirst=' . $limit;
+// Firebase key normalize: Python scriptindeki norm_yazar() ile aynı mantık
+function fb_norm($name) {
+    $name = mb_strtolower(trim($name));
+    return strtr($name, ['.'=>'_','#'=>'_','$'=>'_','['=>'_',']'=>'_','/'=>'_']);
+}
+
+// /yazarlar/{norm_adi}.json — direkt path lookup, index gerektirmez
+function firebase_get_author_works($author_name, $limit) {
+    $norm = fb_norm($author_name);
+    $url  = FIREBASE_URL . '/yazarlar/' . rawurlencode($norm) . '.json'
+          . '?limitToFirst=' . $limit;
 
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_TIMEOUT        => 15,
         CURLOPT_HTTPHEADER     => ['Accept: application/json'],
     ]);
-    $raw = curl_exec($ch);
-    $err = curl_error($ch);
+    $raw  = curl_exec($ch);
+    $err  = curl_error($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
 
     if ($err || !$raw) return [null, 'Firebase bağlantı hatası: ' . $err];
-    if ($code !== 200) return [null, "Firebase HTTP $code"];
+    if ($code === 404 || $raw === 'null') return [[], ''];   // yazar yok
+    if ($code !== 200) return [null, "Firebase HTTP $code — " . mb_substr($raw,0,100)];
 
     $data = json_decode($raw, true);
-    if (!is_array($data)) return [null, 'Firebase yanıt ayrıştırılamadı'];
+    if (!is_array($data)) return [[], ''];
     return [$data, ''];
 }
 
-// 1. Tam eşleşme dene
-[$data, $err] = firebase_search_by_author($author, $limit);
-
-// 2. Sonuç yok ve nokta/virgül farkı olabilir — kısaltılmış adla dene
-if (!$err && (is_null($data) || count($data) === 0)) {
-    // "John Stuart Mill" → adı parçala, "J. S. Mill" formatını dene
-    // Basit: sadece tam isme bak, çeviri farklarında LLM fallback kullanılır
-    $data = [];
-}
+[$data, $err] = firebase_get_author_works($author, $limit);
 
 if ($err) {
     echo json_encode(['ok'=>false,'error'=>$err]);
@@ -67,12 +65,12 @@ if ($err) {
 }
 
 $works = [];
-foreach ((array)$data as $key => $row) {
-    $title = trim($row['eser_adi'] ?? '');
+foreach ((array)$data as $key => $title) {
+    $title = trim((string)$title);
     if ($title === '') continue;
     $works[] = [
         'title'  => $title,
-        'author' => trim($row['yazar_adi'] ?? $author),
+        'author' => $author,
         'year'   => '',
         'cover'  => '',
     ];
