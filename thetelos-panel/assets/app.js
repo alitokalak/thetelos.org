@@ -578,13 +578,16 @@ async function uploadFile(file) {
   const res = await fetch(API('bulk-upload.php'), {method:'POST', body:fd}).then(r=>r.json());
   if (!res.ok) { notify('bulk-notif', res.error, 'err'); return; }
 
-  // Sitedeki yazarları kontrol et, onların kitaplarını çıkar
+  // Sitedeki yazarları kontrol et (checkbox işaretliyse)
+  const skipOnSite = document.getElementById('bulk-skip-onsite')?.checked !== false;
   const uniqueAuthors = [...new Set(res.books.map(b => b.author_name).filter(Boolean))];
   let onSiteAuthors = new Set();
-  try {
-    const chk = await postData(API('author-check.php'), { authors: JSON.stringify(uniqueAuthors) }, 60000);
-    if (chk.ok && chk.on_site?.length) onSiteAuthors = new Set(chk.on_site.map(a => a.toLowerCase()));
-  } catch(_) {}
+  if (skipOnSite) {
+    try {
+      const chk = await postData(API('author-check.php'), { authors: JSON.stringify(uniqueAuthors) }, 60000);
+      if (chk.ok && chk.on_site?.length) onSiteAuthors = new Set(chk.on_site.map(a => a.toLowerCase()));
+    } catch(_) {}
+  }
 
   const filteredBooks = res.books.filter(b => !onSiteAuthors.has((b.author_name || '').toLowerCase()));
   const skippedAuthors = uniqueAuthors.filter(a => onSiteAuthors.has(a.toLowerCase()));

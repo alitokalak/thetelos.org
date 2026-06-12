@@ -181,6 +181,12 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         </div>
         <input type="file" id="bulk-file" accept=".csv,.xlsx" multiple style="display:none">
         <div id="file-list" style="margin-top:10px;font-size:12px;color:var(--muted)"></div>
+        <div style="margin-top:10px">
+          <label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="bulk-skip-onsite" checked>
+            Sitede zaten olan yazarları atla
+          </label>
+        </div>
         <div style="display:flex;gap:8px;margin-top:10px" id="upload-actions" style="display:none">
           <button class="btn btn-ghost btn-sm" id="btn-add-more">+ Dosya Ekle</button>
           <button class="btn btn-ghost btn-sm" id="btn-clear-list" style="color:var(--red)">✕ Listeyi Temizle</button>
