@@ -17,9 +17,10 @@ fseek($fp, 0); $raw = ''; while (!feof($fp)) $raw .= fread($fp, 65536);
 $b = json_decode($raw, true);
 if ($b) {
     $b['status'] = 'cancelled';
-    // processing → pending olarak sıfırla ki sonraki başlatmada kaldığı yerden devam etsin
+    // processing + duplicate → pending olarak sıfırla ki sonraki başlatmada yeniden işlensin
     foreach ($b['books'] as $i => $bk) {
-        if (($bk['status'] ?? '') === 'processing') $b['books'][$i]['status'] = 'pending';
+        $st = $bk['status'] ?? '';
+        if ($st === 'processing' || $st === 'duplicate') $b['books'][$i]['status'] = 'pending';
     }
     fseek($fp, 0); ftruncate($fp, 0);
     fwrite($fp, json_encode($b, JSON_UNESCAPED_UNICODE));
