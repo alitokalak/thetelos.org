@@ -169,28 +169,28 @@ if($author){
         // Yeni yazar — kısa biyografi üret
         $bio = '';
         $bio_prompt = "Write a concise 2-3 sentence biography of the author \"{$author}\" for a philosophy and literature website. Focus on their main works, philosophical contributions, and historical context. Write in English. Be factual and encyclopedic.";
-        $bio_ch = curl_init('https://api.anthropic.com/v1/messages');
+        $bio_ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($bio_ch,[
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
-            CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
         ]);
         $bio_raw = curl_exec($bio_ch); curl_close($bio_ch);
-        $bio = json_decode($bio_raw,true)['content'][0]['text'] ?? '';
+        $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
 
         [$nt]=wp_req("$wp_api/authors",'POST',['name'=>$author,'description'=>$bio],$auth);
         $tid=$nt['id']??null;
     } elseif($tid && !$existing_desc) {
         // Yazar var ama biyografisi yok — ekle
         $bio_prompt = "Write a concise 2-3 sentence biography of the author \"{$author}\" for a philosophy and literature website. Focus on their main works, philosophical contributions, and historical context. Write in English. Be factual and encyclopedic.";
-        $bio_ch = curl_init('https://api.anthropic.com/v1/messages');
+        $bio_ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($bio_ch,[
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
-            CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
         ]);
         $bio_raw = curl_exec($bio_ch); curl_close($bio_ch);
-        $bio = json_decode($bio_raw,true)['content'][0]['text'] ?? '';
+        $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
         if($bio) wp_req("$wp_api/authors/$tid",'POST',['description'=>$bio],$auth);
     }
 

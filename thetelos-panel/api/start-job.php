@@ -64,28 +64,22 @@ $target_words = (int)($target * 0.75);
 // Prompt + kitap bilgisi — kelime sayısını otomatik ekle
 $book_line = "\n\nIMPORTANT: Write exactly around {$target_words} words. Do not stop early, do not exceed significantly.\n\nBook: {$book}\nAuthor: {$author}";
 
-// ── Anthropic API + Prompt Caching ───────────────────────
-$ch = curl_init('https://api.anthropic.com/v1/messages');
+// ── DeepSeek API ─────────────────────────────────────────
+$ch = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST           => true,
     CURLOPT_TIMEOUT        => 570,
     CURLOPT_HTTPHEADER     => [
         'Content-Type: application/json',
-        'x-api-key: '         . ANTHROPIC_KEY,
-        'anthropic-version: 2023-06-01',
-        'anthropic-beta: prompt-caching-2024-07-31',
+        'Authorization: Bearer ' . DEEPSEEK_KEY,
     ],
     CURLOPT_POSTFIELDS => json_encode([
-        'model'      => 'claude-haiku-4-5-20251001',
+        'model'      => DEEPSEEK_MODEL,
         'max_tokens' => $max_tokens,
-        'system'     => [[
-            'type'          => 'text',
-            'text'          => $template,
-            'cache_control' => ['type'=>'ephemeral'],
-        ]],
         'messages'   => [
-            ['role'=>'user', 'content'=>"Book: {$book}\nAuthor: {$author}"]
+            ['role'=>'system', 'content'=>$template],
+            ['role'=>'user',   'content'=>$book_line],
         ],
     ]),
 ]);
@@ -107,7 +101,7 @@ if (isset($data['error'])) {
     save_job($job_file, $job); exit;
 }
 
-$content = $data['content'][0]['text'] ?? '';
+$content = $data['choices'][0]['message']['content'] ?? '';
 if (!$content) {
     $job['status'] = 'error';
     $job['error']  = 'Boş içerik döndü. stop_reason: ' . ($data['stop_reason']??'?');
@@ -122,14 +116,14 @@ $cats = 'philosophy,philosophy_of_religion,ethics,metaphysics,epistemology,logic
 $snippet = mb_substr(strip_tags($content), 0, 1500);
 $mp = "Return ONLY valid JSON (no extra text):\n{\"excerpt\":\"max 155 chars\",\"meta_description\":\"max 155 chars\",\"categories\":[\"slug1\",\"slug2\"]}\nChoose 2-5 slugs from: {$cats}\n\nFor book \"{$book}\" by {$author}:\n{$snippet}";
 
-$ch2 = curl_init('https://api.anthropic.com/v1/messages');
+$ch2 = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch2,[
     CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>30,
-    CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-    CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>400,'messages'=>[['role'=>'user','content'=>$mp]]]),
+    CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+    CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>400,'messages'=>[['role'=>'user','content'=>$mp]]]),
 ]);
 $raw2 = curl_exec($ch2); curl_close($ch2);
-$mt   = preg_replace('/```json|```/','', json_decode($raw2,true)['content'][0]['text'] ?? '{}');
+$mt   = preg_replace('/```json|```/','', json_decode($raw2,true)['choices'][0]['message']['content'] ?? '{}');
 $meta = json_decode(trim($mt), true) ?? [];
 
 // ── Kapaklar ──────────────────────────────────────────────

@@ -13,7 +13,7 @@ header('Content-Type: application/json');
 $book         = trim($_POST['book_title']  ?? '');
 $author       = trim($_POST['author_name'] ?? '');
 $type         = trim($_POST['type']        ?? 'summary');
-$api_provider = trim($_POST['api_provider'] ?? 'anthropic'); // 'anthropic' veya 'deepseek'
+$api_provider = trim($_POST['api_provider'] ?? 'deepseek'); // 'deepseek'
 $api_model    = trim($_POST['api_model']    ?? '');          // model override
 $target_words = max(300, min(8000, (int)($_POST['max_tokens'] ?? 3000)));
 // İki parçalı üretimde her parça tam kapasitede yazılsın
@@ -184,10 +184,10 @@ function fetch_source_text($book, $author) {
     return ['url' => $found_url, 'text' => $found_text];
 }
 
-// Web search — sadece DeepSeek için ve ilk parçada (veya tek seferde) çalıştır
+// Web search — ilk parçada (veya tek seferde) çalıştır
 $source_text = '';
 $source_url  = '';
-if ($api_provider === 'deepseek' && ($parts <= 1 || $part === 1)) {
+if ($parts <= 1 || $part === 1) {
     $source = fetch_source_text($book, $author);
     $source_text = $source['text'];
     $source_url  = $source['url'];
@@ -224,8 +224,7 @@ function sse($event, $data) {
     flush();
 }
 
-$provider_label = $api_provider === 'deepseek' ? 'DeepSeek' : 'Claude';
-sse('status', ['msg' => $provider_label . ' içerik üretiyor...']);
+sse('status', ['msg' => 'DeepSeek içerik üretiyor...']);
 
 $full_content  = '';
 $input_tokens  = 0;
@@ -235,132 +234,67 @@ $stream_buf    = '';
 $raw_buf       = '';
 $last_ping     = time();
 
-if ($api_provider === 'deepseek') {
+// ── DeepSeek SSE ──────────────────────────────────────────
+$write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$last_ping) {
+    $raw_buf .= $chunk;
 
-    // ── DeepSeek SSE ──────────────────────────────────────────
-    $write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$last_ping) {
-        $raw_buf .= $chunk;
+    if (time() - $last_ping >= 10) {
+        echo ": ping\n\n";
+        flush();
+        $last_ping = time();
+    }
 
-        if (time() - $last_ping >= 10) {
-            echo ": ping\n\n";
-            flush();
-            $last_ping = time();
-        }
-
-        while (($pos = strpos($raw_buf, "\n")) !== false) {
-            $line    = substr($raw_buf, 0, $pos);
-            $raw_buf = substr($raw_buf, $pos + 1);
-            $line    = trim($line);
-            if (!$line) continue;
-            if (strpos($line, 'data: ') === 0) {
-                $json = substr($line, 6);
-                if ($json === '[DONE]') {
-                    $stop_reason = 'end_turn';
-                    continue;
-                }
-                $ev = json_decode($json, true);
-                if (!$ev) continue;
-                // OpenAI-uyumlu format
-                $text = $ev['choices'][0]['delta']['content'] ?? '';
-                if ($text !== '') {
-                    $full_content .= $text;
-                    $stream_buf   .= $text;
-                    if (strlen($stream_buf) >= 200) {
-                        sse('chunk', ['text' => $stream_buf]);
-                        $stream_buf = '';
-                    }
-                }
-                // Token sayısı — genellikle son chunk'ta gelir
-                if (!empty($ev['usage'])) {
-                    $input_tokens  = $ev['usage']['prompt_tokens']     ?? $input_tokens;
-                    $output_tokens = $ev['usage']['completion_tokens'] ?? $output_tokens;
-                }
-                $finish = $ev['choices'][0]['finish_reason'] ?? '';
-                if ($finish) $stop_reason = $finish === 'stop' ? 'end_turn' : $finish;
+    while (($pos = strpos($raw_buf, "\n")) !== false) {
+        $line    = substr($raw_buf, 0, $pos);
+        $raw_buf = substr($raw_buf, $pos + 1);
+        $line    = trim($line);
+        if (!$line) continue;
+        if (strpos($line, 'data: ') === 0) {
+            $json = substr($line, 6);
+            if ($json === '[DONE]') {
+                $stop_reason = 'end_turn';
+                continue;
             }
-        }
-        return strlen($chunk);
-    };
-
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_POST          => true,
-        CURLOPT_TIMEOUT       => 280,
-        CURLOPT_HTTPHEADER    => [
-            'Content-Type: application/json',
-            'Authorization: Bearer ' . DEEPSEEK_KEY,
-        ],
-        CURLOPT_POSTFIELDS    => json_encode([
-            'model'       => DEEPSEEK_MODEL,
-            'max_tokens'  => $max_tokens,
-            'stream'      => true,
-            'messages'    => [['role'=>'user','content'=>$prompt]],
-        ]),
-        CURLOPT_WRITEFUNCTION => $write_fn,
-    ]);
-
-} else {
-
-    // ── Anthropic SSE ─────────────────────────────────────────
-    $write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$last_ping) {
-        $raw_buf .= $chunk;
-
-        if (time() - $last_ping >= 10) {
-            echo ": ping\n\n";
-            flush();
-            $last_ping = time();
-        }
-
-        while (($pos = strpos($raw_buf, "\n")) !== false) {
-            $line    = substr($raw_buf, 0, $pos);
-            $raw_buf = substr($raw_buf, $pos + 1);
-            $line    = trim($line);
-            if (!$line || $line === 'event: ping') continue;
-            if (strpos($line, 'data: ') === 0) {
-                $json = substr($line, 6);
-                if ($json === '[DONE]') continue;
-                $ev = json_decode($json, true);
-                if (!$ev) continue;
-                $ev_type = $ev['type'] ?? '';
-                if ($ev_type === 'content_block_delta') {
-                    $text = $ev['delta']['text'] ?? '';
-                    if ($text !== '') {
-                        $full_content .= $text;
-                        $stream_buf   .= $text;
-                        if (strlen($stream_buf) >= 200) {
-                            sse('chunk', ['text' => $stream_buf]);
-                            $stream_buf = '';
-                        }
-                    }
-                } elseif ($ev_type === 'message_delta') {
-                    $stop_reason   = $ev['delta']['stop_reason'] ?? '';
-                    $output_tokens = $ev['usage']['output_tokens'] ?? 0;
-                } elseif ($ev_type === 'message_start') {
-                    $input_tokens  = $ev['message']['usage']['input_tokens'] ?? 0;
+            $ev = json_decode($json, true);
+            if (!$ev) continue;
+            // OpenAI-uyumlu format
+            $text = $ev['choices'][0]['delta']['content'] ?? '';
+            if ($text !== '') {
+                $full_content .= $text;
+                $stream_buf   .= $text;
+                if (strlen($stream_buf) >= 200) {
+                    sse('chunk', ['text' => $stream_buf]);
+                    $stream_buf = '';
                 }
             }
+            // Token sayısı — genellikle son chunk'ta gelir
+            if (!empty($ev['usage'])) {
+                $input_tokens  = $ev['usage']['prompt_tokens']     ?? $input_tokens;
+                $output_tokens = $ev['usage']['completion_tokens'] ?? $output_tokens;
+            }
+            $finish = $ev['choices'][0]['finish_reason'] ?? '';
+            if ($finish) $stop_reason = $finish === 'stop' ? 'end_turn' : $finish;
         }
-        return strlen($chunk);
-    };
+    }
+    return strlen($chunk);
+};
 
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_POST          => true,
-        CURLOPT_TIMEOUT       => 280,
-        CURLOPT_HTTPHEADER    => [
-            'Content-Type: application/json',
-            'x-api-key: ' . ANTHROPIC_KEY,
-            'anthropic-version: 2023-06-01',
-        ],
-        CURLOPT_POSTFIELDS    => json_encode([
-            'model'      => $api_model ?: 'claude-haiku-4-5-20251001',
-            'max_tokens' => $max_tokens,
-            'stream'     => true,
-            'messages'   => [['role'=>'user','content'=>$prompt]],
-        ]),
-        CURLOPT_WRITEFUNCTION => $write_fn,
-    ]);
-}
+$ch = curl_init(DEEPSEEK_API_URL);
+curl_setopt_array($ch, [
+    CURLOPT_POST          => true,
+    CURLOPT_TIMEOUT       => 280,
+    CURLOPT_HTTPHEADER    => [
+        'Content-Type: application/json',
+        'Authorization: Bearer ' . DEEPSEEK_KEY,
+    ],
+    CURLOPT_POSTFIELDS    => json_encode([
+        'model'       => DEEPSEEK_MODEL,
+        'max_tokens'  => $max_tokens,
+        'stream'      => true,
+        'messages'    => [['role'=>'user','content'=>$prompt]],
+    ]),
+    CURLOPT_WRITEFUNCTION => $write_fn,
+]);
 
 curl_exec($ch);
 $curl_err = curl_error($ch);

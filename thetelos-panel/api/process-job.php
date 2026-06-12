@@ -36,32 +36,24 @@ if (!$template) {
 $book_line = "\n\nBook: {$book}\nAuthor: {$author}";
 $prompt    = $template . $book_line;
 
-// ── Anthropic API + Prompt Caching ───────────────────────
+// ── DeepSeek API ─────────────────────────────────────────
 $messages_payload = [
-    'model'      => 'claude-haiku-4-5-20251001',
+    'model'      => DEEPSEEK_MODEL,
     'max_tokens' => $max_tok,
-    'system'     => [
-        [
-            'type'         => 'text',
-            'text'         => $template,
-            'cache_control'=> ['type'=>'ephemeral'], // Prompt cache!
-        ]
-    ],
-    'messages' => [
-        ['role'=>'user','content'=>"Book: {$book}\nAuthor: {$author}"]
+    'messages'   => [
+        ['role'=>'system', 'content'=>$template],
+        ['role'=>'user',   'content'=>"Book: {$book}\nAuthor: {$author}"],
     ],
 ];
 
-$ch = curl_init('https://api.anthropic.com/v1/messages');
+$ch = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST           => true,
     CURLOPT_TIMEOUT        => 580,
     CURLOPT_HTTPHEADER     => [
         'Content-Type: application/json',
-        'x-api-key: '         . ANTHROPIC_KEY,
-        'anthropic-version: 2023-06-01',
-        'anthropic-beta: prompt-caching-2024-07-31',
+        'Authorization: Bearer ' . DEEPSEEK_KEY,
     ],
     CURLOPT_POSTFIELDS => json_encode($messages_payload),
 ]);
