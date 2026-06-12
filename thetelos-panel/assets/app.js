@@ -964,18 +964,32 @@ document.getElementById('btn-fetch-all-works')?.addEventListener('click', async 
 });
 
 // Bir yazarın eserlerini çek ve listeye ekle (dedup)
+// Önce Firebase'i dener, sonuç yoksa LLM'e geçer.
 async function fetchAuthorWorks(author) {
   const doVerify = document.getElementById('builder-verify').checked;
   try {
-    // 1) Listeyi hızlıca getir (sadece LLM, doğrulama yok — Cloudflare timeout'a takılmaz)
-    const res = await postData(API('list-works.php'), {
-      author, api_provider: activeProvider, mode: 'list',
-    });
-    if (!res.ok) { notify('builder-notif', res.error || 'Liste alınamadı.', 'err'); return [-1, res.error||'Liste alınamadı']; }
+    // 1) Firebase'den hızlı çekmeyi dene
+    let worksRaw = null;
+    let source = 'llm';
+    try {
+      const fb = await postData(API('firebase-search.php'), { author, limit: 300 }, 15000);
+      if (fb.ok && fb.works && fb.works.length > 0) {
+        worksRaw = fb.works;
+        source = 'firebase';
+      }
+    } catch(_) { /* Firebase erişilemez, LLM'e geç */ }
 
+    // 2) Firebase sonuç vermediyse LLM kullan
+    if (!worksRaw) {
+      const res = await postData(API('list-works.php'), {
+        author, api_provider: activeProvider, mode: 'list',
+      });
+      if (!res.ok) { notify('builder-notif', res.error || 'Liste alınamadı.', 'err'); return [-1, res.error||'Liste alınamadı']; }
+      worksRaw = res.works;
+    }
     const existing = new Set(builderList.map(b => (b.title+'||'+b.author).toLowerCase()));
     const newRows = [];
-    for (const w of res.works) {
+    for (const w of worksRaw) {
       const key = (w.title+'||'+author).toLowerCase();
       if (existing.has(key)) continue;
       existing.add(key);
@@ -987,6 +1001,7 @@ async function fetchAuthorWorks(author) {
       newRows.push(row);
     }
     renderBuilderList();
+    if (source === 'firebase') notify('builder-notif', `✓ ${author}: ${newRows.length} eser (Firebase).`, 'ok');
 
     // Sitede zaten var mı? — yazarın TÜM mevcut eserlerini TEK istekle çek, kök bazlı eşleştir
     try {
