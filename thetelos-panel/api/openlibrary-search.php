@@ -55,6 +55,9 @@ if (!$works_data) {
     echo json_encode(['ok'=>false,'error'=>'OpenLibrary eser listesi alınamadı.']); exit;
 }
 
+$author_parts = array_filter(explode(' ', mb_strtolower($author)));
+$author_last  = end($author_parts);
+
 $works = [];
 $seen  = [];
 foreach ($works_data['entries'] ?? [] as $entry) {
@@ -64,13 +67,28 @@ foreach ($works_data['entries'] ?? [] as $entry) {
     if (isset($seen[$key])) continue;
     $seen[$key] = true;
 
-    // Kapak: covers dizisinin ilk elemanı
+    // Yazar doğrulaması: eserin yazarları arasında hedef yazar olmalı
+    $work_authors = $entry['authors'] ?? [];
+    if (!empty($work_authors)) {
+        $matched = false;
+        foreach ($work_authors as $wa) {
+            $wa_key = $wa['author']['key'] ?? ($wa['key'] ?? '');
+            if ($wa_key === $author_key) { $matched = true; break; }
+        }
+        if (!$matched) continue;
+    }
+
+    // Başlık sadece yazar soyadıysa veya "X of/on Kant" kalıbındaysa → atla
+    if (strlen($author_last) >= 4) {
+        if (preg_match('/\b(of|on|to|about|and|by)\s+' . preg_quote($author_last, '/') . '\b/i', $title)) continue;
+        if (trim(mb_strtolower($title)) === $author_last) continue;
+    }
+
     $cover = '';
     if (!empty($entry['covers'][0]) && $entry['covers'][0] > 0) {
         $cover = 'https://covers.openlibrary.org/b/id/' . $entry['covers'][0] . '-M.jpg';
     }
 
-    // Yıl: first_publish_date veya created date
     $year = '';
     if (!empty($entry['first_publish_date'])) {
         preg_match('/\d{4}/', $entry['first_publish_date'], $m);

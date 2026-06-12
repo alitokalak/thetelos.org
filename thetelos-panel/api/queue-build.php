@@ -81,10 +81,41 @@ function qb_openlibrary($author){
     $r2 = curl_exec($ch2); $code2 = curl_getinfo($ch2,CURLINFO_HTTP_CODE); curl_close($ch2);
     if($code2!==200||!$r2) return [];
     $wd = json_decode($r2,true);
+
+    // Yazarın soyadı / kısa adı — eşleştirme için
+    $author_parts = array_filter(explode(' ', mb_strtolower($author)));
+    $author_last  = end($author_parts); // "kant", "socrates" vb.
+
     $out=[]; $seen=[];
     foreach($wd['entries']??[] as $entry){
         $t=trim($entry['title']??''); if(!$t) continue;
         $k=mb_strtolower($t); if(isset($seen[$k])) continue; $seen[$k]=true;
+
+        // Eserin yazarlarını kontrol et — hedef yazar listede olmalı
+        // (antoloji/derleme kitapları farklı editörler altında geliyor)
+        $work_authors = $entry['authors'] ?? [];
+        if(!empty($work_authors)){
+            $matched = false;
+            foreach($work_authors as $wa){
+                $wa_key = $wa['author']['key'] ?? ($wa['key'] ?? '');
+                // author_key eşleşiyorsa kesin eşleşme
+                if($wa_key === $author_key){ $matched = true; break; }
+            }
+            // Yazarlar var ama hedef yazar yok → bu eser başkasına ait, atla
+            if(!$matched) continue;
+        }
+
+        // Başlık kontrolü: yazarın soyadı başlıkta geçiyorsa bu eser hakkında
+        // yazılmış bir kitaptır (örn. "The Philosophy of Kant") — atla
+        // (yalnızca soyadı tek kelimeyse uygula: "Kant", "Socrates" vb.)
+        if(strlen($author_last) >= 4){
+            $title_lower = mb_strtolower($t);
+            // "X of Kant", "X on Kant", "Introduction to Kant" gibi kalıplar
+            if(preg_match('/\b(of|on|to|about|and|by)\s+'.preg_quote($author_last,'/').'\b/i', $t)) continue;
+            // Başlık sadece yazar soyadından ibaret (örn. "Kant") → atla
+            if(trim($title_lower) === $author_last) continue;
+        }
+
         $cover='';
         if(!empty($entry['covers'][0])&&$entry['covers'][0]>0)
             $cover='https://covers.openlibrary.org/b/id/'.$entry['covers'][0].'-M.jpg';
