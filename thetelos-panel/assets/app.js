@@ -1197,31 +1197,42 @@ async function loadQueueList() {
   }
 }
 
-// Kuyruk oluştur
+// Kuyruk oluştur — 2 adım: 1) yazarlar (LLM, hızlı)  2) eserler (chunked polling)
 document.getElementById('btn-queue-create')?.addEventListener('click', async () => {
   const category = document.getElementById('queue-category')?.value.trim();
   const count    = document.getElementById('queue-author-count')?.value || 50;
   if (!category) { notify('queue-create-notif', 'Kategori girin.', 'err'); return; }
 
   const btn = document.getElementById('btn-queue-create');
-  setLoading(btn, true, 'Oluşturuluyor...');
+  setLoading(btn, true, 'Yazarlar getiriliyor...');
   try {
+    // Adım 1: yazar listesi al (10-15s)
     const res = await postData(API('queue-create.php'), {
       category, author_count: count,
       type: 'summary', post_status: 'draft', max_tokens: 3000,
-    }, 20000);
+    }, 90000);
     if (!res.ok) { notify('queue-create-notif', res.error || 'Hata.', 'err'); return; }
+
     notify('queue-create-notif',
-      `✓ Kuyruk oluşturuldu (${res.batch_id}) — arka planda yazarlar ve eserler getiriliyor...`, 'ok');
-    setTimeout(loadQueueList, 3000);
-    // Her 5 saniyede listeyi güncelle
-    const poll = setInterval(async () => {
-      await loadQueueList();
-      const listRes = await postData(API('queue-list.php'), {});
-      const q = listRes.queues?.find(q => q.id === res.batch_id);
-      if (q && q.status !== 'building') clearInterval(poll);
-    }, 5000);
-    setTimeout(() => clearInterval(poll), 300000); // max 5dk
+      `✓ ${res.authors.length} yazar bulundu — eserler getiriliyor...`, 'ok');
+    await loadQueueList();
+
+    // Adım 2: her 5 yazarın eserlerini sırayla çek (her istek ~15-20s)
+    const batchId = res.batch_id;
+    let done = false;
+    while (!done) {
+      btn.innerHTML = `<span class="loader"></span> Eserler getiriliyor...`;
+      try {
+        const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 60000);
+        if (!br.ok) break;
+        notify('queue-create-notif', `${br.build_msg}`, 'ok');
+        await loadQueueList();
+        done = br.done;
+      } catch(e) { break; }
+    }
+
+    notify('queue-create-notif', '✓ Kuyruk hazır! "Devam Et" ile işlemi başlat.', 'ok');
+    await loadQueueList();
   } catch(e) {
     notify('queue-create-notif', e.message, 'err');
   } finally {
