@@ -90,6 +90,54 @@ function qb_llm($author){
     return $out;
 }
 
+/**
+ * Returns true if the title looks non-English and needs "English (Original)" formatting.
+ */
+function qb_needs_normalization($title){
+    // Already has parentheses → already formatted or ambiguous, skip
+    if(preg_match('/\([^)]+\)/',$title)) return false;
+    // Non-ASCII characters (Greek, Arabic, Cyrillic, Hebrew, CJK, etc.)
+    if(preg_match('/[^\x00-\x7F]/',$title)) return true;
+    // Latin / Greek / medieval prefixes common in classical works
+    if(preg_match('/^(De |In |Ad |Contra |Super |Pro |Summa |Quaestio|Epistola|Tractatus|Commentar)/i',$title)) return true;
+    // French / Italian / Spanish / German articles or words at start
+    if(preg_match('/^(La |Le |Les |Il |Gli |Lo |Los |Las |El |Ein |Die |Das |Der |Une |Un |Sur |Del |Les |Über )/i',$title)) return true;
+    return false;
+}
+
+/**
+ * Batch-normalize non-English titles to "English Title (Original Title)" via DeepSeek.
+ * $pairs = [['title'=>..., 'author'=>...], ...]  (only titles needing normalization)
+ * Returns map: original_title => normalized_title
+ */
+function qb_normalize_batch($pairs){
+    if(empty($pairs)) return [];
+    $lines='';
+    foreach($pairs as $i=>$p) $lines.=($i+1).". \"{$p['title']}\" — by {$p['author']}\n";
+    $prompt = "The following book titles may be in Latin, Greek, Arabic, French, or another non-English language.\n"
+            . "For each: if the title is NOT in English, rewrite it as \"English Title (Original Title)\" where English Title is the well-known English name and Original Title is the original-language title.\n"
+            . "If the title is already in English (or has no well-known English equivalent), return it unchanged.\n"
+            . "Return ONLY a JSON array with objects {\"n\":1,\"title\":\"...\"}. Same order, same count.\n\n"
+            . $lines;
+    $ch=curl_init(DEEPSEEK_API_URL);
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>40,
+        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+        CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>2000,
+            'messages'=>[['role'=>'user','content'=>$prompt]]])]);
+    $r=curl_exec($ch); curl_close($ch);
+    $d=json_decode($r,true); $txt=$d['choices'][0]['message']['content']??'';
+    $txt=preg_replace('/```json|```/i','',$txt);
+    $s=strpos($txt,'['); $e=strrpos($txt,']');
+    $arr=($s!==false&&$e>$s)?json_decode(substr($txt,$s,$e-$s+1),true):[];
+    if(!is_array($arr)) return [];
+    $map=[];
+    foreach($arr as $idx=>$item){
+        $n=(int)($item['n']??($idx+1))-1; // 0-based
+        if(isset($pairs[$n])) $map[$pairs[$n]['title']]=trim($item['title']??$pairs[$n]['title']);
+    }
+    return $map;
+}
+
 // Sonraki chunk kadar yazarı işle
 $new_books   = [];
 $end         = min($authors_built + $chunk, $authors_total);
@@ -113,6 +161,21 @@ for ($i = $authors_built; $i < $end; $i++) {
             'post_id'=>null,'post_url'=>null,'edit_url'=>null,'cover_set'=>false,'error'=>'',
         ];
     }
+}
+
+// Normalize non-English titles to "English Title (Original Title)"
+$to_normalize = [];
+foreach($new_books as $nb){
+    if(qb_needs_normalization($nb['book_title'])){
+        $to_normalize[]=['title'=>$nb['book_title'],'author'=>$nb['author_name']];
+    }
+}
+if(!empty($to_normalize)){
+    $norm_map = qb_normalize_batch($to_normalize);
+    foreach($new_books as &$nb){
+        if(isset($norm_map[$nb['book_title']])) $nb['book_title']=$norm_map[$nb['book_title']];
+    }
+    unset($nb);
 }
 
 // Batch dosyasını güncelle (kilitle)
