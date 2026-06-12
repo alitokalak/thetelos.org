@@ -1,6 +1,8 @@
 <?php
 /**
- * openlibrary-search.php — OpenLibrary public API ile yazar eserlerini çek
+ * openlibrary-search.php — OpenLibrary ile yazar eserlerini çek (author ID bazlı)
+ * Adım 1: /search/authors.json → yazar key'ini bul
+ * Adım 2: /authors/{key}/works.json → sadece o yazara ait eserler
  * POST: author, limit (varsayılan 50)
  * Dönüş: { ok, works:[{title,author,year,cover}], source:"openlibrary" }
  */
@@ -14,59 +16,71 @@ set_time_limit(30);
 
 $author = trim($_POST['author'] ?? '');
 $limit  = max(10, min(200, (int)($_POST['limit'] ?? 50)));
-
 if ($author === '') { echo json_encode(['ok'=>false,'error'=>'Yazar adı zorunlu.']); exit; }
 
-$url = 'https://openlibrary.org/search.json?'
-     . 'author=' . urlencode($author)
-     . '&limit=' . $limit
-     . '&fields=title,author_name,first_publish_year,cover_i'
-     . '&lang=eng';
+function ol_get($url) {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15,
+        CURLOPT_USERAGENT => 'thetelos.org/1.0', CURLOPT_HTTPHEADER => ['Accept: application/json'],
+    ]);
+    $r = curl_exec($ch); $c = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    return ($c === 200 && $r) ? json_decode($r, true) : null;
+}
 
-$ch = curl_init($url);
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT        => 20,
-    CURLOPT_USERAGENT      => 'thetelos.org/1.0 (content panel)',
-    CURLOPT_HTTPHEADER     => ['Accept: application/json'],
-]);
-$raw  = curl_exec($ch);
-$err  = curl_error($ch);
-$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
+// Adım 1: Yazar adından OpenLibrary author key'ini bul
+$author_data = ol_get('https://openlibrary.org/search/authors.json?q=' . urlencode($author) . '&limit=5');
+$author_key  = null;
+foreach ($author_data['docs'] ?? [] as $a) {
+    // En iyi eşleşme: adı tam ya da yakın olan ilk sonuç
+    $name = mb_strtolower(trim($a['name'] ?? ''));
+    $q    = mb_strtolower($author);
+    if ($name === $q || str_contains($name, $q) || str_contains($q, $name)) {
+        $author_key = $a['key'] ?? null; // "/authors/OL123A"
+        break;
+    }
+}
+// Bulunamazsa ilk sonucu dene
+if (!$author_key && !empty($author_data['docs'][0]['key'])) {
+    $author_key = $author_data['docs'][0]['key'];
+}
 
-if ($err || !$raw) { echo json_encode(['ok'=>false,'error'=>'OpenLibrary bağlantı hatası: '.$err]); exit; }
-if ($code !== 200) { echo json_encode(['ok'=>false,'error'=>"OpenLibrary HTTP $code"]); exit; }
+if (!$author_key) {
+    echo json_encode(['ok'=>false,'error'=>'Yazar OpenLibrary\'de bulunamadı.']); exit;
+}
 
-$data = json_decode($raw, true);
-if (!isset($data['docs'])) { echo json_encode(['ok'=>false,'error'=>'OpenLibrary yanıt ayrıştırılamadı']); exit; }
+// Adım 2: O yazara ait eserleri çek
+$works_data = ol_get('https://openlibrary.org' . $author_key . '/works.json?limit=' . $limit);
+if (!$works_data) {
+    echo json_encode(['ok'=>false,'error'=>'OpenLibrary eser listesi alınamadı.']); exit;
+}
 
 $works = [];
 $seen  = [];
-foreach ($data['docs'] as $doc) {
-    $title = trim($doc['title'] ?? '');
-    if ($title === '') continue;
+foreach ($works_data['entries'] ?? [] as $entry) {
+    $title = trim($entry['title'] ?? '');
+    if (!$title) continue;
     $key = mb_strtolower($title);
     if (isset($seen[$key])) continue;
     $seen[$key] = true;
 
+    // Kapak: covers dizisinin ilk elemanı
     $cover = '';
-    if (!empty($doc['cover_i'])) {
-        $cover = 'https://covers.openlibrary.org/b/id/' . $doc['cover_i'] . '-M.jpg';
+    if (!empty($entry['covers'][0]) && $entry['covers'][0] > 0) {
+        $cover = 'https://covers.openlibrary.org/b/id/' . $entry['covers'][0] . '-M.jpg';
     }
 
-    $works[] = [
-        'title'  => $title,
-        'author' => trim(($doc['author_name'][0] ?? $author)),
-        'year'   => (string)($doc['first_publish_year'] ?? ''),
-        'cover'  => $cover,
-    ];
+    // Yıl: first_publish_date veya created date
+    $year = '';
+    if (!empty($entry['first_publish_date'])) {
+        preg_match('/\d{4}/', $entry['first_publish_date'], $m);
+        $year = $m[0] ?? '';
+    }
+
+    $works[] = ['title' => $title, 'author' => $author, 'year' => $year, 'cover' => $cover];
 }
 
 echo json_encode([
-    'ok'     => true,
-    'author' => $author,
-    'count'  => count($works),
-    'works'  => $works,
-    'source' => 'openlibrary',
+    'ok' => true, 'author' => $author,
+    'count' => count($works), 'works' => $works, 'source' => 'openlibrary',
 ], JSON_UNESCAPED_UNICODE);

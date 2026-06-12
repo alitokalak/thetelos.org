@@ -58,17 +58,41 @@ function qb_firebase($author){
 }
 
 function qb_openlibrary($author){
-    $url='https://openlibrary.org/search.json?author='.urlencode($author).'&limit=50&fields=title,first_publish_year,cover_i&lang=eng';
-    $ch=curl_init($url);
-    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>12,CURLOPT_USERAGENT=>'thetelos.org/1.0']);
-    $r=curl_exec($ch); $code=curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
+    // Adım 1: yazar adından OpenLibrary key bul
+    $ch = curl_init('https://openlibrary.org/search/authors.json?q='.urlencode($author).'&limit=5');
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,CURLOPT_USERAGENT=>'thetelos.org/1.0']);
+    $r = curl_exec($ch); $code = curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
     if($code!==200||!$r) return [];
-    $data=json_decode($r,true); $out=[]; $seen=[];
-    foreach($data['docs']??[] as $doc){
-        $t=trim($doc['title']??''); if(!$t) continue;
+    $ad = json_decode($r,true);
+    $author_key = null;
+    foreach($ad['docs']??[] as $a){
+        $name = mb_strtolower(trim($a['name']??''));
+        $q    = mb_strtolower($author);
+        if($name===$q || str_contains($name,$q) || str_contains($q,$name)){
+            $author_key = $a['key']??null; break;
+        }
+    }
+    if(!$author_key && !empty($ad['docs'][0]['key'])) $author_key = $ad['docs'][0]['key'];
+    if(!$author_key) return [];
+
+    // Adım 2: o yazara ait eserleri çek
+    $ch2 = curl_init('https://openlibrary.org'.$author_key.'/works.json?limit=50');
+    curl_setopt_array($ch2,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>12,CURLOPT_USERAGENT=>'thetelos.org/1.0']);
+    $r2 = curl_exec($ch2); $code2 = curl_getinfo($ch2,CURLINFO_HTTP_CODE); curl_close($ch2);
+    if($code2!==200||!$r2) return [];
+    $wd = json_decode($r2,true);
+    $out=[]; $seen=[];
+    foreach($wd['entries']??[] as $entry){
+        $t=trim($entry['title']??''); if(!$t) continue;
         $k=mb_strtolower($t); if(isset($seen[$k])) continue; $seen[$k]=true;
-        $cover=!empty($doc['cover_i'])?'https://covers.openlibrary.org/b/id/'.$doc['cover_i'].'-M.jpg':'';
-        $out[]=['title'=>$t,'cover'=>$cover,'year'=>(string)($doc['first_publish_year']??'')];
+        $cover='';
+        if(!empty($entry['covers'][0])&&$entry['covers'][0]>0)
+            $cover='https://covers.openlibrary.org/b/id/'.$entry['covers'][0].'-M.jpg';
+        $year='';
+        if(!empty($entry['first_publish_date'])){
+            preg_match('/\d{4}/',$entry['first_publish_date'],$m); $year=$m[0]??'';
+        }
+        $out[]=['title'=>$t,'cover'=>$cover,'year'=>$year];
     }
     return $out;
 }
