@@ -40,6 +40,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <button class="tab-top-btn active" data-mode="single">✍ Tek Kitap</button>
         <button class="tab-top-btn" data-mode="bulk">📋 Toplu Batch</button>
         <button class="tab-top-btn" data-mode="builder">🧱 Liste Oluştur</button>
+        <button class="tab-top-btn" data-mode="queue">⚙ Kuyruk</button>
       </div>
     </div>
 

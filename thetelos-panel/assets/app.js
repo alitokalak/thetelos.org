@@ -132,19 +132,29 @@ const modeTitles = {
   single:  ['Tek Kitap',     'Kitap adı ve yazar girerek özet veya analiz üretin'],
   bulk:    ['Toplu Batch',   'CSV/XLSX yükleyerek binlerce kitabı sunucu taraflı paralel işleyin'],
   builder: ['Liste Oluştur', 'Kategori/yazar bazlı kitap listesi üret — LLM küratör + OpenLibrary doğrulama'],
+  queue:   ['Kuyruk',        'Kategori bazlı otomatik kuyruk — tarayıcı kapansa da devam eder'],
 };
-document.querySelectorAll('.tab-top-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.tab-top-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const mode = btn.dataset.mode;
-    document.getElementById('mode-single').style.display  = mode === 'single'  ? '' : 'none';
-    document.getElementById('mode-bulk').style.display    = mode === 'bulk'    ? '' : 'none';
-    document.getElementById('mode-builder').style.display = mode === 'builder' ? '' : 'none';
-    document.getElementById('page-title').textContent = modeTitles[mode][0];
-    document.getElementById('page-desc').textContent  = modeTitles[mode][1];
+
+function switchMode(mode) {
+  document.querySelectorAll('.tab-top-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.tab-top-btn[data-mode="${mode}"]`)?.classList.add('active');
+  ['single','bulk','builder','queue'].forEach(m => {
+    const el = document.getElementById('mode-' + m);
+    if (el) el.style.display = m === mode ? '' : 'none';
   });
+  const t = modeTitles[mode] || modeTitles.single;
+  document.getElementById('page-title').textContent = t[0];
+  document.getElementById('page-desc').textContent  = t[1];
+  if (mode === 'queue') loadQueueList();
+}
+
+document.querySelectorAll('.tab-top-btn').forEach(btn => {
+  btn.addEventListener('click', () => switchMode(btn.dataset.mode));
 });
+
+// URL'den başlangıç modunu oku
+const _initMode = new URLSearchParams(location.search).get('mode');
+if (_initMode && modeTitles[_initMode]) switchMode(_initMode);
 
 /* ══ TEK KİTAP ══════════════════════════════════════ */
 let state = { content:'', categories:[], selectedCover:'', quotes:[] };
@@ -1145,13 +1155,6 @@ document.getElementById('btn-builder-clear')?.addEventListener('click', () => {
 
 /* ══ OTOMATİK KUYRUK ════════════════════════════════════════════ */
 
-// Sayfa yüklenince kuyruk modunu kontrol et
-if (new URLSearchParams(location.search).get('mode') === 'queue') {
-  document.querySelectorAll('[id^="mode-"]').forEach(el => el.style.display = 'none');
-  const qEl = document.getElementById('mode-queue');
-  if (qEl) qEl.style.display = '';
-  loadQueueList();
-}
 
 async function loadQueueList() {
   const body = document.getElementById('queue-list-body');
