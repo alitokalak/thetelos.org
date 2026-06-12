@@ -216,10 +216,9 @@ if ($mode === 'exists') {
 
     foreach (['posts','analysis'] as $ep) {
         if ($tid !== null) {
+            // Sadece bu yazara ait postları çek — text search kullanma, yanlış eşleşmelere yol açar
             $collect($wp_get("$wp_api/$ep?authors=$tid&per_page=100&status=publish,draft,pending,private,future"));
         }
-        // Yazar terimi atanmamış olabilir → ada göre arama ile de tara
-        $collect($wp_get("$wp_api/$ep?search=" . urlencode($author) . '&per_page=100&status=publish,draft,pending,private,future'));
     }
 
     echo json_encode(['ok'=>true, 'existing'=>$existing], JSON_UNESCAPED_UNICODE);
