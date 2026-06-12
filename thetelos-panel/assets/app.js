@@ -1172,7 +1172,7 @@ async function loadQueueList() {
       return `<div class="card" style="margin-bottom:10px;padding:14px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
           <div>
-            <strong>${q.category}</strong>
+            <strong>${q.category.charAt(0).toUpperCase()+q.category.slice(1)} ${q.author_offset||0}-${(q.author_offset||0)+(q.authors_total||50)}</strong>
             <span class="badge" style="background:${color};color:#fff;margin-left:8px">${statusLabel}</span>
           </div>
           <div style="font-size:12px;color:var(--muted)">${new Date(q.created_at*1000).toLocaleString('tr-TR')}</div>
