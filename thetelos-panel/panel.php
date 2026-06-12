@@ -48,18 +48,18 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     <div class="api-toggle-bar">
       <span class="api-toggle-label">API:</span>
       <div class="api-toggle-group">
-        <button class="api-btn active" data-provider="anthropic">
+        <button class="api-btn" data-provider="anthropic">
           <span class="api-dot anthropic"></span> Anthropic
         </button>
-        <button class="api-btn" data-provider="deepseek">
+        <button class="api-btn active" data-provider="deepseek">
           <span class="api-dot deepseek"></span> DeepSeek
         </button>
       </div>
-      <div class="api-sub-group" id="api-sub-anthropic">
+      <div class="api-sub-group" id="api-sub-anthropic" style="display:none">
         <button class="api-sub-btn active" data-model="claude-haiku-4-5-20251001" data-label="haiku">Haiku <span class="api-sub-hint">Hızlı</span></button>
         <button class="api-sub-btn" data-model="claude-sonnet-4-20250514" data-label="sonnet">Sonnet <span class="api-sub-hint">Kaliteli</span></button>
       </div>
-      <span class="api-active-label" id="api-active-label">claude-haiku</span>
+      <span class="api-active-label" id="api-active-label">deepseek-chat</span>
     </div>
 
     <div id="gen-notif"  class="notif"></div>

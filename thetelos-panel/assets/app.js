@@ -161,7 +161,7 @@ let state = { content:'', categories:[], selectedCover:'', quotes:[] };
 let pollTimer = null;
 
 /* ── API Provider Toggle ─────────────────────────── */
-let activeProvider = 'anthropic';
+let activeProvider = 'deepseek';
 let activeModel    = 'claude-haiku-4-5-20251001';
 
 const subGroup = document.getElementById('api-sub-anthropic');
