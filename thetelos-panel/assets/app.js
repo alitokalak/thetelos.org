@@ -1181,15 +1181,12 @@ async function loadQueueList() {
           </div>
           <div style="font-size:11px;color:var(--muted);margin-top:4px">${q.done}/${q.total} işlendi · ${q.ok} başarılı · ${q.failed} hata</div>
         </div>
-        ${q.status === 'running' || q.status === 'paused' ? `
-        <div style="margin-top:10px;display:flex;gap:8px">
-          <button class="btn btn-primary btn-sm" onclick="resumeQueue('${q.id}')">▶ Devam Et</button>
-          <button class="btn btn-ghost btn-sm" onclick="window.location='panel.php'">📋 Batch'e Aktar</button>
-        </div>` : ''}
-        ${q.status === 'done' ? `
-        <div style="margin-top:10px">
-          <button class="btn btn-ghost btn-sm" onclick="window.location='panel.php'">✓ Tamamlandı</button>
-        </div>` : ''}
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+          ${q.status === 'building' ? `<button class="btn btn-primary btn-sm" onclick="continueBuilding('${q.id}',${q.authors_built||0},${q.authors_total||50})">⚙ Oluşturmayı Devam Ettir</button>` : ''}
+          ${q.status === 'running'  ? `<button class="btn btn-primary btn-sm" onclick="resumeQueue('${q.id}')">▶ İşlemi Başlat</button>` : ''}
+          ${q.status === 'done'     ? `<span class="badge badge-green">✓ Tamamlandı</span>` : ''}
+          <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteQueue('${q.id}')">✕ Sil</button>
+        </div>
       </div>`;
     }).join('');
   } catch(e) {
@@ -1243,9 +1240,31 @@ document.getElementById('btn-queue-create')?.addEventListener('click', async () 
 document.getElementById('btn-queue-refresh')?.addEventListener('click', loadQueueList);
 
 async function resumeQueue(batchId) {
-  // Mevcut batch sistemini kullan — batch_id ile batch-worker.php'yi tetikle
   try {
     await postData(API('batch-worker.php'), { batch_id: batchId }, 10000);
-    notify('queue-create-notif', '✓ İşlem devam ediyor — batch-status ile takip edilebilir.', 'ok');
+    notify('queue-create-notif', '✓ İşlem başladı.', 'ok');
+    loadQueueList();
   } catch(_) {}
+}
+
+async function continueBuilding(batchId, authorsBuilt, authorsTotal) {
+  notify('queue-create-notif', 'Eserler getiriliyor...', 'ok');
+  let built = authorsBuilt;
+  while (built < authorsTotal) {
+    try {
+      const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 60000);
+      if (!br.ok) break;
+      built = br.authors_built;
+      notify('queue-create-notif', br.build_msg, 'ok');
+      await loadQueueList();
+      if (br.done) break;
+    } catch(e) { notify('queue-create-notif', e.message, 'err'); break; }
+  }
+  notify('queue-create-notif', '✓ Kuyruk hazır! "İşlemi Başlat" ile devam et.', 'ok');
+}
+
+async function deleteQueue(batchId) {
+  if (!confirm('Bu kuyruğu silmek istediğinden emin misin?')) return;
+  await postData(API('queue-delete.php'), { batch_id: batchId });
+  loadQueueList();
 }
