@@ -14,16 +14,20 @@ set_time_limit(90);
 
 $category     = trim($_POST['category']     ?? '');
 $author_count = max(10, min(50, (int)($_POST['author_count'] ?? 50)));
-$type         = trim($_POST['type']         ?? 'summary');
-$post_status  = trim($_POST['post_status']  ?? 'draft');
-$max_tokens   = max(500, min(8000, (int)($_POST['max_tokens'] ?? 3000)));
-$parts        = max(1, min(4, (int)($_POST['parts'] ?? 2)));
+$offset       = max(0, (int)($_POST['offset'] ?? 0));
+$type         = 'summary';
+$post_status  = 'draft';
+$max_tokens   = 3000;
+$parts        = 2;
 
 if ($category === '') { echo json_encode(['ok'=>false,'error'=>'Kategori zorunlu.']); exit; }
 
 // LLM → yazar listesi
 $ch = curl_init(DEEPSEEK_API_URL);
-$prompt = "List the {$author_count} most important authors in \"{$category}\" across all of history, ordered by importance.\n"
+$rank_start = $offset + 1;
+$rank_end   = $offset + $author_count;
+$prompt = "List ranks {$rank_start} through {$rank_end} of the most important authors in \"{$category}\" across all of history, ordered by importance.\n"
+        . ($offset > 0 ? "Do NOT include the top {$offset} most important authors — they are already listed.\n" : '')
         . 'Return ONLY a valid JSON array: [{"author":"Full Name","era":"century","note":"brief"}]';
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>80,
@@ -67,10 +71,11 @@ $batch = [
     'api_provider' => 'deepseek',
     'total'        => 0,
     'done'         => 0, 'ok'=>0, 'failed'=>0,
-    'build_msg'    => 'Yazarlar alındı, eserler getiriliyor...',
-    'authors_total'=> count($authors),
-    'authors_built'=> 0,
-    'authors'      => $authors,
+    'build_msg'     => 'Yazarlar alındı, eserler getiriliyor...',
+    'author_offset' => $offset,
+    'authors_total' => count($authors),
+    'authors_built' => 0,
+    'authors'       => $authors,
     'books'        => [],
 ];
 file_put_contents($batch_file, json_encode($batch, JSON_UNESCAPED_UNICODE));

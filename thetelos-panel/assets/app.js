@@ -1186,6 +1186,7 @@ async function loadQueueList() {
           ${q.status === 'running'  ? `<button class="btn btn-primary btn-sm" onclick="resumeQueue('${q.id}')">▶ İşlemi Başlat</button>` : ''}
           ${q.status === 'done'     ? `<span class="badge badge-green">✓ Tamamlandı</span>` : ''}
           ${q.total > 0 ? `<a class="btn btn-ghost btn-sm" href="api/queue-export.php?batch_id=${q.id}" download>⬇ CSV İndir</a>` : ''}
+          ${(q.status === 'running' || q.status === 'done') ? `<button class="btn btn-ghost btn-sm" onclick="addNextAuthors('${q.category}',${(q.author_offset||0)+(q.authors_total||50)})">➕ Sonraki 50 yazar</button>` : ''}
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteQueue('${q.id}')">✕ Sil</button>
         </div>
       </div>`;
@@ -1205,12 +1206,9 @@ document.getElementById('btn-queue-create')?.addEventListener('click', async () 
   setLoading(btn, true, 'Yazarlar getiriliyor...');
   try {
     // Adım 1: yazar listesi al (10-15s)
-    const type        = document.getElementById('queue-type')?.value        || 'summary';
-    const post_status = document.getElementById('queue-post-status')?.value || 'draft';
-    const max_tokens  = document.getElementById('queue-max-tokens')?.value  || 3000;
-    const parts       = document.getElementById('queue-parts')?.value       || 2;
+    const offset = parseInt(document.getElementById('queue-offset')?.value || '0');
     const res = await postData(API('queue-create.php'), {
-      category, author_count: count, type, post_status, max_tokens, parts,
+      category, author_count: count, offset,
     }, 90000);
     if (!res.ok) { notify('queue-create-notif', res.error || 'Hata.', 'err'); return; }
 
@@ -1265,6 +1263,14 @@ async function continueBuilding(batchId, authorsBuilt, authorsTotal) {
     } catch(e) { notify('queue-create-notif', e.message, 'err'); break; }
   }
   notify('queue-create-notif', '✓ Kuyruk hazır! "İşlemi Başlat" ile devam et.', 'ok');
+}
+
+function addNextAuthors(category, offset) {
+  document.getElementById('queue-category').value = category;
+  document.getElementById('queue-author-count').value = 50;
+  document.getElementById('queue-offset').value = offset;
+  document.getElementById('queue-category').scrollIntoView({behavior:'smooth'});
+  document.getElementById('btn-queue-create').textContent = `▶ ${category} — ${offset+1}-${offset+50}. yazarları ekle`;
 }
 
 async function deleteQueue(batchId) {
