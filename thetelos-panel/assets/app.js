@@ -861,7 +861,7 @@ function setRowStatus(idx, st, html) {
 let builderAuthors      = [];   // [{author, era, note, onSite}]
 let builderList         = [];   // [{title, author, year, verified, cover}]
 let builderAuthorsOffset = 0;   // sayfalama: şu ana kadar kaç yazar yüklendi
-let builderShowExisting  = false; // "sitede var" eserleri göster/gizle
+let builderShowExisting  = false;
 
 // Mod geçişi: yazara göre / kategoriye göre
 document.querySelectorAll('input[name=builder_mode]').forEach(r => {
@@ -1060,7 +1060,7 @@ async function fetchAuthorWorks(author) {
       existing.add(key);
       const row = {
         title: w.title, original: w.original || '', author: author, year: w.year || '',
-        verified: false, cover: w.cover || '', exists: false, post_url: '',
+        verified: false, cover: w.cover || '',
       };
       builderList.push(row);
       newRows.push(row);
@@ -1068,21 +1068,7 @@ async function fetchAuthorWorks(author) {
     renderBuilderList();
     if (source !== 'llm') notify('builder-notif', `✓ ${author}: ${newRows.length} eser (${source}).`, 'ok');
 
-    // Sitede zaten var mı? — yazarın TÜM mevcut eserlerini TEK istekle çek, kök bazlı eşleştir
-    try {
-      const er = await postData(API('list-works.php'), { author, mode: 'exists' });
-      if (er.ok && Array.isArray(er.existing)) {
-        const ex = er.existing.map(e => ({ ...e, tok: titleTokens(e.title) }));
-        for (const row of newRows) {
-          const rt = titleTokens(workLabel(row));
-          const hit = ex.find(e => titlesSame(rt, e.tok));
-          if (hit) { row.exists = true; row.post_url = hit.post_url || ''; }
-        }
-        renderBuilderList();
-      }
-    } catch(_) {}
-
-    // 2) Kapak/yıl doğrulamasını parça parça (6'lı) yap — her istek 100s altında kalır
+    // Kapak/yıl doğrulamasını parça parça (6'lı) yap — her istek 100s altında kalır
     if (doVerify && newRows.length) {
       for (let i = 0; i < newRows.length; i += 6) {
         const chunk = newRows.slice(i, i + 6);
@@ -1119,39 +1105,27 @@ function workLabel(b) {
 function renderBuilderList() {
   document.getElementById('builder-list-card').style.display = builderList.length ? '' : 'none';
 
-  const existsCount = builderList.filter(b => b.exists).length;
-  const newCount    = builderList.length - existsCount;
-  const vCount      = builderList.filter(b => b.verified).length;
+  const vCount = builderList.filter(b => b.verified).length;
 
-  // Sayaç: "212 kitap (45 sitede var, gizlendi)"
   let countText = `${builderList.length} kitap`;
-  if (existsCount > 0 && !builderShowExisting) countText += ` · ${newCount} yeni (${existsCount} sitede var, gizlendi)`;
-  else if (existsCount > 0)                     countText += ` · ${existsCount} sitede var`;
   document.getElementById('builder-list-count').textContent = countText;
 
   const vBadge = document.getElementById('builder-list-verified');
   if (vCount > 0) { vBadge.style.display = ''; vBadge.textContent = `✓ ${vCount} doğrulandı`; }
   else vBadge.style.display = 'none';
 
-  // Toggle butonu
   const toggleBtn = document.getElementById('btn-toggle-existing');
-  if (toggleBtn) {
-    toggleBtn.style.display = existsCount > 0 ? '' : 'none';
-    toggleBtn.textContent = builderShowExisting ? '⊘ Sitede olanları gizle' : `⊘ Sitede olanları göster (${existsCount})`;
-  }
+  if (toggleBtn) toggleBtn.style.display = 'none';
 
   const tb = document.querySelector('#builder-list-table tbody');
   tb.innerHTML = builderList.map((b, i) => {
-    if (!builderShowExisting && b.exists) return '';
     return `<tr id="brow-list-${i}">
       <td style="color:var(--muted)">${i+1}</td>
       <td>${b.cover ? `<img src="${b.cover}" style="width:32px;height:46px;object-fit:cover;border-radius:3px" onerror="this.style.display='none'">` : '—'}</td>
       <td>${workLabel(b)}</td>
       <td style="color:var(--muted)">${b.author}</td>
       <td style="color:var(--muted)">${b.year||''}</td>
-      <td>${b.exists
-        ? `<span class="badge badge-gray">⊘ Sitede var</span>`
-        : (b.verified ? '<span class="badge badge-green">✓</span>' : '<span class="badge badge-gray">?</span>')}</td>
+      <td>${b.verified ? '<span class="badge badge-green">✓</span>' : '<span class="badge badge-gray">?</span>'}</td>
       <td><button class="btn btn-ghost btn-sm" onclick="removeBuilderRow(${i})" style="color:var(--red)">✕</button></td>
     </tr>`;
   }).join('');
@@ -1170,17 +1144,12 @@ window.removeBuilderRow = function(i) {
 // Toplu Batch'e aktar
 document.getElementById('btn-builder-to-batch')?.addEventListener('click', () => {
   if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
-  // Sitede zaten olanları atla — sadece eksikleri aktar
-  const missing = builderList.filter(b => !b.exists);
-  if (!missing.length) { notify('builder-notif','Tüm eserler sitede zaten var, eklenecek yeni eser yok.','ok'); return; }
-  const skipped = builderList.length - missing.length;
-  batchBooks = missing.map(b => ({ book_title: workLabel(b), author_name: b.author, category: '', cover: b.cover || '' }));
+  batchBooks = builderList.map(b => ({ book_title: workLabel(b), author_name: b.author, category: '', cover: b.cover || '' }));
   updateBatchBadge();
   renderBulkTable(batchBooks);
   document.getElementById('btn-batch-start').disabled = false;
-  // Toplu Batch sekmesine geç
   document.querySelector('.tab-top-btn[data-mode=bulk]')?.click();
-  notify('bulk-notif', `✓ ${batchBooks.length} eksik kitap batch'e aktarıldı${skipped ? ` (${skipped} tanesi sitede zaten var, atlandı)` : ''}. Ayarları seçip başlat.`, 'ok');
+  notify('bulk-notif', `✓ ${batchBooks.length} kitap batch'e aktarıldı. Ayarları seçip başlat.`, 'ok');
 });
 
 // CSV indir
