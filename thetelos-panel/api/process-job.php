@@ -72,7 +72,7 @@ if (isset($data['error'])) {
     file_put_contents($job_file, json_encode($job)); exit;
 }
 
-$content = $data['content'][0]['text'] ?? '';
+$content = $data['choices'][0]['message']['content'] ?? '';
 if (!$content) {
     $job['status']='error'; $job['error']='Boş içerik döndü.';
     file_put_contents($job_file, json_encode($job)); exit;
@@ -86,14 +86,14 @@ $cats_list = 'philosophy,philosophy_of_religion,ethics,metaphysics,epistemology,
 $snippet = mb_substr(strip_tags($content), 0, 1500);
 $mp = "Return ONLY valid JSON for \"{$book}\" by {$author}:\n{\"excerpt\":\"max 155 chars\",\"meta_description\":\"max 155 chars\",\"categories\":[\"slug\"]}\nPick 2-5 from: {$cats_list}\n\n{$snippet}";
 
-$ch2 = curl_init('https://api.anthropic.com/v1/messages');
+$ch2 = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch2,[
     CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>30,
-    CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-    CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>400,'messages'=>[['role'=>'user','content'=>$mp]]]),
+    CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+    CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>400,'messages'=>[['role'=>'user','content'=>$mp]]]),
 ]);
 $raw2=curl_exec($ch2); curl_close($ch2);
-$mt=preg_replace('/```json|```/','',json_decode($raw2,true)['content'][0]['text']??'{}');
+$mt=preg_replace('/```json|```/','',json_decode($raw2,true)['choices'][0]['message']['content']??'{}');
 $meta=json_decode(trim($mt),true)??[];
 
 // ── Kapaklar ──────────────────────────────────────────────

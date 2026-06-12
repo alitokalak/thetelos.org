@@ -20,19 +20,6 @@ $provider = 'deepseek';
 if ($category === '') { echo json_encode(['ok'=>false,'error'=>'Kategori zorunlu.']); exit; }
 
 function la_call_llm($provider, $prompt, $max_tokens = 4000) {
-    if ($provider === 'anthropic') {
-        $ch = curl_init('https://api.anthropic.com/v1/messages');
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>85,
-            CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>ANTHROPIC_MODEL,'max_tokens'=>$max_tokens,'messages'=>[['role'=>'user','content'=>$prompt]]]),
-        ]);
-        $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
-        if ($e || !$r) return ['', 'Anthropic: '.$e];
-        $d = json_decode($r, true);
-        if (isset($d['error'])) return ['', 'Anthropic: '.($d['error']['message']??'hata')];
-        return [$d['content'][0]['text'] ?? '', ''];
-    }
     $ch = curl_init(DEEPSEEK_API_URL);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>85,

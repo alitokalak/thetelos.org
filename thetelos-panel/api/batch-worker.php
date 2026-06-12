@@ -302,77 +302,51 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $content   = '';
     $gen_error = '';
 
-    if ($api_provider === 'deepseek') {
-        $accumulated = '';
-        $part_words  = (int)ceil($target_words / max(1, $parts));
+    $accumulated = '';
+    $part_words  = (int)ceil($target_words / max(1, $parts));
 
-        for ($k = 1; $k <= $parts; $k++) {
-            $headings = [];
-            if ($accumulated !== '') {
-                preg_match_all('/^### (.+)$/m', $accumulated, $mh);
-                $headings = $mh[1] ?? [];
-            }
-            $tail = $accumulated !== '' ? mb_substr($accumulated, -700) : '';
-
-            $pr = $template
-                . "\n\nBook: {$book}\nAuthor: {$author}"
-                . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
-
-            $ch = curl_init(DEEPSEEK_API_URL);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-                CURLOPT_POSTFIELDS => json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>16000,'messages'=>[['role'=>'user','content'=>$pr]]]),
-            ]);
-            $raw  = curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
-
-            if ($cerr || !$raw) {
-                if ($k === 1) $gen_error = "DeepSeek Part {$k} bağlantı hatası: {$cerr}";
-                break;
-            }
-            $dd = json_decode($raw, true);
-            if (isset($dd['error'])) {
-                if ($k === 1) $gen_error = "DeepSeek Part {$k}: " . ($dd['error']['message'] ?? 'API hatası');
-                break;
-            }
-            $piece = trim($dd['choices'][0]['message']['content'] ?? '');
-            $piece = str_replace('%%PART_END%%', '', $piece);
-            if ($piece === '') break;
-
-            if ($k > 1) {
-                $piece = preg_replace('/^# [^\n]+\n+/m',  '', $piece, 1);
-                $piece = preg_replace('/^## [^\n]+\n+/m', '', $piece, 1);
-                $piece = ltrim($piece);
-            }
-            $accumulated = $accumulated === '' ? $piece : ($accumulated . "\n\n" . $piece);
+    for ($k = 1; $k <= $parts; $k++) {
+        $headings = [];
+        if ($accumulated !== '') {
+            preg_match_all('/^### (.+)$/m', $accumulated, $mh);
+            $headings = $mh[1] ?? [];
         }
+        $tail = $accumulated !== '' ? mb_substr($accumulated, -700) : '';
 
-        if ($accumulated !== '') $content = bw_clean_content($accumulated);
+        $pr = $template
+            . "\n\nBook: {$book}\nAuthor: {$author}"
+            . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
 
-    } else {
-        $prompt = $template
-            . "\n\nBook: {$book}\nAuthor: {$author}\nTarget length: approximately {$target_words} words.";
-        $model = $type === 'analysis' ? ANTHROPIC_MODEL : 'claude-haiku-4-5-20251001';
-
-        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        $ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 580,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS => json_encode(['model'=>$model,'max_tokens'=>min(16000,(int)($target_words*2.5)),'messages'=>[['role'=>'user','content'=>$prompt]]]),
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>16000,'messages'=>[['role'=>'user','content'=>$pr]]]),
         ]);
-        $raw = curl_exec($ch); $err = curl_error($ch); curl_close($ch);
+        $raw  = curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
 
-        if ($err || !$raw) {
-            $gen_error = 'Anthropic bağlantı hatası: ' . $err;
-        } else {
-            $d = json_decode($raw, true);
-            if (isset($d['error'])) $gen_error = 'Anthropic: ' . ($d['error']['message'] ?? 'API hatası');
-            else {
-                $content = bw_clean_content($d['content'][0]['text'] ?? '');
-                if (!$content) $gen_error = 'Boş içerik döndü';
-            }
+        if ($cerr || !$raw) {
+            if ($k === 1) $gen_error = "DeepSeek Part {$k} bağlantı hatası: {$cerr}";
+            break;
         }
+        $dd = json_decode($raw, true);
+        if (isset($dd['error'])) {
+            if ($k === 1) $gen_error = "DeepSeek Part {$k}: " . ($dd['error']['message'] ?? 'API hatası');
+            break;
+        }
+        $piece = trim($dd['choices'][0]['message']['content'] ?? '');
+        $piece = str_replace('%%PART_END%%', '', $piece);
+        if ($piece === '') break;
+
+        if ($k > 1) {
+            $piece = preg_replace('/^# [^\n]+\n+/m',  '', $piece, 1);
+            $piece = preg_replace('/^## [^\n]+\n+/m', '', $piece, 1);
+            $piece = ltrim($piece);
+        }
+        $accumulated = $accumulated === '' ? $piece : ($accumulated . "\n\n" . $piece);
     }
+
+    if ($accumulated !== '') $content = bw_clean_content($accumulated);
 
     if ($gen_error || !$content) {
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>$gen_error ?: 'Boş içerik']);
@@ -389,25 +363,14 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         . "For quotes: only truly verbatim passages; 0-2 quotes max.\n"
         . "Book: \"{$book}\" by {$author}\n\n{$snippet}";
 
-    if ($api_provider === 'deepseek') {
-        $mch = curl_init(DEEPSEEK_API_URL);
-        curl_setopt_array($mch, [
-            CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>30,
-            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>500,'messages'=>[['role'=>'user','content'=>$mp]]]),
-        ]);
-        $meta_raw = curl_exec($mch); curl_close($mch);
-        $meta_text = json_decode($meta_raw,true)['choices'][0]['message']['content'] ?? '{}';
-    } else {
-        $mch = curl_init('https://api.anthropic.com/v1/messages');
-        curl_setopt_array($mch, [
-            CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>30,
-            CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>500,'messages'=>[['role'=>'user','content'=>$mp]]]),
-        ]);
-        $meta_raw = curl_exec($mch); curl_close($mch);
-        $meta_text = json_decode($meta_raw,true)['content'][0]['text'] ?? '{}';
-    }
+    $mch = curl_init(DEEPSEEK_API_URL);
+    curl_setopt_array($mch, [
+        CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>30,
+        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+        CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>500,'messages'=>[['role'=>'user','content'=>$mp]]]),
+    ]);
+    $meta_raw = curl_exec($mch); curl_close($mch);
+    $meta_text = json_decode($meta_raw,true)['choices'][0]['message']['content'] ?? '{}';
     $meta_text = preg_replace('/```json|```/', '', $meta_text);
     $meta = json_decode(trim($meta_text), true) ?? [];
 
@@ -520,23 +483,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
         if (!$tid || !$existing_desc) {
             $bio_prompt = "Write a concise 2-3 sentence biography of \"{$author}\" for a philosophy/literature website. Focus on main works and intellectual contributions. English, encyclopedic.";
-            if ($api_provider === 'deepseek') {
-                $bch = curl_init(DEEPSEEK_API_URL);
-                curl_setopt_array($bch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
-                    CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-                    CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
-                ]);
-                $bio_raw = curl_exec($bch); curl_close($bch);
-                $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
-            } else {
-                $bch = curl_init('https://api.anthropic.com/v1/messages');
-                curl_setopt_array($bch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
-                    CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-                    CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
-                ]);
-                $bio_raw = curl_exec($bch); curl_close($bch);
-                $bio = json_decode($bio_raw,true)['content'][0]['text'] ?? '';
-            }
+            $bch = curl_init(DEEPSEEK_API_URL);
+            curl_setopt_array($bch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
+                CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+                CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+            ]);
+            $bio_raw = curl_exec($bch); curl_close($bch);
+            $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
             if (!$tid) {
                 [$nt] = bw_wp("$wp_api/authors", 'POST', ['name'=>$author,'description'=>$bio], $auth);
                 $tid = $nt['id'] ?? null;

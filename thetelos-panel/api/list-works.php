@@ -31,24 +31,6 @@ if ($author === '') { echo json_encode(['ok'=>false,'error'=>'Yazar adı zorunlu
 // ondan önce cURL'i keserek temiz JSON hata mesajı döndürmüş oluyoruz.
 function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
     $attempt = function($provider, $prompt, $max_tokens) {
-        if ($provider === 'anthropic') {
-            // Haiku: kanon bilgisi yeterli, Sonnet'ten 3-4 kat hızlı (sunucu
-            // timeout'una takılmaz) ve çok daha ucuz.
-            $ch = curl_init('https://api.anthropic.com/v1/messages');
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true,
-                CURLOPT_TIMEOUT=>85, CURLOPT_CONNECTTIMEOUT=>10,
-                CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-                CURLOPT_POSTFIELDS=>json_encode(['model'=>'claude-haiku-4-5-20251001','max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
-            ]);
-            $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
-            if ($e || !$r) return ['', 'Anthropic: '.($e ?: 'boş yanıt'), false];
-            $d = json_decode($r, true);
-            if (isset($d['error'])) return ['', 'Anthropic: '.($d['error']['message']??'hata'), false];
-            $trunc = ($d['stop_reason'] ?? '') === 'max_tokens';
-            return [$d['content'][0]['text'] ?? '', '', $trunc];
-        }
-        // deepseek
         $ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true,

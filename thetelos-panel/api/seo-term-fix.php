@@ -38,18 +38,18 @@ $prompt = "Write an SEO meta description for the {$taxonomy} page \"{$name}\" on
     . "- Informative and relevant to the topic\n"
     . "- Respond with ONLY the meta description text, nothing else";
 
-$ch = curl_init('https://api.anthropic.com/v1/messages');
+$ch = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch,[
     CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>20,
-    CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
+    CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
     CURLOPT_POSTFIELDS=>json_encode([
-        'model'   =>'claude-haiku-4-5-20251001',
+        'model'     =>DEEPSEEK_MODEL,
         'max_tokens'=>150,
-        'messages'=>[['role'=>'user','content'=>$prompt]],
+        'messages'  =>[['role'=>'user','content'=>$prompt]],
     ]),
 ]);
 $raw  = curl_exec($ch); curl_close($ch);
-$meta = trim(json_decode($raw,true)['content'][0]['text'] ?? '');
+$meta = trim(json_decode($raw,true)['choices'][0]['message']['content'] ?? '');
 
 // Nokta ile bitmeyen metne nokta ekle
 if ($meta && !preg_match('/[.!?]$/', $meta)) $meta .= '.';

@@ -8,8 +8,7 @@ $book         = trim($_POST['book_title']   ?? '');
 $author       = trim($_POST['author_name'] ?? '');
 $type         = trim($_POST['type']        ?? 'summary');
 $content      = trim($_POST['content']     ?? '');
-$api_provider = trim($_POST['api_provider'] ?? 'anthropic');
-$api_model    = trim($_POST['api_model']    ?? '');
+$api_provider = trim($_POST['api_provider'] ?? 'deepseek');
 
 if (!$book || !$content) { echo json_encode(['ok'=>false,'error'=>'Eksik veri.']); exit; }
 
@@ -35,37 +34,21 @@ $mp = "Generate SEO metadata for \"{$book}\" by {$author}.\n\n"
     . "- Output ONLY the JSON object\n\n"
     . "CONTENT (for context):\n" . $snippet;
 
-if ($api_provider === 'deepseek') {
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch,[
-        CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>30,
-        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS=>json_encode([
-            'model'      => DEEPSEEK_MODEL,
-            'max_tokens' => 700,
-            'messages'   => [
-                ['role'=>'system','content'=>$system_prompt],
-                ['role'=>'user',  'content'=>$mp],
-            ],
-        ]),
-    ]);
-    $raw = curl_exec($ch); curl_close($ch);
-    $raw_text = json_decode($raw,true)['choices'][0]['message']['content'] ?? '{}';
-} else {
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch,[
-        CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>30,
-        CURLOPT_HTTPHEADER=>['Content-Type: application/json','x-api-key: '.ANTHROPIC_KEY,'anthropic-version: 2023-06-01'],
-        CURLOPT_POSTFIELDS=>json_encode([
-            'model'      => $api_model ?: 'claude-haiku-4-5-20251001',
-            'max_tokens' => 700,
-            'system'     => $system_prompt,
-            'messages'   => [['role'=>'user','content'=>$mp]],
-        ]),
-    ]);
-    $raw = curl_exec($ch); curl_close($ch);
-    $raw_text = json_decode($raw,true)['content'][0]['text'] ?? '{}';
-}
+$ch = curl_init(DEEPSEEK_API_URL);
+curl_setopt_array($ch,[
+    CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>30,
+    CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+    CURLOPT_POSTFIELDS=>json_encode([
+        'model'      => DEEPSEEK_MODEL,
+        'max_tokens' => 700,
+        'messages'   => [
+            ['role'=>'system','content'=>$system_prompt],
+            ['role'=>'user',  'content'=>$mp],
+        ],
+    ]),
+]);
+$raw = curl_exec($ch); curl_close($ch);
+$raw_text = json_decode($raw,true)['choices'][0]['message']['content'] ?? '{}';
 
 // JSON extraction — backtick blokları, açıklamalar, vs. temizle
 $mt = $raw_text;
