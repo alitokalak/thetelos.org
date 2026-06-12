@@ -578,10 +578,21 @@ async function uploadFile(file) {
   const res = await fetch(API('bulk-upload.php'), {method:'POST', body:fd}).then(r=>r.json());
   if (!res.ok) { notify('bulk-notif', res.error, 'err'); return; }
 
+  // Sitedeki yazarları kontrol et, onların kitaplarını çıkar
+  const uniqueAuthors = [...new Set(res.books.map(b => b.author_name).filter(Boolean))];
+  let onSiteAuthors = new Set();
+  try {
+    const chk = await postData(API('author-check.php'), { authors: JSON.stringify(uniqueAuthors) }, 60000);
+    if (chk.ok && chk.on_site?.length) onSiteAuthors = new Set(chk.on_site.map(a => a.toLowerCase()));
+  } catch(_) {}
+
+  const filteredBooks = res.books.filter(b => !onSiteAuthors.has((b.author_name || '').toLowerCase()));
+  const skippedAuthors = uniqueAuthors.filter(a => onSiteAuthors.has(a.toLowerCase()));
+
   // Listeye ekle (dedup by title+author)
   const existing = new Set(batchBooks.map(b => (b.book_title + '||' + b.author_name).toLowerCase()));
   let added = 0;
-  for (const bk of res.books) {
+  for (const bk of filteredBooks) {
     const key = (bk.book_title + '||' + bk.author_name).toLowerCase();
     if (!existing.has(key)) { batchBooks.push(bk); existing.add(key); added++; }
   }
@@ -592,7 +603,8 @@ async function uploadFile(file) {
   renderBulkTable(batchBooks);
   document.getElementById('btn-batch-start').disabled = false;
   document.getElementById('upload-actions').style.display = 'flex';
-  notify('bulk-notif', `✓ ${file.name}: ${added} kitap eklendi. Toplam: ${batchBooks.length}`, 'ok');
+  const skipMsg = skippedAuthors.length ? ` · ${skippedAuthors.length} yazar sitede var, çıkarıldı (${skippedAuthors.slice(0,3).join(', ')}${skippedAuthors.length>3?'…':''})` : '';
+  notify('bulk-notif', `✓ ${file.name}: ${added} kitap eklendi. Toplam: ${batchBooks.length}${skipMsg}`, 'ok');
 }
 
 function updateFileList() {
