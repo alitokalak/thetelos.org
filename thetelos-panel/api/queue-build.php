@@ -57,75 +57,121 @@ function qb_firebase($author){
     return $out;
 }
 
+function qb_http_get($url){
+    $ch=curl_init($url);
+    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>18,CURLOPT_FOLLOWLOCATION=>true,
+        CURLOPT_HTTPHEADER=>['Accept: application/json','User-Agent: thetelos.org/1.0']]);
+    $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
+    return ($c===200&&$r)?json_decode($r,true):null;
+}
+
+function qb_tok($s){
+    $stop=array_flip(explode(' ','the a an of on to and by with in for from about into that this his her their complete works collected selected early late major minor new revised critical introduction guide study reader companion handbook anthology essays'));
+    $s=mb_strtolower($s,'UTF-8');
+    $t=@iconv('UTF-8','ASCII//TRANSLIT//IGNORE',$s); if($t!==false&&$t!=='') $s=$t;
+    $s=preg_replace('/[^a-z0-9]+',' ',$s); $out=[];
+    foreach(explode(' ',trim($s)) as $w){ if(strlen($w)>=4&&!isset($stop[$w])) $out[]=$w; }
+    return $out;
+}
+function qb_tok_match($a,$b){ $n=min(strlen($a),strlen($b)); if($n<4) return $a===$b; $k=0; while($k<$n&&$a[$k]===$b[$k]) $k++; return $k>=5; }
+function qb_titles_same($ta,$tb){ if(!$ta||!$tb) return false; $small=count($ta)<=count($tb)?$ta:$tb; $big=count($ta)<=count($tb)?$tb:$ta; $m=0; foreach($small as $x){ foreach($big as $y){ if(qb_tok_match($x,$y)){$m++;break;} } } $min=count($small); return $m>=2||($m>=1&&$m===$min); }
+
+function qb_ol_cover($title,$author){
+    $d=qb_http_get('https://openlibrary.org/search.json?'.http_build_query(['title'=>$title,'author'=>$author,'limit'=>3,'fields'=>'cover_i']));
+    foreach($d['docs']??[] as $doc){ if(!empty($doc['cover_i'])&&$doc['cover_i']>0) return 'https://covers.openlibrary.org/b/id/'.$doc['cover_i'].'-M.jpg'; }
+    return '';
+}
+
 function qb_openlibrary($author){
-    // Adım 1: yazar adından OpenLibrary key bul
-    $ch = curl_init('https://openlibrary.org/search/authors.json?q='.urlencode($author).'&limit=5');
-    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>10,CURLOPT_USERAGENT=>'thetelos.org/1.0']);
-    $r = curl_exec($ch); $code = curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
-    if($code!==200||!$r) return [];
-    $ad = json_decode($r,true);
-    $author_key = null;
-    foreach($ad['docs']??[] as $a){
-        $name = mb_strtolower(trim($a['name']??''));
-        $q    = mb_strtolower($author);
-        if($name===$q || str_contains($name,$q) || str_contains($q,$name)){
-            $author_key = $a['key']??null; break;
+    // ── Adım 1: Wikidata'dan yazar entity bul ─────────────────────
+    $wd_search = qb_http_get('https://www.wikidata.org/w/api.php?'.http_build_query(['action'=>'wbsearchentities','search'=>$author,'type'=>'item','language'=>'en','limit'=>5,'format'=>'json']));
+    $entity_id = null;
+    foreach($wd_search['search']??[] as $r){
+        $desc=mb_strtolower($r['description']??'');
+        if(preg_match('/philosopher|writer|author|poet|novelist|playwright|historian|theologian|mathematician|scientist|jurist|economist|psychologist|sociologist|scholar|thinker/',$desc)){
+            $entity_id=$r['id']; break;
         }
     }
-    if(!$author_key && !empty($ad['docs'][0]['key'])) $author_key = $ad['docs'][0]['key'];
+    if(!$entity_id&&!empty($wd_search['search'][0]['id'])) $entity_id=$wd_search['search'][0]['id'];
+
+    if($entity_id){
+        // ── Adım 2: Yazar doğum/ölüm yılları ─────────────────────
+        $date_q='SELECT ?born ?died WHERE { OPTIONAL{wd:'.$entity_id.' wdt:P569 ?born.} OPTIONAL{wd:'.$entity_id.' wdt:P570 ?died.} } LIMIT 1';
+        $dd=qb_http_get('https://query.wikidata.org/sparql?'.http_build_query(['query'=>$date_q,'format'=>'json']));
+        $row=$dd['results']['bindings'][0]??[];
+        $born_y=''; $died_y='';
+        if(!empty($row['born']['value'])) { preg_match('/(\d{4})/',$row['born']['value'],$m); $born_y=$m[1]??''; }
+        if(!empty($row['died']['value'])) { preg_match('/(\d{4})/',$row['died']['value'],$m); $died_y=$m[1]??''; }
+
+        // ── Adım 3: Eserleri çek (P50 = yazar) ───────────────────
+        $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
+            .'?work wdt:P50 wd:'.$entity_id.'.'
+            .'?work wdt:P31 ?type.'
+            .'FILTER(?type IN (wd:Q7725634,wd:Q571,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q5185279,wd:Q17537576,wd:Q36279,wd:Q25379,wd:Q11826511))'
+            .'OPTIONAL{?work wdt:P577 ?date.}'
+            .'OPTIONAL{?work wdt:P1476 ?origLabel.}'
+            .'SERVICE wikibase:label{bd:serviceParam wikibase:language "en,fr,de,it,es,la".}'
+            .'} ORDER BY ?date LIMIT 80';
+        $wd=qb_http_get('https://query.wikidata.org/sparql?'.http_build_query(['query'=>$sparql,'format'=>'json']));
+        $bindings=$wd['results']['bindings']??[];
+
+        if(count($bindings)>=3){
+            $author_last=preg_replace('/^.+\s/','',$author);
+            $out=[]; $seen_tok=[];
+            foreach($bindings as $b){
+                $title=trim($b['workLabel']['value']??'');
+                if(!$title||preg_match('/^Q\d+$/',$title)) continue;
+                $year=''; if(!empty($b['date']['value'])){preg_match('/(\d{4})/',$b['date']['value'],$m);$year=$m[1]??'';}
+                $orig=trim($b['origLabel']['value']??'');
+                if(mb_strtolower($orig)===mb_strtolower($title)) $orig='';
+
+                // Tarih validasyonu
+                if($year&&$born_y&&(int)$year<((int)$born_y-5)) continue;
+                if($year&&$died_y&&(int)$year>((int)$died_y+40)) continue;
+
+                // İkincil literatür filtresi
+                if(strlen($author_last)>=4&&preg_match('/\b(of|on|to|about|after|against|beyond|from|with)\s+'.preg_quote($author_last,'/').'\b/i',$title)) continue;
+
+                // Dedup
+                $tok=qb_tok($title); $dup=false;
+                foreach($seen_tok as $st){ if(qb_titles_same($tok,$st)){$dup=true;break;} }
+                if($dup) continue;
+                $seen_tok[]=$tok;
+
+                $cover=qb_ol_cover($orig?:$title,$author);
+                $out[]=['title'=>$title,'original'=>$orig,'cover'=>$cover,'year'=>$year];
+            }
+            if(count($out)>=3) return $out;
+        }
+    }
+
+    // ── FALLBACK: OpenLibrary two-step ────────────────────────────
+    $ad=qb_http_get('https://openlibrary.org/search/authors.json?q='.urlencode($author).'&limit=5');
+    $author_key=null; $q=mb_strtolower($author);
+    foreach($ad['docs']??[] as $a){
+        $name=mb_strtolower(trim($a['name']??''));
+        if($name===$q||str_contains($name,$q)||str_contains($q,$name)){$author_key=$a['key']??null;break;}
+    }
+    if(!$author_key&&!empty($ad['docs'][0]['key'])) $author_key=$ad['docs'][0]['key'];
     if(!$author_key) return [];
 
-    // Adım 2: o yazara ait eserleri çek
-    $ch2 = curl_init('https://openlibrary.org'.$author_key.'/works.json?limit=50');
-    curl_setopt_array($ch2,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>12,CURLOPT_USERAGENT=>'thetelos.org/1.0']);
-    $r2 = curl_exec($ch2); $code2 = curl_getinfo($ch2,CURLINFO_HTTP_CODE); curl_close($ch2);
-    if($code2!==200||!$r2) return [];
-    $wd = json_decode($r2,true);
+    $wd2=qb_http_get('https://openlibrary.org'.$author_key.'/works.json?limit=50');
+    if(!$wd2) return [];
 
-    // Yazarın soyadı / kısa adı — eşleştirme için
-    $author_parts = array_filter(explode(' ', mb_strtolower($author)));
-    $author_last  = end($author_parts); // "kant", "socrates" vb.
-
-    $out=[]; $seen=[];
-    foreach($wd['entries']??[] as $entry){
+    $author_parts=array_filter(explode(' ',mb_strtolower($author)));
+    $author_last2=end($author_parts);
+    $out2=[]; $seen2=[];
+    foreach($wd2['entries']??[] as $entry){
         $t=trim($entry['title']??''); if(!$t) continue;
-        $k=mb_strtolower($t); if(isset($seen[$k])) continue; $seen[$k]=true;
-
-        // Eserin yazarlarını kontrol et — hedef yazar listede olmalı
-        // (antoloji/derleme kitapları farklı editörler altında geliyor)
-        $work_authors = $entry['authors'] ?? [];
-        if(!empty($work_authors)){
-            $matched = false;
-            foreach($work_authors as $wa){
-                $wa_key = $wa['author']['key'] ?? ($wa['key'] ?? '');
-                // author_key eşleşiyorsa kesin eşleşme
-                if($wa_key === $author_key){ $matched = true; break; }
-            }
-            // Yazarlar var ama hedef yazar yok → bu eser başkasına ait, atla
-            if(!$matched) continue;
-        }
-
-        // Başlık kontrolü: yazarın soyadı başlıkta geçiyorsa bu eser hakkında
-        // yazılmış bir kitaptır (örn. "The Philosophy of Kant") — atla
-        // (yalnızca soyadı tek kelimeyse uygula: "Kant", "Socrates" vb.)
-        if(strlen($author_last) >= 4){
-            $title_lower = mb_strtolower($t);
-            // "X of Kant", "X on Kant", "Introduction to Kant" gibi kalıplar
-            if(preg_match('/\b(of|on|to|about|and|by)\s+'.preg_quote($author_last,'/').'\b/i', $t)) continue;
-            // Başlık sadece yazar soyadından ibaret (örn. "Kant") → atla
-            if(trim($title_lower) === $author_last) continue;
-        }
-
-        $cover='';
-        if(!empty($entry['covers'][0])&&$entry['covers'][0]>0)
-            $cover='https://covers.openlibrary.org/b/id/'.$entry['covers'][0].'-M.jpg';
-        $year='';
-        if(!empty($entry['first_publish_date'])){
-            preg_match('/\d{4}/',$entry['first_publish_date'],$m); $year=$m[0]??'';
-        }
-        $out[]=['title'=>$t,'cover'=>$cover,'year'=>$year];
+        $k=mb_strtolower($t); if(isset($seen2[$k])) continue; $seen2[$k]=true;
+        $was=$entry['authors']??[];
+        if(!empty($was)){ $ok=false; foreach($was as $wa){ if(($wa['author']['key']??($wa['key']??''))===$author_key){$ok=true;break;} } if(!$ok) continue; }
+        if(strlen($author_last2)>=4){ if(preg_match('/\b(of|on|to|about|and|by)\s+'.preg_quote($author_last2,'/').'\b/i',$t)) continue; if(trim(mb_strtolower($t))===$author_last2) continue; }
+        $cover=''; if(!empty($entry['covers'][0])&&$entry['covers'][0]>0) $cover='https://covers.openlibrary.org/b/id/'.$entry['covers'][0].'-M.jpg';
+        $year=''; if(!empty($entry['first_publish_date'])){preg_match('/\d{4}/',$entry['first_publish_date'],$m);$year=$m[0]??'';}
+        $out2[]=['title'=>$t,'original'=>'','cover'=>$cover,'year'=>$year];
     }
-    return $out;
+    return $out2;
 }
 
 function qb_llm($author){
