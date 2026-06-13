@@ -188,51 +188,6 @@ function qb_llm($author){
     return $out;
 }
 
-/**
- * Returns true if the title needs DeepSeek normalization.
- * Skips titles that already have parenthetical original (already formatted).
- */
-function qb_needs_normalization($title){
-    // Already has parentheses → already formatted
-    if(preg_match('/\([^)]+\)/',$title)) return false;
-    return true;
-}
-
-/**
- * Batch-normalize titles to "English Title (Original Title)" via DeepSeek.
- * Handles both non-English titles AND English titles with well-known originals.
- * $pairs = [['title'=>..., 'author'=>...], ...]
- * Returns map: original_title => normalized_title
- */
-function qb_normalize_batch($pairs){
-    if(empty($pairs)) return [];
-    $lines='';
-    foreach($pairs as $i=>$p) $lines.=($i+1).". \"{$p['title']}\" — by {$p['author']}\n";
-    $prompt = "The following are philosophical or literary book titles.\n"
-            . "For EACH title, apply this rule:\n"
-            . "1. If the title is NOT in English → rewrite as \"English Title (Original Title)\" using the well-known English name.\n"
-            . "2. If the title IS already in English AND the work has a well-known original title in another language (Greek, Latin, German, French, Arabic, etc.) → rewrite as \"English Title (Original Title)\".\n"
-            . "3. If the title is already in English and there is NO distinct original-language title → return it UNCHANGED.\n"
-            . "Return ONLY a JSON array [{\"n\":1,\"title\":\"...\"}, ...]. Same order, same count.\n\n"
-            . $lines;
-    $ch=curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>40,
-        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>2000,
-            'messages'=>[['role'=>'user','content'=>$prompt]]])]);
-    $r=curl_exec($ch); curl_close($ch);
-    $d=json_decode($r,true); $txt=$d['choices'][0]['message']['content']??'';
-    $txt=preg_replace('/```json|```/i','',$txt);
-    $s=strpos($txt,'['); $e=strrpos($txt,']');
-    $arr=($s!==false&&$e>$s)?json_decode(substr($txt,$s,$e-$s+1),true):[];
-    if(!is_array($arr)) return [];
-    $map=[];
-    foreach($arr as $idx=>$item){
-        $n=(int)($item['n']??($idx+1))-1; // 0-based
-        if(isset($pairs[$n])) $map[$pairs[$n]['title']]=trim($item['title']??$pairs[$n]['title']);
-    }
-    return $map;
-}
 
 // Sonraki chunk kadar yazarı işle
 $new_books   = [];
@@ -276,29 +231,6 @@ for ($i = $authors_built; $i < $end; $i++) {
         ];
     }
 }
-
-// Normalize non-English titles to "English Title (Original Title)"
-$to_normalize = [];
-foreach($new_books as $nb){
-    if(qb_needs_normalization($nb['book_title'])){
-        $to_normalize[]=['title'=>$nb['book_title'],'author'=>$nb['author_name']];
-    }
-}
-if(!empty($to_normalize)){
-    $norm_map = qb_normalize_batch($to_normalize);
-    foreach($new_books as &$nb){
-        if(isset($norm_map[$nb['book_title']])) $nb['book_title']=$norm_map[$nb['book_title']];
-    }
-    unset($nb);
-}
-// "Foo (Foo)" → "Foo": strip self-referential parentheticals from DeepSeek
-foreach($new_books as &$nb){
-    if(preg_match('/^(.+?)\s*\((.+)\)$/', $nb['book_title'], $m)){
-        if(mb_strtolower(trim($m[1])) === mb_strtolower(trim($m[2])))
-            $nb['book_title'] = trim($m[1]);
-    }
-}
-unset($nb);
 
 // Batch dosyasını güncelle (kilitle)
 $fp2 = fopen($batch_file, 'r+');
