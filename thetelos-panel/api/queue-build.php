@@ -82,7 +82,7 @@ function qb_titles_same($ta,$tb){ if(!$ta||!$tb) return false; $small=count($ta)
  */
 function qb_gb_covers_for_author($author) {
     $url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
-        'q'          => 'inauthor:"' . $author . '" subject:philosophy',
+        'q'          => 'inauthor:"' . $author . '"',
         'maxResults' => 40,
         'langRestrict'=> 'en',
         'printType'  => 'books',
@@ -112,11 +112,11 @@ function qb_cover_from_map($title, $orig, $map) {
     foreach ($try as $t) {
         if (isset($map[$t])) return $map[$t];
     }
-    // Partial match — GB title starts with or contains our title
+    // Contains match — catches "Aristotle's Nicomachean Ethics" for "Nicomachean Ethics"
     foreach ($try as $t) {
         if (strlen($t) < 5) continue;
         foreach ($map as $gt => $url) {
-            if (str_starts_with($gt, $t) || str_starts_with($t, $gt)) return $url;
+            if (str_contains($gt, $t) || str_contains($t, $gt)) return $url;
         }
     }
     return '';
@@ -148,7 +148,7 @@ function qb_openlibrary($author){
         $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
             .'?work wdt:P50 wd:'.$entity_id.'.'
             .'?work wdt:P31 ?type.'
-            .'FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511))'
+            .'FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511,wd:Q17537576))'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }'
@@ -305,7 +305,17 @@ for ($i = $authors_built; $i < $end; $i++) {
     if (empty($works)) $works = qb_llm($author_name);
 
     foreach ($works as $w) {
-        $t = trim($w['title']??''); if(!$t) continue;
+        $t    = trim($w['title']   ?? ''); if (!$t) continue;
+        $orig = trim($w['original'] ?? '');
+
+        // Sahte başlıkları filtrele (Socrates vs.)
+        if (preg_match('/^(none|no\s+\w+\s+works|no\s+known|no\s+extant|not\s+applicable)/i', $t)) continue;
+
+        // "English Title (Original Title)" formatı — Wikidata origLabel varsa direkt kullan
+        if ($orig && mb_strtolower($orig) !== mb_strtolower($t) && !preg_match('/\([^)]+\)/', $t)) {
+            $t = "$t ($orig)";
+        }
+
         $new_books[] = [
             'book_title'  => $t,
             'author_name' => $author_name,

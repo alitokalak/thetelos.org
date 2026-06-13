@@ -113,7 +113,7 @@ SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {
   ?work wdt:P31 ?type.
   FILTER(?type IN (
     wd:Q571, wd:Q7725634, wd:Q49848, wd:Q8261,
-    wd:Q162606, wd:Q36279, wd:Q25379, wd:Q11826511
+    wd:Q162606, wd:Q36279, wd:Q25379, wd:Q11826511, wd:Q17537576
   ))
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }
@@ -153,7 +153,7 @@ SPARQL;
  * ════════════════════════════════════════════════════════════ */
 function ws_gb_covers_for_author($author) {
     $url  = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
-        'q'           => 'inauthor:"' . $author . '" subject:philosophy',
+        'q'           => 'inauthor:"' . $author . '"',
         'maxResults'  => 40,
         'langRestrict'=> 'en',
         'printType'   => 'books',
@@ -185,7 +185,7 @@ function ws_cover_from_map($title, $orig, $map) {
     foreach ($try as $t) {
         if (strlen($t) < 5) continue;
         foreach ($map as $gt => $url) {
-            if (str_starts_with($gt, $t) || str_starts_with($t, $gt)) return $url;
+            if (str_contains($gt, $t) || str_contains($t, $gt)) return $url;
         }
     }
     return '';
@@ -310,8 +310,14 @@ if ($entity_id) {
         // ── Kapak: Google Books cover map'ten eşleştir ────────────
         $cover = ws_cover_from_map($title, $orig, $cover_map);
 
+        // ── "English Title (Original Title)" formatı ──────────────
+        $display = $title;
+        if ($orig && mb_strtolower($orig) !== mb_strtolower($title) && !preg_match('/\([^)]+\)/', $title)) {
+            $display = "$title ($orig)";
+        }
+
         $works[] = [
-            'title'    => $title,
+            'title'    => $display,
             'original' => $orig,
             'year'     => $year,
             'cover'    => $cover,
