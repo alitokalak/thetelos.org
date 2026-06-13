@@ -67,6 +67,7 @@ function bw_claim_next($batch_file) {
     }
 
     $batch['books'][$idx]['status'] = 'processing';
+    $batch['books'][$idx]['processing_since'] = time();
     fseek($fp, 0); ftruncate($fp, 0);
     fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
     fflush($fp);
