@@ -146,9 +146,10 @@ function qb_openlibrary($author){
         // ── Adım 3: Eserleri çek (P50 = yazar) ───────────────────
         // Şiir (Q482994), tekil mektup (Q133492), bölüm (Q1931185) hariç tut
         $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
-            .'?work wdt:P50 wd:'.$entity_id.'.'
-            .'?work wdt:P31 ?type.'
-            .'FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511,wd:Q17537576,wd:Q386724))'
+            .'{ ?work wdt:P50 wd:'.$entity_id.'.'
+            .'  ?work wdt:P31 ?type.'
+            .'  FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511,wd:Q17537576,wd:Q386724))'
+            .'} UNION { wd:'.$entity_id.' wdt:P800 ?work. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }'
@@ -300,8 +301,8 @@ for ($i = $authors_built; $i < $end; $i++) {
     $author_name = trim($authors[$i]['author'] ?? '');
     if (!$author_name) continue;
 
-    $works = qb_firebase($author_name);
-    if (empty($works)) $works = qb_openlibrary($author_name);
+    $works = qb_openlibrary($author_name);
+    if (empty($works)) $works = qb_firebase($author_name);
     if (empty($works)) $works = qb_llm($author_name);
 
     $author_last_main = preg_replace('/^.+\s/', '', $author_name);
@@ -349,6 +350,14 @@ if(!empty($to_normalize)){
     }
     unset($nb);
 }
+// "Foo (Foo)" → "Foo": strip self-referential parentheticals from DeepSeek
+foreach($new_books as &$nb){
+    if(preg_match('/^(.+?)\s*\((.+)\)$/', $nb['book_title'], $m)){
+        if(mb_strtolower(trim($m[1])) === mb_strtolower(trim($m[2])))
+            $nb['book_title'] = trim($m[1]);
+    }
+}
+unset($nb);
 
 // Batch dosyasını güncelle (kilitle)
 $fp2 = fopen($batch_file, 'r+');

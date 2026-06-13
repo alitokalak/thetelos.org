@@ -109,12 +109,16 @@ function ws_wikidata_works($entity_id, $limit) {
     // SPARQL: P50 = yazar, P31 = tür (kitap/eser), P577 = yayın tarihi, P1476 = orijinal başlık
     $sparql = <<<SPARQL
 SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {
-  ?work wdt:P50 wd:{$entity_id}.
-  ?work wdt:P31 ?type.
-  FILTER(?type IN (
-    wd:Q571, wd:Q7725634, wd:Q49848, wd:Q8261,
-    wd:Q162606, wd:Q36279, wd:Q25379, wd:Q11826511, wd:Q17537576, wd:Q386724
-  ))
+  {
+    ?work wdt:P50 wd:{$entity_id}.
+    ?work wdt:P31 ?type.
+    FILTER(?type IN (
+      wd:Q571, wd:Q7725634, wd:Q49848, wd:Q8261,
+      wd:Q162606, wd:Q36279, wd:Q25379, wd:Q11826511, wd:Q17537576, wd:Q386724
+    ))
+  } UNION {
+    wd:{$entity_id} wdt:P800 ?work.
+  }
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }
