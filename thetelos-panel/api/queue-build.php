@@ -247,37 +247,31 @@ function qb_llm($author){
 }
 
 /**
- * Returns true if the title looks non-English and needs "English (Original)" formatting.
+ * Returns true if the title needs DeepSeek normalization.
+ * Skips titles that already have parenthetical original (already formatted).
  */
 function qb_needs_normalization($title){
-    // Already has parentheses → already formatted or ambiguous, skip
+    // Already has parentheses → already formatted
     if(preg_match('/\([^)]+\)/',$title)) return false;
-    // Non-ASCII characters (Greek, Arabic, Cyrillic, Hebrew, CJK, etc.)
-    if(preg_match('/[^\x00-\x7F]/',$title)) return true;
-    // Latin / Greek / medieval prefixes common in classical works
-    if(preg_match('/^(De |In |Ad |Contra |Super |Pro |Summa |Quaestio|Epistola|Tractatus|Commentar)/i',$title)) return true;
-    // French / Italian / Spanish articles or prepositions at start
-    if(preg_match('/^(La |Le |Les |Il |Gli |Lo |Los |Las |Ein |Die |Das |Der |Une |Un |Sur |Du |Des |Au |Della |Dello |Delle |Dei |Sulla |Sobre )/i',$title)) return true;
-    // German prepositions / articles at start
-    if(preg_match('/^(Von |Vom |Zur |Zum |Über |Ueber |Gegen )/i',$title)) return true;
-    // Common non-English opening words
-    if(preg_match('/^(Opuscule|Discours|Réflexion|Pensée|Traité |Essai |Glauben |Kritik |Wissenschaft |Grundleg|Phänomen|Anthropol)/i',$title)) return true;
-    return false;
+    return true;
 }
 
 /**
- * Batch-normalize non-English titles to "English Title (Original Title)" via DeepSeek.
- * $pairs = [['title'=>..., 'author'=>...], ...]  (only titles needing normalization)
+ * Batch-normalize titles to "English Title (Original Title)" via DeepSeek.
+ * Handles both non-English titles AND English titles with well-known originals.
+ * $pairs = [['title'=>..., 'author'=>...], ...]
  * Returns map: original_title => normalized_title
  */
 function qb_normalize_batch($pairs){
     if(empty($pairs)) return [];
     $lines='';
     foreach($pairs as $i=>$p) $lines.=($i+1).". \"{$p['title']}\" — by {$p['author']}\n";
-    $prompt = "The following book titles may be in Latin, Greek, Arabic, French, or another non-English language.\n"
-            . "For each: if the title is NOT in English, rewrite it as \"English Title (Original Title)\" where English Title is the well-known English name and Original Title is the original-language title.\n"
-            . "If the title is already in English (or has no well-known English equivalent), return it unchanged.\n"
-            . "Return ONLY a JSON array with objects {\"n\":1,\"title\":\"...\"}. Same order, same count.\n\n"
+    $prompt = "The following are philosophical or literary book titles.\n"
+            . "For EACH title, apply this rule:\n"
+            . "1. If the title is NOT in English → rewrite as \"English Title (Original Title)\" using the well-known English name.\n"
+            . "2. If the title IS already in English AND the work has a well-known original title in another language (Greek, Latin, German, French, Arabic, etc.) → rewrite as \"English Title (Original Title)\".\n"
+            . "3. If the title is already in English and there is NO distinct original-language title → return it UNCHANGED.\n"
+            . "Return ONLY a JSON array [{\"n\":1,\"title\":\"...\"}, ...]. Same order, same count.\n\n"
             . $lines;
     $ch=curl_init(DEEPSEEK_API_URL);
     curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>40,
