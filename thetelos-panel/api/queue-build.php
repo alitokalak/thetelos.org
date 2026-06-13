@@ -138,8 +138,8 @@ function qb_openlibrary($author){
                 if($dup) continue;
                 $seen_tok[]=$tok;
 
-                $cover=qb_ol_cover($orig?:$title,$author);
-                $out[]=['title'=>$title,'original'=>$orig,'cover'=>$cover,'year'=>$year];
+                // Kapak batch-worker tarafından bulunacak — burada arama yapma
+                $out[]=['title'=>$title,'original'=>$orig,'cover'=>'','year'=>$year];
             }
             if(count($out)>=3) return $out;
         }
