@@ -147,7 +147,8 @@ function qb_openlibrary($author){
         // Şiir (Q482994), tekil mektup (Q133492), bölüm (Q1931185) hariç tut
         $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
             .'?work wdt:P50 wd:'.$entity_id.'.'
-            .'?work wdt:P31/wdt:P279* wd:Q571.'
+            .'?work wdt:P31 ?type.'
+            .'FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511,wd:Q17537576,wd:Q386724))'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }'
@@ -315,7 +316,7 @@ for ($i = $authors_built; $i < $end; $i++) {
         $orig = trim($w['original'] ?? '');
 
         // Sahte başlıkları filtrele (Socrates vs.)
-        if (preg_match('/^(none|no\s+\w+\s+works|no\s+known|no\s+extant|not\s+applicable)/i', $t)) continue;
+        if (preg_match('/^(none|no\s+(\w+\s+)?works|no\s+known|no\s+extant|not\s+applicable)/i', $t)) continue;
 
         // İkincil literatür / derleme filtresi (Firebase ve LLM sonuçları için de geçerli)
         if (preg_match('/\b(portable|reader|anthology|selected works|selected writings|compendium|handbook|encyclopedia|introduction to|readings in|letters of|letters to|essential texts|primary texts|key texts|complete texts)\b/i', $t)) continue;
