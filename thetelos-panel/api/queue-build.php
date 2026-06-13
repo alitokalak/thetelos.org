@@ -123,7 +123,7 @@ function qb_cover_from_map($title, $orig, $map) {
 }
 
 function qb_openlibrary($author){
-    // ── Adım 1: Wikidata'dan yazar entity bul ─────────────────────
+    // ── Adım 1: Wikidata entity bul ───────────────────────────────
     $wd_search = qb_http_get('https://www.wikidata.org/w/api.php?'.http_build_query(['action'=>'wbsearchentities','search'=>$author,'type'=>'item','language'=>'en','limit'=>5,'format'=>'json']));
     $entity_id = null;
     foreach($wd_search['search']??[] as $r){
@@ -135,7 +135,7 @@ function qb_openlibrary($author){
     if(!$entity_id&&!empty($wd_search['search'][0]['id'])) $entity_id=$wd_search['search'][0]['id'];
 
     if($entity_id){
-        // ── Adım 2: Yazar doğum/ölüm yılları ─────────────────────
+        // ── Adım 2: Yazar doğum/ölüm yılları (validasyon) ────────
         $date_q='SELECT ?born ?died WHERE { OPTIONAL{wd:'.$entity_id.' wdt:P569 ?born.} OPTIONAL{wd:'.$entity_id.' wdt:P570 ?died.} } LIMIT 1';
         $dd=qb_http_get('https://query.wikidata.org/sparql?'.http_build_query(['query'=>$date_q,'format'=>'json']));
         $row=$dd['results']['bindings'][0]??[];
@@ -143,13 +143,9 @@ function qb_openlibrary($author){
         if(!empty($row['born']['value'])) { preg_match('/(\d{4})/',$row['born']['value'],$m); $born_y=$m[1]??''; }
         if(!empty($row['died']['value'])) { preg_match('/(\d{4})/',$row['died']['value'],$m); $died_y=$m[1]??''; }
 
-        // ── Adım 3: Eserleri çek (P50 = yazar) ───────────────────
-        // Şiir (Q482994), tekil mektup (Q133492), bölüm (Q1931185) hariç tut
+        // ── Adım 3: P800 (notable work) — elle derlenmiş, baskı tekrarı yok ──
         $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
-            .'{ ?work wdt:P50 wd:'.$entity_id.'.'
-            .'  ?work wdt:P31 ?type.'
-            .'  FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511,wd:Q17537576,wd:Q386724))'
-            .'} UNION { wd:'.$entity_id.' wdt:P800 ?work. }'
+            .'wd:'.$entity_id.' wdt:P800 ?work.'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }'
@@ -158,13 +154,12 @@ function qb_openlibrary($author){
             .'OPTIONAL{?work wdt:P577 ?date.}'
             .'OPTIONAL{?work wdt:P1476 ?origLabel.}'
             .'SERVICE wikibase:label{bd:serviceParam wikibase:language "en,fr,de,it,es,la".}'
-            .'} ORDER BY ?date LIMIT 100';
+            .'} ORDER BY ?date LIMIT 80';
         $wd=qb_http_get('https://query.wikidata.org/sparql?'.http_build_query(['query'=>$sparql,'format'=>'json']));
         $bindings=$wd['results']['bindings']??[];
 
         if(count($bindings)>=3){
             $author_last=preg_replace('/^.+\s/','',$author);
-            // Google Books'tan yazar için 1 toplu istek → cover map
             $cover_map = qb_gb_covers_for_author($author);
             $out=[]; $seen_tok=[];
             foreach($bindings as $b){
@@ -174,15 +169,12 @@ function qb_openlibrary($author){
                 $orig=trim($b['origLabel']['value']??'');
                 if(mb_strtolower($orig)===mb_strtolower($title)) $orig='';
 
-                // Tarih validasyonu
                 if($year&&$born_y&&(int)$year<((int)$born_y-5)) continue;
                 if($year&&$died_y&&(int)$year>((int)$died_y+40)) continue;
 
-                // İkincil literatür / derleme filtresi
                 if(strlen($author_last)>=4&&preg_match('/\b(of|on|to|about|after|against|beyond|from|with)\s+'.preg_quote($author_last,'/').'\b/i',$title)) continue;
                 if(preg_match('/\b(portable|reader|anthology|selected works|selected writings|compendium|handbook|encyclopedia|introduction to|readings in|letters of|letters to)\b/i',$title)) continue;
 
-                // Dedup — başlık ve orijinal başlık her ikisini de kontrol et
                 $tok=qb_tok($title);
                 $tok_orig=$orig?qb_tok($orig):[];
                 $dup=false;
@@ -193,7 +185,6 @@ function qb_openlibrary($author){
                 $seen_tok[]=$tok;
                 if($tok_orig) $seen_tok[]=$tok_orig;
 
-                // Kapak: Google Books cover map'ten eşleştir
                 $cover = qb_cover_from_map($title, $orig, $cover_map);
                 $out[]=['title'=>$title,'original'=>$orig,'cover'=>$cover,'year'=>$year];
             }
