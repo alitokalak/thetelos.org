@@ -432,6 +432,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $clean = ltrim($clean);
 
     $post_title = $author ? "$book - $author" : $book;
+
+    // Aynı başlıkla zaten yayınlanmış bir post varsa tekrar oluşturma
+    [$existing, $exc] = bw_wp("$wp_api/$ep?" . http_build_query(['search' => $post_title, 'per_page' => 5, 'status' => 'any']), 'GET', [], $auth, 15);
+    if ($exc === 200 && !empty($existing)) {
+        foreach ($existing as $ep_post) {
+            if (strtolower(trim($ep_post['title']['rendered'] ?? '')) === strtolower(trim($post_title))) {
+                $pid = $ep_post['id'];
+                bw_update_book($batch_file, $idx, [
+                    'status'   => 'done',
+                    'post_id'  => $pid,
+                    'post_url' => $ep_post['link'] ?? '',
+                    'edit_url' => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
+                    'cover_set'=> false,
+                    'error'    => 'duplicate_skipped',
+                ]);
+                return;
+            }
+        }
+    }
+
     $pb = [
         'title'   => $post_title,
         'content' => bw_md2html($clean),
