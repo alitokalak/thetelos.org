@@ -159,6 +159,24 @@ function bw_titles_same($ta, $tb) {
     return $m >= 2 || ($m >= 1 && $m === $min);
 }
 
+/**
+ * Metni $max karakter sınırı içinde TAM cümlede bitir.
+ * 155 altındaki son cümle sonu (. ! ?) noktasında keser — cümle ortasında kesmez.
+ * Hiç cümle sonu yoksa son kelime sınırında keser (… eklemeden).
+ */
+function bw_trim_sentence($text, $max = 155) {
+    $text = trim($text);
+    if (mb_strlen($text) <= $max) return $text;
+    $slice = mb_substr($text, 0, $max);
+    // Sınır içindeki son cümle bitişini bul
+    if (preg_match('/^.*[.!?](?=\s|$)/su', $slice, $m)) {
+        return trim($m[0]);
+    }
+    // Cümle sonu yoksa son tam kelimede kes
+    $sp = mb_strrpos($slice, ' ');
+    return trim($sp !== false ? mb_substr($slice, 0, $sp) : $slice);
+}
+
 function bw_clean_content($text) {
     $text = preg_replace('/%%PART[12]_(?:END|START)%%/i', '', $text);
     $text = preg_replace('/%%PART_END%%/i', '', $text);
@@ -326,7 +344,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     $snippet = mb_substr(strip_tags($content), 0, 1500);
     $mp = "Return ONLY valid JSON (no extra text, no markdown fences):\n"
-        . "{\"excerpt\":\"max 155 chars\",\"meta_description\":\"max 155 chars\",\"categories\":[\"slug1\",\"slug2\"],\"quotes\":[{\"text\":\"verbatim quote\",\"source\":\"section name\"}]}\n"
+        . "{\"excerpt\":\"...\",\"meta_description\":\"...\",\"categories\":[\"slug1\",\"slug2\"],\"quotes\":[{\"text\":\"verbatim quote\",\"source\":\"section name\"}]}\n"
+        . "CRITICAL: excerpt and meta_description must each be ONE COMPLETE sentence, fully finished (ending with a period), and MUST NOT exceed 150 characters. Never cut off mid-sentence. If needed, write shorter.\n"
         . "Pick 2-5 category slugs from: {$cats_list}\n"
         . "For quotes: only truly verbatim passages; 0-2 quotes max.\n"
         . "Book: \"{$book}\" by {$author}\n\n{$snippet}";
@@ -342,11 +361,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $meta_text = preg_replace('/```json|```/', '', $meta_text);
     $meta = json_decode(trim($meta_text), true) ?? [];
 
-    // DeepSeek limiti aşarsa PHP tarafında kes
+    // DeepSeek limiti aşarsa PHP tarafında TAM cümlede kes (155 altı son nokta/!/?)
     foreach (['excerpt', 'meta_description'] as $mf) {
         if (!empty($meta[$mf]) && mb_strlen($meta[$mf]) > 155) {
-            $cut = mb_substr($meta[$mf], 0, 152);
-            $meta[$mf] = mb_substr($cut, 0, mb_strrpos($cut, ' ') ?: 152) . '...';
+            $meta[$mf] = bw_trim_sentence($meta[$mf], 155);
         }
     }
 
