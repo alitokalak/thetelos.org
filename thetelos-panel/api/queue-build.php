@@ -10,10 +10,10 @@ require_once dirname(__DIR__) . '/config.php';
 if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
 session_write_close();
 header('Content-Type: application/json');
-set_time_limit(90);
+set_time_limit(150);
 
 $batch_id = preg_replace('/[^a-z0-9_.]/', '', trim($_POST['batch_id'] ?? ''));
-$chunk    = max(1, min(10, (int)($_POST['chunk'] ?? 5)));
+$chunk    = max(1, min(10, (int)($_POST['chunk'] ?? 3)));
 if (!$batch_id) { echo json_encode(['ok'=>false,'error'=>'batch_id gerekli']); exit; }
 
 $jobs_dir   = dirname(__DIR__) . '/jobs';

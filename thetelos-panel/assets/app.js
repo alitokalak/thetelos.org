@@ -1246,7 +1246,7 @@ document.getElementById('btn-queue-create')?.addEventListener('click', async () 
     while (!done) {
       btn.innerHTML = `<span class="loader"></span> Eserler getiriliyor...`;
       try {
-        const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 120000);
+        const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 3 }, 180000);
         if (!br.ok) break;
         failStreak = 0;
         notify('queue-create-notif', `${br.build_msg}`, 'ok');
@@ -1284,7 +1284,7 @@ async function continueBuilding(batchId, authorsBuilt, authorsTotal) {
   let failStreak = 0;
   while (built < authorsTotal) {
     try {
-      const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 120000);
+      const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 3 }, 180000);
       if (!br.ok) break;
       failStreak = 0;
       built = br.authors_built;
