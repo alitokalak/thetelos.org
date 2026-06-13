@@ -56,7 +56,7 @@ function ws_tokens($s) {
 }
 function ws_tok_match($a, $b) {
     $n = min(strlen($a), strlen($b));
-    if ($n < 4) return $a === $b;
+    if ($n < 5) return $a === $b;
     $k = 0; while ($k < $n && $a[$k] === $b[$k]) $k++;
     return $k >= 5;
 }
@@ -110,14 +110,12 @@ function ws_wikidata_works($entity_id, $limit) {
     $sparql = <<<SPARQL
 SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {
   ?work wdt:P50 wd:{$entity_id}.
-  ?work wdt:P31 ?type.
-  FILTER(?type IN (
-    wd:Q571, wd:Q7725634, wd:Q49848, wd:Q8261,
-    wd:Q162606, wd:Q36279, wd:Q25379, wd:Q11826511, wd:Q17537576
-  ))
+  ?work wdt:P31/wdt:P279* wd:Q571.
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }
   FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }
+  FILTER NOT EXISTS { ?work wdt:P31 wd:Q191067. }
+  FILTER NOT EXISTS { ?work wdt:P31 wd:Q13442814. }
   OPTIONAL { ?work wdt:P577 ?date. }
   OPTIONAL { ?work wdt:P1476 ?origLabel. }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,fr,de,it,es,la". }

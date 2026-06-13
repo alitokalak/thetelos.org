@@ -73,7 +73,7 @@ function qb_tok($s){
     foreach(explode(' ',trim($s)) as $w){ if(strlen($w)>=4&&!isset($stop[$w])) $out[]=$w; }
     return $out;
 }
-function qb_tok_match($a,$b){ $n=min(strlen($a),strlen($b)); if($n<4) return $a===$b; $k=0; while($k<$n&&$a[$k]===$b[$k]) $k++; return $k>=5; }
+function qb_tok_match($a,$b){ $n=min(strlen($a),strlen($b)); if($n<5) return $a===$b; $k=0; while($k<$n&&$a[$k]===$b[$k]) $k++; return $k>=5; }
 function qb_titles_same($ta,$tb){ if(!$ta||!$tb) return false; $small=count($ta)<=count($tb)?$ta:$tb; $big=count($ta)<=count($tb)?$tb:$ta; $m=0; foreach($small as $x){ foreach($big as $y){ if(qb_tok_match($x,$y)){$m++;break;} } } $min=count($small); return $m>=2||($m>=1&&$m===$min); }
 
 /**
@@ -147,11 +147,12 @@ function qb_openlibrary($author){
         // Şiir (Q482994), tekil mektup (Q133492), bölüm (Q1931185) hariç tut
         $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
             .'?work wdt:P50 wd:'.$entity_id.'.'
-            .'?work wdt:P31 ?type.'
-            .'FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511,wd:Q17537576))'
+            .'?work wdt:P31/wdt:P279* wd:Q571.'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }'
             .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }'
+            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q191067. }'
+            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q13442814. }'
             .'OPTIONAL{?work wdt:P577 ?date.}'
             .'OPTIONAL{?work wdt:P1476 ?origLabel.}'
             .'SERVICE wikibase:label{bd:serviceParam wikibase:language "en,fr,de,it,es,la".}'
@@ -254,8 +255,12 @@ function qb_needs_normalization($title){
     if(preg_match('/[^\x00-\x7F]/',$title)) return true;
     // Latin / Greek / medieval prefixes common in classical works
     if(preg_match('/^(De |In |Ad |Contra |Super |Pro |Summa |Quaestio|Epistola|Tractatus|Commentar)/i',$title)) return true;
-    // French / Italian / Spanish / German articles or words at start
-    if(preg_match('/^(La |Le |Les |Il |Gli |Lo |Los |Las |El |Ein |Die |Das |Der |Une |Un |Sur |Del |Les |Über )/i',$title)) return true;
+    // French / Italian / Spanish articles or prepositions at start
+    if(preg_match('/^(La |Le |Les |Il |Gli |Lo |Los |Las |Ein |Die |Das |Der |Une |Un |Sur |Du |Des |Au |Della |Dello |Delle |Dei |Sulla |Sobre )/i',$title)) return true;
+    // German prepositions / articles at start
+    if(preg_match('/^(Von |Vom |Zur |Zum |Über |Ueber |Gegen )/i',$title)) return true;
+    // Common non-English opening words
+    if(preg_match('/^(Opuscule|Discours|Réflexion|Pensée|Traité |Essai |Glauben |Kritik |Wissenschaft |Grundleg|Phänomen|Anthropol)/i',$title)) return true;
     return false;
 }
 
@@ -304,12 +309,20 @@ for ($i = $authors_built; $i < $end; $i++) {
     if (empty($works)) $works = qb_openlibrary($author_name);
     if (empty($works)) $works = qb_llm($author_name);
 
+    $author_last_main = preg_replace('/^.+\s/', '', $author_name);
     foreach ($works as $w) {
         $t    = trim($w['title']   ?? ''); if (!$t) continue;
         $orig = trim($w['original'] ?? '');
 
         // Sahte başlıkları filtrele (Socrates vs.)
         if (preg_match('/^(none|no\s+\w+\s+works|no\s+known|no\s+extant|not\s+applicable)/i', $t)) continue;
+
+        // İkincil literatür / derleme filtresi (Firebase ve LLM sonuçları için de geçerli)
+        if (preg_match('/\b(portable|reader|anthology|selected works|selected writings|compendium|handbook|encyclopedia|introduction to|readings in|letters of|letters to|essential texts|primary texts|key texts|complete texts)\b/i', $t)) continue;
+        if (strlen($author_last_main) >= 4) {
+            if (preg_match('/\b(of|on|to|about|after|against|beyond|from|with)\s+'.preg_quote($author_last_main,'/').'\\b/i', $t)) continue;
+            if (trim(mb_strtolower($t)) === mb_strtolower($author_last_main)) continue;
+        }
 
         // "English Title (Original Title)" formatı — Wikidata origLabel varsa direkt kullan
         if ($orig && mb_strtolower($orig) !== mb_strtolower($t) && !preg_match('/\([^)]+\)/', $t)) {
