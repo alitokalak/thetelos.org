@@ -392,23 +392,24 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     $post_title = $author ? "$book - $author" : $book;
 
-    // Aynı başlıkla zaten yayınlanmış bir post varsa tekrar oluşturma
-    [$existing, $exc] = bw_wp("$wp_api/$ep?" . http_build_query(['search' => $post_title, 'per_page' => 5, 'status' => 'any']), 'GET', [], $auth, 15);
-    if ($exc === 200 && !empty($existing)) {
-        foreach ($existing as $ep_post) {
-            if (strtolower(trim($ep_post['title']['rendered'] ?? '')) === strtolower(trim($post_title))) {
-                $pid = $ep_post['id'];
-                bw_update_book($batch_file, $idx, [
-                    'status'   => 'done',
-                    'post_id'  => $pid,
-                    'post_url' => $ep_post['link'] ?? '',
-                    'edit_url' => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
-                    'cover_set'=> false,
-                    'error'    => 'duplicate_skipped',
-                ]);
-                return;
-            }
-        }
+    // Aynı başlıkla zaten yayınlanmış bir post varsa tekrar oluşturma.
+    // Slug bazlı kontrol: title karşılaştırmasından daha güvenilir.
+    $expected_slug = mb_strtolower($post_title, 'UTF-8');
+    $expected_slug = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $expected_slug) ?: $expected_slug;
+    $expected_slug = preg_replace('/[^a-z0-9]+/', '-', $expected_slug);
+    $expected_slug = trim($expected_slug, '-');
+    [$slug_posts, $slug_code] = bw_wp("$wp_api/$ep?slug=" . urlencode($expected_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+    if ($slug_code === 200 && !empty($slug_posts[0]['id'])) {
+        $pid = $slug_posts[0]['id'];
+        bw_update_book($batch_file, $idx, [
+            'status'   => 'done',
+            'post_id'  => $pid,
+            'post_url' => $slug_posts[0]['link'] ?? '',
+            'edit_url' => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
+            'cover_set'=> false,
+            'error'    => 'duplicate_skipped',
+        ]);
+        return;
     }
 
     $pb = [
@@ -426,6 +427,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         return;
     }
     $pid = $post['id'];
+    // post_id'yi hemen kaydet — crash sonrası recovery bu kitabı tekrar işlemesin
+    bw_update_book($batch_file, $idx, ['post_id' => $pid]);
 
     // Yazar
     if ($author) {
@@ -521,7 +524,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $changed = false;
     foreach ($b['books'] as $i => $book) {
         if (($book['status'] ?? '') === 'processing') {
-            $b['books'][$i]['status'] = 'pending';
+            if (!empty($book['post_id'])) {
+                // WP post zaten oluşturulmuş — done say, tekrar işleme
+                $b['books'][$i]['status'] = 'done';
+            } else {
+                $b['books'][$i]['status'] = 'pending';
+            }
             $changed = true;
         }
     }
