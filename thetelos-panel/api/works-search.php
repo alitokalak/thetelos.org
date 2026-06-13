@@ -112,10 +112,12 @@ SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {
   ?work wdt:P50 wd:{$entity_id}.
   ?work wdt:P31 ?type.
   FILTER(?type IN (
-    wd:Q7725634, wd:Q571, wd:Q49848, wd:Q8261,
-    wd:Q162606, wd:Q5185279, wd:Q17537576,
-    wd:Q36279, wd:Q25379, wd:Q11826511
+    wd:Q571, wd:Q7725634, wd:Q49848, wd:Q8261,
+    wd:Q162606, wd:Q36279, wd:Q25379, wd:Q11826511
   ))
+  FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }
+  FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }
+  FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }
   OPTIONAL { ?work wdt:P577 ?date. }
   OPTIONAL { ?work wdt:P1476 ?origLabel. }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,fr,de,it,es,la". }
@@ -262,8 +264,9 @@ if ($entity_id) {
             if ((int)$year > ((int)$died + 40)) continue;
         }
 
-        // ── "İkincil literatür" başlık filtresi ──────────────────
-        $author_last_wd = preg_replace('/^.+\s/', '', $author); // son kelime
+        // ── İkincil literatür / derleme başlık filtresi ──────────
+        if (preg_match('/\b(portable|reader|anthology|selected works|selected writings|compendium|handbook|encyclopedia|introduction to|readings in|letters of|letters to)\b/i', $title)) continue;
+        $author_last_wd = preg_replace('/^.+\s/', '', $author);
         if (strlen($author_last_wd) >= 4) {
             if (preg_match('/\b(of|on|to|about|after|against|between|beyond|from|with)\s+' . preg_quote($author_last_wd, '/') . '\b/i', $title)) continue;
         }

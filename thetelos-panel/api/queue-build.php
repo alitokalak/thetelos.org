@@ -104,14 +104,18 @@ function qb_openlibrary($author){
         if(!empty($row['died']['value'])) { preg_match('/(\d{4})/',$row['died']['value'],$m); $died_y=$m[1]??''; }
 
         // ── Adım 3: Eserleri çek (P50 = yazar) ───────────────────
+        // Şiir (Q482994), tekil mektup (Q133492), bölüm (Q1931185) hariç tut
         $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
             .'?work wdt:P50 wd:'.$entity_id.'.'
             .'?work wdt:P31 ?type.'
-            .'FILTER(?type IN (wd:Q7725634,wd:Q571,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q5185279,wd:Q17537576,wd:Q36279,wd:Q25379,wd:Q11826511))'
+            .'FILTER(?type IN (wd:Q571,wd:Q7725634,wd:Q49848,wd:Q8261,wd:Q162606,wd:Q36279,wd:Q25379,wd:Q11826511))'
+            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }'
+            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }'
+            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }'
             .'OPTIONAL{?work wdt:P577 ?date.}'
             .'OPTIONAL{?work wdt:P1476 ?origLabel.}'
             .'SERVICE wikibase:label{bd:serviceParam wikibase:language "en,fr,de,it,es,la".}'
-            .'} ORDER BY ?date LIMIT 80';
+            .'} ORDER BY ?date LIMIT 100';
         $wd=qb_http_get('https://query.wikidata.org/sparql?'.http_build_query(['query'=>$sparql,'format'=>'json']));
         $bindings=$wd['results']['bindings']??[];
 
@@ -129,14 +133,20 @@ function qb_openlibrary($author){
                 if($year&&$born_y&&(int)$year<((int)$born_y-5)) continue;
                 if($year&&$died_y&&(int)$year>((int)$died_y+40)) continue;
 
-                // İkincil literatür filtresi
+                // İkincil literatür / derleme filtresi
                 if(strlen($author_last)>=4&&preg_match('/\b(of|on|to|about|after|against|beyond|from|with)\s+'.preg_quote($author_last,'/').'\b/i',$title)) continue;
+                if(preg_match('/\b(portable|reader|anthology|selected works|selected writings|compendium|handbook|encyclopedia|introduction to|readings in|letters of|letters to)\b/i',$title)) continue;
 
-                // Dedup
-                $tok=qb_tok($title); $dup=false;
-                foreach($seen_tok as $st){ if(qb_titles_same($tok,$st)){$dup=true;break;} }
+                // Dedup — başlık ve orijinal başlık her ikisini de kontrol et
+                $tok=qb_tok($title);
+                $tok_orig=$orig?qb_tok($orig):[];
+                $dup=false;
+                foreach($seen_tok as $st){
+                    if(qb_titles_same($tok,$st)||($tok_orig&&qb_titles_same($tok_orig,$st))){$dup=true;break;}
+                }
                 if($dup) continue;
                 $seen_tok[]=$tok;
+                if($tok_orig) $seen_tok[]=$tok_orig;
 
                 // Kapak batch-worker tarafından bulunacak — burada arama yapma
                 $out[]=['title'=>$title,'original'=>$orig,'cover'=>'','year'=>$year];
