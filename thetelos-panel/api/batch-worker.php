@@ -342,6 +342,14 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $meta_text = preg_replace('/```json|```/', '', $meta_text);
     $meta = json_decode(trim($meta_text), true) ?? [];
 
+    // DeepSeek limiti aşarsa PHP tarafında kes
+    foreach (['excerpt', 'meta_description'] as $mf) {
+        if (!empty($meta[$mf]) && mb_strlen($meta[$mf]) > 155) {
+            $cut = mb_substr($meta[$mf], 0, 152);
+            $meta[$mf] = mb_substr($cut, 0, mb_strrpos($cut, ' ') ?: 152) . '...';
+        }
+    }
+
     // ── Kapak bul (cURL) ───────────────────────────────────────────
     // Builder'da zaten bulunmuş/doğrulanmış kapak varsa onu kullan; yoksa ara.
     $cover_url = $pre_cover;
