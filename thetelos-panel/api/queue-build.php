@@ -76,9 +76,49 @@ function qb_tok($s){
 function qb_tok_match($a,$b){ $n=min(strlen($a),strlen($b)); if($n<4) return $a===$b; $k=0; while($k<$n&&$a[$k]===$b[$k]) $k++; return $k>=5; }
 function qb_titles_same($ta,$tb){ if(!$ta||!$tb) return false; $small=count($ta)<=count($tb)?$ta:$tb; $big=count($ta)<=count($tb)?$tb:$ta; $m=0; foreach($small as $x){ foreach($big as $y){ if(qb_tok_match($x,$y)){$m++;break;} } } $min=count($small); return $m>=2||($m>=1&&$m===$min); }
 
-function qb_ol_cover($title,$author){
-    $d=qb_http_get('https://openlibrary.org/search.json?'.http_build_query(['title'=>$title,'author'=>$author,'limit'=>3,'fields'=>'cover_i']));
-    foreach($d['docs']??[] as $doc){ if(!empty($doc['cover_i'])&&$doc['cover_i']>0) return 'https://covers.openlibrary.org/b/id/'.$doc['cover_i'].'-M.jpg'; }
+/**
+ * Python scriptindeki gibi: yazar için 1 GB isteği → title→cover_url map döner.
+ * Sonra her kitap için qb_cover_from_map() ile eşleştir (N istek → 1 istek).
+ */
+function qb_gb_covers_for_author($author) {
+    $url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
+        'q'          => 'inauthor:"' . $author . '" subject:philosophy',
+        'maxResults' => 40,
+        'langRestrict'=> 'en',
+        'printType'  => 'books',
+        'fields'     => 'items(volumeInfo(title,imageLinks))',
+        'key'        => GOOGLE_BOOKS_KEY,
+    ]);
+    $data = qb_http_get($url);
+    $map  = [];
+    foreach ($data['items'] ?? [] as $item) {
+        $t = mb_strtolower(trim($item['volumeInfo']['title'] ?? ''));
+        if (!$t) continue;
+        $lnk = $item['volumeInfo']['imageLinks'] ?? [];
+        $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
+        if (!$c) continue;
+        $c = str_replace(['http://','&edge=curl'], ['https://',''], $c);
+        $c = preg_replace('/zoom=\d/', 'zoom=3', $c);
+        $map[$t] = $c;
+    }
+    return $map;
+}
+
+function qb_cover_from_map($title, $orig, $map) {
+    if (empty($map)) return '';
+    $try = [mb_strtolower($title)];
+    if ($orig) $try[] = mb_strtolower($orig);
+    // Exact match
+    foreach ($try as $t) {
+        if (isset($map[$t])) return $map[$t];
+    }
+    // Partial match — GB title starts with or contains our title
+    foreach ($try as $t) {
+        if (strlen($t) < 5) continue;
+        foreach ($map as $gt => $url) {
+            if (str_starts_with($gt, $t) || str_starts_with($t, $gt)) return $url;
+        }
+    }
     return '';
 }
 
@@ -121,6 +161,8 @@ function qb_openlibrary($author){
 
         if(count($bindings)>=3){
             $author_last=preg_replace('/^.+\s/','',$author);
+            // Google Books'tan yazar için 1 toplu istek → cover map
+            $cover_map = qb_gb_covers_for_author($author);
             $out=[]; $seen_tok=[];
             foreach($bindings as $b){
                 $title=trim($b['workLabel']['value']??'');
@@ -148,8 +190,9 @@ function qb_openlibrary($author){
                 $seen_tok[]=$tok;
                 if($tok_orig) $seen_tok[]=$tok_orig;
 
-                // Kapak batch-worker tarafından bulunacak — burada arama yapma
-                $out[]=['title'=>$title,'original'=>$orig,'cover'=>'','year'=>$year];
+                // Kapak: Google Books cover map'ten eşleştir
+                $cover = qb_cover_from_map($title, $orig, $cover_map);
+                $out[]=['title'=>$title,'original'=>$orig,'cover'=>$cover,'year'=>$year];
             }
             if(count($out)>=3) return $out;
         }

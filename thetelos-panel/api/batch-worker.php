@@ -358,8 +358,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     if (!$cover_url) {
         $gb_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
-            'q'=>'intitle:"'.$search_book.'" inauthor:"'.$author.'"','maxResults'=>5,'printType'=>'books',
-            'fields'=>'items(volumeInfo(title,authors,imageLinks,industryIdentifiers))',
+            'q'          => 'intitle:"'.$search_book.'" inauthor:"'.$author.'"',
+            'maxResults' => 5,
+            'printType'  => 'books',
+            'fields'     => 'items(volumeInfo(title,authors,imageLinks))',
+            'key'        => GOOGLE_BOOKS_KEY,
         ]);
         $gb = json_decode((string)$bw_http_get($gb_url), true);
         foreach ($gb['items'] ?? [] as $item) {
@@ -380,7 +383,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
     if (!$cover_url) {
         $gb2 = json_decode((string)$bw_http_get('https://www.googleapis.com/books/v1/volumes?' . http_build_query([
-            'q'=>$search_book.' '.$author,'maxResults'=>3,'printType'=>'books','fields'=>'items(volumeInfo(imageLinks))',
+            'q'          => $search_book.' '.$author,
+            'maxResults' => 3,
+            'printType'  => 'books',
+            'fields'     => 'items(volumeInfo(imageLinks))',
+            'key'        => GOOGLE_BOOKS_KEY,
         ])), true);
         foreach ($gb2['items'] ?? [] as $item) {
             $lnk = $item['volumeInfo']['imageLinks'] ?? [];

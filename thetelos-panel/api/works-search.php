@@ -149,19 +149,43 @@ SPARQL;
 }
 
 /* ════════════════════════════════════════════════════════════
- * 3. OpenLibrary: kapak çek (başlık + yazar ile)
+ * 3. Google Books: yazar başına 1 toplu istek → cover map
  * ════════════════════════════════════════════════════════════ */
-function ws_ol_cover($title, $author) {
-    $url  = 'https://openlibrary.org/search.json?' . http_build_query([
-        'title'  => $title,
-        'author' => $author,
-        'limit'  => 3,
-        'fields' => 'cover_i,title,author_name',
+function ws_gb_covers_for_author($author) {
+    $url  = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
+        'q'           => 'inauthor:"' . $author . '" subject:philosophy',
+        'maxResults'  => 40,
+        'langRestrict'=> 'en',
+        'printType'   => 'books',
+        'fields'      => 'items(volumeInfo(title,imageLinks))',
+        'key'         => GOOGLE_BOOKS_KEY,
     ]);
     $data = ws_get($url);
-    foreach ($data['docs'] ?? [] as $doc) {
-        if (!empty($doc['cover_i']) && $doc['cover_i'] > 0) {
-            return 'https://covers.openlibrary.org/b/id/' . $doc['cover_i'] . '-M.jpg';
+    $map  = [];
+    foreach ($data['items'] ?? [] as $item) {
+        $t = mb_strtolower(trim($item['volumeInfo']['title'] ?? ''));
+        if (!$t) continue;
+        $lnk = $item['volumeInfo']['imageLinks'] ?? [];
+        $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
+        if (!$c) continue;
+        $c = str_replace(['http://', '&edge=curl'], ['https://', ''], $c);
+        $c = preg_replace('/zoom=\d/', 'zoom=3', $c);
+        $map[$t] = $c;
+    }
+    return $map;
+}
+
+function ws_cover_from_map($title, $orig, $map) {
+    if (empty($map)) return '';
+    $try = [mb_strtolower($title)];
+    if ($orig) $try[] = mb_strtolower($orig);
+    foreach ($try as $t) {
+        if (isset($map[$t])) return $map[$t];
+    }
+    foreach ($try as $t) {
+        if (strlen($t) < 5) continue;
+        foreach ($map as $gt => $url) {
+            if (str_starts_with($gt, $t) || str_starts_with($t, $gt)) return $url;
         }
     }
     return '';
@@ -244,6 +268,9 @@ if ($entity_id) {
     // 3) Eserleri çek
     $bindings = ws_wikidata_works($entity_id, $limit);
 
+    // 4) Google Books'tan yazar için tek seferde cover map al
+    $cover_map = ws_gb_covers_for_author($author);
+
     $works = []; $seen_tokens = [];
     foreach ($bindings as $b) {
         $title = trim($b['workLabel']['value'] ?? '');
@@ -280,10 +307,8 @@ if ($entity_id) {
         if ($dup) continue;
         $seen_tokens[] = $tok;
 
-        // ── Kapak: OpenLibrary'den çek ─────────────────────────────
-        // Kapak araması için orijinal başlık veya İngilizce başlık kullan
-        $cover_query = $orig ?: $title;
-        $cover = ws_ol_cover($cover_query, $author);
+        // ── Kapak: Google Books cover map'ten eşleştir ────────────
+        $cover = ws_cover_from_map($title, $orig, $cover_map);
 
         $works[] = [
             'title'    => $title,
