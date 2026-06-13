@@ -356,6 +356,19 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         return ($c >= 200 && $c < 300) ? $r : null;
     };
 
+    // Başlık benzerlik kontrolü: Google Books yanlış kitabın kapağını döndürmesin
+    $bw_title_ok = function($gb_title) use ($search_book) {
+        $a = bw_title_tokens($search_book);
+        $b = bw_title_tokens($gb_title);
+        if (empty($a) || empty($b)) return false;
+        // En az 1 ortak token AND sonuç başlığı büyük ölçüde örtüşmeli
+        $small = count($a) <= count($b) ? $a : $b;
+        $big   = count($a) <= count($b) ? $b : $a;
+        $m = 0;
+        foreach ($small as $x) { foreach ($big as $y) { if (bw_tok_match($x, $y)) { $m++; break; } } }
+        return $m >= 1 && ($m / count($small)) >= 0.5;
+    };
+
     if (!$cover_url) {
         $gb_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
             'q'          => 'intitle:"'.$search_book.'" inauthor:"'.$author.'"',
@@ -369,6 +382,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $lnk = $item['volumeInfo']['imageLinks'] ?? [];
             $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
             if (!$c) continue;
+            // Başlık eşleşmesi: yanlış kitap kapağını reddet
+            $gb_item_title = $item['volumeInfo']['title'] ?? '';
+            if (!$bw_title_ok($gb_item_title)) continue;
             $authors = array_map('strtolower', $item['volumeInfo']['authors'] ?? []);
             $author_match = false;
             $author_words = array_filter(explode(' ', strtolower($author)), fn($w) => strlen($w) > 2);
@@ -384,15 +400,16 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     if (!$cover_url) {
         $gb2 = json_decode((string)$bw_http_get('https://www.googleapis.com/books/v1/volumes?' . http_build_query([
             'q'          => $search_book.' '.$author,
-            'maxResults' => 3,
+            'maxResults' => 5,
             'printType'  => 'books',
-            'fields'     => 'items(volumeInfo(imageLinks))',
+            'fields'     => 'items(volumeInfo(title,imageLinks))',
             'key'        => GOOGLE_BOOKS_KEY,
         ])), true);
         foreach ($gb2['items'] ?? [] as $item) {
             $lnk = $item['volumeInfo']['imageLinks'] ?? [];
             $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
             if (!$c) continue;
+            if (!$bw_title_ok($item['volumeInfo']['title'] ?? '')) continue;
             $c = str_replace(['http://','&edge=curl'], ['https://',''], $c);
             $cover_url = preg_replace('/zoom=\d/', 'zoom=3', $c);
             break;
@@ -405,6 +422,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         ), true);
         foreach ($ol['docs'] ?? [] as $doc) {
             if (empty($doc['cover_i'])) continue;
+            // OpenLibrary başlık kontrolü
+            if (!$bw_title_ok($doc['title'] ?? '')) continue;
             $cover_url = "https://covers.openlibrary.org/b/id/{$doc['cover_i']}-L.jpg";
             break;
         }
