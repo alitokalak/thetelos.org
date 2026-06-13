@@ -1239,18 +1239,24 @@ document.getElementById('btn-queue-create')?.addEventListener('click', async () 
       `✓ ${res.authors.length} yazar bulundu — eserler getiriliyor...`, 'ok');
     await loadQueueList();
 
-    // Adım 2: her 5 yazarın eserlerini sırayla çek (her istek ~15-20s)
+    // Adım 2: her 5 yazarın eserlerini sırayla çek (her istek ~30-90s, Wikidata SPARQL)
     const batchId = res.batch_id;
     let done = false;
+    let failStreak = 0;
     while (!done) {
       btn.innerHTML = `<span class="loader"></span> Eserler getiriliyor...`;
       try {
-        const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 60000);
+        const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 120000);
         if (!br.ok) break;
+        failStreak = 0;
         notify('queue-create-notif', `${br.build_msg}`, 'ok');
         await loadQueueList();
         done = br.done;
-      } catch(e) { break; }
+      } catch(e) {
+        failStreak++;
+        if (failStreak >= 3) break;
+        await new Promise(r => setTimeout(r, 3000));
+      }
     }
 
     notify('queue-create-notif', '✓ Kuyruk hazır! "Devam Et" ile işlemi başlat.', 'ok');
@@ -1275,15 +1281,22 @@ async function resumeQueue(batchId) {
 async function continueBuilding(batchId, authorsBuilt, authorsTotal) {
   notify('queue-create-notif', 'Eserler getiriliyor...', 'ok');
   let built = authorsBuilt;
+  let failStreak = 0;
   while (built < authorsTotal) {
     try {
-      const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 60000);
+      const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 5 }, 120000);
       if (!br.ok) break;
+      failStreak = 0;
       built = br.authors_built;
       notify('queue-create-notif', br.build_msg, 'ok');
       await loadQueueList();
       if (br.done) break;
-    } catch(e) { notify('queue-create-notif', e.message, 'err'); break; }
+    } catch(e) {
+      failStreak++;
+      notify('queue-create-notif', `Hata (${failStreak}/3): ${e.message} — yeniden deneniyor...`, 'err');
+      if (failStreak >= 3) break;
+      await new Promise(r => setTimeout(r, 3000));
+    }
   }
   notify('queue-create-notif', '✓ Kuyruk hazır! "İşlemi Başlat" ile devam et.', 'ok');
 }
