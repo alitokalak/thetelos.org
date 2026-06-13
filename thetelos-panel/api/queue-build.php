@@ -123,102 +123,52 @@ function qb_cover_from_map($title, $orig, $map) {
 }
 
 function qb_openlibrary($author){
-    // ── Adım 1: Wikidata entity bul ───────────────────────────────
-    $wd_search = qb_http_get('https://www.wikidata.org/w/api.php?'.http_build_query(['action'=>'wbsearchentities','search'=>$author,'type'=>'item','language'=>'en','limit'=>5,'format'=>'json']));
-    $entity_id = null;
-    foreach($wd_search['search']??[] as $r){
-        $desc=mb_strtolower($r['description']??'');
-        if(preg_match('/philosopher|writer|author|poet|novelist|playwright|historian|theologian|mathematician|scientist|jurist|economist|psychologist|sociologist|scholar|thinker/',$desc)){
-            $entity_id=$r['id']; break;
-        }
-    }
-    if(!$entity_id&&!empty($wd_search['search'][0]['id'])) $entity_id=$wd_search['search'][0]['id'];
-
-    if($entity_id){
-        // ── Adım 2: Yazar doğum/ölüm yılları (validasyon) ────────
-        $date_q='SELECT ?born ?died WHERE { OPTIONAL{wd:'.$entity_id.' wdt:P569 ?born.} OPTIONAL{wd:'.$entity_id.' wdt:P570 ?died.} } LIMIT 1';
-        $dd=qb_http_get('https://query.wikidata.org/sparql?'.http_build_query(['query'=>$date_q,'format'=>'json']));
-        $row=$dd['results']['bindings'][0]??[];
-        $born_y=''; $died_y='';
-        if(!empty($row['born']['value'])) { preg_match('/(\d{4})/',$row['born']['value'],$m); $born_y=$m[1]??''; }
-        if(!empty($row['died']['value'])) { preg_match('/(\d{4})/',$row['died']['value'],$m); $died_y=$m[1]??''; }
-
-        // ── Adım 3: P800 (notable work) — elle derlenmiş, baskı tekrarı yok ──
-        $sparql='SELECT DISTINCT ?work ?workLabel ?origLabel ?date WHERE {'
-            .'wd:'.$entity_id.' wdt:P800 ?work.'
-            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q482994. }'
-            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q5185279. }'
-            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q1931185. }'
-            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q191067. }'
-            .'FILTER NOT EXISTS { ?work wdt:P31 wd:Q13442814. }'
-            .'OPTIONAL{?work wdt:P577 ?date.}'
-            .'OPTIONAL{?work wdt:P1476 ?origLabel.}'
-            .'SERVICE wikibase:label{bd:serviceParam wikibase:language "en,fr,de,it,es,la".}'
-            .'} ORDER BY ?date LIMIT 80';
-        $wd=qb_http_get('https://query.wikidata.org/sparql?'.http_build_query(['query'=>$sparql,'format'=>'json']));
-        $bindings=$wd['results']['bindings']??[];
-
-        if(count($bindings)>=3){
-            $author_last=preg_replace('/^.+\s/','',$author);
-            $cover_map = qb_gb_covers_for_author($author);
-            $out=[]; $seen_tok=[];
-            foreach($bindings as $b){
-                $title=trim($b['workLabel']['value']??'');
-                if(!$title||preg_match('/^Q\d+$/',$title)) continue;
-                $year=''; if(!empty($b['date']['value'])){preg_match('/(\d{4})/',$b['date']['value'],$m);$year=$m[1]??'';}
-                $orig=trim($b['origLabel']['value']??'');
-                if(mb_strtolower($orig)===mb_strtolower($title)) $orig='';
-
-                if($year&&$born_y&&(int)$year<((int)$born_y-5)) continue;
-                if($year&&$died_y&&(int)$year>((int)$died_y+40)) continue;
-
-                if(strlen($author_last)>=4&&preg_match('/\b(of|on|to|about|after|against|beyond|from|with)\s+'.preg_quote($author_last,'/').'\b/i',$title)) continue;
-                if(preg_match('/\b(portable|reader|anthology|selected works|selected writings|compendium|handbook|encyclopedia|introduction to|readings in|letters of|letters to)\b/i',$title)) continue;
-
-                $tok=qb_tok($title);
-                $tok_orig=$orig?qb_tok($orig):[];
-                $dup=false;
-                foreach($seen_tok as $st){
-                    if(qb_titles_same($tok,$st)||($tok_orig&&qb_titles_same($tok_orig,$st))){$dup=true;break;}
-                }
-                if($dup) continue;
-                $seen_tok[]=$tok;
-                if($tok_orig) $seen_tok[]=$tok_orig;
-
-                $cover = qb_cover_from_map($title, $orig, $cover_map);
-                $out[]=['title'=>$title,'original'=>$orig,'cover'=>$cover,'year'=>$year];
-            }
-            if(count($out)>=3) return $out;
-        }
-    }
-
-    // ── FALLBACK: OpenLibrary two-step ────────────────────────────
-    $ad=qb_http_get('https://openlibrary.org/search/authors.json?q='.urlencode($author).'&limit=5');
-    $author_key=null; $q=mb_strtolower($author);
+    // OpenLibrary iki adım: yazar key → eserler
+    $ad = qb_http_get('https://openlibrary.org/search/authors.json?q='.urlencode($author).'&limit=5');
+    $author_key = null;
+    $q = mb_strtolower($author);
     foreach($ad['docs']??[] as $a){
-        $name=mb_strtolower(trim($a['name']??''));
+        $name = mb_strtolower(trim($a['name']??''));
         if($name===$q||str_contains($name,$q)||str_contains($q,$name)){$author_key=$a['key']??null;break;}
     }
     if(!$author_key&&!empty($ad['docs'][0]['key'])) $author_key=$ad['docs'][0]['key'];
     if(!$author_key) return [];
 
-    $wd2=qb_http_get('https://openlibrary.org'.$author_key.'/works.json?limit=50');
-    if(!$wd2) return [];
+    $data = qb_http_get('https://openlibrary.org'.$author_key.'/works.json?limit=50');
+    if(!$data) return [];
 
-    $author_parts=array_filter(explode(' ',mb_strtolower($author)));
-    $author_last2=end($author_parts);
-    $out2=[]; $seen2=[];
-    foreach($wd2['entries']??[] as $entry){
-        $t=trim($entry['title']??''); if(!$t) continue;
-        $k=mb_strtolower($t); if(isset($seen2[$k])) continue; $seen2[$k]=true;
-        $was=$entry['authors']??[];
-        if(!empty($was)){ $ok=false; foreach($was as $wa){ if(($wa['author']['key']??($wa['key']??''))===$author_key){$ok=true;break;} } if(!$ok) continue; }
-        if(strlen($author_last2)>=4){ if(preg_match('/\b(of|on|to|about|and|by)\s+'.preg_quote($author_last2,'/').'\b/i',$t)) continue; if(trim(mb_strtolower($t))===$author_last2) continue; }
-        $cover=''; if(!empty($entry['covers'][0])&&$entry['covers'][0]>0) $cover='https://covers.openlibrary.org/b/id/'.$entry['covers'][0].'-M.jpg';
-        $year=''; if(!empty($entry['first_publish_date'])){preg_match('/\d{4}/',$entry['first_publish_date'],$m);$year=$m[0]??'';}
-        $out2[]=['title'=>$t,'original'=>'','cover'=>$cover,'year'=>$year];
+    $author_parts = array_filter(explode(' ', mb_strtolower($author)));
+    $author_last  = end($author_parts);
+    $out = []; $seen = [];
+    foreach($data['entries']??[] as $entry){
+        $t = trim($entry['title']??''); if(!$t) continue;
+        $k = mb_strtolower($t); if(isset($seen[$k])) continue; $seen[$k]=true;
+
+        // Sadece bu yazara ait eserler
+        $was = $entry['authors']??[];
+        if(!empty($was)){
+            $ok = false;
+            foreach($was as $wa){
+                if(($wa['author']['key']??($wa['key']??''))===$author_key){$ok=true;break;}
+            }
+            if(!$ok) continue;
+        }
+
+        // "X of/on Kant" gibi ikincil literatürü at
+        if(strlen($author_last)>=4){
+            if(preg_match('/\b(of|on|to|about|and|by)\s+'.preg_quote($author_last,'/').'\\b/i',$t)) continue;
+            if(trim(mb_strtolower($t))===$author_last) continue;
+        }
+
+        $cover = '';
+        if(!empty($entry['covers'][0])&&$entry['covers'][0]>0)
+            $cover = 'https://covers.openlibrary.org/b/id/'.$entry['covers'][0].'-M.jpg';
+        $year = '';
+        if(!empty($entry['first_publish_date'])){preg_match('/\d{4}/',$entry['first_publish_date'],$m);$year=$m[0]??'';}
+
+        $out[] = ['title'=>$t,'original'=>'','cover'=>$cover,'year'=>$year];
     }
-    return $out2;
+    return $out;
 }
 
 function qb_llm($author){
