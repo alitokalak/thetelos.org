@@ -57,7 +57,12 @@ function bw_claim_next($batch_file) {
         if (($b['status'] ?? '') === 'pending') { $idx = $i; break; }
     }
     if ($idx === -1) {
-        if ($st !== 'done') {
+        // Hâlâ "processing" olan kitap varsa done yazma — başka worker çalışıyor olabilir
+        $has_processing = false;
+        foreach ($batch['books'] as $b) {
+            if (($b['status'] ?? '') === 'processing') { $has_processing = true; break; }
+        }
+        if (!$has_processing && $st !== 'done') {
             $batch['status'] = 'done';
             fseek($fp, 0); ftruncate($fp, 0);
             fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));

@@ -733,6 +733,17 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   // Durumu sorgulayarak ilerlemeyi izle
   await pollBatchUntilDone();
 
+  // Poll bittikten sonra son durumu al (processing items hâlâ yazılıyor olabilir)
+  for (let i = 0; i < 5; i++) {
+    await delay(3000);
+    const fr = await fetch(API('batch-status.php?batch_id=') + batchId).then(x => x.json()).catch(() => null);
+    if (fr?.ok) {
+      renderBatchStatus(fr.batch);
+      const stillProcessing = (fr.batch.books || []).some(b => b.status === 'processing');
+      if (!stillProcessing) break;
+    }
+  }
+
   // Tamamlandı
   batchRunning = false;
   document.getElementById('btn-batch-pause').style.display = 'none';
