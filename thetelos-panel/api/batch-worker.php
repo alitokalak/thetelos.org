@@ -544,10 +544,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 }
 
 /* ════════════════ CRASH RECOVERY ════════════════
- * Önceki çalışmada çöken worker'ın "processing" bıraktığı kitapları
- * tekrar "pending" yap ki işlenebilsin.
+ * Önceki çalışmada ÇÖKEN worker'ın "processing" bıraktığı kitapları kurtar.
+ * DİKKAT: Hâlâ canlı bir worker'ın işlediği kitabı sıfırlamamak için yalnızca
+ * processing_since 15 dakikadan eski olanlara dokun. Taze "processing" kitaplar
+ * başka bir worker tarafından aktif üretiliyordur — onları sıfırlamak içeriğin
+ * iki kez üretilip iki kez yayınlanmasına (TEKRAR) yol açar.
  */
 (function() use ($batch_file) {
+    $stale = 15 * 60; // 15 dk — bir kitabın üretim süresinden uzun
+    $now   = time();
     $fp = fopen($batch_file, 'r+');
     if (!flock($fp, LOCK_EX)) { fclose($fp); return; }
     fseek($fp, 0); $raw = ''; while (!feof($fp)) $raw .= fread($fp, 65536);
@@ -559,10 +564,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             if (!empty($book['post_id'])) {
                 // WP post zaten oluşturulmuş — done say, tekrar işleme
                 $b['books'][$i]['status'] = 'done';
+                $changed = true;
             } else {
-                $b['books'][$i]['status'] = 'pending';
+                // Sadece BAYAT (eski) processing kitapları kurtar; taze olanlara dokunma
+                $since = (int)($book['processing_since'] ?? 0);
+                if ($since > 0 && ($now - $since) > $stale) {
+                    $b['books'][$i]['status'] = 'pending';
+                    $changed = true;
+                }
             }
-            $changed = true;
         }
     }
     if ($changed) {
