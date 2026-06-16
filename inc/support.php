@@ -3,7 +3,7 @@
  * The Telos — Support / Donation Settings
  *
  * WP Customizer'a "Support / Donations" bölümü ekler.
- * Customize → Support / Donations → Shopier URL alanları
+ * Customize → Support / Donations → Shopier URL + kripto adresleri
  *
  * @package Mediumish / TheTelos
  */
@@ -16,22 +16,44 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
         'priority' => 160,
     ]);
 
-    $fields = [
-        'tls_support_url_3'  => [ 'label' => 'Shopier URL — $3 tier',  'default' => '' ],
-        'tls_support_url_10' => [ 'label' => 'Shopier URL — $10 tier', 'default' => '' ],
-        'tls_support_url_25' => [ 'label' => 'Shopier URL — $25 tier', 'default' => '' ],
+    /* Shopier URL fields */
+    $tiers = [
+        'tls_support_url_5'   => '$5 tier — Shopier URL',
+        'tls_support_url_10'  => '$10 tier — Shopier URL',
+        'tls_support_url_25'  => '$25 tier — Shopier URL',
+        'tls_support_url_50'  => '$50 tier — Shopier URL',
+        'tls_support_url_100' => '$100 tier — Shopier URL',
     ];
 
-    foreach ( $fields as $key => $args ) {
+    foreach ( $tiers as $key => $label ) {
         $wp_customize->add_setting( $key, [
-            'default'           => $args['default'],
+            'default'           => '',
             'sanitize_callback' => 'esc_url_raw',
         ]);
         $wp_customize->add_control( $key, [
-            'label'       => $args['label'],
-            'description' => 'shopier.com → Ürünüm → Linki kopyala',
+            'label'       => $label,
+            'description' => 'shopier.com → Ürünüm → Satış Linki',
             'section'     => 'tls_support',
             'type'        => 'url',
+        ]);
+    }
+
+    /* Crypto wallet addresses */
+    $crypto = [
+        'tls_crypto_btc'  => 'Bitcoin (BTC) wallet address',
+        'tls_crypto_eth'  => 'Ethereum (ETH) wallet address',
+        'tls_crypto_usdc' => 'USD Coin (USDC) wallet address',
+    ];
+
+    foreach ( $crypto as $key => $label ) {
+        $wp_customize->add_setting( $key, [
+            'default'           => '',
+            'sanitize_callback' => 'sanitize_text_field',
+        ]);
+        $wp_customize->add_control( $key, [
+            'label'   => $label,
+            'section' => 'tls_support',
+            'type'    => 'text',
         ]);
     }
 });

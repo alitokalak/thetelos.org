@@ -7,155 +7,342 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-/* Shopier ürün URL'leri — Shopier hesabını açınca buraya yapıştır */
-$tiers = [
-    [
-        'icon'   => '☕',
-        'amount' => '$3',
-        'label'  => 'Buy us a coffee',
-        'desc'   => 'A small token of appreciation. Every cup counts.',
-        'url'    => get_theme_mod( 'tls_support_url_3', '#' ),
-        'featured' => false,
-    ],
-    [
-        'icon'   => '📚',
-        'amount' => '$10',
-        'label'  => 'Support a summary',
-        'desc'   => 'Help us research, read, and write the next book in the archive.',
-        'url'    => get_theme_mod( 'tls_support_url_10', '#' ),
-        'featured' => true,
-    ],
-    [
-        'icon'   => '🌟',
-        'amount' => '$25',
-        'label'  => 'Patron of the archive',
-        'desc'   => 'Become a sustaining patron and keep the archive alive.',
-        'url'    => get_theme_mod( 'tls_support_url_25', '#' ),
-        'featured' => false,
-    ],
+/* Shopier ürün URL'leri — Customize → Support / Donations */
+$url_5   = get_theme_mod( 'tls_support_url_5',   '' );
+$url_10  = get_theme_mod( 'tls_support_url_10',  '' );
+$url_25  = get_theme_mod( 'tls_support_url_25',  '' );
+$url_50  = get_theme_mod( 'tls_support_url_50',  '' );
+$url_100 = get_theme_mod( 'tls_support_url_100', '' );
+
+/* Kripto adresleri — Customize → Support / Donations */
+$btc  = get_theme_mod( 'tls_crypto_btc',  '' );
+$eth  = get_theme_mod( 'tls_crypto_eth',  '' );
+$usdc = get_theme_mod( 'tls_crypto_usdc', '' );
+
+/* Tutar → Shopier URL eşleşmesi */
+$shopier_urls = [
+    5   => $url_5,
+    10  => $url_10,
+    25  => $url_25,
+    50  => $url_50,
+    100 => $url_100,
 ];
+$shopier_map_json = json_encode( array_map( 'esc_url', $shopier_urls ) );
 
 get_header();
 ?>
 
 <main id="main" role="main">
+<div class="tls-don-wrap">
+<div class="tls-don-inner">
 
-<!-- ── Hero ── -->
-<div style="background:var(--tls-bg-dark);padding:72px 0 60px;">
-    <div class="container" style="text-align:center;">
-        <p class="tls-sup-eyebrow">The Archive</p>
-        <h1 class="tls-sup-title">Support Our Work</h1>
-        <p class="tls-sup-subtitle">
-            The Telos is free, independent, and ad-free. If it has brought you value,
-            consider supporting the work that keeps it going.
+    <!-- ══ LEFT · Letter ══ -->
+    <div class="tls-don-letter">
+
+        <p class="tls-don-eyebrow">The Archive &middot; A Letter</p>
+
+        <h1 class="tls-don-headline">
+            Keep the world's<br>
+            <em>great books</em> free to read.
+        </h1>
+
+        <p class="tls-don-body">
+            thetelos exists to publish careful summaries and analyses of
+            humanity's most important works — beginning with philosophy —
+            and to give them away, to everyone, for nothing.
         </p>
-    </div>
-</div>
 
-<!-- ── Tier cards ── -->
-<div class="tls-sup-section">
-    <div class="container">
+        <p class="tls-don-body">
+            Every analysis on this site was read closely, written slowly,
+            and edited by hand. There are no ads, no paywalls, and no
+            investors deciding what gets read. That independence is the
+            whole point — and it is paid for by readers like you.
+        </p>
 
-        <div class="tls-sup-cards">
-            <?php foreach ( $tiers as $tier ) : ?>
-            <a class="tls-sup-card<?php echo $tier['featured'] ? ' tls-sup-card--featured' : ''; ?>"
-               href="<?php echo esc_url( $tier['url'] ); ?>"
-               target="_blank" rel="noopener noreferrer">
+        <p class="tls-don-body">
+            A single gift keeps the servers running, funds the next book in
+            the archive, and ensures a student anywhere in the world can sit
+            with Aristotle, Augustine, or Arendt without paying a cent.
+            If the work has given you something, consider giving a little back.
+        </p>
 
-                <?php if ( $tier['featured'] ) : ?>
-                <div class="tls-sup-card-badge">Most Popular</div>
-                <?php endif; ?>
+        <p class="tls-don-sig">The Telos Editorial</p>
 
-                <span class="tls-sup-card-icon" aria-hidden="true"><?php echo $tier['icon']; ?></span>
-                <div class="tls-sup-card-amount"><?php echo esc_html( $tier['amount'] ); ?></div>
-                <div class="tls-sup-card-label"><?php echo esc_html( $tier['label'] ); ?></div>
-                <p class="tls-sup-card-desc"><?php echo esc_html( $tier['desc'] ); ?></p>
+    </div><!-- /.tls-don-letter -->
 
-                <div class="tls-sup-card-cta">
-                    Support with <?php echo esc_html( $tier['amount'] ); ?>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                         width="14" height="14" aria-hidden="true">
-                        <line x1="5" y1="12" x2="19" y2="12"/>
-                        <polyline points="12 5 19 12 12 19"/>
-                    </svg>
-                </div>
-            </a>
-            <?php endforeach; ?>
-        </div>
 
-        <!-- Trust signals -->
-        <div class="tls-sup-trust">
-            <span>
+    <!-- ══ RIGHT · Donation card ══ -->
+    <div class="tls-don-card" role="region" aria-label="Donation form">
+
+        <!-- Card header -->
+        <div class="tls-don-card-head">
+            <span class="tls-don-onetime">One-time gift</span>
+            <span class="tls-don-secure">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     width="14" height="14" aria-hidden="true">
+                     width="12" height="12" aria-hidden="true">
                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                 </svg>
-                Secure payment via Shopier
-            </span>
-            <span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     width="14" height="14" aria-hidden="true">
-                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
-                    <line x1="1" y1="10" x2="23" y2="10"/>
-                </svg>
-                Visa &amp; Mastercard accepted
-            </span>
-            <span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                     width="14" height="14" aria-hidden="true">
-                    <polyline points="20 6 9 17 4 12"/>
-                </svg>
-                No account required
+                Secure
             </span>
         </div>
 
-    </div>
-</div>
+        <div class="tls-don-card-body">
 
-<!-- ── Why we exist ── -->
-<div class="tls-sup-why">
-    <div class="container">
-        <div class="tls-sup-why-inner">
-            <h2 class="tls-sup-why-title">What your support makes possible</h2>
-            <div class="tls-sup-why-grid">
-                <div class="tls-sup-why-item">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                         width="22" height="22" aria-hidden="true">
-                        <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
-                        <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-                    </svg>
-                    <div>
-                        <strong>New summaries</strong>
-                        <p>Each summary takes 6–12 hours of reading, distilling, and writing. Your support funds the next one.</p>
-                    </div>
-                </div>
-                <div class="tls-sup-why-item">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                         width="22" height="22" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="2" y1="12" x2="22" y2="12"/>
-                        <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
-                    </svg>
-                    <div>
-                        <strong>Free &amp; open to all</strong>
-                        <p>The Telos will always be free and ad-free. No paywalls, no tracking, no sponsored content.</p>
-                    </div>
-                </div>
-                <div class="tls-sup-why-item">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
-                         width="22" height="22" aria-hidden="true">
-                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-                    </svg>
-                    <div>
-                        <strong>Independence</strong>
-                        <p>We are not backed by publishers, algorithms, or advertisers. Only by readers like you.</p>
-                    </div>
+            <!-- ① Amount -->
+            <div class="tls-don-step-label">
+                <span class="tls-don-step-num" aria-hidden="true">1</span>
+                Choose an amount <span class="tls-don-currency">(USD)</span>
+            </div>
+
+            <div class="tls-don-amounts" role="group" aria-label="Donation amounts">
+                <?php
+                $presets = [ 5, 10, 25, 50, 100 ];
+                foreach ( $presets as $amt ) :
+                    $active = ( $amt === 25 ) ? ' active' : '';
+                ?>
+                <button class="tls-don-amt<?php echo $active; ?>"
+                        type="button"
+                        data-amount="<?php echo $amt; ?>"
+                        aria-pressed="<?php echo $amt === 25 ? 'true' : 'false'; ?>">
+                    $<?php echo $amt; ?>
+                </button>
+                <?php endforeach; ?>
+                <button class="tls-don-amt tls-don-amt-other"
+                        type="button"
+                        data-amount="other"
+                        aria-pressed="false">
+                    $ Other
+                </button>
+            </div>
+
+            <div class="tls-don-custom-wrap" id="tls-don-custom-wrap">
+                <input class="tls-don-custom-input"
+                       id="tls-don-custom-input"
+                       type="number"
+                       min="1"
+                       placeholder="Enter amount"
+                       aria-label="Custom donation amount in USD">
+            </div>
+
+            <label class="tls-don-fee-label">
+                <input type="checkbox" id="tls-don-fee-chk">
+                <span>
+                    Add <strong id="tls-don-fee-display">$0.78</strong>
+                    to cover processing fees
+                </span>
+            </label>
+
+            <!-- ② Payment method -->
+            <hr class="tls-don-divider">
+
+            <div class="tls-don-step-label">
+                <span class="tls-don-step-num" aria-hidden="true">2</span>
+                Payment method
+            </div>
+
+            <div class="tls-don-tabs" role="tablist">
+                <button class="tls-don-tab active"
+                        type="button"
+                        role="tab"
+                        aria-selected="true"
+                        aria-controls="tls-don-panel-shopier"
+                        id="tls-tab-shopier">
+                    <span class="tls-don-tab-name">Shopier</span>
+                    <span class="tls-don-tab-sub">Local checkout</span>
+                </button>
+                <button class="tls-don-tab"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="tls-don-panel-crypto"
+                        id="tls-tab-crypto">
+                    <span class="tls-don-tab-name">Crypto</span>
+                    <span class="tls-don-tab-sub">BTC · ETH · USDC</span>
+                </button>
+            </div>
+
+            <!-- Shopier panel -->
+            <div class="tls-don-panel active"
+                 id="tls-don-panel-shopier"
+                 role="tabpanel"
+                 aria-labelledby="tls-tab-shopier">
+                <div class="tls-don-shopier-note">
+                    <strong>Pay with card via Shopier.</strong><br>
+                    You'll be taken to Shopier's secure checkout to complete your gift
+                    with Visa, Mastercard, or Amex. No account required.
                 </div>
             </div>
-        </div>
-    </div>
-</div>
 
+            <!-- Crypto panel -->
+            <div class="tls-don-panel"
+                 id="tls-don-panel-crypto"
+                 role="tabpanel"
+                 aria-labelledby="tls-tab-crypto">
+                <?php if ( $btc || $eth || $usdc ) : ?>
+                <div class="tls-don-crypto-grid">
+                    <?php if ( $btc ) : ?>
+                    <div class="tls-don-crypto-row">
+                        <span class="tls-don-crypto-coin">Bitcoin (BTC)</span>
+                        <span class="tls-don-crypto-addr"><?php echo esc_html( $btc ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ( $eth ) : ?>
+                    <div class="tls-don-crypto-row">
+                        <span class="tls-don-crypto-coin">Ethereum (ETH)</span>
+                        <span class="tls-don-crypto-addr"><?php echo esc_html( $eth ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ( $usdc ) : ?>
+                    <div class="tls-don-crypto-row">
+                        <span class="tls-don-crypto-coin">USD Coin (USDC)</span>
+                        <span class="tls-don-crypto-addr"><?php echo esc_html( $usdc ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php else : ?>
+                <div class="tls-don-shopier-note">
+                    Crypto addresses coming soon. Add your wallet addresses in
+                    <strong>Customize → Support / Donations</strong>.
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- CTA -->
+            <button class="tls-don-submit" type="button" id="tls-don-submit">
+                Donate
+                <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                    <polyline points="12 5 19 12 12 19"/>
+                </svg>
+            </button>
+
+            <!-- Trust line -->
+            <div class="tls-don-trust" aria-label="Security assurances">
+                <span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         width="12" height="12" aria-hidden="true">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    Secure payment
+                </span>
+                <span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         width="12" height="12" aria-hidden="true">
+                        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                        <line x1="1" y1="10" x2="23" y2="10"/>
+                    </svg>
+                    Visa &amp; Mastercard
+                </span>
+                <span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                         width="12" height="12" aria-hidden="true">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    No account needed
+                </span>
+            </div>
+
+        </div><!-- /.tls-don-card-body -->
+    </div><!-- /.tls-don-card -->
+
+</div><!-- /.tls-don-inner -->
+</div><!-- /.tls-don-wrap -->
 </main>
+
+<script>
+(function() {
+    var shopierUrls = <?php echo $shopier_map_json; ?>;
+    var selectedAmt = 25;
+    var activeTab   = 'shopier';
+    var FEE_RATE    = 0.029;
+    var FEE_FIXED   = 0.30;
+
+    var amtBtns     = document.querySelectorAll('.tls-don-amt');
+    var customWrap  = document.getElementById('tls-don-custom-wrap');
+    var customInput = document.getElementById('tls-don-custom-input');
+    var feeChk      = document.getElementById('tls-don-fee-chk');
+    var feeDisplay  = document.getElementById('tls-don-fee-display');
+    var tabs        = document.querySelectorAll('.tls-don-tab');
+    var panels      = document.querySelectorAll('.tls-don-panel');
+    var submitBtn   = document.getElementById('tls-don-submit');
+
+    function updateFee() {
+        var amt = selectedAmt === 'other'
+            ? (parseFloat(customInput.value) || 0)
+            : selectedAmt;
+        var fee = Math.max(0, amt * FEE_RATE + FEE_FIXED);
+        if (feeDisplay) feeDisplay.textContent = '$' + fee.toFixed(2);
+    }
+
+    /* Amount buttons */
+    amtBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            amtBtns.forEach(function(b) {
+                b.classList.remove('active');
+                b.setAttribute('aria-pressed', 'false');
+            });
+            btn.classList.add('active');
+            btn.setAttribute('aria-pressed', 'true');
+            selectedAmt = btn.dataset.amount === 'other' ? 'other' : parseInt(btn.dataset.amount);
+            var isOther = (selectedAmt === 'other');
+            customWrap.classList.toggle('visible', isOther);
+            if (isOther) { customInput.focus(); }
+            updateFee();
+        });
+    });
+
+    if (customInput) {
+        customInput.addEventListener('input', updateFee);
+    }
+    if (feeChk) { feeChk.addEventListener('change', updateFee); }
+    updateFee();
+
+    /* Payment tabs */
+    tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            tabs.forEach(function(t) {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
+            panels.forEach(function(p) { p.classList.remove('active'); });
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+            var panelId = tab.getAttribute('aria-controls');
+            var panel   = document.getElementById(panelId);
+            if (panel) { panel.classList.add('active'); }
+            activeTab = panelId.includes('crypto') ? 'crypto' : 'shopier';
+        });
+    });
+
+    /* Donate button */
+    if (submitBtn) {
+        submitBtn.addEventListener('click', function() {
+            if (activeTab === 'crypto') {
+                /* Scroll to / highlight wallet addresses — no redirect needed */
+                var panel = document.getElementById('tls-don-panel-crypto');
+                if (panel) { panel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+                return;
+            }
+            /* Shopier flow */
+            var amt = selectedAmt === 'other'
+                ? (parseInt(customInput.value) || 0)
+                : selectedAmt;
+            var url = shopierUrls[amt] || '';
+            if (url && url !== '#' && url !== '') {
+                window.location.href = url;
+            } else {
+                /* URL henüz eklenmemiş — Customize'da ekle */
+                submitBtn.textContent = 'Coming soon — check back shortly!';
+                submitBtn.disabled = true;
+                setTimeout(function() {
+                    submitBtn.innerHTML = 'Donate <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+                    submitBtn.disabled = false;
+                }, 3000);
+            }
+        });
+    }
+})();
+</script>
 
 <?php get_footer(); ?>
