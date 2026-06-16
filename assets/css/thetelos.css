@@ -2926,14 +2926,20 @@
   color: #fff !important;
   background: #257855;
   border: none;
-  border-radius: 8px;
-  padding: 9px 18px;
+  border-radius: 999px;
+  padding: 9px 20px;
   text-decoration: none !important;
-  transition: background .15s;
+  transition: background .15s, box-shadow .15s, transform .15s;
   white-space: nowrap;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(37,120,85,.28);
 }
-.tls-support-cta:hover { background: #1e6347; color: #fff !important; }
+.tls-support-cta:hover {
+  background: #1e6347;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(37,120,85,.38);
+  transform: translateY(-1px);
+}
 @media (max-width: 600px) { .tls-support-cta span { display: none; } }
 
 /* ────────────────────────────────
