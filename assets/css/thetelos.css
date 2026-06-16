@@ -79,16 +79,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px; height: 36px;
-  border: none;
+  width: 38px; height: 38px;
+  border: 1.5px solid var(--tls-border);
   background: none;
   border-radius: 50%;
   cursor: pointer;
   color: var(--tls-muted);
-  transition: background .15s, color .15s;
+  transition: background .15s, color .15s, border-color .15s;
   text-decoration: none !important;
 }
-.tls-icon-btn:hover { background: var(--tls-bg); color: var(--tls-bg-dark); }
+.tls-icon-btn:hover { background: var(--tls-bg); color: var(--tls-bg-dark); border-color: #ccc; }
 .tls-icon-btn svg { width: 18px; height: 18px; }
 
 /* Mobile search toggle */
@@ -3268,26 +3268,29 @@
 /* Donate button */
 .tls-don-submit {
   width: 100%;
-  background: var(--tls-bg-dark);
+  background: #257855;
   color: #fff;
   border: none;
-  border-radius: 8px;
+  border-radius: 999px;
   padding: 15px 24px;
   font-family: var(--tls-sans);
   font-size: 14px;
   font-weight: 600;
   letter-spacing: .04em;
   cursor: pointer;
-  transition: opacity .15s;
+  transition: background .15s, box-shadow .15s, transform .15s;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  box-shadow: 0 2px 10px rgba(37,120,85,.30);
 }
-.tls-don-submit:hover { opacity: .88; }
-.tls-don-submit-arrow {
-  transition: transform .2s;
+.tls-don-submit:hover {
+  background: #1e6347;
+  box-shadow: 0 4px 18px rgba(37,120,85,.40);
+  transform: translateY(-1px);
 }
+.tls-don-submit-arrow { transition: transform .2s; }
 .tls-don-submit:hover .tls-don-submit-arrow { transform: translateX(3px); }
 
 /* Bottom trust line */
