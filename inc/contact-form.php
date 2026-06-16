@@ -38,13 +38,53 @@ add_filter( 'manage_tls_contact_posts_columns', function( $cols ) {
         'title'       => 'Name',
         'tls_c_email' => 'Email',
         'tls_c_subj'  => 'Subject',
+        'tls_c_read'  => 'Status',
         'date'        => 'Date',
     ];
 });
 add_action( 'manage_tls_contact_posts_custom_column', function( $col, $post_id ) {
     if ( $col === 'tls_c_email' ) echo esc_html( get_post_meta( $post_id, '_tls_c_email',   true ) );
     if ( $col === 'tls_c_subj'  ) echo esc_html( get_post_meta( $post_id, '_tls_c_subject', true ) );
+    if ( $col === 'tls_c_read'  ) {
+        $read = get_post_meta( $post_id, '_tls_c_read', true );
+        echo $read
+            ? '<span style="color:#8BAF7C;font-weight:600;">✓ Read</span>'
+            : '<span style="color:#C8A165;font-weight:600;">● New</span>';
+    }
 }, 10, 2 );
+
+/* ── Okundu işareti — mesaj açılınca otomatik ── */
+add_action( 'load-post.php', function() {
+    if ( ! isset( $_GET['post'] ) || ! isset( $_GET['action'] ) ) return;
+    $post_id = (int) $_GET['post'];
+    if ( get_post_type( $post_id ) === 'tls_contact' && ! get_post_meta( $post_id, '_tls_c_read', true ) ) {
+        update_post_meta( $post_id, '_tls_c_read', '1' );
+    }
+});
+
+/* ── Sol menüde okunmamış sayısı (kırmızı badge) ── */
+add_action( 'admin_menu', function() {
+    global $menu;
+    $unread = (int) ( new WP_Query([
+        'post_type'      => 'tls_contact',
+        'post_status'    => 'publish',
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+        'meta_query'     => [
+            [ 'key' => '_tls_c_read', 'compare' => 'NOT EXISTS' ],
+        ],
+    ]) )->found_posts;
+
+    if ( $unread < 1 ) return;
+
+    foreach ( $menu as $k => $item ) {
+        if ( isset( $item[2] ) && $item[2] === 'edit.php?post_type=tls_contact' ) {
+            $menu[$k][0] .= ' <span class="update-plugins count-' . $unread
+                          . '"><span class="plugin-count">' . $unread . '</span></span>';
+            break;
+        }
+    }
+}, 999 );
 
 /* ── Admin meta box ─────────────────────────────────────────── */
 add_action( 'add_meta_boxes', function() {
