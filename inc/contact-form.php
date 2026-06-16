@@ -46,6 +46,35 @@ add_action( 'manage_tls_contact_posts_custom_column', function( $col, $post_id )
     if ( $col === 'tls_c_subj'  ) echo esc_html( get_post_meta( $post_id, '_tls_c_subject', true ) );
 }, 10, 2 );
 
+/* ── Admin meta box ─────────────────────────────────────────── */
+add_action( 'add_meta_boxes', function() {
+    add_meta_box(
+        'tls_contact_detail',
+        'Message Details',
+        function( $post ) {
+            $email   = get_post_meta( $post->ID, '_tls_c_email',   true );
+            $subject = get_post_meta( $post->ID, '_tls_c_subject', true );
+            $message = get_post_meta( $post->ID, '_tls_c_message', true );
+            $ip      = get_post_meta( $post->ID, '_tls_c_ip',      true );
+            $rows = [
+                'Name'    => esc_html( $post->post_title ),
+                'Email'   => '<a href="mailto:' . esc_attr($email) . '">' . esc_html($email) . '</a>',
+                'Subject' => esc_html( $subject ),
+                'Message' => '<pre style="white-space:pre-wrap;font-family:inherit;margin:0;">' . esc_html($message) . '</pre>',
+                'IP'      => esc_html( $ip ),
+            ];
+            echo '<table style="width:100%;border-collapse:collapse;">';
+            foreach ( $rows as $label => $val ) {
+                echo '<tr><th style="text-align:left;padding:8px 12px 8px 0;width:80px;vertical-align:top;color:#666;">'
+                    . esc_html($label) . '</th>'
+                    . '<td style="padding:8px 0;border-bottom:1px solid #f0f0f0;">' . $val . '</td></tr>';
+            }
+            echo '</table>';
+        },
+        'tls_contact', 'normal', 'high'
+    );
+});
+
 /* ── AJAX handler ────────────────────────────────────────────── */
 add_action( 'wp_ajax_tls_submit_contact',        'tls_handle_contact' );
 add_action( 'wp_ajax_nopriv_tls_submit_contact', 'tls_handle_contact' );
