@@ -366,6 +366,7 @@ require_once get_template_directory() . '/inc/book-cover-fetcher.php';
 require_once get_template_directory() . '/inc/og-cover.php';
 require_once get_template_directory() . '/inc/summary-request.php';
 require_once get_template_directory() . '/inc/contact-form.php';
+require_once get_template_directory() . '/inc/support.php';
 require_once get_template_directory() . '/inc/ai-assistant.php';
 require_once get_template_directory() . '/inc/membership.php';
 require_once get_template_directory() . '/inc/reading-lists.php';
