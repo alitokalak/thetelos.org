@@ -2918,23 +2918,22 @@
 .tls-support-cta {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   font-family: var(--tls-sans);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: .08em;
-  text-transform: uppercase;
+  letter-spacing: .01em;
   color: #fff !important;
-  background: var(--tls-gold);
+  background: #257855;
   border: none;
-  border-radius: 6px;
-  padding: 7px 14px;
+  border-radius: 8px;
+  padding: 9px 18px;
   text-decoration: none !important;
-  transition: opacity .15s;
+  transition: background .15s;
   white-space: nowrap;
   flex-shrink: 0;
 }
-.tls-support-cta:hover { opacity: .88; color: #fff !important; }
+.tls-support-cta:hover { background: #1e6347; color: #fff !important; }
 @media (max-width: 600px) { .tls-support-cta span { display: none; } }
 
 /* ────────────────────────────────
