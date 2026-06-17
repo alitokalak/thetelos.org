@@ -578,6 +578,8 @@ let batchRunning  = false;
 let batchPaused   = false;
 let batchWorkerCount = 1;
 let uploadedFiles = [];
+let batchSettings = {};          // son batch ayarları (retry için)
+let batchStatusBooks = [];       // son pollBatchStatus'tan gelen kitap listesi
 
 const uploadZone = document.getElementById('upload-zone');
 const fileInput  = document.getElementById('bulk-file');
@@ -716,6 +718,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   batchId      = res.batch_id;
   batchRunning = true;
   batchPaused  = false;
+  batchSettings = { type, post_status: status, max_tokens: tokens, api_provider: activeProvider, parts, workerCount };
 
   document.getElementById('batch-progress-wrap').style.display = '';
   document.getElementById('btn-batch-pause').style.display = '';
@@ -782,6 +785,60 @@ document.getElementById('btn-batch-pause')?.addEventListener('click', async () =
  * Her istek sunucuda kuyruğu boşaltır; tarayıcı YANITI BEKLEMEZ.
  * Cloudflare bağlantıyı kesse bile (ignore_user_abort) sunucu çalışmaya devam eder.
  */
+
+/* ── Retry: hatalı kitapları yeni mini-batch ile tekrar işle ── */
+async function retryBooks(books) {
+  if (!books || !books.length) return;
+  if (batchRunning) { alert('Önce mevcut batch tamamlanmalı veya durdurulmalı.'); return; }
+
+  const s = batchSettings;
+  if (!s.type) { alert('Batch ayarları bulunamadı. Sayfayı yenileyin.'); return; }
+
+  // Kitap listesini batch-create formatına çevir
+  const bookList = books.map(bk => ({
+    book_title:  bk.book_title  || bk.title  || '',
+    author_name: bk.author_name || bk.author || '',
+    cover:       bk.cover_url   || bk.cover  || '',
+  })).filter(b => b.book_title);
+
+  if (!bookList.length) return;
+
+  // "Hepsini Tekrar Dene" butonunu kilitle
+  const retryAllBtn = document.getElementById('btn-retry-all-failed');
+  if (retryAllBtn) { retryAllBtn.disabled = true; retryAllBtn.textContent = 'Batch oluşturuluyor...'; }
+
+  const res = await postData(API('batch-create.php'), {
+    books:        JSON.stringify(bookList),
+    type:         s.type         || 'summary',
+    post_status:  s.post_status  || 'draft',
+    max_tokens:   s.max_tokens   || 3000,
+    api_provider: s.api_provider || 'deepseek',
+    parts:        s.parts        || 2,
+  });
+
+  if (!res.ok) {
+    alert('Retry batch oluşturulamadı: ' + (res.error || 'bilinmeyen hata'));
+    if (retryAllBtn) { retryAllBtn.disabled = false; retryAllBtn.textContent = `↺ ${books.length} hatayı tekrar dene`; }
+    return;
+  }
+
+  batchId      = res.batch_id;
+  batchRunning = true;
+  batchPaused  = false;
+
+  const wc = s.workerCount || 2;
+  notify('bulk-notif', `↺ Retry batch oluşturuldu (${res.total} kitap). ${wc} worker başlatılıyor...`, 'ok');
+
+  document.getElementById('batch-progress-wrap').style.display = '';
+  document.getElementById('btn-batch-pause').style.display = '';
+
+  // Yeni listeyi tabloya yaz
+  renderBulkTable(bookList.map(b => ({ book_title: b.book_title, author_name: b.author_name })));
+
+  fireDrainWorkers(wc);
+  await pollBatchUntilDone();
+}
+
 function fireDrainWorkers(count) {
   const statusWrap = document.getElementById('batch-worker-status');
   if (statusWrap) statusWrap.textContent = `${count} worker arka planda çalışıyor — ilerleme aşağıda.`;
@@ -848,6 +905,8 @@ function renderBatchStatus(b) {
     + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
     + (b.total - b.done > 0 ? `<span class="badge badge-gray">⏳ ${(b.total-b.done).toLocaleString('tr')} bekliyor</span>` : '');
 
+  batchStatusBooks = b.books;
+
   b.books.forEach((bk, i) => {
     const st  = bk.status;
     const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?'working':'gray';
@@ -857,15 +916,38 @@ function renderBatchStatus(b) {
       : st==='duplicate' ? '⊘ Zaten var'
       : st==='processing'? 'İşleniyor...'
       : 'Bekliyor';
-    setRowStatus(i, cls, lbl);
+    setRowStatus(i, cls, lbl, st==='error' ? bk : null);
   });
+
+  // "Hepsini Tekrar Dene" butonu
+  const failedBooks = b.books.filter(bk => bk.status === 'error');
+  let retryAllBtn = document.getElementById('btn-retry-all-failed');
+  if (failedBooks.length > 0 && !batchRunning) {
+    if (!retryAllBtn) {
+      retryAllBtn = document.createElement('button');
+      retryAllBtn.id = 'btn-retry-all-failed';
+      retryAllBtn.className = 'btn btn-ghost btn-sm';
+      retryAllBtn.style.color = 'var(--gold)';
+      retryAllBtn.onclick = () => retryBooks(failedBooks);
+      document.getElementById('bulk-summary').after(retryAllBtn);
+    }
+    retryAllBtn.textContent = `↺ ${failedBooks.length} hatayı tekrar dene`;
+    retryAllBtn.style.display = '';
+  } else if (retryAllBtn) {
+    retryAllBtn.style.display = 'none';
+  }
 }
 
-function setRowStatus(idx, st, html) {
+function setRowStatus(idx, st, html, bookData) {
   const cell = document.querySelector(`#brow-${idx} .status-cell`);
   if (!cell) return;
   const cls = st==='ok'?'badge-green':st==='err'?'badge-red':st==='working'?'badge-gold':'badge-gray';
-  cell.innerHTML = `<span class="badge ${cls}">${html}</span>`;
+  const retryBtn = bookData
+    ? ` <button class="btn-retry-single" title="Tekrar dene"
+          onclick="retryBooks([${JSON.stringify(bookData).replace(/"/g,'&quot;')}])"
+          style="margin-left:6px;padding:2px 8px;font-size:11px;border:1px solid var(--gold);background:none;color:var(--gold);border-radius:4px;cursor:pointer">↺</button>`
+    : '';
+  cell.innerHTML = `<span class="badge ${cls}">${html}</span>${retryBtn}`;
 }
 
 /* ══ LİSTE OLUŞTUR (Builder) ═════════════════════════════ */

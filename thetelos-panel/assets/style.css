@@ -163,3 +163,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .api-sub-btn{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:transparent;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;transition:.15s;display:flex;align-items:center;gap:5px}
 .api-sub-btn.active{background:var(--surface2);color:var(--text);border-color:var(--tls-gold)}
 .api-sub-hint{font-size:10px;opacity:.6;font-weight:400}
+
+/* Retry buttons */
+.btn-retry-single{transition:.15s}
+.btn-retry-single:hover{background:var(--gold)!important;color:#000!important}
+#btn-retry-all-failed{margin-top:8px;border-color:var(--gold);color:var(--gold)}
+#btn-retry-all-failed:hover{background:var(--gold);color:#000}
+#btn-retry-all-failed:disabled{opacity:.5;cursor:not-allowed}
