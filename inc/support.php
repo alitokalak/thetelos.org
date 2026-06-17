@@ -16,6 +16,18 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
         'priority' => 160,
     ]);
 
+    /* Patreon — primary support method */
+    $wp_customize->add_setting( 'tls_patreon_url', [
+        'default'           => 'https://www.patreon.com/c/Thetelos',
+        'sanitize_callback' => 'esc_url_raw',
+    ]);
+    $wp_customize->add_control( 'tls_patreon_url', [
+        'label'       => 'Patreon page URL',
+        'description' => 'Primary “Become a member” button links here.',
+        'section'     => 'tls_support',
+        'type'        => 'url',
+    ]);
+
     /* Shopier URL fields */
     $tiers = [
         'tls_support_url_5'   => '$5 tier — Shopier URL',

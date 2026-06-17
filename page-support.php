@@ -7,6 +7,9 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
+/* Patreon — ana destek yöntemi — Customize → Support / Donations */
+$patreon_url = get_theme_mod( 'tls_patreon_url', 'https://www.patreon.com/c/Thetelos' );
+
 /* Shopier ürün URL'leri — Customize → Support / Donations */
 $url_5   = get_theme_mod( 'tls_support_url_5',   '' );
 $url_10  = get_theme_mod( 'tls_support_url_10',  '' );
@@ -63,7 +66,8 @@ get_header();
             A single gift keeps the servers running, funds the next book in
             the archive, and ensures a student anywhere in the world can sit
             with Aristotle, Augustine, or Arendt without paying a cent.
-            If the work has given you something, consider giving a little back.
+            If the work has given you something, consider becoming a member —
+            or leaving a one-time gift.
         </p>
 
         <p class="tls-don-sig">The Telos Editorial</p>
@@ -76,7 +80,7 @@ get_header();
 
         <!-- Card header -->
         <div class="tls-don-card-head">
-            <span class="tls-don-onetime">One-time gift</span>
+            <span class="tls-don-onetime">Support thetelos</span>
             <span class="tls-don-secure">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                      width="12" height="12" aria-hidden="true">
@@ -87,6 +91,37 @@ get_header();
         </div>
 
         <div class="tls-don-card-body">
+
+            <!-- ★ PRIMARY · Patreon membership -->
+            <div class="tls-don-patreon">
+                <div class="tls-don-patreon-head">
+                    <span class="tls-don-patreon-logo" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+                            <path d="M0 .48h4.22v23.04H0zM15.385.48c-4.764 0-8.641 3.88-8.641 8.65 0 4.755 3.877 8.623 8.641 8.623 4.75 0 8.615-3.868 8.615-8.623C24 4.36 20.136.48 15.385.48z"/>
+                        </svg>
+                    </span>
+                    <span class="tls-don-patreon-titles">
+                        <span class="tls-don-patreon-title">Become a member</span>
+                        <span class="tls-don-patreon-sub">Ongoing support · from&nbsp;$5/month</span>
+                    </span>
+                </div>
+                <p class="tls-don-patreon-text">
+                    Join on Patreon to keep the archive free for everyone — the most
+                    direct way to fund the next book, essay, and analysis.
+                </p>
+                <a class="tls-don-patreon-btn" href="<?php echo esc_url( $patreon_url ); ?>"
+                   target="_blank" rel="noopener">
+                    Join on Patreon
+                    <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                        <polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- Secondary divider -->
+            <div class="tls-don-or"><span>or make a one-time gift</span></div>
 
             <!-- ① Amount -->
             <div class="tls-don-step-label">
