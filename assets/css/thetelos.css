@@ -3064,7 +3064,6 @@
   border: 1px solid #ffd9d4;
   border-radius: 12px;
   padding: 18px 18px 20px;
-  margin-bottom: 22px;
 }
 .tls-don-patreon-head {
   display: flex;
@@ -3132,28 +3131,10 @@
 }
 .tls-don-patreon-btn:hover .tls-don-submit-arrow { transform: translateX(3px); }
 
-/* "or make a one-time gift" divider */
-.tls-don-or {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 0 0 20px;
-}
-.tls-don-or::before,
-.tls-don-or::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #eee;
-}
-.tls-don-or span {
-  font-family: var(--tls-sans);
-  font-size: 11px;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: #b3b3b3;
-  white-space: nowrap;
-}
+/* Honour [hidden] even on flex elements (Patreon tab hides these) */
+.tls-don-amount-section[hidden],
+.tls-don-submit[hidden],
+.tls-don-trust[hidden] { display: none !important; }
 
 /* Step label */
 .tls-don-step-label {

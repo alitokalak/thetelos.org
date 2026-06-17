@@ -92,98 +92,30 @@ get_header();
 
         <div class="tls-don-card-body">
 
-            <!-- ★ PRIMARY · Patreon membership -->
-            <div class="tls-don-patreon">
-                <div class="tls-don-patreon-head">
-                    <span class="tls-don-patreon-logo" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
-                            <path d="M0 .48h4.22v23.04H0zM15.385.48c-4.764 0-8.641 3.88-8.641 8.65 0 4.755 3.877 8.623 8.641 8.623 4.75 0 8.615-3.868 8.615-8.623C24 4.36 20.136.48 15.385.48z"/>
-                        </svg>
-                    </span>
-                    <span class="tls-don-patreon-titles">
-                        <span class="tls-don-patreon-title">Become a member</span>
-                        <span class="tls-don-patreon-sub">Ongoing support · from&nbsp;$5/month</span>
-                    </span>
-                </div>
-                <p class="tls-don-patreon-text">
-                    Join on Patreon to keep the archive free for everyone — the most
-                    direct way to fund the next book, essay, and analysis.
-                </p>
-                <a class="tls-don-patreon-btn" href="<?php echo esc_url( $patreon_url ); ?>"
-                   target="_blank" rel="noopener">
-                    Join on Patreon
-                    <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
-                        <line x1="5" y1="12" x2="19" y2="12"/>
-                        <polyline points="12 5 19 12 12 19"/>
-                    </svg>
-                </a>
-            </div>
-
-            <!-- Secondary divider -->
-            <div class="tls-don-or"><span>or make a one-time gift</span></div>
-
-            <!-- ① Amount -->
+            <!-- ① Payment method -->
             <div class="tls-don-step-label">
                 <span class="tls-don-step-num" aria-hidden="true">1</span>
-                Choose an amount <span class="tls-don-currency">(USD)</span>
+                Choose how to give
             </div>
 
-            <div class="tls-don-amounts" role="group" aria-label="Donation amounts">
-                <?php
-                $presets = [ 5, 10, 25, 50, 100 ];
-                foreach ( $presets as $amt ) :
-                    $active = ( $amt === 25 ) ? ' active' : '';
-                ?>
-                <button class="tls-don-amt<?php echo $active; ?>"
-                        type="button"
-                        data-amount="<?php echo $amt; ?>"
-                        aria-pressed="<?php echo $amt === 25 ? 'true' : 'false'; ?>">
-                    $<?php echo $amt; ?>
-                </button>
-                <?php endforeach; ?>
-                <button class="tls-don-amt tls-don-amt-other"
-                        type="button"
-                        data-amount="other"
-                        aria-pressed="false">
-                    $ Other
-                </button>
-            </div>
-
-            <div class="tls-don-custom-wrap" id="tls-don-custom-wrap">
-                <input class="tls-don-custom-input"
-                       id="tls-don-custom-input"
-                       type="number"
-                       min="1"
-                       placeholder="Enter amount"
-                       aria-label="Custom donation amount in USD">
-            </div>
-
-            <label class="tls-don-fee-label">
-                <input type="checkbox" id="tls-don-fee-chk">
-                <span>
-                    Add <strong id="tls-don-fee-display">$0.78</strong>
-                    to cover processing fees
-                </span>
-            </label>
-
-            <!-- ② Payment method -->
-            <hr class="tls-don-divider">
-
-            <div class="tls-don-step-label">
-                <span class="tls-don-step-num" aria-hidden="true">2</span>
-                Payment method
-            </div>
-
-            <div class="tls-don-tabs" role="tablist">
+            <div class="tls-don-tabs tls-don-tabs-3" role="tablist">
                 <button class="tls-don-tab active"
                         type="button"
                         role="tab"
                         aria-selected="true"
+                        aria-controls="tls-don-panel-patreon"
+                        id="tls-tab-patreon">
+                    <span class="tls-don-tab-name">Patreon</span>
+                    <span class="tls-don-tab-sub">Monthly</span>
+                </button>
+                <button class="tls-don-tab"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
                         aria-controls="tls-don-panel-shopier"
                         id="tls-tab-shopier">
                     <span class="tls-don-tab-name">Shopier</span>
-                    <span class="tls-don-tab-sub">Local checkout</span>
+                    <span class="tls-don-tab-sub">One-time</span>
                 </button>
                 <button class="tls-don-tab"
                         type="button"
@@ -192,12 +124,45 @@ get_header();
                         aria-controls="tls-don-panel-crypto"
                         id="tls-tab-crypto">
                     <span class="tls-don-tab-name">Crypto</span>
-                    <span class="tls-don-tab-sub">BTC · ETH · USDC</span>
+                    <span class="tls-don-tab-sub">One-time</span>
                 </button>
             </div>
 
-            <!-- Shopier panel -->
+            <!-- Patreon panel (default) -->
             <div class="tls-don-panel active"
+                 id="tls-don-panel-patreon"
+                 role="tabpanel"
+                 aria-labelledby="tls-tab-patreon">
+                <div class="tls-don-patreon">
+                    <div class="tls-don-patreon-head">
+                        <span class="tls-don-patreon-logo" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+                                <path d="M0 .48h4.22v23.04H0zM15.385.48c-4.764 0-8.641 3.88-8.641 8.65 0 4.755 3.877 8.623 8.641 8.623 4.75 0 8.615-3.868 8.615-8.623C24 4.36 20.136.48 15.385.48z"/>
+                            </svg>
+                        </span>
+                        <span class="tls-don-patreon-titles">
+                            <span class="tls-don-patreon-title">Become a member</span>
+                            <span class="tls-don-patreon-sub">Ongoing support · from&nbsp;$5/month</span>
+                        </span>
+                    </div>
+                    <p class="tls-don-patreon-text">
+                        Join on Patreon to keep the archive free for everyone — the most
+                        direct way to fund the next book, essay, and analysis.
+                    </p>
+                    <a class="tls-don-patreon-btn" href="<?php echo esc_url( $patreon_url ); ?>"
+                       target="_blank" rel="noopener">
+                        Join on Patreon
+                        <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
+                            <line x1="5" y1="12" x2="19" y2="12"/>
+                            <polyline points="12 5 19 12 12 19"/>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Shopier panel -->
+            <div class="tls-don-panel"
                  id="tls-don-panel-shopier"
                  role="tabpanel"
                  aria-labelledby="tls-tab-shopier">
@@ -242,8 +207,56 @@ get_header();
                 <?php endif; ?>
             </div>
 
-            <!-- CTA -->
-            <button class="tls-don-submit" type="button" id="tls-don-submit">
+            <!-- ② Amount (one-time only) -->
+            <div class="tls-don-amount-section" id="tls-don-amount-section" hidden>
+                <hr class="tls-don-divider">
+
+                <div class="tls-don-step-label">
+                    <span class="tls-don-step-num" aria-hidden="true">2</span>
+                    Choose an amount <span class="tls-don-currency">(USD)</span>
+                </div>
+
+                <div class="tls-don-amounts" role="group" aria-label="Donation amounts">
+                    <?php
+                    $presets = [ 5, 10, 25, 50, 100 ];
+                    foreach ( $presets as $amt ) :
+                        $active = ( $amt === 25 ) ? ' active' : '';
+                    ?>
+                    <button class="tls-don-amt<?php echo $active; ?>"
+                            type="button"
+                            data-amount="<?php echo $amt; ?>"
+                            aria-pressed="<?php echo $amt === 25 ? 'true' : 'false'; ?>">
+                        $<?php echo $amt; ?>
+                    </button>
+                    <?php endforeach; ?>
+                    <button class="tls-don-amt tls-don-amt-other"
+                            type="button"
+                            data-amount="other"
+                            aria-pressed="false">
+                        $ Other
+                    </button>
+                </div>
+
+                <div class="tls-don-custom-wrap" id="tls-don-custom-wrap">
+                    <input class="tls-don-custom-input"
+                           id="tls-don-custom-input"
+                           type="number"
+                           min="1"
+                           placeholder="Enter amount"
+                           aria-label="Custom donation amount in USD">
+                </div>
+
+                <label class="tls-don-fee-label">
+                    <input type="checkbox" id="tls-don-fee-chk">
+                    <span>
+                        Add <strong id="tls-don-fee-display">$0.78</strong>
+                        to cover processing fees
+                    </span>
+                </label>
+            </div>
+
+            <!-- CTA (one-time only) -->
+            <button class="tls-don-submit" type="button" id="tls-don-submit" hidden>
                 Donate
                 <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
@@ -252,8 +265,8 @@ get_header();
                 </svg>
             </button>
 
-            <!-- Trust line -->
-            <div class="tls-don-trust" aria-label="Security assurances">
+            <!-- Trust line (one-time only) -->
+            <div class="tls-don-trust" id="tls-don-trust" aria-label="Security assurances" hidden>
                 <span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                          width="12" height="12" aria-hidden="true">
@@ -289,7 +302,7 @@ get_header();
 (function() {
     var shopierUrls = <?php echo $shopier_map_json; ?>;
     var selectedAmt = 25;
-    var activeTab   = 'shopier';
+    var activeTab   = 'patreon';
     var FEE_RATE    = 0.029;
     var FEE_FIXED   = 0.30;
 
@@ -301,6 +314,16 @@ get_header();
     var tabs        = document.querySelectorAll('.tls-don-tab');
     var panels      = document.querySelectorAll('.tls-don-panel');
     var submitBtn   = document.getElementById('tls-don-submit');
+    var amountSec   = document.getElementById('tls-don-amount-section');
+    var trustLine   = document.getElementById('tls-don-trust');
+
+    /* Show amount + Donate + trust only for one-time methods; Patreon has its own button */
+    function syncOneTimeUI() {
+        var oneTime = (activeTab === 'shopier' || activeTab === 'crypto');
+        if (amountSec)  { amountSec.hidden  = !oneTime; }
+        if (submitBtn)  { submitBtn.hidden  = !oneTime; }
+        if (trustLine)  { trustLine.hidden  = !oneTime; }
+    }
 
     function updateFee() {
         var amt = selectedAmt === 'other'
@@ -346,9 +369,14 @@ get_header();
             var panelId = tab.getAttribute('aria-controls');
             var panel   = document.getElementById(panelId);
             if (panel) { panel.classList.add('active'); }
-            activeTab = panelId.includes('crypto') ? 'crypto' : 'shopier';
+            activeTab = panelId.includes('crypto')  ? 'crypto'
+                      : panelId.includes('patreon') ? 'patreon'
+                      : 'shopier';
+            syncOneTimeUI();
         });
     });
+
+    syncOneTimeUI();
 
     /* Donate button */
     if (submitBtn) {
