@@ -215,7 +215,9 @@ get_header();
                 ?>
                 <a class="tls-don-submit lemonsqueezy-button"
                    id="tls-don-lemon-btn"
-                   href="<?php echo esc_url( $lemon_default ); ?>">
+                   href="<?php echo esc_url( $lemon_default ); ?>"
+                   target="_blank"
+                   rel="noopener noreferrer">
                     Support thetelos
                     <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
