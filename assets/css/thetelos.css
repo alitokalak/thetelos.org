@@ -3425,7 +3425,7 @@
 
 /* ══════════════════════════════════════════════
    Thank You — payment received (Polar success URL)
-   Full-bleed dark page, content inside a thin gold frame
+   Full-bleed dark page, no frame, green accent
    ══════════════════════════════════════════════ */
 .tls-thanks-page {
   width: 100vw;
@@ -3437,44 +3437,23 @@
   justify-content: center;
   padding: 80px 24px;
   box-sizing: border-box;
-  /* subtle radial glow behind the frame */
   background-image:
-    radial-gradient(ellipse at center, rgba(184,146,42,.10), transparent 60%);
+    radial-gradient(ellipse at center, rgba(0,171,107,.10), transparent 60%);
 }
 .tls-thanks-frame {
   width: 100%;
   max-width: 540px;
   text-align: center;
   padding: 60px 48px 56px;
-  border: 1px solid rgba(184,146,42,.32);
-  border-radius: 4px;
-  position: relative;
 }
-/* small corner accents on the frame */
-.tls-thanks-frame::before,
-.tls-thanks-frame::after {
-  content: '';
-  position: absolute;
-  width: 14px; height: 14px;
-  border: 1px solid var(--tls-gold, #B8922A);
-}
-.tls-thanks-frame::before {
-  top: -1px; left: -1px;
-  border-right: none; border-bottom: none;
-}
-.tls-thanks-frame::after {
-  bottom: -1px; right: -1px;
-  border-left: none; border-top: none;
-}
-
 .tls-thanks-heart {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 76px; height: 76px;
   border-radius: 50%;
-  background: rgba(184,146,42,.14);
-  color: var(--tls-gold, #B8922A);
+  background: rgba(0,171,107,.15);
+  color: var(--tls-green, #00ab6b);
   margin-bottom: 30px;
 }
 .tls-thanks-eyebrow {
@@ -3483,7 +3462,7 @@
   font-weight: 600;
   letter-spacing: .18em;
   text-transform: uppercase;
-  color: var(--tls-gold, #B8922A);
+  color: var(--tls-green, #00ab6b);
   margin: 0 0 18px;
 }
 .tls-thanks-headline {
@@ -3496,7 +3475,7 @@
 }
 .tls-thanks-headline em {
   font-style: italic;
-  color: var(--tls-gold, #B8922A);
+  color: var(--tls-green, #00ab6b);
 }
 .tls-thanks-body {
   font-family: var(--tls-sans);
@@ -3530,9 +3509,9 @@
   transition: background .2s, border-color .2s, color .2s, transform .15s;
 }
 .tls-thanks-btn:hover {
-  background: var(--tls-gold, #B8922A);
-  border-color: var(--tls-gold, #B8922A);
-  color: var(--tls-bg-dark, #1A1814);
+  background: var(--tls-green, #00ab6b);
+  border-color: var(--tls-green, #00ab6b);
+  color: #fff;
   transform: translateY(-1px);
 }
 .tls-thanks-btn svg { transition: transform .2s; }
