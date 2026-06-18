@@ -11,8 +11,22 @@ if ( ! defined( 'ABSPATH' ) ) exit;
    Customize → Support / Donations */
 $polar_url = get_theme_mod( 'tls_polar_url', 'https://buy.polar.sh/polar_cl_lo5vNnnTnFOlDvluWfQn62s5zSQq1AdVjTZzr1LqyE6' );
 
-/* LemonSqueezy — alternative global card method (Pay What You Want product URL) */
+/* LemonSqueezy — her tutar için AYRI sabit fiyatlı ürün linki.
+   Kullanıcı $25 seçince doğrudan $25 ürünü açılır (rakam zaten ürüne gömülü). */
+$lemon_tiers = [
+    5   => get_theme_mod( 'tls_lemon_url_5',   '' ),
+    10  => get_theme_mod( 'tls_lemon_url_10',  '' ),
+    25  => get_theme_mod( 'tls_lemon_url_25',  '' ),
+    50  => get_theme_mod( 'tls_lemon_url_50',  '' ),
+    100 => get_theme_mod( 'tls_lemon_url_100', '' ),
+];
+$lemon_tiers = array_filter( $lemon_tiers );  // boş olanları at
+
+/* "Other" / custom tutar için Pay What You Want ürünü (fallback). */
 $lemon_url = get_theme_mod( 'tls_lemonsqueezy_url', 'https://thetelos.lemonsqueezy.com/checkout/buy/5bd79218-a53a-4f5c-8b63-81c272bb80d3?media=0&logo=0&desc=0&discount=0' );
+
+/* LemonSqueezy sekmesi en az bir link varsa görünsün. */
+$lemon_available = ! empty( $lemon_tiers ) || ! empty( $lemon_url );
 
 /* Kripto adresleri — Customize → Support / Donations */
 $btc  = get_theme_mod( 'tls_crypto_btc',  '' );
@@ -189,15 +203,19 @@ get_header();
                  id="tls-don-panel-lemon"
                  role="tabpanel"
                  aria-labelledby="tls-tab-lemon">
-                <?php if ( $lemon_url ) : ?>
+                <?php if ( $lemon_available ) : ?>
                 <div class="tls-don-shopier-note">
                     <strong>Pay by card via LemonSqueezy.</strong><br>
                     Secure checkout opens right here. Visa, Mastercard &amp; Amex.
                     No account required.
                 </div>
+                <?php
+                /* Varsayılan link: seçili tutar (25) varsa onun ürünü, yoksa PWYW fallback. */
+                $lemon_default = isset( $lemon_tiers[25] ) ? $lemon_tiers[25] : $lemon_url;
+                ?>
                 <a class="tls-don-submit lemonsqueezy-button"
                    id="tls-don-lemon-btn"
-                   href="<?php echo esc_url( $lemon_url ); ?>">
+                   href="<?php echo esc_url( $lemon_default ); ?>">
                     Support thetelos
                     <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
                          stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
@@ -283,7 +301,10 @@ get_header();
 <script>
 (function() {
     var BASE_URL    = <?php echo json_encode( esc_url( $polar_url ) ); ?>;
-    var LEMON_URL   = <?php echo json_encode( esc_url_raw( $lemon_url ) ); ?>;
+    /* Her tutar için ayrı LemonSqueezy ürünü: { 5: "url", 25: "url", ... } */
+    var LEMON_URLS  = <?php echo wp_json_encode( array_map( 'esc_url_raw', $lemon_tiers ) ); ?>;
+    /* "Other" / eşleşme yoksa Pay What You Want ürünü */
+    var LEMON_PWYW  = <?php echo json_encode( esc_url_raw( $lemon_url ) ); ?>;
     var selectedAmt = 25;
     var activeTab   = 'polar';
     var FEE_RATE    = 0.029;
@@ -335,16 +356,14 @@ get_header();
         polarBtn.href = url;
     }
 
-    /* Point the LemonSqueezy button at the chosen amount (?checkout[custom_price]= in cents) */
+    /* Seçili tutara karşılık gelen sabit fiyatlı LemonSqueezy ürününe yönlendir.
+       Sabit tutar yoksa ("Other" veya o tutara ürün açılmamışsa) PWYW ürününe düş. */
     function updateLemonLink() {
-        if (!lemonBtn || !LEMON_URL) { return; }
-        var dollars = baseDollars();
-        var url = LEMON_URL;
-        if (dollars > 0) {
-            var cents = Math.round(dollars * 100);
-            url += (url.indexOf('?') === -1 ? '?' : '&') + 'checkout[custom_price]=' + cents;
-        }
-        lemonBtn.href = url;
+        if (!lemonBtn) { return; }
+        var url = (selectedAmt !== 'other' && LEMON_URLS[selectedAmt])
+            ? LEMON_URLS[selectedAmt]
+            : LEMON_PWYW;
+        if (url) { lemonBtn.href = url; }
     }
 
     /* Polar/Lemon = overlay buttons + fee option (Polar only).
@@ -410,7 +429,7 @@ get_header();
         src="https://cdn.jsdelivr.net/npm/@polar-sh/checkout@latest/dist/embed.global.js"></script>
 
 <!-- LemonSqueezy overlay checkout -->
-<?php if ( $lemon_url ) : ?>
+<?php if ( $lemon_available ) : ?>
 <script src="https://app.lemonsqueezy.com/js/lemon.js" defer></script>
 <?php endif; ?>
 
