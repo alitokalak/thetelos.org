@@ -7,15 +7,31 @@
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-/* Polar — ana destek yöntemi — Customize → Support / Donations
-   Global kart ödemesi, hesap gerektirmez, Türkiye'ye ödeme yapar. */
+/* Polar — global kart ödemesi, hesap gerektirmez, Türkiye'ye ödeme yapar.
+   Customize → Support / Donations */
 $polar_url = get_theme_mod( 'tls_polar_url', 'https://buy.polar.sh/polar_cl_lo5vNnnTnFOlDvluWfQn62s5zSQq1AdVjTZzr1LqyE6' );
 
-/* Kripto adresleri — opsiyonel ikincil yöntem — Customize → Support / Donations */
+/* Shopier ürün URL'leri (tutar bazlı) — Customize → Support / Donations */
+$url_5   = get_theme_mod( 'tls_support_url_5',   '' );
+$url_10  = get_theme_mod( 'tls_support_url_10',  '' );
+$url_25  = get_theme_mod( 'tls_support_url_25',  '' );
+$url_50  = get_theme_mod( 'tls_support_url_50',  '' );
+$url_100 = get_theme_mod( 'tls_support_url_100', '' );
+
+/* Kripto adresleri — Customize → Support / Donations */
 $btc  = get_theme_mod( 'tls_crypto_btc',  '' );
 $eth  = get_theme_mod( 'tls_crypto_eth',  '' );
 $usdc = get_theme_mod( 'tls_crypto_usdc', '' );
-$has_crypto = ( $btc || $eth || $usdc );
+
+/* Tutar → Shopier URL eşleşmesi */
+$shopier_urls = [
+    5   => $url_5,
+    10  => $url_10,
+    25  => $url_25,
+    50  => $url_50,
+    100 => $url_100,
+];
+$shopier_map_json = json_encode( array_map( 'esc_url', $shopier_urls ) );
 
 get_header();
 ?>
@@ -120,22 +136,126 @@ get_header();
                 </span>
             </label>
 
-            <!-- ② Pay — Polar embedded checkout (card, no account) -->
-            <a class="tls-don-submit"
-               id="tls-don-submit"
-               href="<?php echo esc_url( $polar_url ); ?>"
-               data-polar-checkout
-               data-polar-checkout-theme="dark">
-                Support thetelos
+            <!-- ② Payment method -->
+            <hr class="tls-don-divider">
+
+            <div class="tls-don-step-label">
+                <span class="tls-don-step-num" aria-hidden="true">2</span>
+                Payment method
+            </div>
+
+            <div class="tls-don-tabs tls-don-tabs-3" role="tablist">
+                <button class="tls-don-tab active"
+                        type="button"
+                        role="tab"
+                        aria-selected="true"
+                        aria-controls="tls-don-panel-polar"
+                        id="tls-tab-polar">
+                    <span class="tls-don-tab-name">Card</span>
+                    <span class="tls-don-tab-sub">Global</span>
+                </button>
+                <button class="tls-don-tab"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="tls-don-panel-shopier"
+                        id="tls-tab-shopier">
+                    <span class="tls-don-tab-name">Shopier</span>
+                    <span class="tls-don-tab-sub">Türkiye</span>
+                </button>
+                <button class="tls-don-tab"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="tls-don-panel-crypto"
+                        id="tls-tab-crypto">
+                    <span class="tls-don-tab-name">Crypto</span>
+                    <span class="tls-don-tab-sub">One-time</span>
+                </button>
+            </div>
+
+            <!-- Polar panel (default) -->
+            <div class="tls-don-panel active"
+                 id="tls-don-panel-polar"
+                 role="tabpanel"
+                 aria-labelledby="tls-tab-polar">
+                <div class="tls-don-shopier-note">
+                    <strong>Pay by card — anywhere in the world.</strong><br>
+                    Secure checkout opens right here. Visa, Mastercard &amp; Amex.
+                    No account required.
+                </div>
+                <a class="tls-don-submit"
+                   id="tls-don-polar-btn"
+                   href="<?php echo esc_url( $polar_url ); ?>"
+                   data-polar-checkout
+                   data-polar-checkout-theme="dark">
+                    Support thetelos
+                    <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                        <polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </a>
+            </div>
+
+            <!-- Shopier panel -->
+            <div class="tls-don-panel"
+                 id="tls-don-panel-shopier"
+                 role="tabpanel"
+                 aria-labelledby="tls-tab-shopier">
+                <div class="tls-don-shopier-note">
+                    <strong>Pay with card via Shopier.</strong><br>
+                    You'll be taken to Shopier's secure checkout to complete your gift
+                    with Visa, Mastercard, or Amex. No account required.
+                </div>
+            </div>
+
+            <!-- Crypto panel -->
+            <div class="tls-don-panel"
+                 id="tls-don-panel-crypto"
+                 role="tabpanel"
+                 aria-labelledby="tls-tab-crypto">
+                <?php if ( $btc || $eth || $usdc ) : ?>
+                <div class="tls-don-crypto-grid">
+                    <?php if ( $btc ) : ?>
+                    <div class="tls-don-crypto-row">
+                        <span class="tls-don-crypto-coin">Bitcoin (BTC)</span>
+                        <span class="tls-don-crypto-addr"><?php echo esc_html( $btc ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ( $eth ) : ?>
+                    <div class="tls-don-crypto-row">
+                        <span class="tls-don-crypto-coin">Ethereum (ETH)</span>
+                        <span class="tls-don-crypto-addr"><?php echo esc_html( $eth ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                    <?php if ( $usdc ) : ?>
+                    <div class="tls-don-crypto-row">
+                        <span class="tls-don-crypto-coin">USD Coin (USDC)</span>
+                        <span class="tls-don-crypto-addr"><?php echo esc_html( $usdc ); ?></span>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?php else : ?>
+                <div class="tls-don-shopier-note">
+                    Crypto addresses coming soon. Add your wallet addresses in
+                    <strong>Customize → Support / Donations</strong>.
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Shared CTA — only for Shopier / Crypto (Polar has its own button) -->
+            <button class="tls-don-submit" type="button" id="tls-don-submit" hidden>
+                Donate
                 <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
                      stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
                     <line x1="5" y1="12" x2="19" y2="12"/>
                     <polyline points="12 5 19 12 12 19"/>
                 </svg>
-            </a>
+            </button>
 
             <!-- Trust line -->
-            <div class="tls-don-trust" aria-label="Security assurances">
+            <div class="tls-don-trust" id="tls-don-trust" aria-label="Security assurances">
                 <span>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                          width="12" height="12" aria-hidden="true">
@@ -160,33 +280,6 @@ get_header();
                 </span>
             </div>
 
-            <?php if ( $has_crypto ) : ?>
-            <!-- Optional · crypto -->
-            <details class="tls-don-crypto-details">
-                <summary>Prefer crypto?</summary>
-                <div class="tls-don-crypto-grid">
-                    <?php if ( $btc ) : ?>
-                    <div class="tls-don-crypto-row">
-                        <span class="tls-don-crypto-coin">Bitcoin (BTC)</span>
-                        <span class="tls-don-crypto-addr"><?php echo esc_html( $btc ); ?></span>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ( $eth ) : ?>
-                    <div class="tls-don-crypto-row">
-                        <span class="tls-don-crypto-coin">Ethereum (ETH)</span>
-                        <span class="tls-don-crypto-addr"><?php echo esc_html( $eth ); ?></span>
-                    </div>
-                    <?php endif; ?>
-                    <?php if ( $usdc ) : ?>
-                    <div class="tls-don-crypto-row">
-                        <span class="tls-don-crypto-coin">USD Coin (USDC)</span>
-                        <span class="tls-don-crypto-addr"><?php echo esc_html( $usdc ); ?></span>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </details>
-            <?php endif; ?>
-
         </div><!-- /.tls-don-card-body -->
     </div><!-- /.tls-don-card -->
 
@@ -196,51 +289,71 @@ get_header();
 
 <script>
 (function() {
-    var BASE_URL  = <?php echo json_encode( esc_url( $polar_url ) ); ?>;
+    var BASE_URL    = <?php echo json_encode( esc_url( $polar_url ) ); ?>;
+    var shopierUrls = <?php echo $shopier_map_json; ?>;
     var selectedAmt = 25;
+    var activeTab   = 'polar';
     var FEE_RATE    = 0.029;
     var FEE_FIXED   = 0.30;
 
-    var amtBtns     = document.querySelectorAll('.tls-don-amt');
-    var customWrap  = document.getElementById('tls-don-custom-wrap');
-    var customInput = document.getElementById('tls-don-custom-input');
-    var feeChk      = document.getElementById('tls-don-fee-chk');
-    var feeDisplay  = document.getElementById('tls-don-fee-display');
-    var submitBtn   = document.getElementById('tls-don-submit');
+    var amtBtns    = document.querySelectorAll('.tls-don-amt');
+    var customWrap = document.getElementById('tls-don-custom-wrap');
+    var customInput= document.getElementById('tls-don-custom-input');
+    var feeChk     = document.getElementById('tls-don-fee-chk');
+    var feeDisplay = document.getElementById('tls-don-fee-display');
+    var feeLbl     = document.getElementById('tls-don-fee-label');
+    var tabs       = document.querySelectorAll('.tls-don-tab');
+    var panels     = document.querySelectorAll('.tls-don-panel');
+    var submitBtn  = document.getElementById('tls-don-submit');
+    var polarBtn   = document.getElementById('tls-don-polar-btn');
+    var trustLine  = document.getElementById('tls-don-trust');
 
-    /* Effective donation amount in dollars (incl. optional fee) */
-    function totalDollars() {
-        var amt = selectedAmt === 'other'
+    function baseDollars() {
+        return selectedAmt === 'other'
             ? (parseFloat(customInput.value) || 0)
             : selectedAmt;
+    }
+
+    /* Total in dollars incl. optional fee (Polar only) */
+    function totalDollars() {
+        var amt = baseDollars();
         if (amt <= 0) { return 0; }
-        if (feeChk && feeChk.checked) {
+        if (activeTab === 'polar' && feeChk && feeChk.checked) {
             amt += amt * FEE_RATE + FEE_FIXED;
         }
         return amt;
     }
 
     function updateFee() {
-        var base = selectedAmt === 'other'
-            ? (parseFloat(customInput.value) || 0)
-            : selectedAmt;
-        var fee = Math.max(0, base * FEE_RATE + FEE_FIXED);
+        var base = baseDollars();
+        var fee  = Math.max(0, base * FEE_RATE + FEE_FIXED);
         if (feeDisplay) { feeDisplay.textContent = '$' + fee.toFixed(2); }
     }
 
-    /* Point the Polar checkout button at the chosen amount (?amount= in cents) */
-    function updateCheckoutLink() {
-        if (!submitBtn) { return; }
+    /* Point the Polar overlay button at the chosen amount (?amount= in cents) */
+    function updatePolarLink() {
+        if (!polarBtn) { return; }
         var dollars = totalDollars();
         var url = BASE_URL;
         if (dollars > 0) {
             var cents = Math.round(dollars * 100);
             url += (url.indexOf('?') === -1 ? '?' : '&') + 'amount=' + cents;
         }
-        submitBtn.href = url;
+        polarBtn.href = url;
     }
 
-    function refresh() { updateFee(); updateCheckoutLink(); }
+    /* Polar = its own overlay button + fee option.
+       Shopier = shared Donate button (no fee — fixed-price products).
+       Crypto = addresses only, no button. */
+    function syncUI() {
+        var isPolar  = (activeTab === 'polar');
+        var isShopier= (activeTab === 'shopier');
+        if (polarBtn)  { polarBtn.hidden  = !isPolar; }
+        if (submitBtn) { submitBtn.hidden = !isShopier; }
+        if (feeLbl)    { feeLbl.hidden    = !isPolar; }
+    }
+
+    function refresh() { updateFee(); updatePolarLink(); }
 
     /* Amount buttons */
     amtBtns.forEach(function(btn) {
@@ -262,6 +375,49 @@ get_header();
     if (customInput) { customInput.addEventListener('input', refresh); }
     if (feeChk)      { feeChk.addEventListener('change', refresh); }
     refresh();
+
+    /* Payment tabs */
+    tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            tabs.forEach(function(t) {
+                t.classList.remove('active');
+                t.setAttribute('aria-selected', 'false');
+            });
+            panels.forEach(function(p) { p.classList.remove('active'); });
+            tab.classList.add('active');
+            tab.setAttribute('aria-selected', 'true');
+            var panelId = tab.getAttribute('aria-controls');
+            var panel   = document.getElementById(panelId);
+            if (panel) { panel.classList.add('active'); }
+            activeTab = panelId.indexOf('crypto')  !== -1 ? 'crypto'
+                      : panelId.indexOf('shopier') !== -1 ? 'shopier'
+                      : 'polar';
+            syncUI();
+            refresh();
+        });
+    });
+
+    syncUI();
+
+    /* Shared Donate button — Shopier only */
+    if (submitBtn) {
+        submitBtn.addEventListener('click', function() {
+            var amt = selectedAmt === 'other'
+                ? (parseInt(customInput.value) || 0)
+                : selectedAmt;
+            var url = shopierUrls[amt] || '';
+            if (url && url !== '#' && url !== '') {
+                window.location.href = url;
+            } else {
+                submitBtn.textContent = 'Coming soon — check back shortly!';
+                submitBtn.disabled = true;
+                setTimeout(function() {
+                    submitBtn.innerHTML = 'Donate <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
+                    submitBtn.disabled = false;
+                }, 3000);
+            }
+        });
+    }
 })();
 </script>
 

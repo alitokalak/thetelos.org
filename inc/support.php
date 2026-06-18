@@ -3,7 +3,7 @@
  * The Telos — Support / Donation Settings
  *
  * WP Customizer'a "Support / Donations" bölümü ekler.
- * Customize → Support / Donations → Polar checkout link + kripto adresleri
+ * Customize → Support / Donations → Polar link + Shopier URL'leri + kripto adresleri
  *
  * @package Mediumish / TheTelos
  */
@@ -16,7 +16,7 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
         'priority' => 160,
     ]);
 
-    /* Polar — primary support method (global card payments, no account, pays out to Turkey) */
+    /* Polar — primary method (global card payments, no account, pays out to Turkey) */
     $wp_customize->add_setting( 'tls_polar_url', [
         'default'           => 'https://buy.polar.sh/polar_cl_lo5vNnnTnFOlDvluWfQn62s5zSQq1AdVjTZzr1LqyE6',
         'sanitize_callback' => 'esc_url_raw',
@@ -28,7 +28,29 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
         'type'        => 'url',
     ]);
 
-    /* Crypto wallet addresses — optional secondary method */
+    /* Shopier — secondary method (Türkiye kartları) — per-amount product URLs */
+    $tiers = [
+        'tls_support_url_5'   => '$5 tier — Shopier URL',
+        'tls_support_url_10'  => '$10 tier — Shopier URL',
+        'tls_support_url_25'  => '$25 tier — Shopier URL',
+        'tls_support_url_50'  => '$50 tier — Shopier URL',
+        'tls_support_url_100' => '$100 tier — Shopier URL',
+    ];
+
+    foreach ( $tiers as $key => $label ) {
+        $wp_customize->add_setting( $key, [
+            'default'           => '',
+            'sanitize_callback' => 'esc_url_raw',
+        ]);
+        $wp_customize->add_control( $key, [
+            'label'       => $label,
+            'description' => 'shopier.com → Ürünüm → Satış Linki',
+            'section'     => 'tls_support',
+            'type'        => 'url',
+        ]);
+    }
+
+    /* Crypto wallet addresses — optional method */
     $crypto = [
         'tls_crypto_btc'  => 'Bitcoin (BTC) wallet address',
         'tls_crypto_eth'  => 'Ethereum (ETH) wallet address',
