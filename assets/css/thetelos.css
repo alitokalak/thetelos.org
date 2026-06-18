@@ -3346,6 +3346,8 @@
 /* Donate button */
 .tls-don-submit {
   width: 100%;
+  box-sizing: border-box;
+  margin-top: 18px;
   background: #257855;
   color: #fff;
   border: none;
@@ -3355,6 +3357,7 @@
   font-size: 14px;
   font-weight: 600;
   letter-spacing: .04em;
+  text-decoration: none;
   cursor: pointer;
   transition: background .15s, box-shadow .15s, transform .15s;
   display: flex;
@@ -3363,6 +3366,23 @@
   gap: 8px;
   box-shadow: 0 2px 10px rgba(37,120,85,.30);
 }
+.tls-don-submit:hover { color: #fff; }
+
+/* Optional crypto disclosure */
+.tls-don-crypto-details {
+  margin-top: 18px;
+  border-top: 1px solid var(--tls-border, rgba(0,0,0,.08));
+  padding-top: 14px;
+}
+.tls-don-crypto-details summary {
+  cursor: pointer;
+  font-family: var(--tls-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tls-muted, #6b7280);
+  letter-spacing: .02em;
+}
+.tls-don-crypto-details[open] summary { margin-bottom: 12px; }
 .tls-don-submit:hover {
   background: #1e6347;
   box-shadow: 0 4px 18px rgba(37,120,85,.40);
