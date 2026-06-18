@@ -28,6 +28,18 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
         'type'        => 'url',
     ]);
 
+    /* LemonSqueezy — alternative global card method */
+    $wp_customize->add_setting( 'tls_lemonsqueezy_url', [
+        'default'           => '',
+        'sanitize_callback' => 'esc_url_raw',
+    ]);
+    $wp_customize->add_control( 'tls_lemonsqueezy_url', [
+        'label'       => 'LemonSqueezy product URL',
+        'description' => 'LemonSqueezy → Products → (Pay What You Want ürünü) → Share → Copy link. "Pay What You Want" türünde ürün olması lazım.',
+        'section'     => 'tls_support',
+        'type'        => 'url',
+    ]);
+
     /* Shopier — secondary method (Türkiye kartları) — per-amount product URLs */
     $tiers = [
         'tls_support_url_5'   => '$5 tier — Shopier URL',

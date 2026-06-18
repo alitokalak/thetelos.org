@@ -11,6 +11,9 @@ if ( ! defined( 'ABSPATH' ) ) exit;
    Customize → Support / Donations */
 $polar_url = get_theme_mod( 'tls_polar_url', 'https://buy.polar.sh/polar_cl_lo5vNnnTnFOlDvluWfQn62s5zSQq1AdVjTZzr1LqyE6' );
 
+/* LemonSqueezy — alternative global card method (Pay What You Want product URL) */
+$lemon_url = get_theme_mod( 'tls_lemonsqueezy_url', '' );
+
 /* Shopier ürün URL'leri (tutar bazlı) — Customize → Support / Donations */
 $url_5   = get_theme_mod( 'tls_support_url_5',   '' );
 $url_10  = get_theme_mod( 'tls_support_url_10',  '' );
@@ -144,14 +147,23 @@ get_header();
                 Payment method
             </div>
 
-            <div class="tls-don-tabs tls-don-tabs-3" role="tablist">
+            <div class="tls-don-tabs tls-don-tabs-4" role="tablist">
                 <button class="tls-don-tab active"
                         type="button"
                         role="tab"
                         aria-selected="true"
                         aria-controls="tls-don-panel-polar"
                         id="tls-tab-polar">
-                    <span class="tls-don-tab-name">Card</span>
+                    <span class="tls-don-tab-name">Polar</span>
+                    <span class="tls-don-tab-sub">Global</span>
+                </button>
+                <button class="tls-don-tab"
+                        type="button"
+                        role="tab"
+                        aria-selected="false"
+                        aria-controls="tls-don-panel-lemon"
+                        id="tls-tab-lemon">
+                    <span class="tls-don-tab-name">Lemon</span>
                     <span class="tls-don-tab-sub">Global</span>
                 </button>
                 <button class="tls-don-tab"
@@ -170,7 +182,7 @@ get_header();
                         aria-controls="tls-don-panel-crypto"
                         id="tls-tab-crypto">
                     <span class="tls-don-tab-name">Crypto</span>
-                    <span class="tls-don-tab-sub">One-time</span>
+                    <span class="tls-don-tab-sub">BTC·ETH</span>
                 </button>
             </div>
 
@@ -196,6 +208,35 @@ get_header();
                         <polyline points="12 5 19 12 12 19"/>
                     </svg>
                 </a>
+            </div>
+
+            <!-- LemonSqueezy panel -->
+            <div class="tls-don-panel"
+                 id="tls-don-panel-lemon"
+                 role="tabpanel"
+                 aria-labelledby="tls-tab-lemon">
+                <?php if ( $lemon_url ) : ?>
+                <div class="tls-don-shopier-note">
+                    <strong>Pay by card via LemonSqueezy.</strong><br>
+                    Secure checkout opens right here. Visa, Mastercard &amp; Amex.
+                    No account required.
+                </div>
+                <a class="tls-don-submit lemonsqueezy-button"
+                   id="tls-don-lemon-btn"
+                   href="<?php echo esc_url( $lemon_url ); ?>">
+                    Support thetelos
+                    <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12"/>
+                        <polyline points="12 5 19 12 12 19"/>
+                    </svg>
+                </a>
+                <?php else : ?>
+                <div class="tls-don-shopier-note">
+                    LemonSqueezy checkout coming soon.<br>
+                    Add the product URL in <strong>Customize → Support / Donations → LemonSqueezy product URL</strong>.
+                </div>
+                <?php endif; ?>
             </div>
 
             <!-- Shopier panel -->
@@ -290,6 +331,7 @@ get_header();
 <script>
 (function() {
     var BASE_URL    = <?php echo json_encode( esc_url( $polar_url ) ); ?>;
+    var LEMON_URL   = <?php echo json_encode( esc_url( $lemon_url ) ); ?>;
     var shopierUrls = <?php echo $shopier_map_json; ?>;
     var selectedAmt = 25;
     var activeTab   = 'polar';
@@ -306,6 +348,7 @@ get_header();
     var panels     = document.querySelectorAll('.tls-don-panel');
     var submitBtn  = document.getElementById('tls-don-submit');
     var polarBtn   = document.getElementById('tls-don-polar-btn');
+    var lemonBtn   = document.getElementById('tls-don-lemon-btn');
     var trustLine  = document.getElementById('tls-don-trust');
 
     function baseDollars() {
@@ -342,18 +385,32 @@ get_header();
         polarBtn.href = url;
     }
 
-    /* Polar = its own overlay button + fee option.
+    /* Point the LemonSqueezy button at the chosen amount (?checkout[custom_price]= in cents) */
+    function updateLemonLink() {
+        if (!lemonBtn || !LEMON_URL) { return; }
+        var dollars = baseDollars();
+        var url = LEMON_URL;
+        if (dollars > 0) {
+            var cents = Math.round(dollars * 100);
+            url += (url.indexOf('?') === -1 ? '?' : '&') + 'checkout[custom_price]=' + cents;
+        }
+        lemonBtn.href = url;
+    }
+
+    /* Polar/Lemon = overlay buttons + fee option (Polar only).
        Shopier = shared Donate button (no fee — fixed-price products).
        Crypto = addresses only, no button. */
     function syncUI() {
         var isPolar  = (activeTab === 'polar');
+        var isLemon  = (activeTab === 'lemon');
         var isShopier= (activeTab === 'shopier');
         if (polarBtn)  { polarBtn.hidden  = !isPolar; }
+        if (lemonBtn)  { lemonBtn.hidden  = !isLemon; }
         if (submitBtn) { submitBtn.hidden = !isShopier; }
         if (feeLbl)    { feeLbl.hidden    = !isPolar; }
     }
 
-    function refresh() { updateFee(); updatePolarLink(); }
+    function refresh() { updateFee(); updatePolarLink(); updateLemonLink(); }
 
     /* Amount buttons */
     amtBtns.forEach(function(btn) {
@@ -391,6 +448,7 @@ get_header();
             if (panel) { panel.classList.add('active'); }
             activeTab = panelId.indexOf('crypto')  !== -1 ? 'crypto'
                       : panelId.indexOf('shopier') !== -1 ? 'shopier'
+                      : panelId.indexOf('lemon')   !== -1 ? 'lemon'
                       : 'polar';
             syncUI();
             refresh();
@@ -424,5 +482,10 @@ get_header();
 <!-- Polar embedded checkout (opens an overlay on this page) -->
 <script defer data-auto-init
         src="https://cdn.jsdelivr.net/npm/@polar-sh/checkout@latest/dist/embed.global.js"></script>
+
+<!-- LemonSqueezy overlay checkout -->
+<?php if ( $lemon_url ) : ?>
+<script src="https://app.lemonsqueezy.com/js/lemon.js" defer></script>
+<?php endif; ?>
 
 <?php get_footer(); ?>

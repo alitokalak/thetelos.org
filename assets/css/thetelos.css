@@ -3452,6 +3452,12 @@
 }
 .tls-don-tab.active .tls-don-tab-name { color: var(--tls-bg-dark); }
 
+/* 4-tab layout — slightly tighter to fit */
+.tls-don-tabs-4 { gap: 5px; }
+.tls-don-tabs-4 .tls-don-tab { padding: 9px 4px; }
+.tls-don-tabs-4 .tls-don-tab .tls-don-tab-name { font-size: 12px; }
+.tls-don-tabs-4 .tls-don-tab .tls-don-tab-sub  { font-size: 9px; }
+
 /* Tab panels */
 .tls-don-panel { display: none; }
 .tls-don-panel.active { display: block; }
