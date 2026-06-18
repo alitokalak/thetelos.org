@@ -10,6 +10,16 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 /* Patreon — ana destek yöntemi — Customize → Support / Donations */
 $patreon_url = get_theme_mod( 'tls_patreon_url', 'https://www.patreon.com/c/Thetelos' );
 
+/* Patreon tier checkout URL'leri — tutar bazlı eşleşme */
+$patreon_urls = [
+    5   => get_theme_mod( 'tls_patreon_url_5',   'https://www.patreon.com/checkout/Thetelos?rid=28883858' ),
+    10  => get_theme_mod( 'tls_patreon_url_10',  'https://www.patreon.com/checkout/Thetelos?rid=28884980' ),
+    25  => get_theme_mod( 'tls_patreon_url_25',  'https://www.patreon.com/checkout/Thetelos?rid=28884986' ),
+    50  => get_theme_mod( 'tls_patreon_url_50',  'https://www.patreon.com/checkout/Thetelos?rid=28884989' ),
+    100 => get_theme_mod( 'tls_patreon_url_100', 'https://www.patreon.com/checkout/Thetelos?rid=28884993' ),
+];
+$patreon_map_json = json_encode( array_map( 'esc_url', $patreon_urls ) );
+
 /* Shopier ürün URL'leri — Customize → Support / Donations */
 $url_5   = get_theme_mod( 'tls_support_url_5',   '' );
 $url_10  = get_theme_mod( 'tls_support_url_10',  '' );
@@ -195,7 +205,8 @@ get_header();
                         Join on Patreon to keep the archive free for everyone — the most
                         direct way to fund the next book, essay, and analysis.
                     </p>
-                    <a class="tls-don-patreon-btn" href="<?php echo esc_url( $patreon_url ); ?>"
+                    <a class="tls-don-patreon-btn" id="tls-don-patreon-btn"
+                       href="<?php echo esc_url( $patreon_urls[25] ); ?>"
                        target="_blank" rel="noopener">
                         Join on Patreon
                         <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
@@ -298,7 +309,9 @@ get_header();
 
 <script>
 (function() {
-    var shopierUrls = <?php echo $shopier_map_json; ?>;
+    var shopierUrls  = <?php echo $shopier_map_json; ?>;
+    var patreonUrls  = <?php echo $patreon_map_json; ?>;
+    var patreonPage  = <?php echo json_encode( esc_url( $patreon_url ) ); ?>;
     var selectedAmt = 25;
     var activeTab   = 'patreon';
     var FEE_RATE    = 0.029;
@@ -314,6 +327,17 @@ get_header();
     var panels     = document.querySelectorAll('.tls-don-panel');
     var submitBtn  = document.getElementById('tls-don-submit');
     var trustLine  = document.getElementById('tls-don-trust');
+    var patreonBtn = document.getElementById('tls-don-patreon-btn');
+
+    /* Point the Patreon button at the checkout for the selected amount.
+       Custom ("Other") amounts fall back to the main membership page. */
+    function updatePatreonLink() {
+        if (!patreonBtn) { return; }
+        var url = (selectedAmt !== 'other' && patreonUrls[selectedAmt])
+            ? patreonUrls[selectedAmt]
+            : patreonPage;
+        patreonBtn.href = url;
+    }
 
     /* When Patreon is selected: hide the green Donate button + trust line
        (Patreon panel has its own CTA). Fee checkbox also hidden — Patreon handles fees. */
@@ -346,12 +370,14 @@ get_header();
             customWrap.classList.toggle('visible', isOther);
             if (isOther) { customInput.focus(); }
             updateFee();
+            updatePatreonLink();
         });
     });
 
     if (customInput) { customInput.addEventListener('input', updateFee); }
     if (feeChk)      { feeChk.addEventListener('change', updateFee); }
     updateFee();
+    updatePatreonLink();
 
     /* Payment tabs */
     tabs.forEach(function(tab) {

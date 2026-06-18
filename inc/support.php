@@ -23,10 +23,38 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
     ]);
     $wp_customize->add_control( 'tls_patreon_url', [
         'label'       => 'Patreon page URL',
-        'description' => 'Primary “Become a member” button links here.',
+        'description' => 'Fallback for the “Other” amount — links to the main membership page.',
         'section'     => 'tls_support',
         'type'        => 'url',
     ]);
+
+    /* Patreon per-tier checkout URLs — each amount maps to its tier's checkout */
+    $patreon_tiers = [
+        'tls_patreon_url_5'   => '$5 tier — Patreon checkout URL (Supporter)',
+        'tls_patreon_url_10'  => '$10 tier — Patreon checkout URL (Patron)',
+        'tls_patreon_url_25'  => '$25 tier — Patreon checkout URL (Benefactor)',
+        'tls_patreon_url_50'  => '$50 tier — Patreon checkout URL (Sponsor)',
+        'tls_patreon_url_100' => '$100 tier — Patreon checkout URL (Guardian)',
+    ];
+    $patreon_defaults = [
+        'tls_patreon_url_5'   => 'https://www.patreon.com/checkout/Thetelos?rid=28883858',
+        'tls_patreon_url_10'  => 'https://www.patreon.com/checkout/Thetelos?rid=28884980',
+        'tls_patreon_url_25'  => 'https://www.patreon.com/checkout/Thetelos?rid=28884986',
+        'tls_patreon_url_50'  => 'https://www.patreon.com/checkout/Thetelos?rid=28884989',
+        'tls_patreon_url_100' => 'https://www.patreon.com/checkout/Thetelos?rid=28884993',
+    ];
+    foreach ( $patreon_tiers as $key => $label ) {
+        $wp_customize->add_setting( $key, [
+            'default'           => $patreon_defaults[ $key ],
+            'sanitize_callback' => 'esc_url_raw',
+        ]);
+        $wp_customize->add_control( $key, [
+            'label'       => $label,
+            'description' => 'patreon.com → Membership tier → Join → copy checkout URL',
+            'section'     => 'tls_support',
+            'type'        => 'url',
+        ]);
+    }
 
     /* Shopier URL fields */
     $tiers = [
