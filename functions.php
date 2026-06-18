@@ -489,14 +489,14 @@ function thetelos_enqueue_custom_assets() {
         'thetelos-styles',
         get_template_directory_uri() . '/assets/css/thetelos.css',
         [ 'mediumish-style' ],
-        THEME_VERSION . '.m18'
+        THEME_VERSION . '.m19'
     );
 
     wp_enqueue_script(
         'thetelos-scripts',
         get_template_directory_uri() . '/assets/js/thetelos.js',
         [],
-        THEME_VERSION . '.m18',
+        THEME_VERSION . '.m19',
         true
     );
 

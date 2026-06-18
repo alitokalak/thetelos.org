@@ -53,21 +53,75 @@
   }
 
   /* ────────────────────────────
-     MOBILE NAV toggle
+     MOBILE NAV toggle (hamburger)
   ──────────────────────────── */
   function initNav() {
+    var hamburger = document.getElementById('tls-hamburger');
+    var drawer    = document.getElementById('tls-mobile-menu');
+    if (!hamburger || !drawer) return;
+
+    /* Create backdrop */
+    var backdrop = document.createElement('div');
+    backdrop.className = 'tls-mobile-menu-backdrop';
+    document.body.appendChild(backdrop);
+
+    function openMenu() {
+      hamburger.classList.add('open');
+      drawer.classList.add('open');
+      backdrop.classList.add('open');
+      hamburger.setAttribute('aria-expanded', 'true');
+      drawer.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeMenu() {
+      hamburger.classList.remove('open');
+      drawer.classList.remove('open');
+      backdrop.classList.remove('open');
+      hamburger.setAttribute('aria-expanded', 'false');
+      drawer.setAttribute('aria-hidden', 'true');
+    }
+
+    hamburger.addEventListener('click', function () {
+      if (hamburger.classList.contains('open')) { closeMenu(); } else { openMenu(); }
+    });
+
+    backdrop.addEventListener('click', closeMenu);
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') closeMenu();
+    });
+
+    /* Close when a menu link is tapped */
+    drawer.addEventListener('click', function (e) {
+      if (e.target.closest('a')) closeMenu();
+    });
+
+    /* Wire up mobile signin to the same auth overlay as the desktop user icon */
+    var mobileSignin = document.getElementById('tls-mobile-signin');
+    if (mobileSignin) {
+      mobileSignin.addEventListener('click', function (e) {
+        e.preventDefault();
+        closeMenu();
+        var authOverlay = document.getElementById('tls-auth-overlay');
+        if (authOverlay) {
+          authOverlay.style.display = 'flex';
+          document.body.style.overflow = 'hidden';
+        } else {
+          /* Fallback: trigger desktop user icon click */
+          var desktopUser = document.getElementById('tls-user-icon');
+          if (desktopUser) desktopUser.click();
+        }
+      });
+    }
+
+    /* Legacy: old mobile toggle (no-op if element absent) */
     var toggle = document.querySelector('.tls-mobile-toggle');
-    var drawer = document.querySelector('.tls-mobile-nav');
-    if (!toggle || !drawer) return;
-    toggle.addEventListener('click', function () {
-      drawer.classList.toggle('open');
-      toggle.setAttribute('aria-expanded', drawer.classList.contains('open'));
-    });
-    document.addEventListener('click', function (e) {
-      if (!toggle.contains(e.target) && !drawer.contains(e.target)) {
-        drawer.classList.remove('open');
-      }
-    });
+    var legacyDrawer = document.querySelector('.tls-mobile-nav');
+    if (toggle && legacyDrawer) {
+      toggle.addEventListener('click', function () {
+        legacyDrawer.classList.toggle('open');
+      });
+    }
   }
 
   /* ────────────────────────────
