@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 $polar_url = get_theme_mod( 'tls_polar_url', 'https://buy.polar.sh/polar_cl_lo5vNnnTnFOlDvluWfQn62s5zSQq1AdVjTZzr1LqyE6' );
 
 /* LemonSqueezy — alternative global card method (Pay What You Want product URL) */
-$lemon_url = get_theme_mod( 'tls_lemonsqueezy_url', 'https://thetelos.lemonsqueezy.com/checkout/buy/5bd79218-a53a-4f5c-8b63-81c272bb80d3' );
+$lemon_url = get_theme_mod( 'tls_lemonsqueezy_url', 'https://thetelos.lemonsqueezy.com/checkout/buy/5bd79218-a53a-4f5c-8b63-81c272bb80d3?media=0&logo=0&desc=0&discount=0' );
 
 /* Kripto adresleri — Customize → Support / Donations */
 $btc  = get_theme_mod( 'tls_crypto_btc',  '' );
@@ -283,7 +283,7 @@ get_header();
 <script>
 (function() {
     var BASE_URL    = <?php echo json_encode( esc_url( $polar_url ) ); ?>;
-    var LEMON_URL   = <?php echo json_encode( esc_url( $lemon_url ) ); ?>;
+    var LEMON_URL   = <?php echo json_encode( esc_url_raw( $lemon_url ) ); ?>;
     var selectedAmt = 25;
     var activeTab   = 'polar';
     var FEE_RATE    = 0.029;

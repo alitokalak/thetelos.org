@@ -30,7 +30,7 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
 
     /* LemonSqueezy — alternative global card method */
     $wp_customize->add_setting( 'tls_lemonsqueezy_url', [
-        'default'           => 'https://thetelos.lemonsqueezy.com/checkout/buy/5bd79218-a53a-4f5c-8b63-81c272bb80d3',
+        'default'           => 'https://thetelos.lemonsqueezy.com/checkout/buy/5bd79218-a53a-4f5c-8b63-81c272bb80d3?media=0&logo=0&desc=0&discount=0',
         'sanitize_callback' => 'esc_url_raw',
     ]);
     $wp_customize->add_control( 'tls_lemonsqueezy_url', [
