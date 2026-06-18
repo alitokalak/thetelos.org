@@ -3,7 +3,7 @@
  * The Telos — Support / Donation Settings
  *
  * WP Customizer'a "Support / Donations" bölümü ekler.
- * Customize → Support / Donations → Polar link + Shopier URL'leri + kripto adresleri
+ * Customize → Support / Donations → Polar link + LemonSqueezy link + kripto adresleri
  *
  * @package Mediumish / TheTelos
  */
@@ -30,7 +30,7 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
 
     /* LemonSqueezy — alternative global card method */
     $wp_customize->add_setting( 'tls_lemonsqueezy_url', [
-        'default'           => '',
+        'default'           => 'https://thetelos.lemonsqueezy.com/checkout/buy/5bd79218-a53a-4f5c-8b63-81c272bb80d3',
         'sanitize_callback' => 'esc_url_raw',
     ]);
     $wp_customize->add_control( 'tls_lemonsqueezy_url', [
@@ -39,28 +39,6 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
         'section'     => 'tls_support',
         'type'        => 'url',
     ]);
-
-    /* Shopier — secondary method (Türkiye kartları) — per-amount product URLs */
-    $tiers = [
-        'tls_support_url_5'   => '$5 tier — Shopier URL',
-        'tls_support_url_10'  => '$10 tier — Shopier URL',
-        'tls_support_url_25'  => '$25 tier — Shopier URL',
-        'tls_support_url_50'  => '$50 tier — Shopier URL',
-        'tls_support_url_100' => '$100 tier — Shopier URL',
-    ];
-
-    foreach ( $tiers as $key => $label ) {
-        $wp_customize->add_setting( $key, [
-            'default'           => '',
-            'sanitize_callback' => 'esc_url_raw',
-        ]);
-        $wp_customize->add_control( $key, [
-            'label'       => $label,
-            'description' => 'shopier.com → Ürünüm → Satış Linki',
-            'section'     => 'tls_support',
-            'type'        => 'url',
-        ]);
-    }
 
     /* Crypto wallet addresses — optional method */
     $crypto = [

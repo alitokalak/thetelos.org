@@ -12,29 +12,12 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 $polar_url = get_theme_mod( 'tls_polar_url', 'https://buy.polar.sh/polar_cl_lo5vNnnTnFOlDvluWfQn62s5zSQq1AdVjTZzr1LqyE6' );
 
 /* LemonSqueezy — alternative global card method (Pay What You Want product URL) */
-$lemon_url = get_theme_mod( 'tls_lemonsqueezy_url', '' );
-
-/* Shopier ürün URL'leri (tutar bazlı) — Customize → Support / Donations */
-$url_5   = get_theme_mod( 'tls_support_url_5',   '' );
-$url_10  = get_theme_mod( 'tls_support_url_10',  '' );
-$url_25  = get_theme_mod( 'tls_support_url_25',  '' );
-$url_50  = get_theme_mod( 'tls_support_url_50',  '' );
-$url_100 = get_theme_mod( 'tls_support_url_100', '' );
+$lemon_url = get_theme_mod( 'tls_lemonsqueezy_url', 'https://thetelos.lemonsqueezy.com/checkout/buy/5bd79218-a53a-4f5c-8b63-81c272bb80d3' );
 
 /* Kripto adresleri — Customize → Support / Donations */
 $btc  = get_theme_mod( 'tls_crypto_btc',  '' );
 $eth  = get_theme_mod( 'tls_crypto_eth',  '' );
 $usdc = get_theme_mod( 'tls_crypto_usdc', '' );
-
-/* Tutar → Shopier URL eşleşmesi */
-$shopier_urls = [
-    5   => $url_5,
-    10  => $url_10,
-    25  => $url_25,
-    50  => $url_50,
-    100 => $url_100,
-];
-$shopier_map_json = json_encode( array_map( 'esc_url', $shopier_urls ) );
 
 get_header();
 ?>
@@ -147,7 +130,7 @@ get_header();
                 Payment method
             </div>
 
-            <div class="tls-don-tabs tls-don-tabs-4" role="tablist">
+            <div class="tls-don-tabs tls-don-tabs-3" role="tablist">
                 <button class="tls-don-tab active"
                         type="button"
                         role="tab"
@@ -155,7 +138,7 @@ get_header();
                         aria-controls="tls-don-panel-polar"
                         id="tls-tab-polar">
                     <span class="tls-don-tab-name">Polar</span>
-                    <span class="tls-don-tab-sub">Global</span>
+                    <span class="tls-don-tab-sub">Card</span>
                 </button>
                 <button class="tls-don-tab"
                         type="button"
@@ -164,16 +147,7 @@ get_header();
                         aria-controls="tls-don-panel-lemon"
                         id="tls-tab-lemon">
                     <span class="tls-don-tab-name">Lemon</span>
-                    <span class="tls-don-tab-sub">Global</span>
-                </button>
-                <button class="tls-don-tab"
-                        type="button"
-                        role="tab"
-                        aria-selected="false"
-                        aria-controls="tls-don-panel-shopier"
-                        id="tls-tab-shopier">
-                    <span class="tls-don-tab-name">Shopier</span>
-                    <span class="tls-don-tab-sub">Türkiye</span>
+                    <span class="tls-don-tab-sub">Card</span>
                 </button>
                 <button class="tls-don-tab"
                         type="button"
@@ -239,18 +213,6 @@ get_header();
                 <?php endif; ?>
             </div>
 
-            <!-- Shopier panel -->
-            <div class="tls-don-panel"
-                 id="tls-don-panel-shopier"
-                 role="tabpanel"
-                 aria-labelledby="tls-tab-shopier">
-                <div class="tls-don-shopier-note">
-                    <strong>Pay with card via Shopier.</strong><br>
-                    You'll be taken to Shopier's secure checkout to complete your gift
-                    with Visa, Mastercard, or Amex. No account required.
-                </div>
-            </div>
-
             <!-- Crypto panel -->
             <div class="tls-don-panel"
                  id="tls-don-panel-crypto"
@@ -284,16 +246,6 @@ get_header();
                 </div>
                 <?php endif; ?>
             </div>
-
-            <!-- Shared CTA — only for Shopier / Crypto (Polar has its own button) -->
-            <button class="tls-don-submit" type="button" id="tls-don-submit" hidden>
-                Donate
-                <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
-                    <line x1="5" y1="12" x2="19" y2="12"/>
-                    <polyline points="12 5 19 12 12 19"/>
-                </svg>
-            </button>
 
             <!-- Trust line -->
             <div class="tls-don-trust" id="tls-don-trust" aria-label="Security assurances">
@@ -332,7 +284,6 @@ get_header();
 (function() {
     var BASE_URL    = <?php echo json_encode( esc_url( $polar_url ) ); ?>;
     var LEMON_URL   = <?php echo json_encode( esc_url( $lemon_url ) ); ?>;
-    var shopierUrls = <?php echo $shopier_map_json; ?>;
     var selectedAmt = 25;
     var activeTab   = 'polar';
     var FEE_RATE    = 0.029;
@@ -346,7 +297,6 @@ get_header();
     var feeLbl     = document.getElementById('tls-don-fee-label');
     var tabs       = document.querySelectorAll('.tls-don-tab');
     var panels     = document.querySelectorAll('.tls-don-panel');
-    var submitBtn  = document.getElementById('tls-don-submit');
     var polarBtn   = document.getElementById('tls-don-polar-btn');
     var lemonBtn   = document.getElementById('tls-don-lemon-btn');
     var trustLine  = document.getElementById('tls-don-trust');
@@ -398,15 +348,12 @@ get_header();
     }
 
     /* Polar/Lemon = overlay buttons + fee option (Polar only).
-       Shopier = shared Donate button (no fee — fixed-price products).
        Crypto = addresses only, no button. */
     function syncUI() {
         var isPolar  = (activeTab === 'polar');
         var isLemon  = (activeTab === 'lemon');
-        var isShopier= (activeTab === 'shopier');
         if (polarBtn)  { polarBtn.hidden  = !isPolar; }
         if (lemonBtn)  { lemonBtn.hidden  = !isLemon; }
-        if (submitBtn) { submitBtn.hidden = !isShopier; }
         if (feeLbl)    { feeLbl.hidden    = !isPolar; }
     }
 
@@ -446,9 +393,8 @@ get_header();
             var panelId = tab.getAttribute('aria-controls');
             var panel   = document.getElementById(panelId);
             if (panel) { panel.classList.add('active'); }
-            activeTab = panelId.indexOf('crypto')  !== -1 ? 'crypto'
-                      : panelId.indexOf('shopier') !== -1 ? 'shopier'
-                      : panelId.indexOf('lemon')   !== -1 ? 'lemon'
+            activeTab = panelId.indexOf('crypto') !== -1 ? 'crypto'
+                      : panelId.indexOf('lemon')  !== -1 ? 'lemon'
                       : 'polar';
             syncUI();
             refresh();
@@ -456,26 +402,6 @@ get_header();
     });
 
     syncUI();
-
-    /* Shared Donate button — Shopier only */
-    if (submitBtn) {
-        submitBtn.addEventListener('click', function() {
-            var amt = selectedAmt === 'other'
-                ? (parseInt(customInput.value) || 0)
-                : selectedAmt;
-            var url = shopierUrls[amt] || '';
-            if (url && url !== '#' && url !== '') {
-                window.location.href = url;
-            } else {
-                submitBtn.textContent = 'Coming soon — check back shortly!';
-                submitBtn.disabled = true;
-                setTimeout(function() {
-                    submitBtn.innerHTML = 'Donate <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="15" height="15"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>';
-                    submitBtn.disabled = false;
-                }, 3000);
-            }
-        });
-    }
 })();
 </script>
 
