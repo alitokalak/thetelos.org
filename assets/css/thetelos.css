@@ -169,24 +169,30 @@
   cursor: pointer;
   padding: 0;
   flex-shrink: 0;
+  transition: background .18s ease;
 }
+.tls-hamburger:active { background: #e2ded6; }
 .tls-hamburger-bar {
   display: block;
-  width: 18px; height: 1.5px;
+  height: 1.6px;
   background: var(--tls-bg-dark);
   border-radius: 2px;
-  transition: transform .25s ease, opacity .2s ease;
+  transition: transform .3s cubic-bezier(.4,0,.2,1), opacity .2s ease, width .3s cubic-bezier(.4,0,.2,1);
   transform-origin: center;
 }
+.tls-hamburger-bar:nth-child(1) { width: 18px; }
+.tls-hamburger-bar:nth-child(2) { width: 12px; align-self: center; } /* tapered middle */
+.tls-hamburger-bar:nth-child(3) { width: 18px; }
 .tls-hamburger.open .tls-hamburger-bar:nth-child(1) {
-  transform: translateY(6.5px) rotate(45deg);
+  transform: translateY(6.6px) rotate(45deg);
 }
 .tls-hamburger.open .tls-hamburger-bar:nth-child(2) {
   opacity: 0;
   transform: scaleX(0);
 }
 .tls-hamburger.open .tls-hamburger-bar:nth-child(3) {
-  transform: translateY(-6.5px) rotate(-45deg);
+  width: 18px;
+  transform: translateY(-6.6px) rotate(-45deg);
 }
 
 /* ── Mobile menu drawer ── */

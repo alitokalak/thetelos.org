@@ -102,6 +102,10 @@
       mobileSignin.addEventListener('click', function (e) {
         e.preventDefault();
         closeMenu();
+        /* After login/register from the hamburger, go to the account page */
+        window._tlsAuthRedirect = (window.tlsAuth && window.tlsAuth.profileUrl)
+          ? window.tlsAuth.profileUrl
+          : '/profile/';
         var authOverlay = document.getElementById('tls-auth-overlay');
         if (authOverlay) {
           authOverlay.style.display = 'flex';

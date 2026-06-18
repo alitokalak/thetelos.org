@@ -956,7 +956,7 @@ $ajax_url     = admin_url('admin-ajax.php');
 .tls-auth-form{display:flex;flex-direction:column;gap:14px;}
 .tls-auth-field{display:flex;flex-direction:column;gap:5px;}
 .tls-auth-label{font-family:var(--tls-sans);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--tls-bg-dark);}
-.tls-auth-input{font-family:var(--tls-sans);font-size:14px;color:var(--tls-bg-dark);background:#faf9f7;border:1.5px solid var(--tls-border);border-radius:8px;padding:11px 14px;width:100%;box-sizing:border-box;outline:none;transition:border-color .2s,box-shadow .2s;-webkit-appearance:none;}
+.tls-auth-input{font-family:var(--tls-sans);font-size:16px;color:var(--tls-bg-dark);background:#faf9f7;border:1.5px solid var(--tls-border);border-radius:8px;padding:11px 14px;width:100%;box-sizing:border-box;outline:none;transition:border-color .2s,box-shadow .2s;-webkit-appearance:none;}
 .tls-auth-input::placeholder{color:#ccc;}
 .tls-auth-input:focus{border-color:var(--tls-gold);box-shadow:0 0 0 3px rgba(200,161,101,.12);background:#fff;}
 .tls-auth-submit{display:flex;align-items:center;justify-content:center;gap:8px;padding:13px;background:var(--tls-bg-dark);color:#fff;border:none;border-radius:8px;font-family:var(--tls-sans);font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;transition:background .2s;margin-top:2px;}
@@ -1370,6 +1370,7 @@ $ajax_url     = admin_url('admin-ajax.php');
                 if (window._tlsPendingListId) {
                     sessionStorage.setItem('tls_pending_list', window._tlsPendingListId);
                 }
+                if (window._tlsAuthRedirect) { window.location.href = window._tlsAuthRedirect; return; }
                 window.location.reload();
             },'tls-btn-login');
         });
@@ -1389,6 +1390,7 @@ $ajax_url     = admin_url('admin-ajax.php');
                 if (window._tlsPendingListId) {
                     sessionStorage.setItem('tls_pending_list', window._tlsPendingListId);
                 }
+                if (window._tlsAuthRedirect) { window.location.href = window._tlsAuthRedirect; return; }
                 window.location.reload();
             },'tls-btn-register');
         });
