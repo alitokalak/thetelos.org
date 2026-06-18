@@ -3425,94 +3425,73 @@
 
 /* ══════════════════════════════════════════════
    Thank You — payment received (Polar success URL)
-   Dark card, heart icon — matches donation card aesthetic
+   Full-bleed dark page, content inside a thin gold frame
    ══════════════════════════════════════════════ */
-.tls-thanks-wrap {
-  min-height: 80vh;
+.tls-thanks-page {
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  min-height: calc(100vh - var(--tls-nav-h));
+  background: var(--tls-bg-dark, #1A1814);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: calc(var(--tls-nav-h) + 60px) 24px 80px;
+  padding: 80px 24px;
+  box-sizing: border-box;
+  /* subtle radial glow behind the frame */
+  background-image:
+    radial-gradient(ellipse at center, rgba(184,146,42,.10), transparent 60%);
 }
-.tls-thanks-card {
+.tls-thanks-frame {
   width: 100%;
-  max-width: 440px;
-  background: var(--tls-bg-dark, #1A1814);
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 32px 80px rgba(0,0,0,.45), 0 6px 20px rgba(0,0,0,.25);
-}
-
-/* ── Header strip ── */
-.tls-thanks-card-head {
-  padding: 16px 22px 14px;
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.tls-thanks-live {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  font-family: var(--tls-sans);
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(255,255,255,.7);
-}
-.tls-thanks-live-dot {
-  width: 7px; height: 7px;
-  border-radius: 50%;
-  background: #2ecc71;
-  flex-shrink: 0;
-  animation: tls-pulse 2s ease-in-out infinite;
-}
-@keyframes tls-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: .6; transform: scale(.85); }
-}
-.tls-thanks-secure {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--tls-sans);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: .1em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,.35);
-}
-
-/* ── Card body ── */
-.tls-thanks-card-body {
-  padding: 36px 32px 38px;
+  max-width: 540px;
   text-align: center;
+  padding: 60px 48px 56px;
+  border: 1px solid rgba(184,146,42,.32);
+  border-radius: 4px;
+  position: relative;
 }
+/* small corner accents on the frame */
+.tls-thanks-frame::before,
+.tls-thanks-frame::after {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  border: 1px solid var(--tls-gold, #B8922A);
+}
+.tls-thanks-frame::before {
+  top: -1px; left: -1px;
+  border-right: none; border-bottom: none;
+}
+.tls-thanks-frame::after {
+  bottom: -1px; right: -1px;
+  border-left: none; border-top: none;
+}
+
 .tls-thanks-heart {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 68px; height: 68px;
+  width: 76px; height: 76px;
   border-radius: 50%;
-  background: rgba(184,146,42,.15);
+  background: rgba(184,146,42,.14);
   color: var(--tls-gold, #B8922A);
-  margin-bottom: 26px;
+  margin-bottom: 30px;
 }
 .tls-thanks-eyebrow {
   font-family: var(--tls-sans);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: .14em;
+  letter-spacing: .18em;
   text-transform: uppercase;
   color: var(--tls-gold, #B8922A);
-  margin: 0 0 14px;
+  margin: 0 0 18px;
 }
 .tls-thanks-headline {
   font-family: var(--tls-serif);
-  font-size: clamp(32px, 5vw, 44px);
-  line-height: 1.1;
+  font-size: clamp(38px, 6vw, 60px);
+  line-height: 1.08;
   color: #fff;
-  margin: 0 0 20px;
+  margin: 0 0 26px;
   font-weight: 400;
 }
 .tls-thanks-headline em {
@@ -3521,45 +3500,45 @@
 }
 .tls-thanks-body {
   font-family: var(--tls-sans);
-  font-size: 14px;
-  line-height: 1.75;
-  color: rgba(255,255,255,.55);
-  margin: 0 auto 20px;
-  max-width: 340px;
+  font-size: 15px;
+  line-height: 1.8;
+  color: rgba(255,255,255,.6);
+  margin: 0 auto 24px;
+  max-width: 400px;
 }
 .tls-thanks-sig {
   font-family: var(--tls-sans);
   font-size: 13px;
-  color: rgba(255,255,255,.35);
+  color: rgba(255,255,255,.4);
   font-style: italic;
-  margin: 0 0 30px;
+  margin: 0 0 38px;
 }
 .tls-thanks-btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255,255,255,.08);
-  border: 1px solid rgba(255,255,255,.14);
-  color: rgba(255,255,255,.85);
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.25);
+  color: rgba(255,255,255,.9);
   font-family: var(--tls-sans);
   font-size: 13px;
   font-weight: 600;
-  letter-spacing: .04em;
+  letter-spacing: .05em;
   text-decoration: none;
-  padding: 13px 24px;
-  border-radius: 8px;
+  padding: 14px 30px;
+  border-radius: 6px;
   transition: background .2s, border-color .2s, color .2s, transform .15s;
 }
 .tls-thanks-btn:hover {
-  background: rgba(255,255,255,.14);
-  border-color: rgba(255,255,255,.28);
-  color: #fff;
+  background: var(--tls-gold, #B8922A);
+  border-color: var(--tls-gold, #B8922A);
+  color: var(--tls-bg-dark, #1A1814);
   transform: translateY(-1px);
 }
 .tls-thanks-btn svg { transition: transform .2s; }
 .tls-thanks-btn:hover svg { transform: translateX(3px); }
 
 @media (max-width: 480px) {
-  .tls-thanks-card-body { padding: 28px 22px 30px; }
-  .tls-thanks-headline { font-size: 30px; }
+  .tls-thanks-frame { padding: 44px 26px 40px; }
+  .tls-thanks-headline { font-size: 36px; }
 }
