@@ -33,19 +33,19 @@ add_action( 'customize_register', function( WP_Customize_Manager $wp_customize )
        (LemonSqueezy "Pay What You Want" üründe rakam URL'den ön-doldurulamadığı için
         her tutara ayrı ürün açıyoruz.) */
     $lemon_tiers = [
-        'tls_lemon_url_5'   => '$5 ürün checkout linki',
-        'tls_lemon_url_10'  => '$10 ürün checkout linki',
-        'tls_lemon_url_25'  => '$25 ürün checkout linki',
-        'tls_lemon_url_50'  => '$50 ürün checkout linki',
-        'tls_lemon_url_100' => '$100 ürün checkout linki',
+        'tls_lemon_url_5'   => [ '$5 ürün checkout linki',   'https://thetelos.lemonsqueezy.com/checkout/buy/e81e8b3f-a17f-44da-b15a-42114e646a71?media=0&logo=0&desc=0&discount=0' ],
+        'tls_lemon_url_10'  => [ '$10 ürün checkout linki',  'https://thetelos.lemonsqueezy.com/checkout/buy/3866b51b-4a37-4461-b80d-48d8b246ce77?media=0&logo=0&desc=0&discount=0' ],
+        'tls_lemon_url_25'  => [ '$25 ürün checkout linki',  'https://thetelos.lemonsqueezy.com/checkout/buy/bec58579-f21e-4312-8f24-a99ede3672b1?media=0&logo=0&desc=0&discount=0' ],
+        'tls_lemon_url_50'  => [ '$50 ürün checkout linki',  'https://thetelos.lemonsqueezy.com/checkout/buy/6df35883-2fdb-49d6-8621-94ea7938ddf1?media=0&logo=0&desc=0&discount=0' ],
+        'tls_lemon_url_100' => [ '$100 ürün checkout linki', 'https://thetelos.lemonsqueezy.com/checkout/buy/9b4328b8-d366-4344-a45e-e77ad8ac28ab?media=0&logo=0&desc=0&discount=0' ],
     ];
-    foreach ( $lemon_tiers as $key => $label ) {
+    foreach ( $lemon_tiers as $key => $meta ) {
         $wp_customize->add_setting( $key, [
-            'default'           => '',
+            'default'           => $meta[1],
             'sanitize_callback' => 'esc_url_raw',
         ]);
         $wp_customize->add_control( $key, [
-            'label'       => 'LemonSqueezy ' . $label,
+            'label'       => 'LemonSqueezy ' . $meta[0],
             'section'     => 'tls_support',
             'type'        => 'url',
         ]);

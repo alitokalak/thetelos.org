@@ -14,11 +14,11 @@ $polar_url = get_theme_mod( 'tls_polar_url', 'https://buy.polar.sh/polar_cl_lo5v
 /* LemonSqueezy — her tutar için AYRI sabit fiyatlı ürün linki.
    Kullanıcı $25 seçince doğrudan $25 ürünü açılır (rakam zaten ürüne gömülü). */
 $lemon_tiers = [
-    5   => get_theme_mod( 'tls_lemon_url_5',   '' ),
-    10  => get_theme_mod( 'tls_lemon_url_10',  '' ),
-    25  => get_theme_mod( 'tls_lemon_url_25',  '' ),
-    50  => get_theme_mod( 'tls_lemon_url_50',  '' ),
-    100 => get_theme_mod( 'tls_lemon_url_100', '' ),
+    5   => get_theme_mod( 'tls_lemon_url_5',   'https://thetelos.lemonsqueezy.com/checkout/buy/e81e8b3f-a17f-44da-b15a-42114e646a71?media=0&logo=0&desc=0&discount=0' ),
+    10  => get_theme_mod( 'tls_lemon_url_10',  'https://thetelos.lemonsqueezy.com/checkout/buy/3866b51b-4a37-4461-b80d-48d8b246ce77?media=0&logo=0&desc=0&discount=0' ),
+    25  => get_theme_mod( 'tls_lemon_url_25',  'https://thetelos.lemonsqueezy.com/checkout/buy/bec58579-f21e-4312-8f24-a99ede3672b1?media=0&logo=0&desc=0&discount=0' ),
+    50  => get_theme_mod( 'tls_lemon_url_50',  'https://thetelos.lemonsqueezy.com/checkout/buy/6df35883-2fdb-49d6-8621-94ea7938ddf1?media=0&logo=0&desc=0&discount=0' ),
+    100 => get_theme_mod( 'tls_lemon_url_100', 'https://thetelos.lemonsqueezy.com/checkout/buy/9b4328b8-d366-4344-a45e-e77ad8ac28ab?media=0&logo=0&desc=0&discount=0' ),
 ];
 $lemon_tiers = array_filter( $lemon_tiers );  // boş olanları at
 
