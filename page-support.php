@@ -102,12 +102,12 @@ get_header();
                 <?php
                 $presets = [ 5, 10, 25, 50, 100 ];
                 foreach ( $presets as $amt ) :
-                    $active = ( $amt === 25 ) ? ' active' : '';
+                    $active = ( $amt === 5 ) ? ' active' : '';
                 ?>
                 <button class="tls-don-amt<?php echo $active; ?>"
                         type="button"
                         data-amount="<?php echo $amt; ?>"
-                        aria-pressed="<?php echo $amt === 25 ? 'true' : 'false'; ?>">
+                        aria-pressed="<?php echo $amt === 5 ? 'true' : 'false'; ?>">
                     $<?php echo $amt; ?>
                 </button>
                 <?php endforeach; ?>
@@ -131,7 +131,7 @@ get_header();
             <label class="tls-don-fee-label" id="tls-don-fee-label">
                 <input type="checkbox" id="tls-don-fee-chk">
                 <span>
-                    Add <strong id="tls-don-fee-display">$0.78</strong>
+                    Add <strong id="tls-don-fee-display">$0.45</strong>
                     to cover processing fees
                 </span>
             </label>
@@ -206,14 +206,14 @@ get_header();
                 <?php if ( $lemon_available ) : ?>
                 <div class="tls-don-shopier-note">
                     <strong>Pay by card via LemonSqueezy.</strong><br>
-                    Secure checkout opens right here. Visa, Mastercard &amp; Amex.
+                    Secure checkout opens in a new tab. Visa, Mastercard &amp; Amex.
                     No account required.
                 </div>
                 <?php
-                /* Varsayılan link: seçili tutar (25) varsa onun ürünü, yoksa PWYW fallback. */
-                $lemon_default = isset( $lemon_tiers[25] ) ? $lemon_tiers[25] : $lemon_url;
+                /* Varsayılan link: seçili tutar (5) varsa onun ürünü, yoksa PWYW fallback. */
+                $lemon_default = isset( $lemon_tiers[5] ) ? $lemon_tiers[5] : $lemon_url;
                 ?>
-                <a class="tls-don-submit lemonsqueezy-button"
+                <a class="tls-don-submit"
                    id="tls-don-lemon-btn"
                    href="<?php echo esc_url( $lemon_default ); ?>"
                    target="_blank"
@@ -307,7 +307,7 @@ get_header();
     var LEMON_URLS  = <?php echo wp_json_encode( array_map( 'esc_url_raw', $lemon_tiers ) ); ?>;
     /* "Other" / eşleşme yoksa Pay What You Want ürünü */
     var LEMON_PWYW  = <?php echo json_encode( esc_url_raw( $lemon_url ) ); ?>;
-    var selectedAmt = 25;
+    var selectedAmt = 5;
     var activeTab   = 'polar';
     var FEE_RATE    = 0.029;
     var FEE_FIXED   = 0.30;
@@ -429,10 +429,5 @@ get_header();
 <!-- Polar embedded checkout (opens an overlay on this page) -->
 <script defer data-auto-init
         src="https://cdn.jsdelivr.net/npm/@polar-sh/checkout@latest/dist/embed.global.js"></script>
-
-<!-- LemonSqueezy overlay checkout -->
-<?php if ( $lemon_available ) : ?>
-<script src="https://app.lemonsqueezy.com/js/lemon.js" defer></script>
-<?php endif; ?>
 
 <?php get_footer(); ?>
