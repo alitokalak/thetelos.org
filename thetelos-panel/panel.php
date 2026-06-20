@@ -392,12 +392,14 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       usort($stuck_batches, fn($a,$b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
       ?>
       <div style="font-size:11px;color:#555;margin-bottom:8px;padding:6px 10px;background:#111;border-radius:4px">
-        panel v5 &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
+        panel v6 &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
       </div>
       <?php if ($stuck_batches): ?>
       <div class="card" style="border-left:3px solid var(--gold)">
         <div class="card-title" style="color:var(--gold)">&#9888; Yarım Kalan Toplu Batchler</div>
-        <?php foreach ($stuck_batches as $b):
+        <?php
+        /* Tek kart render eden yardımcı */
+        $render_batch = function($b) {
           $tot     = $b['_total'];
           $cnt     = $b['_cnt'];
           $pending = $b['_remaining'];
@@ -406,8 +408,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           $pct     = $tot > 0 ? round($okc / $tot * 100) : 0;
           $bid     = htmlspecialchars($b['id'] ?? '');
           $when    = !empty($b['created_at']) ? date('d.m.Y H:i', (int)$b['created_at']) : '';
-        ?>
-        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px">
+          ob_start(); ?>
+        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px" data-batch-card="<?= $bid ?>">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?> <span style="color:#555;font-weight:400;font-size:11px"><?= $when ?></span></span>
             <span style="font-size:12px;color:var(--muted)"><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
@@ -422,9 +424,27 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <?php if ($errs > 0): ?>
             <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="tlsRetryErrors('<?= $bid ?>',this)">&#8634; <?= $errs ?> hatayi tekrar dene</button>
             <?php endif; ?>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-left:auto" onclick="tlsDeleteBatch('<?= $bid ?>',this)">&#10005; Sil</button>
           </div>
         </div>
-        <?php endforeach; ?>
+          <?php return ob_get_clean();
+        };
+
+        // İlk (en yeni) batch — ana listen, her zaman açık
+        echo $render_batch($stuck_batches[0]);
+
+        // Geri kalan eski batch'ler — katlanır bölümde gizli
+        $rest = array_slice($stuck_batches, 1);
+        if ($rest): ?>
+        <details style="margin-top:6px">
+          <summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:6px 0">
+            &#9656; Diğer <?= count($rest) ?> eski yarım batch (göster / temizle)
+          </summary>
+          <div style="margin-top:8px">
+            <?php foreach ($rest as $b) echo $render_batch($b); ?>
+          </div>
+        </details>
+        <?php endif; ?>
       </div>
       <script>
       var _tlsPanelBase = (function(){ var p=window.location.pathname; return p.substring(0,p.lastIndexOf('/')+1); })();
@@ -444,6 +464,13 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=retry_errors'}).catch(()=>{});
         _tlsFireWorkers(id, 3);
         btn.textContent='✓ 3 worker yeniden deneniyor! (arka planda)'; btn.style.color='var(--green)';
+      }
+      async function tlsDeleteBatch(id,btn) {
+        if (!confirm('Bu batch kaydı silinsin mi? (Yayınlanmış içerikler silinmez, sadece bu işlem kaydı silinir)')) return;
+        btn.disabled=true; btn.textContent='Siliniyor...';
+        await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=delete'}).catch(()=>{});
+        var card = document.querySelector('[data-batch-card="'+id+'"]');
+        if (card) card.remove();
       }
       </script>
       <?php endif; ?>

@@ -13,10 +13,18 @@ $batch_id = preg_replace('/[^a-z0-9_.]/', '', trim($_POST['batch_id'] ?? ''));
 $action   = trim($_POST['action'] ?? '');
 if (!$batch_id) { echo json_encode(['ok'=>false,'error'=>'batch_id gerekli']); exit; }
 
+$batch_file = dirname(__DIR__) . '/jobs/' . $batch_id . '.json';
+
+/* delete: batch dosyasını tamamen sil (eski yarım kalan denemeleri temizlemek için) */
+if ($action === 'delete') {
+    if (file_exists($batch_file)) @unlink($batch_file);
+    echo json_encode(['ok'=>true, 'deleted'=>true]);
+    exit;
+}
+
 $map = ['pause'=>'paused', 'resume'=>'running', 'cancel'=>'cancelled', 'retry_errors'=>'running'];
 if (!isset($map[$action])) { echo json_encode(['ok'=>false,'error'=>'Geçersiz action']); exit; }
 
-$batch_file = dirname(__DIR__) . '/jobs/' . $batch_id . '.json';
 if (!file_exists($batch_file)) { echo json_encode(['ok'=>false,'error'=>'Batch bulunamadı']); exit; }
 
 $fp = fopen($batch_file, 'r+');
