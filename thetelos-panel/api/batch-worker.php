@@ -14,7 +14,13 @@
  */
 session_start();
 require_once dirname(__DIR__) . '/config.php';
-if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
+
+/* Yetki: ya panel session'ı ya da worker'ın kendini zincirlerken kullandığı
+   dahili token. Self-spawn isteklerinde tarayıcı çerezi/session bulunmadığından
+   config tabanlı bir token ile doğrularız. */
+$internal_token = hash('sha256', WP_APP_PASS . '|tls-batch-worker');
+$is_internal    = isset($_POST['_itok']) && hash_equals($internal_token, (string)$_POST['_itok']);
+if (empty($_SESSION['tls_auth']) && !$is_internal) { http_response_code(401); exit; }
 session_write_close();   // KRİTİK: session kilidini hemen bırak — yoksa uzun süren
                          // drain döngüsü boyunca batch-status.php gibi istekler bloke olur.
 
@@ -78,6 +84,29 @@ function bw_claim_next($batch_file) {
     fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
     return [$idx, $batch];
+}
+
+/* ── Halef worker ateşle (fire-and-forget) ─────────────────────────
+ * Bu süreç ölmeden önce kendi yerine yeni bir worker başlatır; böylece
+ * sunucu uzun süren süreçleri öldürse bile batch sunucu tarafında
+ * kendiliğinden devam eder. Tarayıcı açık olmasa bile çalışır. */
+function bw_spawn_successor($batch_id) {
+    $token  = hash('sha256', WP_APP_PASS . '|tls-batch-worker');
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $path   = strtok($_SERVER['REQUEST_URI'] ?? '/thetelos-panel/api/batch-worker.php', '?');
+    $url    = $scheme . '://' . $host . $path;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => http_build_query(['batch_id' => $batch_id, '_itok' => $token]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 2,   // bağlanır bağlanmaz bırak; yeni worker arka planda sürer
+        CURLOPT_NOSIGNAL       => 1,
+        CURLOPT_SSL_VERIFYPEER => false,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
 }
 
 // ── WP REST yardımcısı ────────────────────────────────────────────
@@ -587,15 +616,27 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
  * Tüm bekleyen kitaplar bitene (ya da iptal/duraklat) kadar işle.
  */
 $processed = 0;
+$start     = time();
+$budget    = 70;          // saniye — sunucu uzun süreçleri öldürmeden önce kendini yenile
+$reason    = 'no_more';
 while (true) {
     [$idx, $batch] = bw_claim_next($batch_file);
-    if ($idx === -1 || $idx === -3 || $idx === -4) break;   // bitti / iptal / duraklat
+    if ($idx === -1) { $reason = 'done';      break; }      // bekleyen yok
+    if ($idx === -3) { $reason = 'cancelled'; break; }      // iptal
+    if ($idx === -4) { $reason = 'paused';    break; }      // duraklat
     if ($idx === -2) { usleep(400000); continue; }          // başka worker kilitledi
     set_time_limit(660);                                    // her kitap için süreyi sıfırla
     bw_process_book($batch_file, $idx, $batch, $auth, $wp_api);
     $processed++;
-    if ($processed >= 5000) break;                          // güvenlik üst sınırı
-    sleep(3);                                               // kitaplar arası bekleme — sunucu yükü azaltır
+    if ($processed >= 5000)            { $reason = 'limit';  break; }   // güvenlik üst sınırı
+    if (time() - $start >= $budget)    { $reason = 'budget'; break; }   // süre doldu → zincirle
+    sleep(2);                                               // kitaplar arası kısa bekleme
 }
 
-echo json_encode(['status'=>'no_more','processed'=>$processed]);
+/* Süre/limit nedeniyle çıktıysak ve hâlâ bekleyen iş varsa kendi yerimize
+   yeni bir worker başlat; böylece sunucu bizi öldürse bile batch durmaz. */
+if ($reason === 'budget' || $reason === 'limit') {
+    bw_spawn_successor($batch_id);
+}
+
+echo json_encode(['status'=>'no_more','processed'=>$processed,'reason'=>$reason]);
