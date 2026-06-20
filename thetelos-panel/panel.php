@@ -364,6 +364,64 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
     <!-- ══ OTOMATİK KUYRUK ══════════════════════════════════ -->
     <div id="mode-queue" style="display:none">
+
+      <?php
+      $jobs_dir = __DIR__ . '/jobs';
+      $stuck_batches = [];
+      if (is_dir($jobs_dir)) {
+          foreach (glob("$jobs_dir/batch_*.json") as $f) {
+              $d = json_decode(file_get_contents($f), true);
+              if (!$d) continue;
+              $st = $d['status'] ?? '';
+              if ($st === 'done' || $st === 'cancelled') continue;
+              if (($d['total'] ?? 0) <= 0 || ($d['done'] ?? 0) >= ($d['total'] ?? 0)) continue;
+              $stuck_batches[] = $d;
+          }
+      }
+      if ($stuck_batches): ?>
+      <div class="card" style="border-left:3px solid var(--gold)">
+        <div class="card-title" style="color:var(--gold)">&#9888; Yarım Kalan Toplu Batchler</div>
+        <?php foreach ($stuck_batches as $b):
+          $pct     = $b['total'] > 0 ? round($b['done'] / $b['total'] * 100) : 0;
+          $pending = $b['total'] - $b['done'] - ($b['failed'] ?? 0);
+          $bid     = htmlspecialchars($b['id'] ?? '');
+        ?>
+        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?></span>
+            <span style="font-size:12px;color:var(--muted)"><?= $b['ok'] ?? 0 ?> &#10003; &middot; <?= $b['failed'] ?? 0 ?> hata &middot; <?= max(0,$pending) ?> bekliyor</span>
+          </div>
+          <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin-bottom:10px">
+            <div style="background:var(--gold);height:100%;width:<?= $pct ?>%"></div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <?php if ($pending > 0): ?>
+            <button class="btn btn-primary btn-sm" onclick="tlsResumeBatch('<?= $bid ?>',this)">&#9654; Kaldigi Yerden Devam Et</button>
+            <?php endif; ?>
+            <?php if (($b['failed'] ?? 0) > 0): ?>
+            <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="tlsRetryErrors('<?= $bid ?>',this)">&#8634; <?= $b['failed'] ?> hatayi tekrar dene</button>
+            <?php endif; ?>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <script>
+      var _tlsPanelBase = (function(){ var p=window.location.pathname; return p.substring(0,p.lastIndexOf('/')+1); })();
+      async function tlsResumeBatch(id,btn) {
+        btn.disabled=true; btn.textContent='Baslatiliyor...';
+        await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=resume'}).catch(()=>{});
+        fetch(_tlsPanelBase+'api/batch-worker.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id}).catch(()=>{});
+        btn.textContent='Worker basladi!'; btn.style.background='var(--green)';
+      }
+      async function tlsRetryErrors(id,btn) {
+        btn.disabled=true; btn.textContent='Kuyruğa aliniyor...';
+        await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=retry_errors'}).catch(()=>{});
+        fetch(_tlsPanelBase+'api/batch-worker.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id}).catch(()=>{});
+        btn.textContent='Hataları yeniden deneniyor!'; btn.style.color='var(--green)';
+      }
+      </script>
+      <?php endif; ?>
+
       <div class="card">
         <div class="card-title">Kategori Kuyruğu</div>
         <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
