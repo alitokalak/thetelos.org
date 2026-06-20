@@ -409,7 +409,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           $bid     = htmlspecialchars($b['id'] ?? '');
           $when    = !empty($b['created_at']) ? date('d.m.Y H:i', (int)$b['created_at']) : '';
           ob_start(); ?>
-        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px" data-batch-card="<?= $bid ?>">
+        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?> <span style="color:#555;font-weight:400;font-size:11px"><?= $when ?></span></span>
             <span style="font-size:12px;color:var(--muted)"><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
@@ -453,16 +453,56 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           fetch(_tlsPanelBase+'api/batch-worker.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id}).catch(()=>{});
         }
       }
+
+      /* ── Nöbetçi (watchdog) ──────────────────────────────────────────
+       * Panel açıkken batch'i izler. Hiçbir kitap "processing" değilken
+       * hâlâ "pending" iş varsa (= worker'lar ölmüş demektir), worker'ları
+       * otomatik yeniden ateşler. Kitaplar aktif işlenirken (processing>0)
+       * dokunmaz, yani gereksiz worker üretmez. Sunucu tarafı self-chaining
+       * çalışsa bile bu, sekme açık olduğu sürece ekstra güvenlik sağlar. */
+      var _tlsWatchTimers = {};
+      function _tlsWatch(id) {
+        if (_tlsWatchTimers[id]) return;
+        var stalls = 0;
+        _tlsWatchTimers[id] = setInterval(async function () {
+          try {
+            var r = await fetch(_tlsPanelBase+'api/batch-status.php?batch_id='+encodeURIComponent(id));
+            var j = await r.json();
+            if (!j.ok || !j.batch) return;
+            var st = j.batch.status || '';
+            if (st === 'cancelled' || st === 'paused') { clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id]; return; }
+            var books = j.batch.books || [], pending = 0, processing = 0;
+            for (var i = 0; i < books.length; i++) {
+              if (books[i].status === 'pending') pending++;
+              else if (books[i].status === 'processing') processing++;
+            }
+            if (pending === 0 && processing === 0) { clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id]; return; }
+            // İş var ama hiçbiri işlenmiyor → worker'lar ölmüş. 2 turluk (~50sn) doğrulama sonrası ateşle.
+            if (pending > 0 && processing === 0) {
+              stalls++;
+              if (stalls >= 2) { _tlsFireWorkers(id, 3); stalls = 0; }
+            } else {
+              stalls = 0;
+            }
+          } catch (e) {}
+        }, 25000);
+      }
+      // Sayfa açılışında bekleyen işi olan batch'leri otomatik izlemeye al.
+      document.querySelectorAll('[data-batch-card]').forEach(function (c) {
+        if (parseInt(c.getAttribute('data-pending') || '0', 10) > 0) _tlsWatch(c.getAttribute('data-batch-card'));
+      });
       async function tlsResumeBatch(id,btn) {
         btn.disabled=true; btn.textContent='Baslatiliyor...';
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=resume'}).catch(()=>{});
         _tlsFireWorkers(id, 3);
+        _tlsWatch(id);
         btn.textContent='✓ 3 worker basladi! (arka planda devam ediyor)'; btn.style.background='var(--green)';
       }
       async function tlsRetryErrors(id,btn) {
         btn.disabled=true; btn.textContent='Kuyruğa aliniyor...';
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=retry_errors'}).catch(()=>{});
         _tlsFireWorkers(id, 3);
+        _tlsWatch(id);
         btn.textContent='✓ 3 worker yeniden deneniyor! (arka planda)'; btn.style.color='var(--green)';
       }
       async function tlsDeleteBatch(id,btn) {
