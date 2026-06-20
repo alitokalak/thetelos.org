@@ -13,7 +13,7 @@ $batch_id = preg_replace('/[^a-z0-9_.]/', '', trim($_POST['batch_id'] ?? ''));
 $action   = trim($_POST['action'] ?? '');
 if (!$batch_id) { echo json_encode(['ok'=>false,'error'=>'batch_id gerekli']); exit; }
 
-$map = ['pause'=>'paused', 'resume'=>'running', 'cancel'=>'cancelled'];
+$map = ['pause'=>'paused', 'resume'=>'running', 'cancel'=>'cancelled', 'retry_errors'=>'running'];
 if (!isset($map[$action])) { echo json_encode(['ok'=>false,'error'=>'Geçersiz action']); exit; }
 
 $batch_file = dirname(__DIR__) . '/jobs/' . $batch_id . '.json';
@@ -27,6 +27,28 @@ $batch = json_decode($raw, true);
 if (!$batch) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok'=>false,'error'=>'Batch okunamadı']); exit; }
 
 $batch['status'] = $map[$action];
+
+/* retry_errors: hata alan kitapları pending'e çek, yeniden işlensin. */
+if ($action === 'retry_errors') {
+    $retried = 0;
+    foreach ($batch['books'] as $i => $b) {
+        if (($b['status'] ?? '') === 'error' && empty($b['post_id'])) {
+            $batch['books'][$i]['status'] = 'pending';
+            unset($batch['books'][$i]['error'], $batch['books'][$i]['processing_since']);
+            $retried++;
+        }
+    }
+    // done/ok/failed sayaçlarını yeniden hesapla
+    $done = $ok = $failed = 0;
+    foreach ($batch['books'] as $b) {
+        if (in_array($b['status'], ['done','error'])) $done++;
+        if ($b['status'] === 'done')  $ok++;
+        if ($b['status'] === 'error') $failed++;
+    }
+    $batch['done']   = $done;
+    $batch['ok']     = $ok;
+    $batch['failed'] = $failed;
+}
 
 /* Resume sırasında orphan "processing" kitapları pending'e sıfırla.
    Durdur→Devam Et yapıldığında önceki worker ölmüş demektir; 15 dk timeout

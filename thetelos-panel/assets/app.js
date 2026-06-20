@@ -1286,6 +1286,13 @@ async function resumeBatch(id) {
   loadQueueList();
 }
 
+async function retryBatchErrors(id) {
+  await postData(API('batch-control.php'), { batch_id: id, action: 'retry_errors' }).catch(() => {});
+  await postData(API('batch-worker.php'), { batch_id: id }, 10000).catch(() => {});
+  notify('queue-create-notif', '✓ Hatalı kitaplar kuyruğa alındı, worker başlatıldı.', 'ok');
+  loadQueueList();
+}
+
 async function loadQueueList() {
   const body = document.getElementById('queue-list-body');
   if (!body) return;
@@ -1301,6 +1308,7 @@ async function loadQueueList() {
           ⚠ Yarım Kalan Toplu Batchler
         </div>
         ${incomplete.map(b => {
+          const pending = b.total - b.done;
           const pct = Math.round(b.done / b.total * 100);
           return `<div class="card" style="margin-bottom:8px;padding:12px;border-left:3px solid var(--gold)">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
@@ -1308,13 +1316,14 @@ async function loadQueueList() {
                 <strong>${b.type === 'analysis' ? 'Derin Analiz' : 'Özet'}</strong>
                 <span style="color:var(--muted);font-size:12px;margin-left:8px">${new Date(b.created_at*1000).toLocaleString('tr-TR')}</span>
               </div>
-              <span style="font-size:12px;color:var(--muted)">${b.done}/${b.total} · %${pct}</span>
+              <span style="font-size:12px;color:var(--muted)">${b.ok} ✓ · ${b.failed} hata · ${pending} bekliyor</span>
             </div>
             <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin:8px 0">
               <div style="background:var(--gold);height:100%;width:${pct}%"></div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-primary btn-sm" onclick="resumeBatch('${b.id}')">▶ Worker'ı Yeniden Başlat</button>
+              ${pending > b.failed ? `<button class="btn btn-primary btn-sm" onclick="resumeBatch('${b.id}')">▶ Kaldığı Yerden Devam Et</button>` : ''}
+              ${b.failed > 0 ? `<button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="retryBatchErrors('${b.id}')">↺ ${b.failed} hatayı tekrar dene</button>` : ''}
             </div>
           </div>`;
         }).join('')}
