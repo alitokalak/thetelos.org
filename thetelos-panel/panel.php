@@ -367,9 +367,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
       <?php
       $jobs_dir = __DIR__ . '/jobs';
+      if (!is_dir($jobs_dir)) $jobs_dir = dirname(__DIR__) . '/jobs';
       $stuck_batches = [];
       if (is_dir($jobs_dir)) {
-          foreach (glob("$jobs_dir/batch_*.json") as $f) {
+          foreach ((glob("$jobs_dir/batch_*.json") ?: []) as $f) {
               $d = json_decode(file_get_contents($f), true);
               if (!$d) continue;
               $st = $d['status'] ?? '';
@@ -378,7 +379,12 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               $stuck_batches[] = $d;
           }
       }
-      if ($stuck_batches): ?>
+      $batch_files_count = count(glob("$jobs_dir/batch_*.json") ?: []);
+      ?>
+      <div style="font-size:11px;color:#555;margin-bottom:8px;padding:6px 10px;background:#111;border-radius:4px">
+        panel v3 &middot; jobs: <?= htmlspecialchars($jobs_dir) ?> &middot; <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; batch dosyasi: <?= $batch_files_count ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
+      </div>
+      <?php if ($stuck_batches): ?>
       <div class="card" style="border-left:3px solid var(--gold)">
         <div class="card-title" style="color:var(--gold)">&#9888; Yarım Kalan Toplu Batchler</div>
         <?php foreach ($stuck_batches as $b):
