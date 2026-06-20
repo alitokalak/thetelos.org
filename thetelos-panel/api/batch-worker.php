@@ -98,12 +98,14 @@ function bw_spawn_successor($batch_id) {
     $url    = $scheme . '://' . $host . $path;
     $ch = curl_init($url);
     curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => http_build_query(['batch_id' => $batch_id, '_itok' => $token]),
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 2,   // bağlanır bağlanmaz bırak; yeni worker arka planda sürer
-        CURLOPT_NOSIGNAL       => 1,
-        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_POST            => true,
+        CURLOPT_POSTFIELDS      => http_build_query(['batch_id' => $batch_id, '_itok' => $token]),
+        CURLOPT_RETURNTRANSFER  => true,
+        CURLOPT_CONNECTTIMEOUT  => 8,    // bağlantı için 8 sn (paylaşımlı host loopback)
+        CURLOPT_TIMEOUT         => 10,   // bağlantı kurulunca hemen bırak; yeni worker arka planda sürer
+        CURLOPT_NOSIGNAL        => 1,
+        CURLOPT_SSL_VERIFYPEER  => false,
+        CURLOPT_SSL_VERIFYHOST  => 0,
     ]);
     curl_exec($ch);
     curl_close($ch);
