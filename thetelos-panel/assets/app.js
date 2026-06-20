@@ -581,6 +581,14 @@ let uploadedFiles = [];
 let batchSettings = {};          // son batch ayarları (retry için)
 let batchStatusBooks = [];       // son pollBatchStatus'tan gelen kitap listesi
 
+/* batchId'yi localStorage'a yaz / oku — sayfa yenilenince kaybolmasın */
+function saveBatchId(id) {
+  try { if (id) localStorage.setItem('tls_batchId', id); else localStorage.removeItem('tls_batchId'); } catch(e) {}
+}
+function loadBatchId() {
+  try { return localStorage.getItem('tls_batchId') || null; } catch(e) { return null; }
+}
+
 const uploadZone = document.getElementById('upload-zone');
 const fileInput  = document.getElementById('bulk-file');
 
@@ -716,6 +724,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   }
 
   batchId      = res.batch_id;
+  saveBatchId(batchId);
   batchRunning = true;
   batchPaused  = false;
   batchSettings = { type, post_status: status, max_tokens: tokens, api_provider: activeProvider, parts, workerCount };
@@ -749,6 +758,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
 
   // Tamamlandı
   batchRunning = false;
+  saveBatchId(null);
   document.getElementById('btn-batch-pause').style.display = 'none';
   document.getElementById('batch-status-badge').textContent = 'Tamamlandı';
   document.getElementById('batch-status-badge').className = 'badge badge-green';
@@ -1269,16 +1279,56 @@ document.getElementById('btn-builder-clear')?.addEventListener('click', () => {
 /* ══ OTOMATİK KUYRUK ════════════════════════════════════════════ */
 
 
+async function resumeBatch(id) {
+  await postData(API('batch-control.php'), { batch_id: id, action: 'resume' }).catch(() => {});
+  await postData(API('batch-worker.php'), { batch_id: id }, 10000).catch(() => {});
+  notify('queue-create-notif', '✓ Worker yeniden başlatıldı. Toplu Batch sekmesinden izleyebilirsin.', 'ok');
+  loadQueueList();
+}
+
 async function loadQueueList() {
   const body = document.getElementById('queue-list-body');
   if (!body) return;
+
+  /* ── Yarım kalan toplu batchler ── */
+  let incompleteBatchHtml = '';
+  try {
+    const bl = await postData(API('batch-list.php'), {});
+    const incomplete = (bl.batches || []).filter(b => b.status !== 'done' && b.total > 0 && b.done < b.total);
+    if (incomplete.length) {
+      incompleteBatchHtml = `<div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:600;color:var(--gold);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em">
+          ⚠ Yarım Kalan Toplu Batchler
+        </div>
+        ${incomplete.map(b => {
+          const pct = Math.round(b.done / b.total * 100);
+          return `<div class="card" style="margin-bottom:8px;padding:12px;border-left:3px solid var(--gold)">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+              <div>
+                <strong>${b.type === 'analysis' ? 'Derin Analiz' : 'Özet'}</strong>
+                <span style="color:var(--muted);font-size:12px;margin-left:8px">${new Date(b.created_at*1000).toLocaleString('tr-TR')}</span>
+              </div>
+              <span style="font-size:12px;color:var(--muted)">${b.done}/${b.total} · %${pct}</span>
+            </div>
+            <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin:8px 0">
+              <div style="background:var(--gold);height:100%;width:${pct}%"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-primary btn-sm" onclick="resumeBatch('${b.id}')">▶ Worker'ı Yeniden Başlat</button>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }
+  } catch(e) {}
+
   try {
     const res = await postData(API('queue-list.php'), {});
     if (!res.ok || !res.queues.length) {
-      body.innerHTML = '<p style="color:var(--muted);font-size:13px">Henüz kuyruk yok.</p>';
+      body.innerHTML = incompleteBatchHtml + '<p style="color:var(--muted);font-size:13px">Henüz otomatik kuyruk yok.</p>';
       return;
     }
-    body.innerHTML = res.queues.map(q => {
+    body.innerHTML = incompleteBatchHtml + res.queues.map(q => {
       const pct   = q.total > 0 ? Math.round(q.done / q.total * 100) : 0;
       const color = q.status === 'done' ? 'var(--green)' : q.status === 'error' ? 'var(--red)' : 'var(--gold)';
       const statusLabel = {building:'Oluşturuluyor',running:'Çalışıyor',done:'Tamamlandı',error:'Hata',paused:'Duraklatıldı'}[q.status] || q.status;
