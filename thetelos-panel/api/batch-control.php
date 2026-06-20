@@ -27,6 +27,29 @@ $batch = json_decode($raw, true);
 if (!$batch) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok'=>false,'error'=>'Batch okunamadı']); exit; }
 
 $batch['status'] = $map[$action];
+
+/* Resume sırasında orphan "processing" kitapları pending'e sıfırla.
+   Durdur→Devam Et yapıldığında önceki worker ölmüş demektir; 15 dk timeout
+   beklemeye gerek yok, hemen kurtarabiliriz. post_id'si olanlar WP'ye
+   zaten yazıldığından onlara dokunma. */
+if ($action === 'resume') {
+    foreach ($batch['books'] as $i => $b) {
+        if (($b['status'] ?? '') === 'processing' && empty($b['post_id'])) {
+            $batch['books'][$i]['status'] = 'pending';
+            unset($batch['books'][$i]['processing_since']);
+        }
+    }
+    // done/ok/failed sayaçlarını yeniden hesapla
+    $done = $ok = $failed = 0;
+    foreach ($batch['books'] as $b) {
+        if (in_array($b['status'], ['done','error'])) $done++;
+        if ($b['status'] === 'done')  $ok++;
+        if ($b['status'] === 'error') $failed++;
+    }
+    $batch['done']   = $done;
+    $batch['ok']     = $ok;
+    $batch['failed'] = $failed;
+}
 fseek($fp, 0); ftruncate($fp, 0);
 fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
 fflush($fp);
