@@ -1968,6 +1968,34 @@ add_action( 'template_redirect', function () {
 
 // Author arşiv linklerini (?author=N enumeration dâhil) tamamen devre dışı bırak.
 add_filter( 'author_link', function () { return home_url( '/' ); } );
+
+// -----------------------------------------------------
+// Tüm RSS feed'lerini kapat (etiket/yazar/kategori/yorum/ana feed).
+// WordPress her terim, yazar ve yazı için otomatik /feed/ üretir; bunlar
+// arama sonucu olmaz ama Search Console'u "taranıp dizine eklenmedi" çöpüyle
+// doldurur ve tarama bütçesini boşa harcar. Her feed isteği, ilgili asıl
+// içeriğe (terim arşivi / yazı / anasayfa) 301 ile yönlendirilir.
+// -----------------------------------------------------
+add_action( 'template_redirect', function () {
+    if ( ! is_feed() ) return;
+    $url = home_url( '/' );
+    $obj = get_queried_object();
+    if ( $obj instanceof WP_Term ) {
+        $link = get_term_link( $obj );
+        if ( ! is_wp_error( $link ) ) $url = $link;
+    } elseif ( $obj instanceof WP_Post ) {
+        $url = get_permalink( $obj );
+    } elseif ( $obj instanceof WP_Post_Type ) {
+        $link = get_post_type_archive_link( $obj->name );
+        if ( $link ) $url = $link;
+    }
+    wp_safe_redirect( $url, 301 );
+    exit;
+}, 0 );
+
+// Feed <link> etiketlerini <head>'den kaldır — Google feed'leri hiç keşfetmesin.
+remove_action( 'wp_head', 'feed_links',       2 );
+remove_action( 'wp_head', 'feed_links_extra', 3 );
 // -----------------------------------------------------
 // Add social fields to user profile
 // -----------------------------------------------------
