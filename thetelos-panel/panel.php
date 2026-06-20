@@ -366,46 +366,61 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     <div id="mode-queue" style="display:none">
 
       <?php
+      /* ── Yarım kalan toplu batchler — kitapların GERÇEK durumlarını say ── */
       $jobs_dir = __DIR__ . '/jobs';
       if (!is_dir($jobs_dir)) $jobs_dir = dirname(__DIR__) . '/jobs';
+      $all_files = glob("$jobs_dir/batch_*.json") ?: [];
       $stuck_batches = [];
-      if (is_dir($jobs_dir)) {
-          foreach ((glob("$jobs_dir/batch_*.json") ?: []) as $f) {
-              $d = json_decode(file_get_contents($f), true);
-              if (!$d) continue;
-              $st = $d['status'] ?? '';
-              if ($st === 'done' || $st === 'cancelled') continue;
-              if (($d['total'] ?? 0) <= 0 || ($d['done'] ?? 0) >= ($d['total'] ?? 0)) continue;
-              $stuck_batches[] = $d;
+      foreach ($all_files as $f) {
+          $d = json_decode(file_get_contents($f), true);
+          if (!$d || empty($d['books']) || !is_array($d['books'])) continue;
+          $cnt = ['pending'=>0,'processing'=>0,'error'=>0,'done'=>0];
+          foreach ($d['books'] as $bk) {
+              $s = $bk['status'] ?? 'pending';
+              if (!isset($cnt[$s])) $cnt[$s] = 0;
+              $cnt[$s]++;
           }
+          $remaining = $cnt['pending'] + $cnt['processing'];
+          // Bekleyen/işlenen veya hatalı kitabı olan her batch'i göster (status fark etmez)
+          if ($remaining <= 0 && $cnt['error'] <= 0) continue;
+          $d['_cnt']       = $cnt;
+          $d['_remaining'] = $remaining;
+          $d['_total']     = count($d['books']);
+          $stuck_batches[] = $d;
       }
-      $batch_files_count = count(glob("$jobs_dir/batch_*.json") ?: []);
+      // En yeni önce
+      usort($stuck_batches, fn($a,$b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
       ?>
       <div style="font-size:11px;color:#555;margin-bottom:8px;padding:6px 10px;background:#111;border-radius:4px">
-        panel v3 &middot; jobs: <?= htmlspecialchars($jobs_dir) ?> &middot; <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; batch dosyasi: <?= $batch_files_count ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
+        panel v4 &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
       </div>
       <?php if ($stuck_batches): ?>
       <div class="card" style="border-left:3px solid var(--gold)">
         <div class="card-title" style="color:var(--gold)">&#9888; Yarım Kalan Toplu Batchler</div>
         <?php foreach ($stuck_batches as $b):
-          $pct     = $b['total'] > 0 ? round($b['done'] / $b['total'] * 100) : 0;
-          $pending = $b['total'] - $b['done'] - ($b['failed'] ?? 0);
+          $tot     = $b['_total'];
+          $cnt     = $b['_cnt'];
+          $pending = $b['_remaining'];
+          $errs    = $cnt['error'];
+          $okc     = $cnt['done'];
+          $pct     = $tot > 0 ? round($okc / $tot * 100) : 0;
           $bid     = htmlspecialchars($b['id'] ?? '');
+          $when    = !empty($b['created_at']) ? date('d.m.Y H:i', (int)$b['created_at']) : '';
         ?>
         <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?></span>
-            <span style="font-size:12px;color:var(--muted)"><?= $b['ok'] ?? 0 ?> &#10003; &middot; <?= $b['failed'] ?? 0 ?> hata &middot; <?= max(0,$pending) ?> bekliyor</span>
+            <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?> <span style="color:#555;font-weight:400;font-size:11px"><?= $when ?></span></span>
+            <span style="font-size:12px;color:var(--muted)"><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
           </div>
           <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin-bottom:10px">
             <div style="background:var(--gold);height:100%;width:<?= $pct ?>%"></div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <?php if ($pending > 0): ?>
-            <button class="btn btn-primary btn-sm" onclick="tlsResumeBatch('<?= $bid ?>',this)">&#9654; Kaldigi Yerden Devam Et</button>
+            <button class="btn btn-primary btn-sm" onclick="tlsResumeBatch('<?= $bid ?>',this)">&#9654; Kaldigi Yerden Devam Et (<?= $pending ?>)</button>
             <?php endif; ?>
-            <?php if (($b['failed'] ?? 0) > 0): ?>
-            <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="tlsRetryErrors('<?= $bid ?>',this)">&#8634; <?= $b['failed'] ?> hatayi tekrar dene</button>
+            <?php if ($errs > 0): ?>
+            <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="tlsRetryErrors('<?= $bid ?>',this)">&#8634; <?= $errs ?> hatayi tekrar dene</button>
             <?php endif; ?>
           </div>
         </div>
