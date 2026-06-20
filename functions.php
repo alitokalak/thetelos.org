@@ -1950,6 +1950,24 @@ function mediumish_archive_title() {
 }
 
 add_filter( 'get_the_archive_title', 'mediumish_archive_title' );
+
+// -----------------------------------------------------
+// WP çekirdeğinin otomatik oluşturduğu KULLANICI yazar arşivlerini kapat.
+// /author/{nicename}/ — tüm kitaplar tek API hesabıyla yayınlandığından bu
+// arşiv, kategori/anasayfa içeriğini tekrarlayan değersiz (duplicate) sayfalar
+// üretir ve Google'ın tarama bütçesini boşa harcar.
+// DİKKAT: Bu yalnız WP kullanıcı arşivi olan is_author() içindir.
+// /authors/ (çoğul) bir WordPress SAYFASI'dır (is_page) — buraya takılmaz.
+// -----------------------------------------------------
+add_action( 'template_redirect', function () {
+    if ( is_author() ) {
+        wp_safe_redirect( home_url( '/' ), 301 );
+        exit;
+    }
+}, 0 );
+
+// Author arşiv linklerini (?author=N enumeration dâhil) tamamen devre dışı bırak.
+add_filter( 'author_link', function () { return home_url( '/' ); } );
 // -----------------------------------------------------
 // Add social fields to user profile
 // -----------------------------------------------------
