@@ -280,12 +280,6 @@ get_header();
                 <div class="tla-stat-label">Summaries</div>
             </div>
             <?php endif; ?>
-            <?php if ( $stat_analyses ) : ?>
-            <div>
-                <div class="tla-stat-num"><?php echo number_format( $stat_analyses ); ?></div>
-                <div class="tla-stat-label">Deep Analyses</div>
-            </div>
-            <?php endif; ?>
             <?php if ( $stat_authors ) : ?>
             <div>
                 <div class="tla-stat-num"><?php echo number_format( $stat_authors ); ?></div>
