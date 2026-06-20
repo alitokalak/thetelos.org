@@ -392,7 +392,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       usort($stuck_batches, fn($a,$b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
       ?>
       <div style="font-size:11px;color:#555;margin-bottom:8px;padding:6px 10px;background:#111;border-radius:4px">
-        panel v4 &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
+        panel v5 &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
       </div>
       <?php if ($stuck_batches): ?>
       <div class="card" style="border-left:3px solid var(--gold)">
@@ -428,17 +428,22 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       </div>
       <script>
       var _tlsPanelBase = (function(){ var p=window.location.pathname; return p.substring(0,p.lastIndexOf('/')+1); })();
+      function _tlsFireWorkers(id, count) {
+        for (var i = 0; i < count; i++) {
+          fetch(_tlsPanelBase+'api/batch-worker.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id}).catch(()=>{});
+        }
+      }
       async function tlsResumeBatch(id,btn) {
         btn.disabled=true; btn.textContent='Baslatiliyor...';
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=resume'}).catch(()=>{});
-        fetch(_tlsPanelBase+'api/batch-worker.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id}).catch(()=>{});
-        btn.textContent='Worker basladi!'; btn.style.background='var(--green)';
+        _tlsFireWorkers(id, 3);
+        btn.textContent='✓ 3 worker basladi! (arka planda devam ediyor)'; btn.style.background='var(--green)';
       }
       async function tlsRetryErrors(id,btn) {
         btn.disabled=true; btn.textContent='Kuyruğa aliniyor...';
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=retry_errors'}).catch(()=>{});
-        fetch(_tlsPanelBase+'api/batch-worker.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id}).catch(()=>{});
-        btn.textContent='Hataları yeniden deneniyor!'; btn.style.color='var(--green)';
+        _tlsFireWorkers(id, 3);
+        btn.textContent='✓ 3 worker yeniden deneniyor! (arka planda)'; btn.style.color='var(--green)';
       }
       </script>
       <?php endif; ?>
