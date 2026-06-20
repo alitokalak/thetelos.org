@@ -47,6 +47,7 @@ jobs:
           protocol:         ftp
           local-dir:        ./thetelos-panel/
           server-dir:       ${{ secrets.FTP_PANEL_PATH }}
+          state-name:       .ftp-deploy-sync-state-panel.json
           exclude: |
             **/.git*
             **/config.php
