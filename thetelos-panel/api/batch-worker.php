@@ -42,6 +42,10 @@ $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
 /* ── Sıradaki bekleyen kitabı atomik klaym et ─────────────────────
  * Dönüş: [idx, batch]  | [-1,null]=bitti  [-2,null]=kilitli(tekrar dene)
  *        [-3,null]=iptal  [-4,null]=duraklatıldı
+ *
+ * STALE RECOVERY: Kilit içinde çalışır — ölen worker'ların "processing" bıraktığı
+ * kitapları 5 dakika sonra otomatik olarak "pending"e döndürür. Ayrı crash recovery
+ * IIFE'ye gerek kalmaz; her claim denemesinde güvenlik şeridi çalışır.
  */
 function bw_claim_next($batch_file) {
     $fp = fopen($batch_file, 'r+');
@@ -58,6 +62,25 @@ function bw_claim_next($batch_file) {
     if ($st === 'cancelled') { flock($fp, LOCK_UN); fclose($fp); return [-3, null]; }
     if ($st === 'paused')    { flock($fp, LOCK_UN); fclose($fp); return [-4, null]; }
 
+    // Bayat (ölü worker'dan kalan) processing kitapları kurtar (5 dakika eşiği)
+    $stale   = 5 * 60;
+    $now     = time();
+    $changed = false;
+    foreach ($batch['books'] as $i => $b) {
+        if (($b['status'] ?? '') !== 'processing') continue;
+        if (!empty($b['post_id'])) {
+            // WP post oluşturulmuş ama status güncellenmemiş → done say
+            $batch['books'][$i]['status'] = 'done';
+            $changed = true;
+        } else {
+            $since = (int)($b['processing_since'] ?? 0);
+            if ($since > 0 && ($now - $since) > $stale) {
+                $batch['books'][$i]['status'] = 'pending';
+                $changed = true;
+            }
+        }
+    }
+
     $idx = -1;
     foreach ($batch['books'] as $i => $b) {
         if (($b['status'] ?? '') === 'pending') { $idx = $i; break; }
@@ -70,8 +93,12 @@ function bw_claim_next($batch_file) {
         }
         if (!$has_processing && $st !== 'done') {
             $batch['status'] = 'done';
+            $changed = true;
+        }
+        if ($changed) {
             fseek($fp, 0); ftruncate($fp, 0);
             fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
+            fflush($fp);
         }
         flock($fp, LOCK_UN); fclose($fp);
         return [-1, null];
@@ -101,8 +128,8 @@ function bw_spawn_successor($batch_id) {
         CURLOPT_POST            => true,
         CURLOPT_POSTFIELDS      => http_build_query(['batch_id' => $batch_id, '_itok' => $token]),
         CURLOPT_RETURNTRANSFER  => true,
-        CURLOPT_CONNECTTIMEOUT  => 8,    // bağlantı için 8 sn (paylaşımlı host loopback)
-        CURLOPT_TIMEOUT         => 10,   // bağlantı kurulunca hemen bırak; yeni worker arka planda sürer
+        CURLOPT_CONNECTTIMEOUT  => 5,
+        CURLOPT_TIMEOUT         => 5,    // sadece isteği gönder; yeni worker arka planda sürer
         CURLOPT_NOSIGNAL        => 1,
         CURLOPT_SSL_VERIFYPEER  => false,
         CURLOPT_SSL_VERIFYHOST  => 0,
@@ -573,46 +600,6 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         'cover_set' => $cover_set,
     ]);
 }
-
-/* ════════════════ CRASH RECOVERY ════════════════
- * Önceki çalışmada ÇÖKEN worker'ın "processing" bıraktığı kitapları kurtar.
- * DİKKAT: Hâlâ canlı bir worker'ın işlediği kitabı sıfırlamamak için yalnızca
- * processing_since 15 dakikadan eski olanlara dokun. Taze "processing" kitaplar
- * başka bir worker tarafından aktif üretiliyordur — onları sıfırlamak içeriğin
- * iki kez üretilip iki kez yayınlanmasına (TEKRAR) yol açar.
- */
-(function() use ($batch_file) {
-    $stale = 15 * 60; // 15 dk — bir kitabın üretim süresinden uzun
-    $now   = time();
-    $fp = fopen($batch_file, 'r+');
-    if (!flock($fp, LOCK_EX)) { fclose($fp); return; }
-    fseek($fp, 0); $raw = ''; while (!feof($fp)) $raw .= fread($fp, 65536);
-    $b = json_decode($raw, true);
-    if (!$b) { flock($fp, LOCK_UN); fclose($fp); return; }
-    $changed = false;
-    foreach ($b['books'] as $i => $book) {
-        if (($book['status'] ?? '') === 'processing') {
-            if (!empty($book['post_id'])) {
-                // WP post zaten oluşturulmuş — done say, tekrar işleme
-                $b['books'][$i]['status'] = 'done';
-                $changed = true;
-            } else {
-                // Sadece BAYAT (eski) processing kitapları kurtar; taze olanlara dokunma
-                $since = (int)($book['processing_since'] ?? 0);
-                if ($since > 0 && ($now - $since) > $stale) {
-                    $b['books'][$i]['status'] = 'pending';
-                    $changed = true;
-                }
-            }
-        }
-    }
-    if ($changed) {
-        fseek($fp, 0); ftruncate($fp, 0);
-        fwrite($fp, json_encode($b, JSON_UNESCAPED_UNICODE));
-        fflush($fp);
-    }
-    flock($fp, LOCK_UN); fclose($fp);
-})();
 
 /* ════════════════ DRAIN DÖNGÜSÜ ════════════════
  * Tüm bekleyen kitaplar bitene (ya da iptal/duraklat) kadar işle.

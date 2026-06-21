@@ -477,10 +477,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               else if (books[i].status === 'processing') processing++;
             }
             if (pending === 0 && processing === 0) { clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id]; return; }
-            // İş var ama hiçbiri işlenmiyor → worker'lar ölmüş. 2 turluk (~50sn) doğrulama sonrası ateşle.
+            // İş var ama hiçbiri işlenmiyor → worker'lar ölmüş. 1 turluk (~25sn) doğrulama sonrası ateşle.
             if (pending > 0 && processing === 0) {
               stalls++;
-              if (stalls >= 2) { _tlsFireWorkers(id, 3); stalls = 0; }
+              if (stalls >= 1) { _tlsFireWorkers(id, 3); stalls = 0; }
             } else {
               stalls = 0;
             }
