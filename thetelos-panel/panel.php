@@ -408,8 +408,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           $pct     = $tot > 0 ? round($okc / $tot * 100) : 0;
           $bid     = htmlspecialchars($b['id'] ?? '');
           $when    = !empty($b['created_at']) ? date('d.m.Y H:i', (int)$b['created_at']) : '';
+          $wkrs    = max(1, min(5, (int)($b['workers'] ?? 1)));
           ob_start(); ?>
-        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>">
+        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>" data-workers="<?= $wkrs ?>">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?> <span style="color:#555;font-weight:400;font-size:11px"><?= $when ?></span></span>
             <span style="font-size:12px;color:var(--muted)" data-bc-meta><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
@@ -495,19 +496,25 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       document.querySelectorAll('[data-batch-card]').forEach(function (c) {
         if (parseInt(c.getAttribute('data-pending') || '0', 10) > 0) _tlsWatch(c.getAttribute('data-batch-card'));
       });
+      function _tlsCardWorkers(id) {
+        var c = document.querySelector('[data-batch-card="'+id+'"]');
+        return Math.max(1, Math.min(5, parseInt((c && c.getAttribute('data-workers')) || '1', 10)));
+      }
       async function tlsResumeBatch(id,btn) {
         btn.disabled=true; btn.textContent='Baslatiliyor...';
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=resume'}).catch(()=>{});
-        _tlsFireWorkers(id, 3);
+        var w = _tlsCardWorkers(id);
+        _tlsFireWorkers(id, w);
         _tlsWatch(id);
-        btn.textContent='✓ 3 worker basladi! (arka planda devam ediyor)'; btn.style.background='var(--green)';
+        btn.textContent='✓ '+w+' worker basladi! (arka planda devam ediyor)'; btn.style.background='var(--green)';
       }
       async function tlsRetryErrors(id,btn) {
         btn.disabled=true; btn.textContent='Kuyruğa aliniyor...';
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=retry_errors'}).catch(()=>{});
-        _tlsFireWorkers(id, 3);
+        var w = _tlsCardWorkers(id);
+        _tlsFireWorkers(id, w);
         _tlsWatch(id);
-        btn.textContent='✓ 3 worker yeniden deneniyor! (arka planda)'; btn.style.color='var(--green)';
+        btn.textContent='✓ '+w+' worker yeniden deneniyor! (arka planda)'; btn.style.color='var(--green)';
       }
       async function tlsDeleteBatch(id,btn) {
         if (!confirm('Bu batch kaydı silinsin mi? (Yayınlanmış içerikler silinmez, sadece bu işlem kaydı silinir)')) return;

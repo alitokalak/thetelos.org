@@ -14,7 +14,7 @@ $jobs_dir = dirname(__DIR__) . '/jobs';
 $active   = [];
 
 if (is_dir($jobs_dir)) {
-    $stale_thr = 5 * 60; // bw_claim_next ile aynı eşik (5 dk)
+    $stale_thr = 6 * 60; // bw_claim_next ile aynı eşik (6 dk)
     $now = time();
     foreach (glob("$jobs_dir/*.json") as $file) {
         $b = json_decode(file_get_contents($file), true);
@@ -48,6 +48,7 @@ if (is_dir($jobs_dir)) {
                 'books_processing' => $processing,   // canlı worker'ların elindeki kitap
                 'books_stale'      => $stale,        // 5dk+ takılı = bayat, kurtarılması gerekiyor
                 'books_pending'    => $pending,
+                'workers'          => max(1, min(5, (int)($b['workers'] ?? 1))),
             ];
         }
     }

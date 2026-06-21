@@ -166,7 +166,6 @@ if (_initMode && modeTitles[_initMode]) switchMode(_initMode);
  *      basmana gerek yok; panel açık olduğu sürece kendi kendini onarır.
  */
 var _reviveCooldown = {};   // batch_id -> en erken tekrar ateşleme zamanı (ms)
-var _jobLastDone    = {};   // batch_id -> {done, ts} — ilerleme takibi
 function _fireWorkersFor(id, count) {
   for (var i = 0; i < count; i++) {
     postData(API('batch-worker.php'), { batch_id: id }).catch(function(){});
@@ -197,30 +196,24 @@ async function checkActiveJobs() {
     }).join('');
 
     // ── Küresel nöbetçi: takılan batch'leri otomatik canlandır ─────────────
-    // Koşul 1: Bayat (5dk+ takılı) kitap var → worker'lar ölmüş, hemen ateşle.
-    // Koşul 2: 90sn'dir done sayısı değişmedi ve hâlâ iş var → ilerleme yok, ateşle.
+    // Batch'in SEÇİLEN worker sayısına saygı duyar: yalnızca canlı worker
+    // sayısı hedefin altındaysa eksik kadarını ateşler. "1 worker (güvenli)"
+    // seçtiysen asla 1'den fazla paralel worker açılmaz.
     const now = Date.now();
     for (const j of res.active) {
       if (j.status === 'paused') continue;
-      const pend  = j.books_pending    || 0;
-      const stale = j.books_stale      || 0;
-      const proc  = j.books_processing || 0;
+      const pend    = j.books_pending    || 0;
+      const stale   = j.books_stale      || 0;
+      const proc    = j.books_processing || 0;   // gerçekten canlı (bayatlar hariç)
+      const desired = Math.max(1, Math.min(5, j.workers || 1));
 
-      // İlerleme takibi
-      if (!_jobLastDone[j.id] || _jobLastDone[j.id].done !== j.done) {
-        _jobLastDone[j.id] = { done: j.done, ts: now };
-      }
-      const noProgressMs = now - _jobLastDone[j.id].ts;
-
-      const needRevive =
-        (pend > 0 && proc === 0 && stale === 0)      // pending var, hiç worker yok
-        || (stale > 0)                                // bayat kitap var = worker ölmüş
-        || (noProgressMs > 90000 && (pend + stale + proc) > 0 && j.done < j.total); // 90sn ilerleme yok
-
-      if (needRevive) {
+      // Canlandırma yalnızca: hâlâ iş var (pending/bayat) VE canlı worker eksik.
+      const workLeft = pend > 0 || stale > 0;
+      const toFire   = desired - proc;
+      if (workLeft && toFire > 0) {
         if (!_reviveCooldown[j.id] || now >= _reviveCooldown[j.id]) {
-          _fireWorkersFor(j.id, 3);
-          _reviveCooldown[j.id] = now + 30000;  // 30sn cooldown
+          _fireWorkersFor(j.id, toFire);
+          _reviveCooldown[j.id] = now + 30000;  // 30sn cooldown — çift ateşlemeyi önle
         }
       }
     }
@@ -763,6 +756,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
     max_tokens:   tokens,
     api_provider: activeProvider,
     parts:        parts,
+    workers:      workerCount,
   });
 
   if (!res.ok) {
@@ -905,12 +899,13 @@ function fireDrainWorkers(count) {
   }
 }
 
-/* ── Durum sorgulama döngüsü (watchdog'lu) ─────────────
- * İlerlemeyi gösterir; uzun süre ilerleme yoksa worker'ları yeniden ateşler.
+/* ── Durum sorgulama döngüsü ───────────────────────────
+ * Yalnızca ilerlemeyi gösterir. Takılan worker'ları yeniden ateşleme işini
+ * artık küresel nöbetçi (checkActiveJobs) üstleniyor — o, batch'in SEÇİLEN
+ * worker sayısına saygı duyar ve fazladan worker açmaz. Burada ayrıca ateşlemek
+ * "1 worker (güvenli)" seçimini bozardı, bu yüzden kaldırıldı.
  */
 async function pollBatchUntilDone() {
-  let lastDone = -1;
-  let lastChange = Date.now();
   let pollFailures = 0;
 
   while (batchRunning) {
@@ -926,17 +921,7 @@ async function pollBatchUntilDone() {
       if (sw && pollFailures >= 2) sw.textContent = 'Sunucu meşgul, durum sorgusu bekleniyor...';
     }
 
-    if (b) {
-      if (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total) break;
-
-      // Watchdog: ilerleme değiştiyse zamanlayıcıyı sıfırla
-      if (b.done !== lastDone) { lastDone = b.done; lastChange = Date.now(); }
-      // 90 sn'dir ilerleme yok ve hâlâ bekleyen var → worker'ları yeniden ateşle
-      else if (!batchPaused && (Date.now() - lastChange) > 90000 && b.done < b.total) {
-        fireDrainWorkers(batchWorkerCount);
-        lastChange = Date.now();
-      }
-    }
+    if (b && (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total)) break;
 
     await delay(4000);
   }

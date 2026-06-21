@@ -62,8 +62,10 @@ function bw_claim_next($batch_file) {
     if ($st === 'cancelled') { flock($fp, LOCK_UN); fclose($fp); return [-3, null]; }
     if ($st === 'paused')    { flock($fp, LOCK_UN); fclose($fp); return [-4, null]; }
 
-    // Bayat (ölü worker'dan kalan) processing kitapları kurtar (5 dakika eşiği)
-    $stale   = 5 * 60;
+    // Bayat (ölü worker'dan kalan) processing kitapları kurtar.
+    // 6 dk: tek parçanın 280sn timeout'undan güvenle uzun; heartbeat sayesinde
+    // canlı (uzun) üretim asla yanlışlıkla sıfırlanmaz, sadece ölü worker'lar kurtarılır.
+    $stale   = 6 * 60;
     $now     = time();
     $changed = false;
     foreach ($batch['books'] as $i => $b) {
@@ -152,6 +154,25 @@ function bw_wp($url, $method, $body, $auth, $timeout = 30) {
     $c = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
     return [json_decode($r, true), $c];
+}
+
+/* Heartbeat — işlenmekte olan kitabın processing_since damgasını tazeler.
+   Böylece uzun (çok parçalı) üretim sürerken kitap "bayat" sanılmaz. */
+function bw_heartbeat($batch_file, $idx) {
+    $fp = fopen($batch_file, 'r+');
+    if (!$fp) return;
+    if (!flock($fp, LOCK_EX)) { fclose($fp); return; }
+    fseek($fp, 0);
+    $raw = '';
+    while (!feof($fp)) $raw .= fread($fp, 65536);
+    $batch = json_decode($raw, true);
+    if ($batch && isset($batch['books'][$idx]) && ($batch['books'][$idx]['status'] ?? '') === 'processing') {
+        $batch['books'][$idx]['processing_since'] = time();
+        fseek($fp, 0); ftruncate($fp, 0);
+        fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
+        fflush($fp);
+    }
+    flock($fp, LOCK_UN); fclose($fp);
 }
 
 function bw_update_book($batch_file, $idx, $updates) {
@@ -355,6 +376,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $part_words  = (int)ceil($target_words / max(1, $parts));
 
     for ($k = 1; $k <= $parts; $k++) {
+        // Heartbeat: bu kitap hâlâ canlı üretiliyor — processing_since'i tazele ki
+        // yavaş (çok parçalı) üretim "bayat/ölü worker" sanılıp sıfırlanmasın.
+        bw_heartbeat($batch_file, $idx);
+
         $headings = [];
         if ($accumulated !== '') {
             preg_match_all('/^### (.+)$/m', $accumulated, $mh);
@@ -401,6 +426,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>$gen_error ?: 'Boş içerik']);
         return;
     }
+
+    // Üretim bitti, yayın aşaması başlıyor — heartbeat'i bir kez daha tazele.
+    bw_heartbeat($batch_file, $idx);
 
     // ── Meta (excerpt, meta_desc, kategoriler, alıntılar) ──────────
     $cats_list = 'philosophy,philosophy_of_religion,ethics,metaphysics,epistemology,logic,aesthetics,political_philosophy,history_of_philosophy,religion,theology,systematic_theology,christian_theology,islamic_theology,christianity,islam,judaism,buddhism,hinduism,atheism,agnosticism,history,world_history,ancient_history,medieval_history,modern_history,military_history,cultural_history,biography,autobiography,memoir,literature,classic_literature,world_literature,poetry,drama,novel,fiction,historical_fiction,science_fiction,dystopian_fiction,fantasy,horror,mystery,detective_fiction,romance,adventure,psychology,cognitive_psychology,social_psychology,psychoanalysis,sociology,anthropology,politics,political_science,economics,microeconomics,macroeconomics,education,law,international_law,science,physics,astronomy,chemistry,mathematics,statistics,biology,evolution,genetics,medicine,neuroscience,public_health,technology,computers,artificial_intelligence,programming,data_science,art,art_history,music,music_history,architecture,design,photography,film,theatre,geography,travel,culture,mythology,folklore,children,young_adult,self_help,personal_development,business,management,marketing,entrepreneurship';
