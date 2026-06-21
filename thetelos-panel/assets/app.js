@@ -166,6 +166,7 @@ if (_initMode && modeTitles[_initMode]) switchMode(_initMode);
  *      basmana gerek yok; panel açık olduğu sürece kendi kendini onarır.
  */
 var _reviveCooldown = {};   // batch_id -> en erken tekrar ateşleme zamanı (ms)
+var _jobLastDone    = {};   // batch_id -> {done, ts} — ilerleme takibi
 function _fireWorkersFor(id, count) {
   for (var i = 0; i < count; i++) {
     postData(API('batch-worker.php'), { batch_id: id }).catch(function(){});
@@ -182,25 +183,44 @@ async function checkActiveJobs() {
     }
     bar.style.display = '';
     list.innerHTML = res.active.map(j => {
-      const pct = j.total > 0 ? Math.round(j.done / j.total * 100) : 0;
-      const pend = (j.books_pending != null ? j.books_pending : (j.total - j.done));
+      const pct   = j.total > 0 ? Math.round(j.done / j.total * 100) : 0;
+      const pend  = j.books_pending  || 0;
+      const stale = j.books_stale    || 0;
+      const proc  = j.books_processing || 0;
+      const staleTag = stale > 0 ? ` · <span style="color:#cc6b00">${stale} takılı</span>` : '';
       return `<div style="margin-top:4px">
-        <strong>${j.category || j.id}</strong> — ${j.done}/${j.total} işlendi · ${j.ok} başarılı · ${j.failed} hata · ${j.books_processing} aktif · ${pend} bekliyor
+        <strong>${j.category || j.id}</strong> — ${j.done}/${j.total} işlendi · ${j.ok} başarılı · ${j.failed} hata · ${proc} aktif · ${pend} bekliyor${staleTag}
         <div style="background:#2a2a2a;border-radius:3px;height:4px;margin-top:3px;overflow:hidden">
           <div style="background:var(--gold);height:100%;width:${pct}%;transition:width 0.5s"></div>
         </div>
       </div>`;
     }).join('');
 
-    // ── Nöbetçi: takılan batch'leri otomatik canlandır ──
+    // ── Küresel nöbetçi: takılan batch'leri otomatik canlandır ─────────────
+    // Koşul 1: Bayat (5dk+ takılı) kitap var → worker'lar ölmüş, hemen ateşle.
+    // Koşul 2: 90sn'dir done sayısı değişmedi ve hâlâ iş var → ilerleme yok, ateşle.
     const now = Date.now();
     for (const j of res.active) {
-      const pend = (j.books_pending != null ? j.books_pending : (j.total - j.done));
-      // Bekleyen iş var ama hiçbiri işlenmiyorsa worker'lar ölmüş demektir.
-      if (pend > 0 && j.books_processing === 0 && j.status !== 'paused') {
+      if (j.status === 'paused') continue;
+      const pend  = j.books_pending    || 0;
+      const stale = j.books_stale      || 0;
+      const proc  = j.books_processing || 0;
+
+      // İlerleme takibi
+      if (!_jobLastDone[j.id] || _jobLastDone[j.id].done !== j.done) {
+        _jobLastDone[j.id] = { done: j.done, ts: now };
+      }
+      const noProgressMs = now - _jobLastDone[j.id].ts;
+
+      const needRevive =
+        (pend > 0 && proc === 0 && stale === 0)      // pending var, hiç worker yok
+        || (stale > 0)                                // bayat kitap var = worker ölmüş
+        || (noProgressMs > 90000 && (pend + stale + proc) > 0 && j.done < j.total); // 90sn ilerleme yok
+
+      if (needRevive) {
         if (!_reviveCooldown[j.id] || now >= _reviveCooldown[j.id]) {
           _fireWorkersFor(j.id, 3);
-          _reviveCooldown[j.id] = now + 30000;   // 30sn cooldown — çift ateşlemeyi önle
+          _reviveCooldown[j.id] = now + 30000;  // 30sn cooldown
         }
       }
     }
