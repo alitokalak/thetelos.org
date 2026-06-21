@@ -156,7 +156,21 @@ document.querySelectorAll('.tab-top-btn').forEach(btn => {
 const _initMode = new URLSearchParams(location.search).get('mode');
 if (_initMode && modeTitles[_initMode]) switchMode(_initMode);
 
-/* ── Aktif işlem göstergesi (her 10sn kontrol) ── */
+/* ── Aktif işlem göstergesi + KÜRESEL NÖBETÇİ (her 10sn) ──────────────
+ * Bu fonksiyon HER panel sayfasında (hangi sekme açık olursa olsun) çalışır.
+ * İki iş yapar:
+ *   1) Aktif batch'lerin canlı ilerlemesini üstteki çubukta gösterir —
+ *      tarayıcıyı kapatıp açsan bile yeniden açtığında kaldığı yeri görürsün.
+ *   2) Takılan batch'leri (bekleyen iş var ama hiçbiri işlenmiyor = worker'lar
+ *      ölmüş) OTOMATİK olarak yeniden başlatır. Artık elle "Devam Et"e
+ *      basmana gerek yok; panel açık olduğu sürece kendi kendini onarır.
+ */
+var _reviveCooldown = {};   // batch_id -> en erken tekrar ateşleme zamanı (ms)
+function _fireWorkersFor(id, count) {
+  for (var i = 0; i < count; i++) {
+    postData(API('batch-worker.php'), { batch_id: id }).catch(function(){});
+  }
+}
 async function checkActiveJobs() {
   try {
     const res = await postData(API('server-status.php'), {});
@@ -169,13 +183,27 @@ async function checkActiveJobs() {
     bar.style.display = '';
     list.innerHTML = res.active.map(j => {
       const pct = j.total > 0 ? Math.round(j.done / j.total * 100) : 0;
+      const pend = (j.books_pending != null ? j.books_pending : (j.total - j.done));
       return `<div style="margin-top:4px">
-        <strong>${j.category || j.id}</strong> — ${j.done}/${j.total} işlendi · ${j.ok} başarılı · ${j.failed} hata · ${j.books_processing} aktif
+        <strong>${j.category || j.id}</strong> — ${j.done}/${j.total} işlendi · ${j.ok} başarılı · ${j.failed} hata · ${j.books_processing} aktif · ${pend} bekliyor
         <div style="background:#2a2a2a;border-radius:3px;height:4px;margin-top:3px;overflow:hidden">
           <div style="background:var(--gold);height:100%;width:${pct}%;transition:width 0.5s"></div>
         </div>
       </div>`;
     }).join('');
+
+    // ── Nöbetçi: takılan batch'leri otomatik canlandır ──
+    const now = Date.now();
+    for (const j of res.active) {
+      const pend = (j.books_pending != null ? j.books_pending : (j.total - j.done));
+      // Bekleyen iş var ama hiçbiri işlenmiyorsa worker'lar ölmüş demektir.
+      if (pend > 0 && j.books_processing === 0 && j.status !== 'paused') {
+        if (!_reviveCooldown[j.id] || now >= _reviveCooldown[j.id]) {
+          _fireWorkersFor(j.id, 3);
+          _reviveCooldown[j.id] = now + 30000;   // 30sn cooldown — çift ateşlemeyi önle
+        }
+      }
+    }
   } catch(_) {}
 }
 async function stopAllJobs() {

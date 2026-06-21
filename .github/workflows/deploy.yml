@@ -53,4 +53,7 @@ jobs:
             **/config.php
             **/error_log
             **/*.log
+            jobs/*.json
+            jobs/**
             **/jobs/*.json
+            **/jobs/**

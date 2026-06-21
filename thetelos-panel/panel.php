@@ -412,10 +412,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
             <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?> <span style="color:#555;font-weight:400;font-size:11px"><?= $when ?></span></span>
-            <span style="font-size:12px;color:var(--muted)"><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
+            <span style="font-size:12px;color:var(--muted)" data-bc-meta><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
           </div>
           <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin-bottom:10px">
-            <div style="background:var(--gold);height:100%;width:<?= $pct ?>%"></div>
+            <div style="background:var(--gold);height:100%;width:<?= $pct ?>%" data-bc-bar></div>
           </div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <?php if ($pending > 0): ?>
@@ -454,40 +454,44 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         }
       }
 
-      /* ── Nöbetçi (watchdog) ──────────────────────────────────────────
-       * Panel açıkken batch'i izler. Hiçbir kitap "processing" değilken
-       * hâlâ "pending" iş varsa (= worker'lar ölmüş demektir), worker'ları
-       * otomatik yeniden ateşler. Kitaplar aktif işlenirken (processing>0)
-       * dokunmaz, yani gereksiz worker üretmez. Sunucu tarafı self-chaining
-       * çalışsa bile bu, sekme açık olduğu sürece ekstra güvenlik sağlar. */
+      /* ── Kart canlı ilerleme güncelleyici ────────────────────────────
+       * Bu liste sayfa yenilense / tarayıcı kapanıp açılsa bile sunucudaki
+       * gerçek durumu gösterir. _tlsWatch yalnızca KARTI canlı günceller;
+       * takılan batch'leri yeniden ATEŞLEME işini küresel nöbetçi
+       * (app.js → checkActiveJobs, her 10sn, her sekmede) üstlenir. */
       var _tlsWatchTimers = {};
       function _tlsWatch(id) {
         if (_tlsWatchTimers[id]) return;
-        var stalls = 0;
         _tlsWatchTimers[id] = setInterval(async function () {
           try {
             var r = await fetch(_tlsPanelBase+'api/batch-status.php?batch_id='+encodeURIComponent(id));
             var j = await r.json();
             if (!j.ok || !j.batch) return;
-            var st = j.batch.status || '';
-            if (st === 'cancelled' || st === 'paused') { clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id]; return; }
-            var books = j.batch.books || [], pending = 0, processing = 0;
+            var b = j.batch, st = b.status || '', books = b.books || [];
+            var pending = 0, processing = 0, done = 0, errs = 0;
             for (var i = 0; i < books.length; i++) {
-              if (books[i].status === 'pending') pending++;
-              else if (books[i].status === 'processing') processing++;
+              var s = books[i].status;
+              if (s === 'pending') pending++;
+              else if (s === 'processing') processing++;
+              else if (s === 'done') done++;
+              else if (s === 'error') errs++;
             }
-            if (pending === 0 && processing === 0) { clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id]; return; }
-            // İş var ama hiçbiri işlenmiyor → worker'lar ölmüş. 1 turluk (~25sn) doğrulama sonrası ateşle.
-            if (pending > 0 && processing === 0) {
-              stalls++;
-              if (stalls >= 1) { _tlsFireWorkers(id, 3); stalls = 0; }
-            } else {
-              stalls = 0;
+            var tot = books.length;
+            var card = document.querySelector('[data-batch-card="'+id+'"]');
+            if (card) {
+              card.setAttribute('data-pending', pending);
+              var meta = card.querySelector('[data-bc-meta]');
+              if (meta) meta.innerHTML = done+' &#10003; &middot; '+errs+' hata &middot; '+(pending+processing)+' bekliyor / '+tot;
+              var bar = card.querySelector('[data-bc-bar]');
+              if (bar) bar.style.width = (tot>0 ? Math.round(done/tot*100) : 0)+'%';
+            }
+            if (st === 'cancelled' || (pending === 0 && processing === 0)) {
+              clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id];
             }
           } catch (e) {}
-        }, 25000);
+        }, 8000);
       }
-      // Sayfa açılışında bekleyen işi olan batch'leri otomatik izlemeye al.
+      // Sayfa açılışında bekleyen işi olan tüm batch kartlarını canlı izlemeye al.
       document.querySelectorAll('[data-batch-card]').forEach(function (c) {
         if (parseInt(c.getAttribute('data-pending') || '0', 10) > 0) _tlsWatch(c.getAttribute('data-batch-card'));
       });

@@ -18,12 +18,15 @@ if (is_dir($jobs_dir)) {
         $b = json_decode(file_get_contents($file), true);
         if (!$b) continue;
         $st = $b['status'] ?? '';
-        // Aktif sayılanlar: running veya içinde "processing" durumunda kitap olanlar
-        $processing = 0;
+        if ($st === 'cancelled' || $st === 'paused') continue;
+        // Aktif sayılanlar: bekleyen veya işlenen kitabı olan her batch
+        $processing = 0; $pending = 0;
         foreach ($b['books'] ?? [] as $bk) {
-            if (($bk['status'] ?? '') === 'processing') $processing++;
+            $bs = $bk['status'] ?? '';
+            if ($bs === 'processing') $processing++;
+            elseif ($bs === 'pending') $pending++;
         }
-        if ($st === 'running' || $processing > 0) {
+        if ($processing > 0 || $pending > 0) {
             $active[] = [
                 'id'               => $b['id'] ?? basename($file, '.json'),
                 'category'         => $b['category'] ?? '',
@@ -33,6 +36,7 @@ if (is_dir($jobs_dir)) {
                 'ok'               => (int)($b['ok'] ?? 0),
                 'failed'           => (int)($b['failed'] ?? 0),
                 'books_processing' => $processing,
+                'books_pending'    => $pending,
             ];
         }
     }
