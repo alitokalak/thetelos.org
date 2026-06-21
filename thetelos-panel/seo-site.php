@@ -114,6 +114,21 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <button class="btn btn-primary" id="btn-scan-tech">🔍 Teknik Analiz Yap</button>
       </div>
       <div id="result-tech"><div style="text-align:center;padding:40px;color:var(--muted)">Tara butonuna bas.</div></div>
+
+      <div class="tech-section" style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px">
+        <h3>👤 Yazarı Bağlanmamış Yazıları Onar</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Toplu üretimde bazı yazılar yazarına bağlanmadan kalmış olabilir (yazar sayfasında görünmezler).
+          Bu araç tüm yazıları tarar; yazarı eksik olanları başlıktaki “Kitap - Yazar” bilgisinden
+          ilgili yazara bağlar. Yazar terimi yoksa oluşturur.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-fix-authors-link">🔗 Yazarı Eksik Yazıları Tara &amp; Onar</button>
+          <span id="fix-authors-link-status" style="font-size:12px;color:var(--tls-gold)"></span>
+        </div>
+        <div class="progress-wrap" id="prog-authors-link" style="margin-top:12px"><div class="progress-inner" id="prog-authors-link-bar" style="width:0%"></div></div>
+        <div id="result-authors-link" style="margin-top:12px"></div>
+      </div>
     </div>
   </main>
 </div>
@@ -188,6 +203,69 @@ document.getElementById('btn-scan-tech').addEventListener('click', async () => {
   } finally {
     btn.disabled = false; btn.textContent = '🔍 Teknik Analiz Yap';
   }
+});
+
+// ── Yazarı bağlanmamış yazıları onar ─────────────────────
+document.getElementById('btn-fix-authors-link').addEventListener('click', async () => {
+  const btn    = document.getElementById('btn-fix-authors-link');
+  const status = document.getElementById('fix-authors-link-status');
+  const progW  = document.getElementById('prog-authors-link');
+  const progB  = document.getElementById('prog-authors-link-bar');
+  const out    = document.getElementById('result-authors-link');
+  btn.disabled = true; btn.textContent = 'Çalışıyor...';
+  progW.style.display = 'block'; progB.style.width = '0%';
+  out.innerHTML = '';
+
+  let totalScanned = 0, totalFixed = 0;
+  const fixedItems = [];
+
+  for (const type of ['posts', 'analysis']) {
+    let page = 1, totalPages = 1;
+    do {
+      status.textContent = `${type === 'posts' ? 'Özetler' : 'Analizler'} taranıyor — sayfa ${page}${totalPages>1?'/'+totalPages:''} · ${totalFixed} onarıldı`;
+      let data;
+      try {
+        const fd = new FormData();
+        fd.append('type', type); fd.append('page', page); fd.append('per_page', 20);
+        const res = await fetch(API('fix-post-authors.php'), { method:'POST', body: fd });
+        data = await res.json();
+      } catch (e) {
+        out.innerHTML += `<div style="color:#cc1818;padding:8px">Sayfa ${page} (${type}) hatası: ${e.message} — devam ediliyor</div>`;
+        page++;
+        continue;
+      }
+      if (!data.ok) {
+        out.innerHTML += `<div style="color:#cc1818;padding:8px">${type} sayfa ${page}: ${data.error || 'hata'}</div>`;
+        break;
+      }
+      totalScanned += data.scanned || 0;
+      totalFixed   += data.fixed   || 0;
+      (data.items || []).forEach(it => fixedItems.push(it));
+      totalPages = data.total_pages || page;
+      progB.style.width = Math.round(page / Math.max(totalPages,1) * 100) + '%';
+      if ((data.scanned || 0) === 0 && page >= totalPages) break;
+      page++;
+    } while (page <= totalPages);
+  }
+
+  progB.style.width = '100%';
+  status.textContent = `Bitti — ${totalScanned} yazı tarandı, ${totalFixed} yazı yazarına bağlandı.`;
+  btn.disabled = false; btn.textContent = '🔗 Yazarı Eksik Yazıları Tara & Onar';
+
+  if (!fixedItems.length) {
+    out.innerHTML = '<div style="padding:16px;color:#00ab6b">✓ Tüm yazılar zaten yazarına bağlı — onarılacak bir şey yok.</div>';
+    return;
+  }
+  let html = `<div style="margin-bottom:8px;font-size:13px;color:#00ab6b">✓ ${totalFixed} yazı onarıldı:</div>`;
+  html += '<table class="site-table"><thead><tr><th>Yazı</th><th>Bağlanan Yazar</th></tr></thead><tbody>';
+  fixedItems.forEach(it => {
+    html += `<tr>
+      <td class="name-cell"><a href="${it.link}" target="_blank">${escHtml(it.title)}</a></td>
+      <td>${escHtml(it.author)}${it.created ? ' <span class="badge badge-warn">yeni yazar</span>' : ''}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  out.innerHTML = html;
 });
 
 // ── Term tablosu render ──────────────────────────────────

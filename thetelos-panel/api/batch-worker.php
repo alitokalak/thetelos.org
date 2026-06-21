@@ -491,6 +491,20 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     [$slug_posts, $slug_code] = bw_wp("$wp_api/$ep?slug=" . urlencode($expected_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
     if ($slug_code === 200 && !empty($slug_posts[0]['id'])) {
         $pid = $slug_posts[0]['id'];
+        // Mevcut post yazara bağlı değilse bağla — aksi halde yazar sayfasında görünmez.
+        $existing_authors = $slug_posts[0]['authors'] ?? [];
+        if ($author && (!is_array($existing_authors) || count($existing_authors) === 0)) {
+            [$terms] = bw_wp("$wp_api/authors?search=" . urlencode($author) . '&per_page=10', 'GET', [], $auth);
+            $tid = null;
+            foreach ($terms ?? [] as $t) {
+                if (strtolower($t['name']) === strtolower($author)) { $tid = $t['id']; break; }
+            }
+            if (!$tid) {
+                [$nt] = bw_wp("$wp_api/authors", 'POST', ['name'=>$author], $auth);
+                $tid = $nt['id'] ?? null;
+            }
+            if ($tid) bw_wp("$wp_api/$ep/$pid", 'POST', ['authors'=>[$tid]], $auth);
+        }
         bw_update_book($batch_file, $idx, [
             'status'   => 'done',
             'post_id'  => $pid,
