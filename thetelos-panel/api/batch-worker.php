@@ -678,7 +678,12 @@ while (true) {
     if ($idx === -3) { $reason = 'cancelled'; break; }      // iptal
     if ($idx === -4) { $reason = 'paused';    break; }      // duraklat
     if ($idx === -2) { usleep(400000); continue; }          // başka worker kilitledi
-    set_time_limit(660);                                    // her kitap için süreyi sıfırla
+    // Her kitap için süreyi sıfırla. Limit parça sayısına göre ölçeklenir:
+    // her parça için DeepSeek timeout'u 280sn olabilir; 660sn sabiti 3-4 parçalı
+    // kitaplarda yetmiyor ve PHP süreci kitabı ortada öldürüyordu → kitap
+    // "processing"de asılı kalıyordu. parts*300 + 240sn (meta/bio/kapak/WP payı).
+    $bk_parts = max(1, min(4, (int)($batch['parts'] ?? 2)));
+    set_time_limit($bk_parts * 300 + 240);
     bw_process_book($batch_file, $idx, $batch, $auth, $wp_api);
     $processed++;
     if ($processed >= 5000)            { $reason = 'limit';  break; }   // güvenlik üst sınırı
