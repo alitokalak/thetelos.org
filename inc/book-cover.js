@@ -15,20 +15,14 @@
     t.style.fontSize = '';
     t.style.lineHeight = '';
 
-    var size = parseFloat(getComputedStyle(t).fontSize) || 14;
+    var size = parseFloat(getComputedStyle(t).fontSize) || 12;
     var min = 7;
     var guard = 0;
 
-    // Başlık kapağın en fazla bu kadarını kaplasın — uzun başlıklar kenara
-    // dayanıp sıkışmasın, etrafında nefes payı kalsın.
-    var maxTitleH = cover.clientHeight * 0.52;
-
-    // Kutuyu aşıyorsa (kesiliyorsa) VEYA başlık üst sınırı geçiyorsa küçült
-    while (
-      (cover.scrollHeight > cover.clientHeight + 1 || t.offsetHeight > maxTitleH) &&
-      size > min &&
-      guard < 100
-    ) {
+    // .cover-title flex:1 + overflow:hidden olduğundan metin KENDİ kutusu içinde
+    // kesilir; kapak (cover) taşmaz. Bu yüzden başlığın kendi yüksekliğine bakarız:
+    // metnin gerçek boyu (scrollHeight) görünür kutuyu (clientHeight) aşıyorsa küçült.
+    while (t.scrollHeight > t.clientHeight + 1 && size > min && guard < 80) {
       size -= 0.5;
       guard++;
       t.style.fontSize = size + 'px';

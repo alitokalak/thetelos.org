@@ -26,7 +26,7 @@ add_action( 'wp_enqueue_scripts', function() {
         'thetelos-book-cover-fit',
         get_template_directory_uri() . '/inc/book-cover.js',
         [],
-        '1.3',
+        '1.4',
         true
     );
 });
@@ -184,12 +184,14 @@ function thetelos_render_book_cover( $post_id ) {
     $title  = preg_replace('/\s+[-–—]\s+\S.*$/u', '', $title);
     $title  = trim( $title );
 
-    // Title uzunluğuna göre başlangıç font size — JS auto-fit ayrıca sığdırır
+    // Title uzunluğuna göre başlangıç font size — JS auto-fit ayrıca sığdırır.
+    // Uzun başlıklar sıkışmasın diye kademeler küçük tutuldu.
     $title_len = mb_strlen( $title );
-    if ( $title_len <= 30 )      $cover_title_size = '17px';
-    elseif ( $title_len <= 50 )  $cover_title_size = '14px';
-    elseif ( $title_len <= 70 )  $cover_title_size = '12px';
-    else                         $cover_title_size = '10px';
+    if ( $title_len <= 25 )      $cover_title_size = '16px';
+    elseif ( $title_len <= 40 )  $cover_title_size = '13px';
+    elseif ( $title_len <= 55 )  $cover_title_size = '11px';
+    elseif ( $title_len <= 70 )  $cover_title_size = '9px';
+    else                         $cover_title_size = '8px';
 
     ob_start();
     ?>
