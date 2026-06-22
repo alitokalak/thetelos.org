@@ -21,7 +21,7 @@
 
     // Başlık kapağın en fazla bu kadarını kaplasın — uzun başlıklar kenara
     // dayanıp sıkışmasın, etrafında nefes payı kalsın.
-    var maxTitleH = cover.clientHeight * 0.60;
+    var maxTitleH = cover.clientHeight * 0.52;
 
     // Kutuyu aşıyorsa (kesiliyorsa) VEYA başlık üst sınırı geçiyorsa küçült
     while (
