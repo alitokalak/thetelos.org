@@ -202,6 +202,9 @@ async function checkActiveJobs() {
     const now = Date.now();
     for (const j of res.active) {
       if (j.status === 'paused') continue;
+      // Bu batch'i pollBatchUntilDone aktif yönetiyorsa, çift ateşlemeyi önlemek
+      // için küresel nöbetçi karışmaz (yalnız ilerlemeyi gösterir).
+      if (batchRunning && j.id === batchId) continue;
       const pend    = j.books_pending    || 0;
       const stale   = j.books_stale      || 0;
       const proc    = j.books_processing || 0;   // gerçekten canlı (bayatlar hariç)
@@ -907,6 +910,7 @@ function fireDrainWorkers(count) {
  */
 async function pollBatchUntilDone() {
   let pollFailures = 0;
+  let lastFire = 0;   // son worker ateşleme zamanı (ms)
 
   while (batchRunning) {
     if (batchPaused) { await delay(2000); continue; }
@@ -922,6 +926,39 @@ async function pollBatchUntilDone() {
     }
 
     if (b && (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total)) break;
+
+    /* ── TARAYICI = GÜVENİLİR MOTOR ──────────────────────────────────
+     * Sunucu tarafı halef-zincirleme (loopback cURL) paylaşımlı hostingde
+     * engellenebiliyor → worker'lar 1 kitap sonra ölüp kalıyordu. Burada
+     * tarayıcı CANLI worker sayısını sayar; SEÇİLEN sayının altına düşmüşse
+     * eksik kadarını yeniden ateşler. Loopback'e bağımlı değil.
+     *
+     * Canlı = processing VE processing_since taze (<6dk). Ölü worker'ın
+     * kitabı bayatlar (>6dk), canlı sayılmaz → hemen yenisi ateşlenir.
+     * Böylece "1 worker seçtim 3 açıldı" da olmaz: tam SEÇİLEN sayı korunur. */
+    if (b && b.books) {
+      const nowMs = Date.now();
+      const nowSec = Math.floor(nowMs / 1000);
+      let liveProc = 0, pending = 0;
+      for (const bk of b.books) {
+        if (bk.status === 'pending') pending++;
+        else if (bk.status === 'processing') {
+          const fresh = bk.processing_since > 0 && (nowSec - bk.processing_since) < 6 * 60;
+          if (fresh) liveProc++;
+        }
+      }
+      const desired = Math.max(1, Math.min(5, batchWorkerCount || 1));
+      const toFire  = desired - liveProc;
+      // İş kaldıysa ve canlı worker eksikse, 45sn cooldown ile eksik kadarını ateşle
+      if (pending > 0 && toFire > 0 && (nowMs - lastFire) > 45000) {
+        for (let i = 0; i < toFire; i++) {
+          postData(API('batch-worker.php'), { batch_id: batchId }).catch(() => {});
+        }
+        lastFire = nowMs;
+        const sw = document.getElementById('batch-worker-status');
+        if (sw) sw.textContent = `${desired} worker korunuyor (${toFire} yeniden başlatıldı) — ilerleme aşağıda.`;
+      }
+    }
 
     await delay(4000);
   }
@@ -950,14 +987,26 @@ function renderBatchStatus(b) {
 
   batchStatusBooks = b.books;
 
+  const nowSec = Math.floor(Date.now() / 1000);
   b.books.forEach((bk, i) => {
     const st  = bk.status;
-    const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?'working':'gray';
+    // İşlenen kitap için geçen süre — "takıldı mı yavaş mı" ayrımı için
+    let procLabel = 'İşleniyor...';
+    let procCls = 'working';
+    if (st === 'processing' && bk.processing_since > 0) {
+      const el = nowSec - bk.processing_since;
+      const m = Math.floor(el / 60), s = el % 60;
+      const t = m > 0 ? `${m}dk` : `${s}sn`;
+      // 7dk+ ve henüz post yoksa = worker ölmüş olabilir (turuncu uyarı)
+      if (el > 7 * 60 && !bk.post_id) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
+      else { procLabel = `İşleniyor... ${t}`; }
+    }
+    const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
     const lbl = st==='done'
       ? `✓ <a href="${bk.edit_url}" target="_blank">#${bk.post_id}</a>${bk.cover_set?' 🖼':''}`
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
-      : st==='processing'? 'İşleniyor...'
+      : st==='processing'? procLabel
       : 'Bekliyor';
     setRowStatus(i, cls, lbl, st==='error' ? bk : null);
   });
