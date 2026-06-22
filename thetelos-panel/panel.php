@@ -431,28 +431,41 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <?php
           /* ── Kitap listesi — açılır, canlı güncellenen ──────────────── */
           $st_map = [
-            'done'       => ['#1f7a3d', '&#10003;'],
-            'processing' => ['#b8860b', '&#9210;'],
-            'error'      => ['#a33',    '&#10005;'],
-            'pending'    => ['#444',    '&#8230;'],
+            'done'       => ['#1f7a3d', '✓'],
+            'processing' => ['#b8860b', '⚙'],
+            'stale'      => ['#cc4400', '!'],
+            'error'      => ['#a33',    '✕'],
+            'pending'    => ['#333',    '…'],
           ];
+          $stale_secs = 7 * 60; // 7 dk = stale eşiği (heartbeat 6dk, +1dk tolerans)
+          $now_ts = time();
           ?>
           <details style="margin-top:8px" open>
             <summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:4px 0">&#9656; Kitap listesi (<?= $tot ?>)</summary>
             <div data-bc-list style="max-height:340px;overflow-y:auto;margin-top:6px;border:1px solid #2a2a2a;border-radius:4px">
               <?php foreach ($b['books'] as $i => $bk):
-                $bs   = $bk['status'] ?? 'pending';
-                [$bg, $ico] = $st_map[$bs] ?? $st_map['pending'];
+                $bs    = $bk['status'] ?? 'pending';
+                $psince= (int)($bk['processing_since'] ?? 0);
+                $elapsed = $psince > 0 ? ($now_ts - $psince) : 0;
+                // 7 dk+ processing ve post_id yoksa stale göster
+                $effective = ($bs === 'processing' && empty($bk['post_id']) && $elapsed > $stale_secs) ? 'stale' : $bs;
+                [$bg, $ico] = $st_map[$effective] ?? $st_map['pending'];
                 $bt   = htmlspecialchars(trim($bk['book_title'] ?? ''));
                 $bauth= htmlspecialchars(trim($bk['author_name'] ?? ''));
                 $purl = htmlspecialchars($bk['post_url'] ?? '');
+                $time_label = '';
+                if ($bs === 'processing' && $elapsed > 0) {
+                  $m = floor($elapsed / 60); $s = $elapsed % 60;
+                  $time_label = $m > 0 ? " {$m}dk" : " {$s}sn";
+                }
               ?>
-              <div data-bc-row="<?= $i ?>" style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid #222">
+              <div data-bc-row="<?= $i ?>" data-bc-since="<?= $psince ?>" style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid #222">
                 <span data-bc-ico style="flex:0 0 18px;text-align:center;color:#fff;background:<?= $bg ?>;border-radius:3px;font-size:11px;line-height:18px"><?= $ico ?></span>
                 <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                   <?php if ($purl): ?><a href="<?= $purl ?>" target="_blank" style="color:#ddd;text-decoration:none"><?= $bt ?></a><?php else: ?><span style="color:#ddd"><?= $bt ?></span><?php endif; ?>
                   <?php if ($bauth): ?><span style="color:#666"> — <?= $bauth ?></span><?php endif; ?>
                 </span>
+                <?php if ($time_label): ?><span data-bc-timer style="flex:0 0 auto;color:<?= $effective==='stale'?'#cc4400':'#888' ?>;font-size:11px"><?= $time_label ?></span><?php endif; ?>
               </div>
               <?php endforeach; ?>
             </div>
@@ -491,6 +504,15 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
        * takılan batch'leri yeniden ATEŞLEME işini küresel nöbetçi
        * (app.js → checkActiveJobs, her 10sn, her sekmede) üstlenir. */
       var _tlsWatchTimers = {};
+      var _tlsStaleKick   = {};  // batch_id -> son stale kick zamanı (ms)
+      var _STALE_SECS = 7 * 60; // PHP tarafıyla aynı eşik
+
+      function _fmtElapsed(secs) {
+        if (secs <= 0) return '';
+        var m = Math.floor(secs / 60), s = secs % 60;
+        return m > 0 ? m+'dk' : s+'sn';
+      }
+
       function _tlsWatch(id) {
         if (_tlsWatchTimers[id]) return;
         _tlsWatchTimers[id] = setInterval(async function () {
@@ -500,36 +522,71 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             if (!j.ok || !j.batch) return;
             var b = j.batch, st = b.status || '', books = b.books || [];
             var pending = 0, processing = 0, done = 0, errs = 0;
+            var nowSec = Math.floor(Date.now() / 1000);
+            var hasStale = false;
+
             for (var i = 0; i < books.length; i++) {
               var s = books[i].status;
               if (s === 'pending') pending++;
               else if (s === 'processing') processing++;
               else if (s === 'done') done++;
               else if (s === 'error') errs++;
+              if (s === 'processing' && !books[i].post_id) {
+                var elapsed = books[i].processing_since > 0 ? (nowSec - books[i].processing_since) : 0;
+                if (elapsed > _STALE_SECS) hasStale = true;
+              }
             }
             var tot = books.length;
             var card = document.querySelector('[data-batch-card="'+id+'"]');
             if (card) {
-              card.setAttribute('data-pending', pending);
+              card.setAttribute('data-pending', pending + processing);
               var meta = card.querySelector('[data-bc-meta]');
               if (meta) meta.innerHTML = done+' &#10003; &middot; '+errs+' hata &middot; '+(pending+processing)+' bekliyor / '+tot;
               var bar = card.querySelector('[data-bc-bar]');
               if (bar) bar.style.width = (tot>0 ? Math.round(done/tot*100) : 0)+'%';
-              // Kitap listesindeki her satırın durum simgesini canlı güncelle
-              var stMap = {
-                done:       ['#1f7a3d','✓'],
-                processing: ['#b8860b','◪'],
-                error:      ['#a33','✕'],
-                pending:    ['#444','…']
-              };
+
+              // Her kitap satırını güncelle: renk, ikon, süre
               for (var k = 0; k < books.length; k++) {
+                var bk = books[k];
                 var row = card.querySelector('[data-bc-row="'+k+'"]');
                 if (!row) continue;
                 var ico = row.querySelector('[data-bc-ico]');
-                var m = stMap[books[k].status] || stMap.pending;
-                if (ico) { ico.style.background = m[0]; ico.textContent = m[1]; }
+                var tim = row.querySelector('[data-bc-timer]');
+                var isStale = (bk.status === 'processing' && !bk.post_id &&
+                               bk.processing_since > 0 && (nowSec - bk.processing_since) > _STALE_SECS);
+                var bg, symbol;
+                if      (bk.status === 'done')                    { bg='#1f7a3d'; symbol='✓'; }
+                else if (bk.status === 'error')                   { bg='#a33';    symbol='✕'; }
+                else if (isStale)                                  { bg='#cc4400'; symbol='!'; }
+                else if (bk.status === 'processing')              { bg='#b8860b'; symbol='⚙'; }
+                else                                               { bg='#333';    symbol='…'; }
+                if (ico) { ico.style.background = bg; ico.textContent = symbol; }
+                // Süre göstergesi (sadece processing için)
+                if (bk.status === 'processing' && bk.processing_since > 0) {
+                  var el = _fmtElapsed(nowSec - bk.processing_since);
+                  if (!tim) {
+                    tim = document.createElement('span');
+                    tim.setAttribute('data-bc-timer', '');
+                    tim.style.cssText = 'flex:0 0 auto;font-size:11px;margin-left:4px';
+                    row.appendChild(tim);
+                  }
+                  tim.textContent = el;
+                  tim.style.color = isStale ? '#cc4400' : '#888';
+                } else if (tim) {
+                  tim.textContent = '';
+                }
               }
             }
+
+            // Stale kitap varsa ve son kick 60sn+ geçtiyse otomatik worker ateşle
+            if (hasStale) {
+              var nowMs = Date.now();
+              if (!_tlsStaleKick[id] || nowMs >= _tlsStaleKick[id]) {
+                _tlsFireWorkers(id, _tlsCardWorkers(id));
+                _tlsStaleKick[id] = nowMs + 60000; // 60sn cooldown
+              }
+            }
+
             if (st === 'cancelled' || (pending === 0 && processing === 0)) {
               clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id];
             }
