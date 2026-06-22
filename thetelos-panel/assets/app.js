@@ -909,8 +909,9 @@ function fireDrainWorkers(count) {
  * "1 worker (güvenli)" seçimini bozardı, bu yüzden kaldırıldı.
  */
 async function pollBatchUntilDone() {
+  let lastDone = -1;
+  let lastChange = Date.now();
   let pollFailures = 0;
-  let lastFire = 0;   // son worker ateşleme zamanı (ms)
 
   while (batchRunning) {
     if (batchPaused) { await delay(2000); continue; }
@@ -925,42 +926,15 @@ async function pollBatchUntilDone() {
       if (sw && pollFailures >= 2) sw.textContent = 'Sunucu meşgul, durum sorgusu bekleniyor...';
     }
 
-    if (b && (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total)) break;
+    if (b) {
+      if (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total) break;
 
-    /* ── TARAYICI = GÜVENİLİR MOTOR ──────────────────────────────────
-     * Sunucu tarafı halef-zincirleme (loopback cURL) paylaşımlı hostingde
-     * engellenebiliyor → worker'lar 1 kitap sonra ölüp kalıyordu. Burada
-     * tarayıcı CANLI worker sayısını sayar; SEÇİLEN sayının altına düşmüşse
-     * eksik kadarını yeniden ateşler. Loopback'e bağımlı değil.
-     *
-     * Canlı = processing VE processing_since taze (<6dk). Ölü worker'ın
-     * kitabı bayatlar (>6dk), canlı sayılmaz → hemen yenisi ateşlenir.
-     * Böylece "1 worker seçtim 3 açıldı" da olmaz: tam SEÇİLEN sayı korunur. */
-    if (b && b.books) {
-      const nowMs = Date.now();
-      const nowSec = Math.floor(nowMs / 1000);
-      // Canlı worker eşiği: heartbeat yok → processing_since klaym anından.
-      // Gerçek kitap süresinden uzun olmalı (parça başına ~300sn + yayın payı).
-      const parts = Math.max(1, Math.min(4, b.parts || 2));
-      const deadThr = parts * 300 + 300;   // parts=2 → 15dk
-      let liveProc = 0, pending = 0;
-      for (const bk of b.books) {
-        if (bk.status === 'pending') pending++;
-        else if (bk.status === 'processing') {
-          const alive = bk.processing_since > 0 && (nowSec - bk.processing_since) < deadThr;
-          if (alive) liveProc++;
-        }
-      }
-      const desired = Math.max(1, Math.min(5, batchWorkerCount || 1));
-      const toFire  = desired - liveProc;
-      // İş kaldıysa ve canlı worker eksikse, 45sn cooldown ile eksik kadarını ateşle
-      if (pending > 0 && toFire > 0 && (nowMs - lastFire) > 45000) {
-        for (let i = 0; i < toFire; i++) {
-          postData(API('batch-worker.php'), { batch_id: batchId }).catch(() => {});
-        }
-        lastFire = nowMs;
-        const sw = document.getElementById('batch-worker-status');
-        if (sw) sw.textContent = `${desired} worker korunuyor (${toFire} yeniden başlatıldı) — ilerleme aşağıda.`;
+      // İlerleme değiştiyse zamanlayıcıyı sıfırla
+      if (b.done !== lastDone) { lastDone = b.done; lastChange = Date.now(); }
+      // 90 sn'dir ilerleme yok → worker'ları yeniden ateşle
+      else if (!batchPaused && (Date.now() - lastChange) > 90000 && b.done < b.total) {
+        fireDrainWorkers(batchWorkerCount);
+        lastChange = Date.now();
       }
     }
 
