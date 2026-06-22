@@ -51,7 +51,7 @@ $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
  * İki katmanlı canlılık sistemi:
  *
  * 1) PER-WORKER dosyası (.wk.{id}): worker başladığında oluşturulur,
- *    her kitap parçasında yenilenir, zincirlenince silinmez (7 dk sonra
+ *    her chunk'ta yenilenir, zincirlenince silinmez (180 sn sonra
  *    kendiliğinden bayatlar). server-status.php bu dosyaları sayarak kaç
  *    worker'ın canlı olduğunu öğrenir. Zincirleme sırasında (eski worker
  *    çıkıyor, yeni worker başlıyor) ÖRTÜŞME olduğu için proc sayısı
@@ -61,7 +61,7 @@ $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
  *    kitabın worker'ının ölü olup olmadığını izler. bw_claim_next
  *    kurtarma ve UI zamanlayıcısı için kullanılır.
  *
- * Eşik: 420 sn (7 dk) — max parça süresi 280 sn + güvenlik payı. */
+ * Eşik: 180 sn — üretim streaming olduğu için heartbeat sürekli tazelenir. */
 
 function bw_hb_path($batch_file, $idx) {
     return preg_replace('/\.json$/', '', $batch_file) . ".hb.$idx";
@@ -75,8 +75,10 @@ function bw_clear_hb($batch_file, $idx) {
     @unlink(bw_hb_path($batch_file, $idx));
 }
 /* Bir "processing" kitabın worker'ı ölmüş mü? hb dosyası yoksa ya da
-   mtime'ı eşikten eskiyse ölü say. Eşik: 7 dk (en uzun parça 280sn + pay). */
-function bw_hb_dead($batch_file, $idx, $thr = 420) {
+   mtime'ı eşikten eskiyse ölü say. Eşik: 180sn. Üretim artık streaming
+   olduğundan worker her birkaç saniyede heartbeat'i tazeler; bu yüzden eşik
+   güvenle düşürülebilir → takılan kitap ~3 dk yerine ~180sn'de kurtarılır. */
+function bw_hb_dead($batch_file, $idx, $thr = 180) {
     $p = bw_hb_path($batch_file, $idx);
     if (!file_exists($p)) return true;
     return (time() - filemtime($p)) > $thr;
@@ -107,7 +109,7 @@ function bw_claim_next($batch_file) {
     // Bayat (ölü worker'dan kalan) processing kitapları kurtar.
     // Canlılık ucuz heartbeat dosyasından okunur (hb mtime). Worker canlıysa
     // her parçadan önce dosyaya dokunur; ölmüşse dosya bayatlar → kitap pending'e
-    // döner. 7 dk eşik her parça sayısı için doğru çalışır.
+    // döner. 180 sn eşik streaming heartbeat ile her parça sayısı için doğru çalışır.
     $changed = false;
     foreach ($batch['books'] as $i => $b) {
         if (($b['status'] ?? '') !== 'processing') continue;
@@ -414,26 +416,53 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             . "\n\nBook: {$book}\nAuthor: {$author}"
             . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
 
+        // Streaming üretim: yanıt parça parça gelirken HER chunk'ta heartbeat'i
+        // tazele. Böylece worker, 280sn'ye varan uzun üretim sırasında "ölü"
+        // sanılmaz; canlılık eşiği düşük tutulabilir → takılan batch hızla
+        // kurtarılır. (Eskiden bloklu istek heartbeat'i tazeleyemediğinden eşik
+        // 7 dk olmak zorundaydı ve takılma penceresi bu yüzden çok uzundu.)
+        $piece    = '';
+        $sbuf     = '';
+        $raw_tail = '';
+        $stream_cb = function($c, $chunk) use (&$piece, &$sbuf, &$raw_tail, $batch_file, $idx) {
+            $raw_tail = substr($raw_tail . $chunk, -2000);   // hata teşhisi için son gövde
+            $sbuf .= $chunk;
+            while (($p = strpos($sbuf, "\n")) !== false) {
+                $line = trim(substr($sbuf, 0, $p));
+                $sbuf = substr($sbuf, $p + 1);
+                if (strpos($line, 'data:') !== 0) continue;
+                $j = trim(substr($line, 5));
+                if ($j === '' || $j === '[DONE]') continue;
+                $ev = json_decode($j, true);
+                if (isset($ev['choices'][0]['delta']['content'])) {
+                    $piece .= $ev['choices'][0]['delta']['content'];
+                }
+            }
+            bw_touch_hb($batch_file, $idx);   // her chunk = canlılık damgası
+            return strlen($chunk);
+        };
         $ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
+            CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS => json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>16000,'messages'=>[['role'=>'user','content'=>$pr]]]),
+            CURLOPT_POSTFIELDS => json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>16000,'stream'=>true,'messages'=>[['role'=>'user','content'=>$pr]]]),
+            CURLOPT_WRITEFUNCTION => $stream_cb,
         ]);
-        $raw  = curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
+        curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
 
-        if ($cerr || !$raw) {
+        if ($cerr) {
             if ($k === 1) $gen_error = "DeepSeek Part {$k} bağlantı hatası: {$cerr}";
             break;
         }
-        $dd = json_decode($raw, true);
-        if (isset($dd['error'])) {
-            if ($k === 1) $gen_error = "DeepSeek Part {$k}: " . ($dd['error']['message'] ?? 'API hatası');
+        $piece = trim(str_replace('%%PART_END%%', '', $piece));
+        if ($piece === '') {
+            // Hiç içerik gelmediyse gövdede SSE yerine düz JSON hata olabilir
+            if ($k === 1) {
+                $errj = json_decode($raw_tail, true);
+                $gen_error = "DeepSeek Part {$k}: " . ($errj['error']['message'] ?? 'boş yanıt');
+            }
             break;
         }
-        $piece = trim($dd['choices'][0]['message']['content'] ?? '');
-        $piece = str_replace('%%PART_END%%', '', $piece);
-        if ($piece === '') break;
 
         if ($k > 1) {
             $piece = preg_replace('/^# [^\n]+\n+/m',  '', $piece, 1);
@@ -510,6 +539,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
 
     // ── WordPress'e yayınla ────────────────────────────────────────
+    bw_touch_hb($batch_file, $idx);   // meta+kapak bitti — yayın öncesi tazele
     $cat_ids = [];
     foreach ($meta['categories'] ?? [] as $raw_slug) {
         $slug = strtolower(trim(preg_replace('/[\s_]+/', '-', $raw_slug)));
@@ -524,6 +554,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         [$nc] = bw_wp("$wp_api/categories", 'POST', ['name'=>$name,'slug'=>$slug], $auth);
         if (!empty($nc['id'])) $cat_ids[] = $nc['id'];
     }
+    bw_touch_hb($batch_file, $idx);   // kategori çözümü bitti — canlılığı tazele
 
     $clean = $content;
     $clean = preg_replace('/^# \*\*[^\n]+\*\*\n*/m', '', $clean, 1);
@@ -693,7 +724,7 @@ while (true) {
 
 /* Süre/limit nedeniyle çıktıysak ve hâlâ bekleyen iş varsa kendi yerimize
    yeni bir worker başlat; böylece sunucu bizi öldürse bile batch durmaz.
-   Zincirlemede wk dosyasını SİLMİYORUZ: eski worker'ın dosyası 7 dk daha
+   Zincirlemede wk dosyasını SİLMİYORUZ: eski worker'ın dosyası 180 sn daha
    taze kalır, bu sürede halefi de kendi dosyasını oluşturur → proc sayısı
    düşmez → checkActiveJobs gereksiz worker açmaz. */
 if ($reason === 'budget' || $reason === 'limit') {

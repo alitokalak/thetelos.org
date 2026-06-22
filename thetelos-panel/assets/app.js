@@ -970,8 +970,8 @@ function renderBatchStatus(b) {
       const el = nowSec - bk.processing_since;
       const m = Math.floor(el / 60), s = el % 60;
       const t = m > 0 ? `${m}dk` : `${s}sn`;
-      // Canlılık: heartbeat yaşı > 7dk (veya hb yok) ve post yoksa = worker ölmüş
-      const dead = (bk.hb_age === null || bk.hb_age > 420) && !bk.post_id;
+      // Canlılık: heartbeat yaşı > 180sn (veya hb yok) ve post yoksa = worker ölmüş
+      const dead = (bk.hb_age === null || bk.hb_age > 180) && !bk.post_id;
       if (dead) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
       else { procLabel = `İşleniyor... ${t}`; }
     }

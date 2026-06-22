@@ -20,11 +20,12 @@ if (is_dir($jobs_dir)) {
         if (!$b) continue;
         $st = $b['status'] ?? '';
         if ($st === 'cancelled' || $st === 'paused') continue;
-        // Canlılık: iki katmanlı heartbeat (batch-worker ile aynı eşik, 7 dk).
+        // Canlılık: iki katmanlı heartbeat (batch-worker ile aynı eşik, 180sn).
+        // Üretim streaming olduğundan worker her birkaç saniyede heartbeat tazeler.
         // $processing = canlı .wk.* dosyası sayısı (per-worker, zincirleme boşluğu yok).
         // $stale      = processing durumda olan ama per-kitap hb dosyası bayatlamış kitap sayısı.
         $base      = preg_replace('/\.json$/', '', $file);
-        $stale_thr = 420;
+        $stale_thr = 180;
         $processing = 0; $pending = 0; $stale = 0;
 
         // Per-worker canlılık: her worker kendi .wk.{id} dosyasını tutar
