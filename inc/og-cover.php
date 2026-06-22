@@ -51,7 +51,7 @@ add_action( 'wp_head', function() {
 function thetelos_og_cover_url( int $post_id ): string {
     $upload   = wp_upload_dir();
     $dir      = $upload['basedir'] . '/thetelos-covers';
-    $filename = 'cover-' . $post_id . '-v5.png';
+    $filename = 'cover-' . $post_id . '-v6.png';
     $filepath = $dir . '/' . $filename;
     $fileurl  = $upload['baseurl'] . '/thetelos-covers/' . $filename;
 
@@ -112,9 +112,12 @@ function thetelos_og_cover_url( int $post_id ): string {
     ] );
 
     /* ── İçerik ── */
-    $title  = tls_ogc_strip_meta( get_the_title( $post_id ) );
     $raw_a  = get_the_terms( $post_id, 'authors' );
     $author = ( ! empty( $raw_a ) && ! is_wp_error( $raw_a ) ) ? $raw_a[0]->name : '';
+    // Ham post_title — wptexturize tireyi entity'ye çevirip ayıklamayı bozmasın
+    $title_raw = get_post_field( 'post_title', $post_id );
+    if ( $title_raw === '' || $title_raw === null ) $title_raw = get_the_title( $post_id );
+    $title  = tls_ogc_strip_meta( $title_raw, $author );
     $cat    = ! empty( $cats ) ? mb_strtoupper( $cats[0]->name, 'UTF-8' ) : '';
 
     $pad  = $m + 12 + 50; // çerçeve içi padding
@@ -138,9 +141,9 @@ function thetelos_og_cover_url( int $post_id ): string {
 
         /* Başlık — orta, büyük, satır kırmalı */
         $title_size = 72;
-        // Uzun başlıklarda küçült
+        // Uzun başlıklarda küçült — taban 30px, en çok 5 satır (kapağa sığsın, kesilmesin)
         $lines = tls_ogc_wrap_ttf( $title, $f_serif, $title_size, $usable );
-        while ( count( $lines ) > 4 && $title_size > 44 ) {
+        while ( count( $lines ) > 5 && $title_size > 30 ) {
             $title_size -= 4;
             $lines = tls_ogc_wrap_ttf( $title, $f_serif, $title_size, $usable );
         }
@@ -196,9 +199,13 @@ function tls_ogc_find_font( array $c ): ?string {
     foreach ( $c as $f ) { if ( file_exists($f) ) return $f; }
     return null;
 }
-function tls_ogc_strip_meta( string $t ): string {
-    $t = preg_replace( '/\s*[\(\(].*?[\)\)]/u', '', $t );
-    $t = preg_replace( '/\s*[-–—].*$/u',         '', $t );
+function tls_ogc_strip_meta( string $t, string $author = '' ): string {
+    $t = html_entity_decode( $t, ENT_QUOTES, 'UTF-8' );          // &#8211; vb. çöz
+    $t = preg_replace( '/\s*[\(（].*?[\)）]/u', '', $t );          // parantezli kısımlar
+    if ( $author !== '' ) {                                       // sondaki "- Yazar"
+        $t = preg_replace( '/\s*[-–—]\s*' . preg_quote( $author, '/' ) . '\s*$/u', '', $t );
+    }
+    $t = preg_replace( '/\s+[-–—]\s+\S.*$/u', '', $t );           // kalan " - …" kuyruğu
     return trim( $t );
 }
 function tls_ogc_wrap_ttf( string $text, string $font, float $size, int $max_w ): array {

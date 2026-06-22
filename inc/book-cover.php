@@ -21,6 +21,14 @@ add_action( 'wp_enqueue_scripts', function() {
         [],
         '1.0'
     );
+    // Başlığı kapağa sığdıran auto-fit (uzun başlıklar kesilmesin)
+    wp_enqueue_script(
+        'thetelos-book-cover-fit',
+        get_template_directory_uri() . '/inc/book-cover.js',
+        [],
+        '1.1',
+        true
+    );
 });
 
 // -----------------------------------------------------
@@ -159,19 +167,29 @@ function thetelos_render_book_cover( $post_id ) {
     $text    = $palette[2];
     $subtext = $palette[3];
 
-    $title  = get_the_title( $post_id );
+    $author = thetelos_get_book_author( $post_id );
+
+    // Ham post_title kullan: get_the_title() wptexturize ile " - " tiresini
+    // en-dash/HTML-entity'ye çevirip yazar ayıklamayı bozuyordu. Ham başlık
+    // temiz " - " içerir; entity kalmışsa da çözüyoruz.
+    $title  = get_post_field( 'post_title', $post_id );
+    if ( $title === '' || $title === null ) $title = get_the_title( $post_id );
+    $title  = html_entity_decode( $title, ENT_QUOTES, 'UTF-8' );
     $title  = preg_replace('/\s*[\(\（].*$/u', '', $title);   // parantez ve sonrasını kaldır
-    $title  = preg_replace('/\s+[-–—].*$/u',  '', $title);   // boşluk+tire ve sonrasını kaldır
+    // Sondaki "- Yazar" / "– Yazar" kısmını at — yazar adı zaten kapağın üstünde
+    if ( $author !== '' ) {
+        $title = preg_replace('/\s*[-–—]\s*' . preg_quote( $author, '/' ) . '\s*$/u', '', $title);
+    }
+    // Güvenlik: yazar eşleşmediyse hâlâ kalan " - …" kuyruğunu at
+    $title  = preg_replace('/\s+[-–—]\s+\S.*$/u', '', $title);
     $title  = trim( $title );
 
-    // Title uzunluğuna göre dinamik font size — sadece kapak içi için
+    // Title uzunluğuna göre başlangıç font size — JS auto-fit ayrıca sığdırır
     $title_len = mb_strlen( $title );
     if ( $title_len <= 30 )      $cover_title_size = '17px';
     elseif ( $title_len <= 50 )  $cover_title_size = '14px';
     elseif ( $title_len <= 70 )  $cover_title_size = '12px';
     else                         $cover_title_size = '10px';
-
-    $author = thetelos_get_book_author( $post_id );
 
     ob_start();
     ?>
