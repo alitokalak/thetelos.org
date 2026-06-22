@@ -20,17 +20,25 @@ if (is_dir($jobs_dir)) {
         if (!$b) continue;
         $st = $b['status'] ?? '';
         if ($st === 'cancelled' || $st === 'paused') continue;
-        // Canlılık: ucuz heartbeat dosyası (batch-worker ile aynı eşik, 7 dk).
+        // Canlılık: iki katmanlı heartbeat (batch-worker ile aynı eşik, 7 dk).
+        // $processing = canlı .wk.* dosyası sayısı (per-worker, zincirleme boşluğu yok).
+        // $stale      = processing durumda olan ama per-kitap hb dosyası bayatlamış kitap sayısı.
         $base      = preg_replace('/\.json$/', '', $file);
         $stale_thr = 420;
         $processing = 0; $pending = 0; $stale = 0;
+
+        // Per-worker canlılık: her worker kendi .wk.{id} dosyasını tutar
+        foreach (glob("$base.wk.*") ?: [] as $wk) {
+            if (($now - @filemtime($wk)) <= $stale_thr) $processing++;
+        }
+
         foreach ($b['books'] ?? [] as $i => $bk) {
             $bs = $bk['status'] ?? '';
             if ($bs === 'processing') {
-                if (!empty($bk['post_id'])) { $processing++; continue; }
+                if (!empty($bk['post_id'])) continue;  // esasen tamamlanmış
                 $hb = "$base.hb.$i";
                 $alive = file_exists($hb) && ($now - filemtime($hb)) <= $stale_thr;
-                if ($alive) { $processing++; } else { $stale++; }
+                if (!$alive) { $stale++; }   // per-kitap hb bayatlamış = worker öldü
             } elseif ($bs === 'pending') {
                 $pending++;
             }

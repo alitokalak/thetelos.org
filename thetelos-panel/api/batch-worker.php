@@ -36,20 +36,40 @@ $jobs_dir   = dirname(__DIR__) . '/jobs';
 $batch_file = "$jobs_dir/{$batch_id}.json";
 if (!file_exists($batch_file)) { echo json_encode(['status'=>'no_more']); exit; }
 
+// Per-worker alive dosyası: batch JSON'un yanına .wk.{id} oluştur.
+// server-status.php bu dosyaları sayarak canlı worker sayısını öğrenir.
+// Zincirleme sırasında eski worker'ın dosyası hâlâ taze olduğundan
+// proc sayısı düşmez ve gereksiz worker açılmaz.
+$_wk_id  = uniqid('', true);
+$g_worker_hb = preg_replace('/\.json$/', '', $batch_file) . ".wk.$_wk_id";
+@touch($g_worker_hb);
+
 $auth   = 'Basic ' . base64_encode(WP_USER . ':' . WP_APP_PASS);
 $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
 
 /* ── UCUZ HEARTBEAT ────────────────────────────────────────────────
- * Her worker, işlediği kitap için KENDİ küçük dosyasına dokunur (touch).
- * Koca batch JSON'u kilitlemez → kilit kavgası yok, üretim yavaşlamaz.
- * Canlılık = bu dosyanın mtime'ı taze mi? Ölü worker dokunmayı bırakır,
- * dosya bayatlar ve kurtarma devreye girer. Eşik herhangi bir parça
- * sayısı için çalışır (her parçadan önce dokunulur). */
+ * İki katmanlı canlılık sistemi:
+ *
+ * 1) PER-WORKER dosyası (.wk.{id}): worker başladığında oluşturulur,
+ *    her kitap parçasında yenilenir, zincirlenince silinmez (7 dk sonra
+ *    kendiliğinden bayatlar). server-status.php bu dosyaları sayarak kaç
+ *    worker'ın canlı olduğunu öğrenir. Zincirleme sırasında (eski worker
+ *    çıkıyor, yeni worker başlıyor) ÖRTÜŞME olduğu için proc sayısı
+ *    düşmez → checkActiveJobs gereksiz worker açmaz.
+ *
+ * 2) PER-KITAP dosyası (.hb.{idx}): hangi kitabın işlendiğini ve o
+ *    kitabın worker'ının ölü olup olmadığını izler. bw_claim_next
+ *    kurtarma ve UI zamanlayıcısı için kullanılır.
+ *
+ * Eşik: 420 sn (7 dk) — max parça süresi 280 sn + güvenlik payı. */
+
 function bw_hb_path($batch_file, $idx) {
     return preg_replace('/\.json$/', '', $batch_file) . ".hb.$idx";
 }
 function bw_touch_hb($batch_file, $idx) {
+    global $g_worker_hb;
     @touch(bw_hb_path($batch_file, $idx));
+    if ($g_worker_hb) @touch($g_worker_hb);   // worker'ı da canlı tut
 }
 function bw_clear_hb($batch_file, $idx) {
     @unlink(bw_hb_path($batch_file, $idx));
@@ -667,9 +687,16 @@ while (true) {
 }
 
 /* Süre/limit nedeniyle çıktıysak ve hâlâ bekleyen iş varsa kendi yerimize
-   yeni bir worker başlat; böylece sunucu bizi öldürse bile batch durmaz. */
+   yeni bir worker başlat; böylece sunucu bizi öldürse bile batch durmaz.
+   Zincirlemede wk dosyasını SİLMİYORUZ: eski worker'ın dosyası 7 dk daha
+   taze kalır, bu sürede halefi de kendi dosyasını oluşturur → proc sayısı
+   düşmez → checkActiveJobs gereksiz worker açmaz. */
 if ($reason === 'budget' || $reason === 'limit') {
+    if ($g_worker_hb) @touch($g_worker_hb);   // zincirlemeden önce tazele
     bw_spawn_successor($batch_id);
+} else {
+    // Temiz çıkış (done / cancelled / paused): wk dosyasını temizle
+    if ($g_worker_hb) @unlink($g_worker_hb);
 }
 
 echo json_encode(['status'=>'no_more','processed'=>$processed,'reason'=>$reason]);
