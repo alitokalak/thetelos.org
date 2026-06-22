@@ -19,8 +19,16 @@
     var min = 7;
     var guard = 0;
 
-    // Kapağın içeriği kutusunu aşıyorsa (overflow:hidden ile kesiliyorsa) küçült
-    while (cover.scrollHeight > cover.clientHeight + 1 && size > min && guard < 80) {
+    // Başlık kapağın en fazla bu kadarını kaplasın — uzun başlıklar kenara
+    // dayanıp sıkışmasın, etrafında nefes payı kalsın.
+    var maxTitleH = cover.clientHeight * 0.60;
+
+    // Kutuyu aşıyorsa (kesiliyorsa) VEYA başlık üst sınırı geçiyorsa küçült
+    while (
+      (cover.scrollHeight > cover.clientHeight + 1 || t.offsetHeight > maxTitleH) &&
+      size > min &&
+      guard < 100
+    ) {
       size -= 0.5;
       guard++;
       t.style.fontSize = size + 'px';

@@ -26,7 +26,7 @@ add_action( 'wp_enqueue_scripts', function() {
         'thetelos-book-cover-fit',
         get_template_directory_uri() . '/inc/book-cover.js',
         [],
-        '1.1',
+        '1.2',
         true
     );
 });
