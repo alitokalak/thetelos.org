@@ -939,12 +939,16 @@ async function pollBatchUntilDone() {
     if (b && b.books) {
       const nowMs = Date.now();
       const nowSec = Math.floor(nowMs / 1000);
+      // Canlı worker eşiği: heartbeat yok → processing_since klaym anından.
+      // Gerçek kitap süresinden uzun olmalı (parça başına ~300sn + yayın payı).
+      const parts = Math.max(1, Math.min(4, b.parts || 2));
+      const deadThr = parts * 300 + 300;   // parts=2 → 15dk
       let liveProc = 0, pending = 0;
       for (const bk of b.books) {
         if (bk.status === 'pending') pending++;
         else if (bk.status === 'processing') {
-          const fresh = bk.processing_since > 0 && (nowSec - bk.processing_since) < 6 * 60;
-          if (fresh) liveProc++;
+          const alive = bk.processing_since > 0 && (nowSec - bk.processing_since) < deadThr;
+          if (alive) liveProc++;
         }
       }
       const desired = Math.max(1, Math.min(5, batchWorkerCount || 1));
@@ -988,6 +992,8 @@ function renderBatchStatus(b) {
   batchStatusBooks = b.books;
 
   const nowSec = Math.floor(Date.now() / 1000);
+  const _parts = Math.max(1, Math.min(4, b.parts || 2));
+  const _deadThr = _parts * 300 + 300;   // canlı worker eşiği (parts=2 → 15dk)
   b.books.forEach((bk, i) => {
     const st  = bk.status;
     // İşlenen kitap için geçen süre — "takıldı mı yavaş mı" ayrımı için
@@ -997,8 +1003,8 @@ function renderBatchStatus(b) {
       const el = nowSec - bk.processing_since;
       const m = Math.floor(el / 60), s = el % 60;
       const t = m > 0 ? `${m}dk` : `${s}sn`;
-      // 7dk+ ve henüz post yoksa = worker ölmüş olabilir (turuncu uyarı)
-      if (el > 7 * 60 && !bk.post_id) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
+      // Eşik aşıldı ve henüz post yok = worker ölmüş olabilir (kırmızı uyarı)
+      if (el > _deadThr && !bk.post_id) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
       else { procLabel = `İşleniyor... ${t}`; }
     }
     const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';

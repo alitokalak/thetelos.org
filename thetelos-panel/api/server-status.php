@@ -14,13 +14,15 @@ $jobs_dir = dirname(__DIR__) . '/jobs';
 $active   = [];
 
 if (is_dir($jobs_dir)) {
-    $stale_thr = 6 * 60; // bw_claim_next ile aynı eşik (6 dk)
     $now = time();
     foreach (glob("$jobs_dir/*.json") as $file) {
         $b = json_decode(file_get_contents($file), true);
         if (!$b) continue;
         $st = $b['status'] ?? '';
         if ($st === 'cancelled' || $st === 'paused') continue;
+        // bw_claim_next ile aynı eşik: parça başına ~300sn + yayın payı.
+        $parts     = max(1, min(4, (int)($b['parts'] ?? 2)));
+        $stale_thr = $parts * 300 + 300; // parts=2 → 15dk
         $processing = 0; $pending = 0; $stale = 0;
         foreach ($b['books'] ?? [] as $bk) {
             $bs = $bk['status'] ?? '';

@@ -437,7 +437,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             'error'      => ['#a33',    '✕'],
             'pending'    => ['#333',    '…'],
           ];
-          $stale_secs = 7 * 60; // 7 dk = stale eşiği (heartbeat 6dk, +1dk tolerans)
+          // Stale eşiği parça sayısına göre (heartbeat yok; klaym anından ölçülür)
+          $bparts = max(1, min(4, (int)($b['parts'] ?? 2)));
+          $stale_secs = $bparts * 300 + 300; // parts=2 → 15dk
           $now_ts = time();
           ?>
           <details style="margin-top:8px" open>
@@ -505,7 +507,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
        * (app.js → checkActiveJobs, her 10sn, her sekmede) üstlenir. */
       var _tlsWatchTimers = {};
       var _tlsStaleKick   = {};  // batch_id -> son stale kick zamanı (ms)
-      var _STALE_SECS = 7 * 60; // PHP tarafıyla aynı eşik
 
       function _fmtElapsed(secs) {
         if (secs <= 0) return '';
@@ -523,6 +524,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             var b = j.batch, st = b.status || '', books = b.books || [];
             var pending = 0, processing = 0, done = 0, errs = 0;
             var nowSec = Math.floor(Date.now() / 1000);
+            var _STALE_SECS = (Math.max(1, Math.min(4, b.parts || 2)) * 300) + 300; // parts=2 → 15dk
             var hasStale = false;
 
             for (var i = 0; i < books.length; i++) {
