@@ -2,6 +2,7 @@
 session_start();
 require_once dirname(__DIR__) . '/config.php';
 if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
+session_write_close();   // session kilidini hemen bırak — uzun JSON okuma sırasında diğer istekler bloke olmasın
 header('Content-Type: application/json');
 
 $batch_id = preg_replace('/[^a-z0-9_.]/', '', trim($_GET['batch_id'] ?? ''));
