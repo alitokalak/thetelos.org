@@ -39,13 +39,35 @@ if (!file_exists($batch_file)) { echo json_encode(['status'=>'no_more']); exit; 
 $auth   = 'Basic ' . base64_encode(WP_USER . ':' . WP_APP_PASS);
 $wp_api = rtrim(WP_URL, '/') . '/wp-json/wp/v2';
 
+/* ── UCUZ HEARTBEAT ────────────────────────────────────────────────
+ * Her worker, işlediği kitap için KENDİ küçük dosyasına dokunur (touch).
+ * Koca batch JSON'u kilitlemez → kilit kavgası yok, üretim yavaşlamaz.
+ * Canlılık = bu dosyanın mtime'ı taze mi? Ölü worker dokunmayı bırakır,
+ * dosya bayatlar ve kurtarma devreye girer. Eşik herhangi bir parça
+ * sayısı için çalışır (her parçadan önce dokunulur). */
+function bw_hb_path($batch_file, $idx) {
+    return preg_replace('/\.json$/', '', $batch_file) . ".hb.$idx";
+}
+function bw_touch_hb($batch_file, $idx) {
+    @touch(bw_hb_path($batch_file, $idx));
+}
+function bw_clear_hb($batch_file, $idx) {
+    @unlink(bw_hb_path($batch_file, $idx));
+}
+/* Bir "processing" kitabın worker'ı ölmüş mü? hb dosyası yoksa ya da
+   mtime'ı eşikten eskiyse ölü say. Eşik: 7 dk (en uzun parça 280sn + pay). */
+function bw_hb_dead($batch_file, $idx, $thr = 420) {
+    $p = bw_hb_path($batch_file, $idx);
+    if (!file_exists($p)) return true;
+    return (time() - filemtime($p)) > $thr;
+}
+
 /* ── Sıradaki bekleyen kitabı atomik klaym et ─────────────────────
  * Dönüş: [idx, batch]  | [-1,null]=bitti  [-2,null]=kilitli(tekrar dene)
  *        [-3,null]=iptal  [-4,null]=duraklatıldı
  *
  * STALE RECOVERY: Kilit içinde çalışır — ölen worker'ların "processing" bıraktığı
- * kitapları 5 dakika sonra otomatik olarak "pending"e döndürür. Ayrı crash recovery
- * IIFE'ye gerek kalmaz; her claim denemesinde güvenlik şeridi çalışır.
+ * kitapları (hb dosyası bayatlamış) otomatik "pending"e döndürür.
  */
 function bw_claim_next($batch_file) {
     $fp = fopen($batch_file, 'r+');
@@ -63,27 +85,21 @@ function bw_claim_next($batch_file) {
     if ($st === 'paused')    { flock($fp, LOCK_UN); fclose($fp); return [-4, null]; }
 
     // Bayat (ölü worker'dan kalan) processing kitapları kurtar.
-    // Heartbeat KALDIRILDI (kilit kavgası kitapların bitmesini engelliyordu).
-    // processing_since yalnız klaym anında damgalanır; bu yüzden eşik, bir kitabın
-    // en uzun gerçek işlenme süresinden GÜVENLE uzun olmalı: parça başına ~300sn
-    // + yayın aşaması payı. Böylece canlı (yavaş) worker asla yanlışlıkla
-    // sıfırlanmaz; yalnız gerçekten ölmüş worker'lar kurtarılır.
-    $parts   = max(1, min(4, (int)($batch['parts'] ?? 2)));
-    $stale   = $parts * 300 + 300;   // parts=2 → 15dk, parts=4 → 25dk
-    $now     = time();
+    // Canlılık ucuz heartbeat dosyasından okunur (hb mtime). Worker canlıysa
+    // her parçadan önce dosyaya dokunur; ölmüşse dosya bayatlar → kitap pending'e
+    // döner. 7 dk eşik her parça sayısı için doğru çalışır.
     $changed = false;
     foreach ($batch['books'] as $i => $b) {
         if (($b['status'] ?? '') !== 'processing') continue;
         if (!empty($b['post_id'])) {
             // WP post oluşturulmuş ama status güncellenmemiş → done say
             $batch['books'][$i]['status'] = 'done';
+            bw_clear_hb($batch_file, $i);
             $changed = true;
-        } else {
-            $since = (int)($b['processing_since'] ?? 0);
-            if ($since > 0 && ($now - $since) > $stale) {
-                $batch['books'][$i]['status'] = 'pending';
-                $changed = true;
-            }
+        } elseif (bw_hb_dead($batch_file, $i)) {
+            $batch['books'][$i]['status'] = 'pending';
+            bw_clear_hb($batch_file, $i);
+            $changed = true;
         }
     }
 
@@ -116,6 +132,7 @@ function bw_claim_next($batch_file) {
     fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
     fflush($fp);
     flock($fp, LOCK_UN); fclose($fp);
+    bw_touch_hb($batch_file, $idx);   // canlılık damgası — anında "ölü" sanılmasın
     return [$idx, $batch];
 }
 
@@ -185,6 +202,10 @@ function bw_update_book($batch_file, $idx, $updates) {
         fflush($fp);
     }
     flock($fp, LOCK_UN); fclose($fp);
+    // Kitap tamamlandıysa/hata aldıysa heartbeat dosyasını temizle.
+    if (isset($updates['status']) && in_array($updates['status'], ['done','error'], true)) {
+        bw_clear_hb($batch_file, $idx);
+    }
 }
 
 /* ── Başlık kök eşleştirme (JS titleTokens/titlesSame ile aynı mantık) ── */
@@ -361,6 +382,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $part_words  = (int)ceil($target_words / max(1, $parts));
 
     for ($k = 1; $k <= $parts; $k++) {
+        bw_touch_hb($batch_file, $idx);   // ucuz canlılık damgası (her parçadan önce)
         $headings = [];
         if ($accumulated !== '') {
             preg_match_all('/^### (.+)$/m', $accumulated, $mh);
@@ -407,6 +429,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>$gen_error ?: 'Boş içerik']);
         return;
     }
+
+    bw_touch_hb($batch_file, $idx);   // yayın aşaması başlıyor — canlılığı tazele
 
     // ── Meta (excerpt, meta_desc, kategoriler, alıntılar) ──────────
     $cats_list = 'philosophy,philosophy_of_religion,ethics,metaphysics,epistemology,logic,aesthetics,political_philosophy,history_of_philosophy,religion,theology,systematic_theology,christian_theology,islamic_theology,christianity,islam,judaism,buddhism,hinduism,atheism,agnosticism,history,world_history,ancient_history,medieval_history,modern_history,military_history,cultural_history,biography,autobiography,memoir,literature,classic_literature,world_literature,poetry,drama,novel,fiction,historical_fiction,science_fiction,dystopian_fiction,fantasy,horror,mystery,detective_fiction,romance,adventure,psychology,cognitive_psychology,social_psychology,psychoanalysis,sociology,anthropology,politics,political_science,economics,microeconomics,macroeconomics,education,law,international_law,science,physics,astronomy,chemistry,mathematics,statistics,biology,evolution,genetics,medicine,neuroscience,public_health,technology,computers,artificial_intelligence,programming,data_science,art,art_history,music,music_history,architecture,design,photography,film,theatre,geography,travel,culture,mythology,folklore,children,young_adult,self_help,personal_development,business,management,marketing,entrepreneurship';

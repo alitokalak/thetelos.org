@@ -20,20 +20,17 @@ if (is_dir($jobs_dir)) {
         if (!$b) continue;
         $st = $b['status'] ?? '';
         if ($st === 'cancelled' || $st === 'paused') continue;
-        // bw_claim_next ile aynı eşik: parça başına ~300sn + yayın payı.
-        $parts     = max(1, min(4, (int)($b['parts'] ?? 2)));
-        $stale_thr = $parts * 300 + 300; // parts=2 → 15dk
+        // Canlılık: ucuz heartbeat dosyası (batch-worker ile aynı eşik, 7 dk).
+        $base      = preg_replace('/\.json$/', '', $file);
+        $stale_thr = 420;
         $processing = 0; $pending = 0; $stale = 0;
-        foreach ($b['books'] ?? [] as $bk) {
+        foreach ($b['books'] ?? [] as $i => $bk) {
             $bs = $bk['status'] ?? '';
             if ($bs === 'processing') {
-                $since = (int)($bk['processing_since'] ?? 0);
-                // post_id varsa WP'ye yazılmış sayılır; yoksa ve 5dk+ geçtiyse "bayat"
-                if (empty($bk['post_id']) && $since > 0 && ($now - $since) > $stale_thr) {
-                    $stale++;
-                } else {
-                    $processing++;
-                }
+                if (!empty($bk['post_id'])) { $processing++; continue; }
+                $hb = "$base.hb.$i";
+                $alive = file_exists($hb) && ($now - filemtime($hb)) <= $stale_thr;
+                if ($alive) { $processing++; } else { $stale++; }
             } elseif ($bs === 'pending') {
                 $pending++;
             }

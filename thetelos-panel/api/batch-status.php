@@ -19,16 +19,25 @@ if (!$batch) { echo json_encode(['ok'=>false,'error'=>'Batch okunamadı']); exit
 // sıfırlama (pending'e çekme) bw_claim_next içinde kilit altında yapılıyor.
 $light = $batch;
 unset($light['books']);
-$light['books'] = array_map(fn($b) => [
-    'book_title'       => $b['book_title'],
-    'author_name'      => $b['author_name'],
-    'status'           => $b['status'],
-    'post_id'          => $b['post_id'],
-    'post_url'         => $b['post_url'],
-    'edit_url'         => $b['edit_url'],
-    'cover_set'        => $b['cover_set'],
-    'error'            => $b['error'],
-    'processing_since' => (int)($b['processing_since'] ?? 0),
-], $batch['books']);
+$base = preg_replace('/\.json$/', '', $batch_file);
+$now  = time();
+$light['books'] = [];
+foreach ($batch['books'] as $i => $b) {
+    // Canlılık: ucuz heartbeat dosyasının yaşı (sn). null = hb yok.
+    $hb = "$base.hb.$i";
+    $hb_age = file_exists($hb) ? ($now - filemtime($hb)) : null;
+    $light['books'][] = [
+        'book_title'       => $b['book_title'],
+        'author_name'      => $b['author_name'],
+        'status'           => $b['status'],
+        'post_id'          => $b['post_id'],
+        'post_url'         => $b['post_url'],
+        'edit_url'         => $b['edit_url'],
+        'cover_set'        => $b['cover_set'],
+        'error'            => $b['error'],
+        'processing_since' => (int)($b['processing_since'] ?? 0),
+        'hb_age'           => $hb_age,
+    ];
+}
 
 echo json_encode(['ok'=>true, 'batch'=>$light]);

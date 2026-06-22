@@ -199,12 +199,13 @@ async function checkActiveJobs() {
     // Batch'in SEÇİLEN worker sayısına saygı duyar: yalnızca canlı worker
     // sayısı hedefin altındaysa eksik kadarını ateşler. "1 worker (güvenli)"
     // seçtiysen asla 1'den fazla paralel worker açılmaz.
+    // TEK MOTOR: tüm aktif batch'ler için worker sayısını burası korur.
+    // proc = canlı worker (ucuz heartbeat taze). desired = seçilen sayı.
+    // Yalnızca eksik kadarını ateşler → ASLA seçilenden fazla worker açılmaz
+    // (flood yok). Ölü worker'ın kitabı bayatlayınca proc düşer → yeri dolar.
     const now = Date.now();
     for (const j of res.active) {
       if (j.status === 'paused') continue;
-      // Bu batch'i pollBatchUntilDone aktif yönetiyorsa, çift ateşlemeyi önlemek
-      // için küresel nöbetçi karışmaz (yalnız ilerlemeyi gösterir).
-      if (batchRunning && j.id === batchId) continue;
       const pend    = j.books_pending    || 0;
       const stale   = j.books_stale      || 0;
       const proc    = j.books_processing || 0;   // gerçekten canlı (bayatlar hariç)
@@ -216,7 +217,7 @@ async function checkActiveJobs() {
       if (workLeft && toFire > 0) {
         if (!_reviveCooldown[j.id] || now >= _reviveCooldown[j.id]) {
           _fireWorkersFor(j.id, toFire);
-          _reviveCooldown[j.id] = now + 30000;  // 30sn cooldown — çift ateşlemeyi önle
+          _reviveCooldown[j.id] = now + 20000;  // 20sn cooldown
         }
       }
     }
@@ -909,10 +910,14 @@ function fireDrainWorkers(count) {
  * "1 worker (güvenli)" seçimini bozardı, bu yüzden kaldırıldı.
  */
 async function pollBatchUntilDone() {
-  let lastDone = -1;
-  let lastChange = Date.now();
   let pollFailures = 0;
 
+  // SADECE GÖSTERİM. Worker'ları canlı tutma/yeniden ateşleme işini tek bir
+  // motor üstlenir: küresel nöbetçi (checkActiveJobs, her 10sn). O, ucuz
+  // heartbeat'e bakarak SEÇİLEN worker sayısını korur ve asla aşmaz — bu
+  // yüzden burada ayrıca ateşlemiyoruz (eskiden buradaki kör 90sn re-fire
+  // 4-parça yavaş kitaplarda her 90sn'de fazladan worker açıp DeepSeek'i
+  // boğuyordu).
   while (batchRunning) {
     if (batchPaused) { await delay(2000); continue; }
 
@@ -926,17 +931,7 @@ async function pollBatchUntilDone() {
       if (sw && pollFailures >= 2) sw.textContent = 'Sunucu meşgul, durum sorgusu bekleniyor...';
     }
 
-    if (b) {
-      if (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total) break;
-
-      // İlerleme değiştiyse zamanlayıcıyı sıfırla
-      if (b.done !== lastDone) { lastDone = b.done; lastChange = Date.now(); }
-      // 90 sn'dir ilerleme yok → worker'ları yeniden ateşle
-      else if (!batchPaused && (Date.now() - lastChange) > 90000 && b.done < b.total) {
-        fireDrainWorkers(batchWorkerCount);
-        lastChange = Date.now();
-      }
-    }
+    if (b && (b.status === 'done' || b.status === 'cancelled' || b.done >= b.total)) break;
 
     await delay(4000);
   }
@@ -966,8 +961,6 @@ function renderBatchStatus(b) {
   batchStatusBooks = b.books;
 
   const nowSec = Math.floor(Date.now() / 1000);
-  const _parts = Math.max(1, Math.min(4, b.parts || 2));
-  const _deadThr = _parts * 300 + 300;   // canlı worker eşiği (parts=2 → 15dk)
   b.books.forEach((bk, i) => {
     const st  = bk.status;
     // İşlenen kitap için geçen süre — "takıldı mı yavaş mı" ayrımı için
@@ -977,8 +970,9 @@ function renderBatchStatus(b) {
       const el = nowSec - bk.processing_since;
       const m = Math.floor(el / 60), s = el % 60;
       const t = m > 0 ? `${m}dk` : `${s}sn`;
-      // Eşik aşıldı ve henüz post yok = worker ölmüş olabilir (kırmızı uyarı)
-      if (el > _deadThr && !bk.post_id) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
+      // Canlılık: heartbeat yaşı > 7dk (veya hb yok) ve post yoksa = worker ölmüş
+      const dead = (bk.hb_age === null || bk.hb_age > 420) && !bk.post_id;
+      if (dead) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
       else { procLabel = `İşleniyor... ${t}`; }
     }
     const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';

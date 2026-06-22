@@ -580,14 +580,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               }
             }
 
-            // Stale kitap varsa ve son kick 60sn+ geçtiyse otomatik worker ateşle
-            if (hasStale) {
-              var nowMs = Date.now();
-              if (!_tlsStaleKick[id] || nowMs >= _tlsStaleKick[id]) {
-                _tlsFireWorkers(id, _tlsCardWorkers(id));
-                _tlsStaleKick[id] = nowMs + 60000; // 60sn cooldown
-              }
-            }
+            // NOT: takılan worker'ı yeniden ateşleme işini ARTIK tek motor
+            // (app.js → checkActiveJobs) yapıyor; o, seçilen worker sayısını
+            // korur ve asla aşmaz. Burada ayrıca ateşlemek flood'a yol açardı.
 
             if (st === 'cancelled' || (pending === 0 && processing === 0)) {
               clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id];
