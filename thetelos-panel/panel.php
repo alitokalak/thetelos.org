@@ -427,6 +427,36 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <?php endif; ?>
             <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-left:auto" onclick="tlsDeleteBatch('<?= $bid ?>',this)">&#10005; Sil</button>
           </div>
+
+          <?php
+          /* ── Kitap listesi — açılır, canlı güncellenen ──────────────── */
+          $st_map = [
+            'done'       => ['#1f7a3d', '&#10003;'],
+            'processing' => ['#b8860b', '&#9210;'],
+            'error'      => ['#a33',    '&#10005;'],
+            'pending'    => ['#444',    '&#8230;'],
+          ];
+          ?>
+          <details style="margin-top:8px" open>
+            <summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:4px 0">&#9656; Kitap listesi (<?= $tot ?>)</summary>
+            <div data-bc-list style="max-height:340px;overflow-y:auto;margin-top:6px;border:1px solid #2a2a2a;border-radius:4px">
+              <?php foreach ($b['books'] as $i => $bk):
+                $bs   = $bk['status'] ?? 'pending';
+                [$bg, $ico] = $st_map[$bs] ?? $st_map['pending'];
+                $bt   = htmlspecialchars(trim($bk['book_title'] ?? ''));
+                $bauth= htmlspecialchars(trim($bk['author_name'] ?? ''));
+                $purl = htmlspecialchars($bk['post_url'] ?? '');
+              ?>
+              <div data-bc-row="<?= $i ?>" style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid #222">
+                <span data-bc-ico style="flex:0 0 18px;text-align:center;color:#fff;background:<?= $bg ?>;border-radius:3px;font-size:11px;line-height:18px"><?= $ico ?></span>
+                <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                  <?php if ($purl): ?><a href="<?= $purl ?>" target="_blank" style="color:#ddd;text-decoration:none"><?= $bt ?></a><?php else: ?><span style="color:#ddd"><?= $bt ?></span><?php endif; ?>
+                  <?php if ($bauth): ?><span style="color:#666"> — <?= $bauth ?></span><?php endif; ?>
+                </span>
+              </div>
+              <?php endforeach; ?>
+            </div>
+          </details>
         </div>
           <?php return ob_get_clean();
         };
@@ -485,6 +515,20 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               if (meta) meta.innerHTML = done+' &#10003; &middot; '+errs+' hata &middot; '+(pending+processing)+' bekliyor / '+tot;
               var bar = card.querySelector('[data-bc-bar]');
               if (bar) bar.style.width = (tot>0 ? Math.round(done/tot*100) : 0)+'%';
+              // Kitap listesindeki her satırın durum simgesini canlı güncelle
+              var stMap = {
+                done:       ['#1f7a3d','✓'],
+                processing: ['#b8860b','◪'],
+                error:      ['#a33','✕'],
+                pending:    ['#444','…']
+              };
+              for (var k = 0; k < books.length; k++) {
+                var row = card.querySelector('[data-bc-row="'+k+'"]');
+                if (!row) continue;
+                var ico = row.querySelector('[data-bc-ico]');
+                var m = stMap[books[k].status] || stMap.pending;
+                if (ico) { ico.style.background = m[0]; ico.textContent = m[1]; }
+              }
             }
             if (st === 'cancelled' || (pending === 0 && processing === 0)) {
               clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id];
