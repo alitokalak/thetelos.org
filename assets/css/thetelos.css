@@ -475,7 +475,7 @@
   display: flex;
   gap: 8px;
   white-space: nowrap;
-  animation: tls-marquee 80s linear infinite;
+  animation: tls-marquee 160s linear infinite;
   will-change: transform;
 }
 .tls-hero-tags-track:hover { animation-play-state: paused; }
