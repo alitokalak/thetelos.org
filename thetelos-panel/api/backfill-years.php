@@ -52,13 +52,70 @@ function bfy_post_meta($url, $body, $auth, $timeout = 20) {
     return [json_decode($r, true), $c];
 }
 
-/* "Kitap - Yazar" başlığını ayrıştır (entity/dash toleranslı) */
-function bfy_split_title($t) {
-    $t = html_entity_decode((string)$t, ENT_QUOTES, 'UTF-8');
-    if (preg_match('/^(.*?)\s+[-–—]\s+([^-–—]+)$/u', $t, $m)) {
-        return [trim($m[1]), trim($m[2])];
+/* Başlığı ayrıştır → [arama_kitabı, yazar].
+   Biçimler: "Kitap -Yazar-" (tire ile sarılı), "Kitap - Yazar" (boşluklu),
+   parantezli orijinal adı temizler. */
+function bfy_parse($t) {
+    $t = trim(html_entity_decode((string)$t, ENT_QUOTES, 'UTF-8'));
+    $author = '';
+    // Biçim A: "Kitap -Yazar-" (yazar tireyle sarılı; yazar içinde tire olabilir: Al-Farabi)
+    if (preg_match('/^(.*\S)\s+-\s*(.+?)\s*-\s*$/u', $t, $m)) {
+        $book = $m[1]; $author = $m[2];
+    // Biçim B: "Kitap - Yazar" (boşluklu tire)
+    } elseif (preg_match('/^(.*?)\s+[-–—]\s+([^-–—]+)$/u', $t, $m)) {
+        $book = $m[1]; $author = $m[2];
+    } else {
+        $book = $t;
     }
-    return [trim($t), ''];
+    // Arama için: parantez içlerini (orijinal ad, çeviri) at
+    $book_q = trim(preg_replace('/\([^()]*\)/u', ' ', $book));
+    $book_q = trim(preg_replace('/\s+/', ' ', $book_q));
+    if ($book_q === '') $book_q = trim($book);
+    return [$book_q, trim($author)];
+}
+
+/* UA'lı HTTP GET — OpenLibrary UA'sız istekleri 403'lüyor; curl + UA şart. */
+function bfy_http($url, $timeout = 12) {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => $timeout,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => ['User-Agent: ThetelosBot/1.0 (+https://thetelos.org; backfill)'],
+    ]);
+    $r = curl_exec($ch);
+    $c = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    return ($c >= 200 && $c < 300) ? (string)$r : '';
+}
+
+/* Kitabın ilk yayın yılını bul: önce OpenLibrary (first_publish_year),
+   yoksa Google Books (publishedDate'teki en erken 4 haneli yıl). */
+function bfy_year($book_q, $author) {
+    if ($book_q === '') return '';
+    // 1) OpenLibrary
+    $ol_url = 'https://openlibrary.org/search.json?title=' . urlencode($book_q)
+            . ($author !== '' ? '&author=' . urlencode($author) : '')
+            . '&limit=1&fields=first_publish_year';
+    $oly = json_decode(bfy_http($ol_url), true);
+    if (!empty($oly['docs'][0]['first_publish_year'])) {
+        return (string)(int)$oly['docs'][0]['first_publish_year'];
+    }
+    // 2) Google Books fallback
+    $q = 'intitle:' . $book_q . ($author !== '' ? ' inauthor:' . $author : '');
+    $gb_url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
+        'q' => $q, 'maxResults' => 5, 'printType' => 'books',
+        'fields' => 'items(volumeInfo(publishedDate))',
+    ]);
+    $gb = json_decode(bfy_http($gb_url), true);
+    $best = 0;
+    foreach ($gb['items'] ?? [] as $it) {
+        if (preg_match('/(\d{4})/', $it['volumeInfo']['publishedDate'] ?? '', $mm)) {
+            $y = (int)$mm[1];
+            if ($y >= 1 && $y <= (int)date('Y') && ($best === 0 || $y < $best)) $best = $y;
+        }
+    }
+    return $best ? (string)$best : '';
 }
 
 /* ── TARAMA TURU: yılları bul ama KAYDETME, listeyi döndür ── */
@@ -90,25 +147,14 @@ if (isset($_GET['scan'])) {
         if ($existing !== '' && $existing !== null) continue;
 
         $title = $p['title']['rendered'] ?? '';
-        [$book, $author] = bfy_split_title($title);
-        $book = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)) ?: $book;
-
-        $year = '';
-        if ($book !== '') {
-            $ol_url = 'https://openlibrary.org/search.json?title=' . urlencode($book)
-                    . ($author !== '' ? '&author=' . urlencode($author) : '')
-                    . '&limit=1&fields=first_publish_year';
-            $oly = json_decode((string)@file_get_contents($ol_url), true);
-            if (!empty($oly['docs'][0]['first_publish_year'])) {
-                $year = (string)(int)$oly['docs'][0]['first_publish_year'];
-            }
-            usleep(250000); // OpenLibrary'yi yorma
-        }
+        [$book_q, $author] = bfy_parse($title);
+        $year = bfy_year($book_q, $author);
+        usleep(200000); // dış API'leri yorma
 
         $items[] = [
             'id'     => $pid,
             'title'  => $title,
-            'book'   => $book,
+            'book'   => $book_q,
             'author' => $author,
             'year'   => $year,   // '' = bulunamadı
         ];

@@ -203,10 +203,16 @@ if($meta_desc){
 }
 
 // ── Kitabın ilk yayın yılı (OpenLibrary) ──────────────────
+// NOT: OpenLibrary User-Agent'sız istekleri 403'lüyor → UA şart.
 $search_book = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)) ?: $book;
+$oly_ctx = stream_context_create(['http' => [
+    'header'  => "User-Agent: ThetelosBot/1.0 (+https://thetelos.org)\r\n",
+    'timeout' => 12,
+]]);
 $oly = json_decode(@file_get_contents(
     'https://openlibrary.org/search.json?title=' . urlencode($search_book)
-    . '&author=' . urlencode($author) . '&limit=1&fields=first_publish_year'
+    . '&author=' . urlencode($author) . '&limit=1&fields=first_publish_year',
+    false, $oly_ctx
 ), true);
 if (!empty($oly['docs'][0]['first_publish_year'])) {
     wp_req("$wp_api/$ep/$pid",'POST',['meta'=>['_tls_pub_year'=>(string)(int)$oly['docs'][0]['first_publish_year']]],$auth);
