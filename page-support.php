@@ -144,7 +144,7 @@ get_header();
                 Payment method
             </div>
 
-            <div class="tls-don-tabs tls-don-tabs-3" role="tablist">
+            <div class="tls-don-tabs tls-don-tabs-2" role="tablist">
                 <button class="tls-don-tab active"
                         type="button"
                         role="tab"
@@ -152,15 +152,6 @@ get_header();
                         aria-controls="tls-don-panel-polar"
                         id="tls-tab-polar">
                     <span class="tls-don-tab-name">Polar</span>
-                    <span class="tls-don-tab-sub">Card</span>
-                </button>
-                <button class="tls-don-tab"
-                        type="button"
-                        role="tab"
-                        aria-selected="false"
-                        aria-controls="tls-don-panel-lemon"
-                        id="tls-tab-lemon">
-                    <span class="tls-don-tab-name">Lemon</span>
                     <span class="tls-don-tab-sub">Card</span>
                 </button>
                 <button class="tls-don-tab"
@@ -196,41 +187,6 @@ get_header();
                         <polyline points="12 5 19 12 12 19"/>
                     </svg>
                 </a>
-            </div>
-
-            <!-- LemonSqueezy panel -->
-            <div class="tls-don-panel"
-                 id="tls-don-panel-lemon"
-                 role="tabpanel"
-                 aria-labelledby="tls-tab-lemon">
-                <?php if ( $lemon_available ) : ?>
-                <div class="tls-don-shopier-note">
-                    <strong>Pay by card via LemonSqueezy.</strong><br>
-                    Secure checkout opens in a new tab. Visa, Mastercard &amp; Amex.
-                    No account required.
-                </div>
-                <?php
-                /* Varsayılan link: seçili tutar (5) varsa onun ürünü, yoksa PWYW fallback. */
-                $lemon_default = isset( $lemon_tiers[5] ) ? $lemon_tiers[5] : $lemon_url;
-                ?>
-                <a class="tls-don-submit"
-                   id="tls-don-lemon-btn"
-                   href="<?php echo esc_url( $lemon_default ); ?>"
-                   target="_blank"
-                   rel="noopener noreferrer">
-                    Support thetelos
-                    <svg class="tls-don-submit-arrow" viewBox="0 0 24 24" fill="none"
-                         stroke="currentColor" stroke-width="2.5" width="15" height="15" aria-hidden="true">
-                        <line x1="5" y1="12" x2="19" y2="12"/>
-                        <polyline points="12 5 19 12 12 19"/>
-                    </svg>
-                </a>
-                <?php else : ?>
-                <div class="tls-don-shopier-note">
-                    LemonSqueezy checkout coming soon.<br>
-                    Add the product URL in <strong>Customize → Support / Donations → LemonSqueezy product URL</strong>.
-                </div>
-                <?php endif; ?>
             </div>
 
             <!-- Crypto panel -->
