@@ -169,7 +169,10 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </div>
                     <div class="tls-meta-item">
                         <span class="tls-meta-label">Published</span>
-                        <span class="tls-meta-value"><?php echo esc_html( get_the_date( 'M Y' ) ); ?></span>
+                        <span class="tls-meta-value"><?php
+                            $tls_py = get_post_meta( get_the_ID(), '_tls_pub_year', true );
+                            echo esc_html( $tls_py !== '' ? $tls_py : get_the_date( 'M Y' ) );
+                        ?></span>
                     </div>
                     <?php if ( $book_author ) : ?>
                     <div class="tls-meta-item">

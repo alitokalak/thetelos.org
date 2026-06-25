@@ -202,6 +202,16 @@ if($meta_desc){
     wp_req("$wp_api/$ep/$pid",'POST',['meta'=>['_yoast_wpseo_metadesc'=>$meta_desc]],$auth);
 }
 
+// ── Kitabın ilk yayın yılı (OpenLibrary) ──────────────────
+$search_book = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)) ?: $book;
+$oly = json_decode(@file_get_contents(
+    'https://openlibrary.org/search.json?title=' . urlencode($search_book)
+    . '&author=' . urlencode($author) . '&limit=1&fields=first_publish_year'
+), true);
+if (!empty($oly['docs'][0]['first_publish_year'])) {
+    wp_req("$wp_api/$ep/$pid",'POST',['meta'=>['_tls_pub_year'=>(string)(int)$oly['docs'][0]['first_publish_year']]],$auth);
+}
+
 // ── Key Quotes (_tls_quotes) ──────────────────────────────
 // WP'nin kendi quote sistemi devreye girmesin
 wp_req("$wp_api/$ep/$pid",'POST',['meta'=>['_tls_disable_quotes'=>'1']],$auth);

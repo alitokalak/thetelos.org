@@ -538,6 +538,16 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
     }
 
+    // Kitabın ilk yayın yılı (OpenLibrary) — postta "Published <yıl>" göstermek için.
+    $pub_year = '';
+    $oly = json_decode((string)$bw_http_get(
+        'https://openlibrary.org/search.json?title=' . urlencode($search_book)
+        . '&author=' . urlencode($author) . '&limit=1&fields=first_publish_year'
+    ), true);
+    if (!empty($oly['docs'][0]['first_publish_year'])) {
+        $pub_year = (string)(int)$oly['docs'][0]['first_publish_year'];
+    }
+
     // ── WordPress'e yayınla ────────────────────────────────────────
     bw_touch_hb($batch_file, $idx);   // meta+kapak bitti — yayın öncesi tazele
     $cat_ids = [];
@@ -651,6 +661,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     if (!empty($meta['meta_description'])) {
         bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_yoast_wpseo_metadesc'=>$meta['meta_description']]], $auth);
+    }
+
+    if ($pub_year !== '') {
+        bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_pub_year'=>$pub_year]], $auth);
     }
 
     bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_disable_quotes'=>'1']], $auth);

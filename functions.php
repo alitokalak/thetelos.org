@@ -2331,6 +2331,17 @@ function tls_get_quotes( int $post_id ): array {
     return (array)( get_post_meta( $post_id, '_tls_quotes', true ) ?: [] );
 }
 
+/* ── Kitap yayın yılı meta — panel/batch REST ile yazar, tema okur ──
+   "Published" satırında post tarihi yerine kitabın ilk yayın yılını göstermek için. */
+add_action( 'init', function () {
+    register_post_meta( 'post', '_tls_pub_year', [
+        'type'          => 'string',
+        'single'        => true,
+        'show_in_rest'  => true,
+        'auth_callback' => function () { return current_user_can( 'edit_posts' ); },
+    ] );
+} );
+
 /* ══════════════════════════════════════════════
    NEWSLETTER SUBSCRIBER SİSTEMİ
    - Mailler wp_options'da saklanır
