@@ -171,7 +171,13 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                         <span class="tls-meta-label">Published</span>
                         <span class="tls-meta-value"><?php
                             $tls_py = get_post_meta( get_the_ID(), '_tls_pub_year', true );
-                            echo esc_html( $tls_py !== '' ? $tls_py : get_the_date( 'M Y' ) );
+                            if ( preg_match( '/^\d{3,4}$/', (string) $tls_py ) ) {
+                                echo esc_html( $tls_py );          // kitabın yayın yılı
+                            } elseif ( $tls_py === '-' ) {
+                                echo '(&ndash;)';                  // OpenLibrary'de bulunamadı
+                            } else {
+                                echo esc_html( get_the_date( 'M Y' ) ); // henüz taranmamış eski post
+                            }
                         ?></span>
                     </div>
                     <?php if ( $book_author ) : ?>

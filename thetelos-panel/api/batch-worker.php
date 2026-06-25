@@ -663,9 +663,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_yoast_wpseo_metadesc'=>$meta['meta_description']]], $auth);
     }
 
-    if ($pub_year !== '') {
-        bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_pub_year'=>$pub_year]], $auth);
-    }
+    // Yıl bulunduysa onu, bulunamadıysa "(–)" işareti olarak '-' kaydet.
+    bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_pub_year'=>($pub_year !== '' ? $pub_year : '-')]], $auth);
 
     bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_disable_quotes'=>'1']], $auth);
     $clean_quotes = [];

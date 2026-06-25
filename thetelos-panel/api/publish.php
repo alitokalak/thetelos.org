@@ -210,6 +210,9 @@ $oly = json_decode(@file_get_contents(
 ), true);
 if (!empty($oly['docs'][0]['first_publish_year'])) {
     wp_req("$wp_api/$ep/$pid",'POST',['meta'=>['_tls_pub_year'=>(string)(int)$oly['docs'][0]['first_publish_year']]],$auth);
+} else {
+    // Bulunamadı → "(–)" göstermek için işaretle
+    wp_req("$wp_api/$ep/$pid",'POST',['meta'=>['_tls_pub_year'=>'-']],$auth);
 }
 
 // ── Key Quotes (_tls_quotes) ──────────────────────────────
