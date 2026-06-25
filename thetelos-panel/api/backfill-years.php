@@ -1,12 +1,14 @@
 <?php
 /**
  * backfill-years.php — Mevcut postlara kitabın ilk yayın yılını (OpenLibrary)
- * geriye dönük ekler. _tls_pub_year meta'sı olmayan postları tarar, başlıktan
- * "Kitap - Yazar" ayrıştırır, OpenLibrary first_publish_year'ı çekip kaydeder.
+ * geriye dönük ekler. ÖNİZLEMELİ:
+ *   1) "Tara": _tls_pub_year'ı olmayan postları gezer, OpenLibrary'den yılı
+ *      bulur ama KAYDETMEZ — sonuçları düzenlenebilir bir liste olarak döner.
+ *   2) Listeyi gözden geçir/düzelt.
+ *   3) "Hepsini Kaydet": onayladığın yılları siteye yazar. Boş bıraktığın
+ *      satır "(–)" olarak işaretlenir.
  *
- * Panele girişli admin bu adresi tarayıcıda açar → ilerleme çubuğuyla çalışır.
- * Her "tur" birkaç postu işler (OpenLibrary'yi yormamak için), JS bitene kadar
- * tekrar çağırır.
+ * Panele girişli admin bu adresi tarayıcıda açar.
  */
 session_start();
 require_once dirname(__DIR__) . '/config.php';
@@ -59,8 +61,8 @@ function bfy_split_title($t) {
     return [trim($t), ''];
 }
 
-/* ── İşleme turu (JS tarafından çağrılır) ── */
-if (isset($_GET['run'])) {
+/* ── TARAMA TURU: yılları bul ama KAYDETME, listeyi döndür ── */
+if (isset($_GET['scan'])) {
     header('Content-Type: application/json');
     session_write_close();
     @set_time_limit(120);
@@ -78,49 +80,71 @@ if (isset($_GET['run'])) {
         exit;
     }
 
-    $updated = 0; $skipped = 0; $nofound = 0;
+    $items = [];
     foreach ($posts as $p) {
         $pid = $p['id'] ?? 0;
         if (!$pid) continue;
 
-        // Zaten yılı varsa atla
+        // Zaten yılı/işareti olanı önizlemeye alma
         $existing = $p['meta']['_tls_pub_year'] ?? '';
-        if ($existing !== '' && $existing !== null) { $skipped++; continue; }
+        if ($existing !== '' && $existing !== null) continue;
 
         $title = $p['title']['rendered'] ?? '';
         [$book, $author] = bfy_split_title($title);
         $book = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)) ?: $book;
-        if ($book === '') { $nofound++; continue; }
 
-        $ol_url = 'https://openlibrary.org/search.json?title=' . urlencode($book)
-                . ($author !== '' ? '&author=' . urlencode($author) : '')
-                . '&limit=1&fields=first_publish_year';
-        $oly = json_decode((string)@file_get_contents($ol_url), true);
-        $year = $oly['docs'][0]['first_publish_year'] ?? null;
-
-        if ($year) {
-            bfy_post_meta("$wp_api/posts/$pid", ['meta' => ['_tls_pub_year' => (string)(int)$year]], $auth);
-            $updated++;
-        } else {
-            // Bulunamadı → '-' işaretle: "(–)" göster + sonraki taramada atla
-            bfy_post_meta("$wp_api/posts/$pid", ['meta' => ['_tls_pub_year' => '-']], $auth);
-            $nofound++;
+        $year = '';
+        if ($book !== '') {
+            $ol_url = 'https://openlibrary.org/search.json?title=' . urlencode($book)
+                    . ($author !== '' ? '&author=' . urlencode($author) : '')
+                    . '&limit=1&fields=first_publish_year';
+            $oly = json_decode((string)@file_get_contents($ol_url), true);
+            if (!empty($oly['docs'][0]['first_publish_year'])) {
+                $year = (string)(int)$oly['docs'][0]['first_publish_year'];
+            }
+            usleep(250000); // OpenLibrary'yi yorma
         }
-        usleep(250000); // OpenLibrary'yi yorma
+
+        $items[] = [
+            'id'     => $pid,
+            'title'  => $title,
+            'book'   => $book,
+            'author' => $author,
+            'year'   => $year,   // '' = bulunamadı
+        ];
     }
 
     $next = $offset + count($posts);
     $done = (count($posts) < $per) || ($total > 0 && $next >= $total);
     echo json_encode([
-        'ok'      => true,
-        'total'   => $total,
-        'offset'  => $offset,
-        'next'    => $next,
-        'updated' => $updated,
-        'skipped' => $skipped,
-        'nofound' => $nofound,
-        'done'    => $done,
-    ]);
+        'ok'    => true,
+        'total' => $total,
+        'next'  => $next,
+        'done'  => $done,
+        'items' => $items,
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+/* ── KAYDETME: onaylanan yılları yaz ── */
+if (isset($_POST['save'])) {
+    header('Content-Type: application/json');
+    @set_time_limit(120);
+
+    $items = json_decode($_POST['items'] ?? '[]', true);
+    if (!is_array($items)) { echo json_encode(['ok' => false, 'error' => 'geçersiz veri']); exit; }
+
+    $saved = 0;
+    foreach ($items as $it) {
+        $pid  = (int)($it['id'] ?? 0);
+        if (!$pid) continue;
+        $year = trim((string)($it['year'] ?? ''));
+        // Geçerli 3-4 haneli yıl → onu yaz; aksi halde "(–)" işareti '-'
+        $val  = preg_match('/^\d{3,4}$/', $year) ? $year : '-';
+        bfy_post_meta("$wp_api/posts/$pid", ['meta' => ['_tls_pub_year' => $val]], $auth);
+        $saved++;
+    }
+    echo json_encode(['ok' => true, 'saved' => $saved]);
     exit;
 }
 
@@ -129,37 +153,107 @@ header('Content-Type: text/html; charset=utf-8');
 ?><!DOCTYPE html><html lang="tr"><head><meta charset="utf-8">
 <title>Yayın Yılı Doldurma</title>
 <style>
-  body{font-family:system-ui,sans-serif;max-width:720px;margin:40px auto;padding:0 16px;color:#222}
+  body{font-family:system-ui,sans-serif;max-width:860px;margin:32px auto;padding:0 16px;color:#222}
   h2{margin-bottom:4px}
-  .bar{height:14px;background:#eee;border-radius:7px;overflow:hidden;margin:18px 0}
-  .bar>div{height:100%;width:0;background:#2e7d32;transition:width .3s}
-  button{background:#2e7d32;color:#fff;border:0;padding:12px 22px;border-radius:8px;font-size:15px;cursor:pointer}
-  button:disabled{opacity:.5;cursor:default}
-  .log{font-size:13px;color:#555;margin-top:14px;white-space:pre-line}
   .muted{color:#888;font-size:13px}
+  .bar{height:12px;background:#eee;border-radius:7px;overflow:hidden;margin:16px 0}
+  .bar>div{height:100%;width:0;background:#2e7d32;transition:width .3s}
+  button{background:#2e7d32;color:#fff;border:0;padding:11px 20px;border-radius:8px;font-size:15px;cursor:pointer}
+  button.secondary{background:#444}
+  button:disabled{opacity:.45;cursor:default}
+  .row-actions{display:flex;gap:10px;align-items:center;margin:10px 0 4px}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #eee;vertical-align:top}
+  th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#888}
+  td .bk{font-weight:600}
+  td .au{color:#777;font-size:13px}
+  input.yr{width:78px;padding:6px 8px;border:1px solid #ccc;border-radius:6px;font-size:14px;text-align:center}
+  input.yr.empty{border-color:#e0a800;background:#fffbe6}
+  .log{font-size:13px;color:#555;margin-top:10px;white-space:pre-line}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:#eee;color:#555;margin-left:6px}
 </style></head><body>
 <h2>Yayın Yılı Doldurma</h2>
-<p class="muted">Mevcut postları OpenLibrary'den tarayıp kitabın ilk yayın yılını ekler. Yılı zaten olan postlar atlanır. Sekmeyi açık tut.</p>
-<button id="start">▶ Başlat</button>
+<p class="muted">Önce <b>Tara</b>: yılı olmayan postları OpenLibrary'den tarar ve listeler — <u>siteye yazmaz</u>.
+Listeyi düzelt, sonra <b>Hepsini Kaydet</b>'e bas. Boş bıraktığın yıl <b>"(–)"</b> olarak kaydedilir. Sekmeyi açık tut.</p>
+
+<div class="row-actions">
+  <button id="scan">▶ Tara</button>
+  <button id="save" class="secondary" disabled>Hepsini Kaydet</button>
+</div>
 <div class="bar"><div id="fill"></div></div>
 <div class="log" id="log"></div>
+
+<table id="tbl" hidden>
+  <thead><tr><th>#</th><th>Kitap</th><th>Yıl</th></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+
 <script>
 (function(){
-  var btn=document.getElementById('start'), fill=document.getElementById('fill'), log=document.getElementById('log');
-  var totUpdated=0, totSkipped=0, totNofound=0;
-  function step(offset){
-    fetch('?run=1&offset='+offset).then(function(r){return r.json();}).then(function(d){
-      if(!d.ok){ log.textContent='Hata: '+(d.error||'bilinmiyor')+' (offset '+offset+'). 3sn sonra tekrar...'; setTimeout(function(){step(offset);},3000); return; }
-      totUpdated+=d.updated||0; totSkipped+=d.skipped||0; totNofound+=d.nofound||0;
-      var pct = d.total>0 ? Math.min(100, Math.round(d.next/d.total*100)) : 0;
-      fill.style.width=pct+'%';
-      log.textContent='İşlenen: '+d.next+(d.total?(' / '+d.total):'')+'  ('+pct+'%)\n'
-        +'✓ Yıl eklendi: '+totUpdated+'   ⏭ Zaten vardı: '+totSkipped+'   — Bulunamadı: '+totNofound;
-      if(d.done){ log.textContent+='\n\n✅ Tamamlandı.'; btn.disabled=false; btn.textContent='▶ Tekrar tara'; return; }
-      setTimeout(function(){ step(d.next); }, 400);
-    }).catch(function(){ log.textContent='Bağlantı hatası (offset '+offset+'). 3sn sonra tekrar...'; setTimeout(function(){step(offset);},3000); });
+  var scanBtn=document.getElementById('scan'), saveBtn=document.getElementById('save');
+  var fill=document.getElementById('fill'), log=document.getElementById('log');
+  var tbl=document.getElementById('tbl'), rows=document.getElementById('rows');
+  var collected=[], foundCount=0, missCount=0;
+
+  function esc(s){ return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  function addRows(items){
+    var html='';
+    for(var i=0;i<items.length;i++){
+      var it=items[i];
+      var has = /^\d{3,4}$/.test(it.year||'');
+      if(has) foundCount++; else missCount++;
+      html += '<tr>'
+        + '<td>'+esc(it.id)+'</td>'
+        + '<td><span class="bk">'+esc(it.book||it.title)+'</span>'
+            + (it.author?'<br><span class="au">'+esc(it.author)+'</span>':'')+'</td>'
+        + '<td><input class="yr'+(has?'':' empty')+'" data-id="'+esc(it.id)+'" value="'+esc(it.year||'')+'" placeholder="(–)"></td>'
+        + '</tr>';
+    }
+    rows.insertAdjacentHTML('beforeend', html);
+    tbl.hidden = rows.children.length===0;
   }
-  btn.addEventListener('click',function(){ btn.disabled=true; btn.textContent='Çalışıyor...'; totUpdated=totSkipped=totNofound=0; step(0); });
+
+  function scanStep(offset){
+    fetch('?scan=1&offset='+offset).then(function(r){return r.json();}).then(function(d){
+      if(!d.ok){ log.textContent='Hata: '+(d.error||'bilinmiyor')+'. 3sn sonra tekrar...'; setTimeout(function(){scanStep(offset);},3000); return; }
+      if(d.items && d.items.length){ collected=collected.concat(d.items); addRows(d.items); }
+      var pct=d.total>0?Math.min(100,Math.round(d.next/d.total*100)):0;
+      fill.style.width=pct+'%';
+      log.textContent='Tarandı: '+d.next+(d.total?(' / '+d.total):'')+'  ('+pct+'%)   '
+        +'✓ Yıl bulundu: '+foundCount+'   — Bulunamadı: '+missCount;
+      if(d.done){
+        log.textContent+='\n\n✅ Tarama bitti. '+collected.length+' post listelendi. Düzelt ve "Hepsini Kaydet"e bas.';
+        scanBtn.disabled=false; scanBtn.textContent='▶ Tekrar tara';
+        if(collected.length>0){ saveBtn.disabled=false; saveBtn.textContent='Hepsini Kaydet ('+collected.length+')'; }
+        return;
+      }
+      setTimeout(function(){ scanStep(d.next); }, 300);
+    }).catch(function(){ log.textContent='Bağlantı hatası. 3sn sonra tekrar...'; setTimeout(function(){scanStep(offset);},3000); });
+  }
+
+  scanBtn.addEventListener('click',function(){
+    scanBtn.disabled=true; scanBtn.textContent='Taranıyor...';
+    saveBtn.disabled=true;
+    collected=[]; foundCount=0; missCount=0; rows.innerHTML=''; tbl.hidden=true;
+    scanStep(0);
+  });
+
+  saveBtn.addEventListener('click',function(){
+    var inputs=rows.querySelectorAll('input.yr');
+    var payload=[];
+    inputs.forEach(function(inp){ payload.push({id:parseInt(inp.getAttribute('data-id'),10), year:inp.value.trim()}); });
+    if(payload.length===0) return;
+    if(!confirm(payload.length+' post güncellenecek. Devam edilsin mi?')) return;
+    saveBtn.disabled=true; saveBtn.textContent='Kaydediliyor...'; scanBtn.disabled=true;
+    var body='save=1&items='+encodeURIComponent(JSON.stringify(payload));
+    fetch('', {method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:body})
+      .then(function(r){return r.json();}).then(function(d){
+        if(d.ok){ log.textContent='✅ Kaydedildi: '+d.saved+' post güncellendi.'; saveBtn.textContent='Kaydedildi ✓'; }
+        else { log.textContent='Kaydetme hatası: '+(d.error||'bilinmiyor'); saveBtn.disabled=false; saveBtn.textContent='Tekrar dene'; }
+        scanBtn.disabled=false;
+      }).catch(function(){ log.textContent='Kaydetme bağlantı hatası.'; saveBtn.disabled=false; saveBtn.textContent='Tekrar dene'; scanBtn.disabled=false; });
+  });
 })();
 </script>
 </body></html>
