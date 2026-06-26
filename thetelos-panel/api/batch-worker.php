@@ -377,6 +377,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $book         = $batch['books'][$idx]['book_title'];
     $author       = $batch['books'][$idx]['author_name'];
     $pre_cover    = trim($batch['books'][$idx]['cover_url'] ?? '');
+    $pre_year     = trim((string)($batch['books'][$idx]['pub_year'] ?? '')); // listeden gelen yayın yılı
     // Dış aramalar (Google Books / OpenLibrary / dedup) için başlığın
     // sonundaki "(Orijinal Ad)" parantezini at — yoksa eşleşme bulunamıyor.
     $search_book  = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book));
@@ -538,14 +539,17 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
     }
 
-    // Kitabın ilk yayın yılı (OpenLibrary) — postta "Published <yıl>" göstermek için.
-    $pub_year = '';
-    $oly = json_decode((string)$bw_http_get(
-        'https://openlibrary.org/search.json?title=' . urlencode($search_book)
-        . '&author=' . urlencode($author) . '&limit=1&fields=first_publish_year'
-    ), true);
-    if (!empty($oly['docs'][0]['first_publish_year'])) {
-        $pub_year = (string)(int)$oly['docs'][0]['first_publish_year'];
+    // Kitabın yayın yılı: ÖNCE listeden gelen değer (zaten OpenLibrary kaynaklı),
+    // yoksa OpenLibrary'den ara. Postta "Published <yıl>" göstermek için.
+    $pub_year = preg_match('/^\d{3,4}$/', $pre_year) ? $pre_year : '';
+    if ($pub_year === '') {
+        $oly = json_decode((string)$bw_http_get(
+            'https://openlibrary.org/search.json?title=' . urlencode($search_book)
+            . '&author=' . urlencode($author) . '&limit=1&fields=first_publish_year'
+        ), true);
+        if (!empty($oly['docs'][0]['first_publish_year'])) {
+            $pub_year = (string)(int)$oly['docs'][0]['first_publish_year'];
+        }
     }
 
     // ── WordPress'e yayınla ────────────────────────────────────────

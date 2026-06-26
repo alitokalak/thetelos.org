@@ -48,6 +48,7 @@ $batch = [
         'book_title'  => trim($b['book_title']  ?? ''),
         'author_name' => trim($b['author_name'] ?? ''),
         'cover_url'   => trim($b['cover']        ?? ''),
+        'pub_year'    => trim((string)($b['year'] ?? '')),
         'status'      => 'pending',
         'post_id'     => null,
         'post_url'    => null,

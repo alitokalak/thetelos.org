@@ -81,6 +81,15 @@ foreach ($rows as $r) {
         $cell = trim((string)$cell);
         if (preg_match('#^https?://#i', $cell)) { $cover = $cell; break; }
     }
+    // Yıl: salt 4 haneli (ör. 1987) bir hücre = kitabın yayın yılı ("Yıl" sütunu).
+    $year = '';
+    foreach ($r as $cell) {
+        $cell = trim((string)$cell);
+        if (preg_match('/^(\d{3,4})$/', $cell, $ym)) {
+            $yv = (int)$ym[1];
+            if ($yv >= 100 && $yv <= 2099) { $year = (string)$yv; break; }
+        }
+    }
     // 3. sütun: salt yıl (4 haneli sayı) veya URL ise kategori DEĞİLDİR.
     $cat = trim($r[2] ?? '');
     if (preg_match('/^\d{3,4}$/', $cat) || preg_match('#^https?://#i', $cat)) $cat = '';
@@ -89,6 +98,7 @@ foreach ($rows as $r) {
         'author_name' => trim($r[1] ?? ''),
         'category'    => $cat,
         'cover'       => $cover,
+        'year'        => $year,
     ];
 }
 

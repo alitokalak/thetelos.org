@@ -1303,7 +1303,7 @@ window.removeBuilderRow = function(i) {
 // Toplu Batch'e aktar
 document.getElementById('btn-builder-to-batch')?.addEventListener('click', () => {
   if (!builderList.length) { notify('builder-notif','Liste boş.','err'); return; }
-  batchBooks = builderList.map(b => ({ book_title: workLabel(b), author_name: b.author, category: '', cover: b.cover || '' }));
+  batchBooks = builderList.map(b => ({ book_title: workLabel(b), author_name: b.author, category: '', cover: b.cover || '', year: b.year || '' }));
   updateBatchBadge();
   renderBulkTable(batchBooks);
   document.getElementById('btn-batch-start').disabled = false;
