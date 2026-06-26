@@ -24,10 +24,13 @@ $worker_itok = hash('sha256', WP_APP_PASS . '|tls-batch-worker');
 // cron URL'sinde kullanılan ayrı, tahmin edilemez anahtar
 $cron_key    = hash('sha256', WP_APP_PASS . '|tls-cron-key');
 
-$key = (string)($_GET['key'] ?? '');
+$key    = (string)($_GET['key'] ?? '');
+$is_cli = (PHP_SAPI === 'cli');   // cPanel cron'u "php cron-tick.php" ile çağırınca:
+                                  // web isteği zaman aşımı YOK → kitaplar yarıda kesilmez.
 
-/* ── Yetkisiz: giriş yapmış admin'e kurulum adresini göster ── */
-if (!hash_equals($cron_key, $key)) {
+/* ── Yetkisiz web isteği: giriş yapmış admin'e kurulum adresini göster ──
+   CLI (sunucu cron'u) yerel ve güvenli sayılır; anahtar gerekmez. */
+if (!$is_cli && !hash_equals($cron_key, $key)) {
     session_start();
     $is_admin = !empty($_SESSION['tls_auth']);
     session_write_close();
@@ -45,6 +48,18 @@ if (!hash_equals($cron_key, $key)) {
         echo '<p><code style="display:block;padding:14px;background:#111;color:#0f0;border-radius:6px;word-break:break-all;font-size:15px">'
            . htmlspecialchars($url) . '</code></p>';
         echo '<p style="color:#888">Bu anahtar yalnızca batch işlemeyi tetikler; veriye erişim vermez.</p>';
+
+        // ── ÖNERİLEN: cPanel Cron Job (PHP CLI) — web zaman aşımına takılmaz ──
+        echo '<hr style="margin:24px 0;border:none;border-top:1px solid #ddd">';
+        echo '<h3>✅ Önerilen: cPanel Cron Job (en güvenilir)</h3>';
+        echo '<p>cURL yöntemi web isteği zaman aşımına takılıp kitabı yarıda kesebiliyor. '
+           . 'cPanel’in varsa <b>en sağlam yol</b> bu: <b>cPanel → Cron Jobs</b>, zamanlama '
+           . '<b>Once Per Minute (* * * * *)</b>, komut olarak:</p>';
+        echo '<p><code style="display:block;padding:14px;background:#111;color:#0f0;border-radius:6px;word-break:break-all;font-size:15px">'
+           . '/usr/local/bin/php ' . htmlspecialchars(__FILE__) . '</code></p>';
+        echo '<p style="color:#888">Hata verirse PHP yolunu cPanel <b>MultiPHP Manager</b>’daki '
+           . 'sürümle değiştir (ör. <code>/opt/cpanel/ea-php82/root/usr/bin/php</code>). '
+           . 'Mevcut cURL cron’unu silip bunu eklemen yeterli.</p>';
 
         // ── Teşhis: cron son ne zaman çalıştı + bekleyen iş var mı ──
         $jd   = dirname(__DIR__) . '/jobs';
