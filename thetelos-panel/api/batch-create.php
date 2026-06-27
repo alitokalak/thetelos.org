@@ -25,6 +25,36 @@ if (count($books) === 0) {
     exit;
 }
 
+// ── Aynı eseri bir batch'te BİRDEN ÇOK kez işleme (duplicate önleme) ──
+// Liste 0-50/50-100 örtüşmesi veya parantez varyantları yüzünden aynı kitabı
+// birden çok içerebiliyor. Başlık+yazarı normalize edip (parantez, diakritik,
+// noktalama atılır) tekrarları burada eler → aynı işten 2 post oluşmaz.
+function bc_norm_key($title, $author) {
+    $n = function ($s) {
+        $s = mb_strtolower(trim((string)$s), 'UTF-8');
+        $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+        if ($t !== false && $t !== '') $s = $t;
+        $s = preg_replace('/\([^()]*\)/', ' ', $s);   // parantez içini at
+        $s = preg_replace('/[^a-z0-9]+/', ' ', $s);   // noktalama/diakritik → boşluk
+        return trim(preg_replace('/\s+/', ' ', $s));
+    };
+    return $n($title) . '||' . $n($author);
+}
+$seen = [];
+$deduped = [];
+$removed_dupes = 0;
+foreach ($books as $b) {
+    $k = bc_norm_key($b['book_title'] ?? '', $b['author_name'] ?? '');
+    if ($k === '||' || isset($seen[$k])) { if (isset($seen[$k])) $removed_dupes++; continue; }
+    $seen[$k] = true;
+    $deduped[] = $b;
+}
+$books = $deduped;
+if (count($books) === 0) {
+    echo json_encode(['ok'=>false,'error'=>'Geçerli kitap bulunamadı.']);
+    exit;
+}
+
 $batch_id   = 'batch_' . uniqid('', true);
 $jobs_dir   = dirname(__DIR__) . '/jobs';
 if (!is_dir($jobs_dir)) mkdir($jobs_dir, 0755, true);
@@ -60,4 +90,4 @@ $batch = [
 
 file_put_contents($batch_file, json_encode($batch, JSON_UNESCAPED_UNICODE));
 
-echo json_encode(['ok'=>true, 'batch_id'=>$batch_id, 'total'=>count($books)]);
+echo json_encode(['ok'=>true, 'batch_id'=>$batch_id, 'total'=>count($books), 'removed_dupes'=>$removed_dupes]);
