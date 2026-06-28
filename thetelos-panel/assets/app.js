@@ -1078,6 +1078,60 @@ document.getElementById('btn-fetch-authors')?.addEventListener('click', async ()
   }
 });
 
+// "Tümünü Getir" — kategorideki tüm yazarları otomatik sayfalayarak çek
+document.getElementById('btn-fetch-all-authors')?.addEventListener('click', async () => {
+  const category = document.getElementById('builder-category').value.trim();
+  if (!category) { notify('builder-notif','Kategori girin.','err'); return; }
+  const btn = document.getElementById('btn-fetch-all-authors');
+  setLoading(btn, true, 'Tümü getiriliyor...');
+  builderAuthors = [];
+  builderAuthorsOffset = 0;
+  const CAP = 3000;  // güvenlik üst sınırı
+  try {
+    while (builderAuthorsOffset < CAP) {
+      btn.innerHTML = `<span class="loader"></span> Getiriliyor... (${builderAuthors.length})`;
+      const res = await postData(API('list-authors.php'), { category, count: 50, offset: builderAuthorsOffset });
+      if (!res.ok) { notify('builder-notif', res.error, 'err'); break; }
+      const got = res.authors || [];
+      const have = new Set(builderAuthors.map(a => a.author.toLowerCase()));
+      const fresh = got.filter(a => !have.has(a.author.toLowerCase()));
+      builderAuthors = builderAuthors.concat(fresh);
+      builderAuthorsOffset += 50;
+      renderBuilderAuthors();
+      if (got.length < 50 || fresh.length < 3) break;  // liste tükendi
+    }
+    if (builderAuthors.length) {
+      checkAuthorsOnSite();
+      notify('builder-notif', `✓ Toplam ${builderAuthors.length} yazar getirildi.`, 'ok');
+    }
+  } catch(e) {
+    notify('builder-notif', 'Hata: ' + e.message, 'err');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
+// "Sitede olanları çıkar" — listeden sitede zaten olan yazarları kaldır
+document.getElementById('btn-remove-onsite')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-remove-onsite');
+  if (!builderAuthors.length) { notify('builder-notif','Önce yazar listesi getir.','err'); return; }
+  setLoading(btn, true, 'Kontrol ediliyor...');
+  try {
+    await checkAuthorsOnSite();   // sitede-var durumunu tazele
+    const before = builderAuthors.length;
+    builderAuthors = builderAuthors.filter(a => !a.onSite);
+    const removed = before - builderAuthors.length;
+    renderBuilderAuthors();
+    notify('builder-notif',
+      removed ? `✓ ${removed} sitede olan yazar listeden çıkarıldı. Kalan: ${builderAuthors.length}` : 'Sitede olan yazar bulunamadı.',
+      removed ? 'ok' : 'err');
+  } catch(e) {
+    notify('builder-notif', 'Hata: ' + e.message, 'err');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
 function renderBuilderAuthors() {
   document.getElementById('builder-authors-card').style.display = '';
   document.getElementById('builder-authors-count').textContent = `(${builderAuthors.length})`;

@@ -313,7 +313,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <input type="number" id="builder-author-count" value="40" min="5" max="150">
             </div>
           </div>
-          <button class="btn btn-primary" id="btn-fetch-authors">👥 Önemli Yazarları Getir</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-primary" id="btn-fetch-authors">👥 Önemli Yazarları Getir</button>
+            <button class="btn btn-ghost" id="btn-fetch-all-authors" title="Bu kategorideki TÜM önemli yazarları otomatik sayfalayarak getir">⬇️ Tümünü Getir</button>
+          </div>
         </div>
 
         <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)">
@@ -329,6 +332,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div class="card-title">Yazarlar <span id="builder-authors-count" style="color:var(--muted);font-weight:400;font-size:11px"></span></div>
         <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-green btn-sm" id="btn-fetch-all-works">⚡ Tüm Yazarların Eserlerini Getir</button>
+          <button class="btn btn-ghost btn-sm" id="btn-remove-onsite" title="Sitede zaten olan yazarları bu listeden çıkar">⊘ Sitede olanları çıkar</button>
           <span style="font-size:11px;color:var(--muted);align-self:center">(tek tek de getirebilirsin)</span>
         </div>
         <div style="overflow-x:auto">
