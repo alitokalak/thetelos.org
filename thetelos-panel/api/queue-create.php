@@ -22,35 +22,31 @@ $parts        = 2;
 
 if ($category === '') { echo json_encode(['ok'=>false,'error'=>'Kategori zorunlu.']); exit; }
 
-// LLM → yazar listesi
-$ch = curl_init(DEEPSEEK_API_URL);
-$rank_start = $offset + 1;
-$rank_end   = $offset + $author_count;
-$prompt = "List ranks {$rank_start} through {$rank_end} of the most important authors in \"{$category}\" across all of history, ordered by importance.\n"
-        . ($offset > 0 ? "Do NOT include the top {$offset} most important authors — they are already listed.\n" : '')
-        . 'Return ONLY a valid JSON array: [{"author":"Full Name","era":"century","note":"brief"}]';
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>80,
-    CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-    CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>4000,
-        'messages'=>[['role'=>'user','content'=>$prompt]]]),
-]);
-$raw = curl_exec($ch); curl_close($ch);
-$d   = json_decode($raw, true);
-$txt = $d['choices'][0]['message']['content'] ?? '';
-
-// JSON dizi ayrıştır
-$txt   = preg_replace('/```json|```/i', '', $txt);
-$s     = strpos($txt, '['); $e = strrpos($txt, ']');
-$arr   = ($s!==false && $e>$s) ? json_decode(substr($txt,$s,$e-$s+1), true) : [];
-if (!is_array($arr) || empty($arr)) {
-    echo json_encode(['ok'=>false,'error'=>'Yazar listesi alınamadı. Tekrar dene.']); exit;
+// Yazar kaynağı:
+//  1) Builder doğrudan listeyi gönderdiyse (POST authors) → onu kullan (Wikidata + "sitede olanları çıkar" sonrası).
+//  2) Yoksa Wikidata'dan çek (AI YOK — deterministik, kanonik adlar).
+$authors = [];
+$posted = json_decode($_POST['authors'] ?? '', true);
+if (is_array($posted) && !empty($posted)) {
+    foreach ($posted as $a) {
+        if (is_array($a)) {
+            $name = trim($a['author'] ?? '');
+            $authors[] = ['author'=>$name,'era'=>trim($a['era']??''),'note'=>trim($a['note']??'')];
+        } else {
+            $name = trim((string)$a);
+            $authors[] = ['author'=>$name,'era'=>'','note'=>''];
+        }
+    }
+    $authors = array_values(array_filter($authors, fn($x) => $x['author'] !== ''));
+} else {
+    require_once __DIR__ . '/_wikidata-authors.php';
+    $wd = tls_wikidata_authors($category, $author_count, $offset);
+    if (!$wd['ok']) { echo json_encode(['ok'=>false,'error'=>$wd['error']]); exit; }
+    $authors = $wd['authors'];
 }
 
-$authors = [];
-foreach ($arr as $a) {
-    $name = trim($a['author'] ?? ''); if (!$name) continue;
-    $authors[] = ['author'=>$name,'era'=>trim($a['era']??''),'note'=>trim($a['note']??'')];
+if (empty($authors)) {
+    echo json_encode(['ok'=>false,'error'=>'Yazar listesi boş.']); exit;
 }
 
 // Batch dosyası oluştur (books henüz boş, status=building)
@@ -62,6 +58,7 @@ $batch_file = "$jobs_dir/{$batch_id}.json";
 $batch = [
     'id'           => $batch_id,
     'category'     => $category,
+    'list_only'    => !empty($_POST['list_only']),  // true → yalnız liste; içerik ÜRETİLMEZ
     'status'       => 'building',
     'created_at'   => time(),
     'type'         => $type,

@@ -1132,6 +1132,29 @@ document.getElementById('btn-remove-onsite')?.addEventListener('click', async ()
   }
 });
 
+// "Sunucuda Eserleri Çek" — builder listesini sunucuya gönder, arka planda (cron) çekilsin
+document.getElementById('btn-builder-to-queue')?.addEventListener('click', async () => {
+  if (!builderAuthors.length) { notify('builder-notif','Önce yazar listesi getir.','err'); return; }
+  const category = document.getElementById('builder-category').value.trim() || 'liste';
+  if (!confirm(`${builderAuthors.length} yazar sunucuya gönderilecek. Eserleri arka planda (tarayıcı/oturum kapalı olsa bile) çekilecek. Bittiğinde "Kuyruk" sayfasından 100'erli ZIP indirebilirsin. Devam edilsin mi?`)) return;
+  const btn = document.getElementById('btn-builder-to-queue');
+  setLoading(btn, true, 'Sunucuya gönderiliyor...');
+  try {
+    const res = await postData(API('queue-create.php'), {
+      category,
+      list_only: 1,   // yalnız liste — içerik otomatik ÜRETİLMEZ
+      authors: JSON.stringify(builderAuthors.map(a => ({ author: a.author, era: a.era || '', note: a.note || '' }))),
+    }, 90000);
+    if (!res.ok) { notify('builder-notif', res.error || 'Hata', 'err'); return; }
+    notify('builder-notif',
+      `✓ Sunucu kuyruğu oluşturuldu (${builderAuthors.length} yazar). "Kuyruk" sayfasına geç — cron arka planda eserleri çekiyor. Bitince oradan "100'erli ZIP" indir.`, 'ok');
+  } catch(e) {
+    notify('builder-notif', e.message, 'err');
+  } finally {
+    setLoading(btn, false);
+  }
+});
+
 function renderBuilderAuthors() {
   document.getElementById('builder-authors-card').style.display = '';
   document.getElementById('builder-authors-count').textContent = `(${builderAuthors.length})`;
@@ -1481,7 +1504,10 @@ async function loadQueueList() {
           ${q.status === 'building' ? `<button class="btn btn-primary btn-sm" onclick="continueBuilding('${q.id}',${q.authors_built||0},${q.authors_total||50})">⚙ Oluşturmayı Devam Ettir</button>` : ''}
           ${q.status === 'running'  ? `<button class="btn btn-primary btn-sm" onclick="resumeQueue('${q.id}')">▶ İşlemi Başlat</button>` : ''}
           ${q.status === 'done'     ? `<span class="badge badge-green">✓ Tamamlandı</span>` : ''}
-          ${q.total > 0 ? `<a class="btn btn-ghost btn-sm" href="api/queue-export.php?batch_id=${q.id}" download>⬇ CSV İndir</a>` : ''}
+          ${q.status === 'list_ready' ? `<span class="badge badge-green">✓ Liste hazır — indir</span>` : ''}
+          ${q.status === 'building' ? `<span class="badge badge-gold">⏳ Eserler çekiliyor (cron arka planda)</span>` : ''}
+          ${q.total > 0 ? `<a class="btn btn-ghost btn-sm" href="api/queue-export.php?batch_id=${q.id}" download>⬇ CSV (tek)</a>
+          <a class="btn btn-ghost btn-sm" href="api/queue-export.php?batch_id=${q.id}&zip=1&per=100" download title="100'erli yazar gruplarına bölünmüş ayrı CSV'ler, tek ZIP">⬇ 100'erli ZIP</a>` : ''}
           ${(q.status === 'running' || q.status === 'done') ? `<button class="btn btn-ghost btn-sm" onclick="addNextAuthors('${q.category}',${(q.author_offset||0)+(q.authors_total||50)})">➕ Sonraki 50 yazar</button>` : ''}
           <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteQueue('${q.id}')">✕ Sil</button>
         </div>

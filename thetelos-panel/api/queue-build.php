@@ -7,7 +7,11 @@
  */
 session_start();
 require_once dirname(__DIR__) . '/config.php';
-if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
+// Yetki: panel session'ı, ya da cron'un kullandığı dahili token / CLI.
+$qb_itok     = hash('sha256', WP_APP_PASS . '|tls-batch-worker');
+$qb_internal = isset($_POST['_itok']) && hash_equals($qb_itok, (string)$_POST['_itok']);
+$qb_is_cli   = (PHP_SAPI === 'cli');
+if (empty($_SESSION['tls_auth']) && !$qb_internal && !$qb_is_cli) { http_response_code(401); exit; }
 session_write_close();
 header('Content-Type: application/json');
 set_time_limit(150);
@@ -34,7 +38,7 @@ $authors_built = (int)($batch['authors_built'] ?? 0);
 $authors_total = count($authors);
 
 if ($authors_built >= $authors_total) {
-    $batch['status']    = 'running';
+    $batch['status']    = !empty($batch['list_only']) ? 'list_ready' : 'running';
     $batch['build_msg'] = 'Kuyruk hazır.';
     file_put_contents($batch_file, json_encode($batch, JSON_UNESCAPED_UNICODE));
     echo json_encode(['ok'=>true,'done'=>true,'authors_built'=>$authors_built,'authors_total'=>$authors_total,'books_added'=>0]);
@@ -243,7 +247,7 @@ $b2['total']         = count($b2['books']);
 $b2['authors_built'] = $end;
 $b2['build_msg']     = "{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır';
 if ($end >= $authors_total) {
-    $b2['status']    = 'running';
+    $b2['status']    = !empty($b2['list_only']) ? 'list_ready' : 'running';
     $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
 }
 

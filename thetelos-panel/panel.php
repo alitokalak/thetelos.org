@@ -333,6 +333,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-green btn-sm" id="btn-fetch-all-works">⚡ Tüm Yazarların Eserlerini Getir</button>
           <button class="btn btn-ghost btn-sm" id="btn-remove-onsite" title="Sitede zaten olan yazarları bu listeden çıkar">⊘ Sitede olanları çıkar</button>
+          <button class="btn btn-primary btn-sm" id="btn-builder-to-queue" title="Bu yazar listesini sunucuya gönder; eserleri arka planda (tarayıcı/oturum kapalı olsa da) çekilsin. Sonra Kuyruk sayfasından 100'erli ZIP indir.">🌐 Sunucuda Eserleri Çek (arka plan)</button>
           <span style="font-size:11px;color:var(--muted);align-self:center">(tek tek de getirebilirsin)</span>
         </div>
         <div style="overflow-x:auto">

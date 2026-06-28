@@ -104,7 +104,28 @@ if (!is_dir($jobs_dir)) @mkdir($jobs_dir, 0755, true);
 // Teşhis: her yetkili çalışmada zaman damgası bırak (cron gerçekten geliyor mu?)
 @file_put_contents($jobs_dir . '/.cron-last', time());
 
-/* Yarım kalan en eski batch'i bul. Sadece 'paused'/'cancelled' atlanır;
+/* ── ÖNCELİK 1: yarım kalan "building" kuyruğunu ilerlet ──
+   queue-create ile oluşan kuyruklar yazarların eserlerini sunucuda parça
+   parça çeker (status='building'). Tarayıcı/oturum kapalı olsa da cron bunu
+   sürdürür → liste arka planda sonuna kadar oluşur. */
+$build_target = null; $b_oldest = PHP_INT_MAX;
+foreach (glob("$jobs_dir/*.json") ?: [] as $f) {
+    $b = json_decode(@file_get_contents($f), true);
+    if (!$b || ($b['status'] ?? '') !== 'building') continue;
+    if ((int)($b['authors_built'] ?? 0) >= (int)($b['authors_total'] ?? 0)) continue;
+    $ct = (int)($b['created_at'] ?? 0);
+    if ($ct < $b_oldest) { $b_oldest = $ct; $build_target = $b['id'] ?? basename($f, '.json'); }
+}
+if ($build_target) {
+    $_POST['batch_id'] = $build_target;
+    $_POST['chunk']    = 8;               // her tikte ~8 yazarın eserini çek
+    $_POST['_itok']    = $worker_itok;
+    include __DIR__ . '/queue-build.php';
+    exit;
+}
+
+/* ── ÖNCELİK 2: içerik üretimi ──
+   Yarım kalan en eski batch'i bul. Sadece 'paused'/'cancelled' atlanır;
    'running' ya da (ölü worker yüzünden) belirsiz durumda kalmış ama hâlâ
    bekleyen kitabı olan batch'ler ele alınır — böylece donmuş batch'ler de
    cron tarafından kurtarılır. */
@@ -116,7 +137,9 @@ if (is_dir($jobs_dir)) {
         $b = json_decode(@file_get_contents($f), true);
         if (!$b) continue;
         $st = $b['status'] ?? '';
-        if ($st === 'paused' || $st === 'cancelled' || $st === 'done') continue;
+        // İçerik üretimi YALNIZ gerçek 'running' batch'lerde. 'building'/'list_ready'
+        // ve list_only (yalnız-liste) kuyruklar burada işlenmez → istenmeyen post üretilmez.
+        if ($st !== 'running' || !empty($b['list_only'])) continue;
 
         // Bekleyen ya da (ölü worker'dan kalma) işlenmekte takılı kitap var mı?
         $has_work = false;
