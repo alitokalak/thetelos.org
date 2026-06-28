@@ -1149,6 +1149,17 @@ function renderBuilderAuthors() {
     </tr>`;
   }).join('');
 
+  // Toplam yazar sayısı — listenin ALTINDA her zaman görünür (uzun listede
+  // üstteki sayaç kayboluyor; aşağı inince burada görürsün)
+  let totalEl = document.getElementById('builder-authors-total');
+  if (!totalEl) {
+    totalEl = document.createElement('div');
+    totalEl.id = 'builder-authors-total';
+    totalEl.style.cssText = 'margin-top:12px;font-weight:700;font-size:14px;color:var(--gold)';
+    document.getElementById('builder-authors-card').appendChild(totalEl);
+  }
+  totalEl.textContent = `Toplam: ${builderAuthors.length} yazar`;
+
   // Sonraki 100 butonu
   let nextBtn = document.getElementById('btn-next-authors');
   if (!nextBtn) {
