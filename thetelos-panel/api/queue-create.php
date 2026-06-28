@@ -12,6 +12,15 @@ header('Content-Type: application/json');
 @ini_set('display_errors', 0);
 set_time_limit(90);
 
+// Fatal olursa jenerik 500 yerine gerçek mesajı JSON olarak döndür (teşhis).
+register_shutdown_function(function () {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR], true)) {
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode(['ok' => false, 'error' => 'PHP: ' . $e['message'] . ' @' . basename($e['file']) . ':' . $e['line']]);
+    }
+});
+
 $category     = trim($_POST['category']     ?? '');
 $author_count = max(10, min(50, (int)($_POST['author_count'] ?? 50)));
 $offset       = max(0, (int)($_POST['offset'] ?? 0));

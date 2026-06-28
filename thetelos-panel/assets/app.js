@@ -1143,8 +1143,8 @@ document.getElementById('btn-builder-to-queue')?.addEventListener('click', async
     const res = await postData(API('queue-create.php'), {
       category,
       list_only: 1,   // yalnız liste — içerik otomatik ÜRETİLMEZ
-      authors: JSON.stringify(builderAuthors.map(a => ({ author: a.author, era: a.era || '', note: a.note || '' }))),
-    }, 90000);
+      authors: JSON.stringify(builderAuthors.map(a => a.author)),  // sadece isimler (küçük payload)
+    }, 120000);
     if (!res.ok) { notify('builder-notif', res.error || 'Hata', 'err'); return; }
     notify('builder-notif',
       `✓ Sunucu kuyruğu oluşturuldu (${builderAuthors.length} yazar). "Kuyruk" sayfasına geç — cron arka planda eserleri çekiyor. Bitince oradan "100'erli ZIP" indir.`, 'ok');
