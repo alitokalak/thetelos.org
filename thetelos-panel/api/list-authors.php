@@ -28,6 +28,7 @@ echo json_encode([
     'category' => $category,
     'offset'   => $offset,
     'count'    => count($res['authors']),
+    'raw'      => $res['raw'] ?? count($res['authors']),  // ham QID sayısı (tükendi kararı için)
     'authors'  => $res['authors'],
     'source'   => 'wikidata',
 ], JSON_UNESCAPED_UNICODE);

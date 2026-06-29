@@ -1100,7 +1100,10 @@ document.getElementById('btn-fetch-all-authors')?.addEventListener('click', asyn
       builderAuthors = builderAuthors.concat(fresh);
       builderAuthorsOffset += PAGE;
       renderBuilderAuthors();
-      if (got.length < PAGE) { exhausted = true; break; }   // kategori tükendi
+      // Tükendi kararı HAM QID sayısına göre (etiketsiz yazarlar filtrelendiği
+      // için got.length < PAGE olabilir ama kategoride hâlâ sayfa kalmış olabilir).
+      const raw = (res.raw != null) ? res.raw : got.length;
+      if (raw < PAGE) { exhausted = true; break; }   // kategori tükendi
     }
     if (builderAuthors.length) {
       // Tümü geldiyse "Sonraki 50" butonunu gizle — gereksiz

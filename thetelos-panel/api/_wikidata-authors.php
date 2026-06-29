@@ -115,7 +115,7 @@ if (!function_exists('tls_wd_http')) {
             $order[]  = $m[1];
             $qids[]   = 'wd:' . $m[1];
         }
-        if (empty($order)) return ['ok'=>true, 'authors'=>[], 'error'=>''];
+        if (empty($order)) return ['ok'=>true, 'authors'=>[], 'raw'=>0, 'error'=>''];
 
         /* 2) Etiket/açıklama/doğum-ölüm — yalnız bu sayfanın QID'leri için.
            VALUES ile bağlı → tarama yok, çok hızlı. */
@@ -148,6 +148,9 @@ if (!function_exists('tls_wd_http')) {
             if ($name === '' || preg_match('/^Q\d+$/', $name)) continue;  // etiketsiz
             $authors[] = ['author'=>$name, 'era'=>$meta[$qid2]['era'] ?? '', 'note'=>$meta[$qid2]['note'] ?? ''];
         }
-        return ['ok'=>true, 'authors'=>$authors, 'error'=>''];
+        // 'raw' = bu sayfada Wikidata'dan dönen ham QID sayısı (etiketsizler dahil).
+        // İstemci "tükendi" kararını buna göre verir; etiket filtresi yüzünden
+        // erken durmaz (raw == count ise daha fazla sayfa var demektir).
+        return ['ok'=>true, 'authors'=>$authors, 'raw'=>count($order), 'error'=>''];
     }
 }
