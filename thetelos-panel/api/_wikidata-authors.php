@@ -80,7 +80,7 @@ if (!function_exists('tls_wd_http')) {
 
     function tls_wikidata_authors($category, $count, $offset) {
         $category = trim($category);
-        $count    = max(5, min(50, (int)$count));
+        $count    = max(5, min(500, (int)$count));   // tek sorguda 500'e kadar (toplu getirme için)
         $offset   = max(0, (int)$offset);
         if ($category === '') return ['ok'=>false, 'authors'=>[], 'error'=>'Kategori zorunlu.'];
 

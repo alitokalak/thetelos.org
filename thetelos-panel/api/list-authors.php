@@ -17,7 +17,7 @@ set_time_limit(120);
 require_once __DIR__ . '/_wikidata-authors.php';
 
 $category = trim($_POST['category'] ?? '');
-$count    = max(5, min(50, (int)($_POST['count'] ?? 40)));
+$count    = max(5, min(500, (int)($_POST['count'] ?? 40)));
 $offset   = max(0, (int)($_POST['offset'] ?? 0));
 
 $res = tls_wikidata_authors($category, $count, $offset);

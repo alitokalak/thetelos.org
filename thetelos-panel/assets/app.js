@@ -1086,23 +1086,27 @@ document.getElementById('btn-fetch-all-authors')?.addEventListener('click', asyn
   setLoading(btn, true, 'Tümü getiriliyor...');
   builderAuthors = [];
   builderAuthorsOffset = 0;
-  const CAP = 3000;  // güvenlik üst sınırı
+  const PAGE = 200;     // sayfa başına (büyük → az tur → hızlı)
+  const CAP  = 20000;   // sonsuz döngü güvenliği
+  let exhausted = false;
   try {
     while (builderAuthorsOffset < CAP) {
       btn.innerHTML = `<span class="loader"></span> Getiriliyor... (${builderAuthors.length})`;
-      const res = await postData(API('list-authors.php'), { category, count: 50, offset: builderAuthorsOffset });
+      const res = await postData(API('list-authors.php'), { category, count: PAGE, offset: builderAuthorsOffset }, 120000);
       if (!res.ok) { notify('builder-notif', res.error, 'err'); break; }
       const got = res.authors || [];
       const have = new Set(builderAuthors.map(a => a.author.toLowerCase()));
       const fresh = got.filter(a => !have.has(a.author.toLowerCase()));
       builderAuthors = builderAuthors.concat(fresh);
-      builderAuthorsOffset += 50;
+      builderAuthorsOffset += PAGE;
       renderBuilderAuthors();
-      if (got.length < 50 || fresh.length < 3) break;  // liste tükendi
+      if (got.length < PAGE) { exhausted = true; break; }   // kategori tükendi
     }
     if (builderAuthors.length) {
+      // Tümü geldiyse "Sonraki 50" butonunu gizle — gereksiz
+      if (exhausted) { const nb = document.getElementById('btn-next-authors'); if (nb) nb.style.display = 'none'; }
       checkAuthorsOnSite();
-      notify('builder-notif', `✓ Toplam ${builderAuthors.length} yazar getirildi.`, 'ok');
+      notify('builder-notif', `✓ Toplam ${builderAuthors.length} yazar getirildi${exhausted ? ' (kategori tamamı)' : ''}.`, 'ok');
     }
   } catch(e) {
     notify('builder-notif', 'Hata: ' + e.message, 'err');
