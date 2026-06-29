@@ -95,34 +95,58 @@ if (!function_exists('tls_wd_http')) {
             if (!$qid) return ['ok'=>false, 'authors'=>[], 'error'=>"Kategori Wikidata'da eşlenemedi: $category"];
         }
 
-        $sparql = "SELECT ?person ?personLabel ?personDescription ?sitelinks ?birth ?death WHERE {
-  { SELECT ?person ?sitelinks WHERE {
-      ?person wdt:P31 wd:Q5 .
-      ?person wdt:$prop wd:$qid .
-      ?person wikibase:sitelinks ?sitelinks .
-      FILTER(?sitelinks >= 2)
-    } ORDER BY DESC(?sitelinks) ?person LIMIT $count OFFSET $offset }
+        /* 1) HAFİF sorgu: yalnız kişi + sitelink (etiket/tarih YOK).
+           Derin offset'te bile hızlıdır — eski tek-sorgu etiket servisi +
+           OPTIONAL'larla ~2000. sırada zaman aşımına uğruyordu. */
+        $q1 = "SELECT ?person ?sitelinks WHERE {
+  ?person wdt:P31 wd:Q5 .
+  ?person wdt:$prop wd:$qid .
+  ?person wikibase:sitelinks ?sitelinks .
+  FILTER(?sitelinks >= 2)
+} ORDER BY DESC(?sitelinks) ?person LIMIT $count OFFSET $offset";
+        $d1 = json_decode(tls_wd_http('https://query.wikidata.org/sparql?format=json&query=' . urlencode($q1)), true);
+        $r1 = $d1['results']['bindings'] ?? null;
+        if ($r1 === null) return ['ok'=>false, 'authors'=>[], 'error'=>'Wikidata sorgusu başarısız (zaman aşımı/limit).'];
+
+        $order = []; $qids = [];
+        foreach ($r1 as $row) {
+            $uri = $row['person']['value'] ?? '';
+            if (!preg_match('~/(Q\d+)$~', $uri, $m)) continue;
+            $order[]  = $m[1];
+            $qids[]   = 'wd:' . $m[1];
+        }
+        if (empty($order)) return ['ok'=>true, 'authors'=>[], 'error'=>''];
+
+        /* 2) Etiket/açıklama/doğum-ölüm — yalnız bu sayfanın QID'leri için.
+           VALUES ile bağlı → tarama yok, çok hızlı. */
+        $values = implode(' ', $qids);
+        $q2 = "SELECT ?person ?personLabel ?personDescription ?birth ?death WHERE {
+  VALUES ?person { $values }
   OPTIONAL { ?person wdt:P569 ?birth. }
   OPTIONAL { ?person wdt:P570 ?death. }
   SERVICE wikibase:label { bd:serviceParam wikibase:language \"en,mul\". }
-} ORDER BY DESC(?sitelinks) ?person";
-
-        $resp = tls_wd_http('https://query.wikidata.org/sparql?format=json&query=' . urlencode($sparql));
-        $data = json_decode($resp, true);
-        $rows = $data['results']['bindings'] ?? null;
-        if ($rows === null) return ['ok'=>false, 'authors'=>[], 'error'=>'Wikidata sorgusu başarısız (zaman aşımı/limit).'];
-
-        $authors = []; $seen = [];
-        foreach ($rows as $r) {
-            $uri = $r['person']['value'] ?? '';
-            if ($uri === '' || isset($seen[$uri])) continue;
-            $seen[$uri] = true;
-            $name = trim($r['personLabel']['value'] ?? '');
-            if ($name === '' || preg_match('/^Q\d+$/', $name)) continue;
-            $by  = isset($r['birth']['value']) ? tls_wd_year($r['birth']['value']) : '';
-            $dy  = isset($r['death']['value']) ? tls_wd_year($r['death']['value']) : '';
+}";
+        $d2 = json_decode(tls_wd_http('https://query.wikidata.org/sparql?format=json&query=' . urlencode($q2)), true);
+        $meta = [];
+        foreach ($d2['results']['bindings'] ?? [] as $row) {
+            $uri = $row['person']['value'] ?? '';
+            if (!preg_match('~/(Q\d+)$~', $uri, $m)) continue;
+            if (isset($meta[$m[1]])) continue;  // çoklu doğum tarihi → ilkini al
+            $by  = isset($row['birth']['value']) ? tls_wd_year($row['birth']['value']) : '';
+            $dy  = isset($row['death']['value']) ? tls_wd_year($row['death']['value']) : '';
             $era = $by !== '' ? ($by . '–' . $dy) : ($dy !== '' ? ('–' . $dy) : '');
-            $authors[] = ['author'=>$name, 'era'=>$era, 'note'=>trim($r['personDescription']['value'] ?? '')];
+            $meta[$m[1]] = [
+                'name' => trim($row['personLabel']['value'] ?? ''),
+                'era'  => $era,
+                'note' => trim($row['personDescription']['value'] ?? ''),
+            ];
+        }
+
+        $authors = [];
+        foreach ($order as $qid2) {
+            $name = $meta[$qid2]['name'] ?? '';
+            if ($name === '' || preg_match('/^Q\d+$/', $name)) continue;  // etiketsiz
+            $authors[] = ['author'=>$name, 'era'=>$meta[$qid2]['era'] ?? '', 'note'=>$meta[$qid2]['note'] ?? ''];
         }
         return ['ok'=>true, 'authors'=>$authors, 'error'=>''];
     }
