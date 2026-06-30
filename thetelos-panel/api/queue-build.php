@@ -64,8 +64,11 @@ function qb_firebase($author){
 function qb_http_get($url){
     $ch=curl_init($url);
     curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>18,CURLOPT_FOLLOWLOCATION=>true,
-        CURLOPT_HTTPHEADER=>['Accept: application/json','User-Agent: thetelos.org/1.0']]);
+        // OpenLibrary politikası: tanımlayıcı UA + iletişim e-postası ister; aksi halde 403/429.
+        CURLOPT_HTTPHEADER=>['Accept: application/json',
+            'User-Agent: ThetelosBot/1.0 (https://thetelos.org; mailto:alitokalak@gmail.com)']]);
     $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
+    $GLOBALS['qb_last_http']=$c;   // teşhis: son OL/GB HTTP kodu
     return ($c===200&&$r)?json_decode($r,true):null;
 }
 
@@ -204,6 +207,7 @@ for ($i = $authors_built; $i < $end; $i++) {
 
     // Eser kaynağı: SADECE OpenLibrary (+ kendi Firebase DB'miz). AI YOK.
     $works = qb_openlibrary($author_name);              $src = $works ? 'ol' : '';
+    if ($i === $authors_built) $dbg['ol_http'] = $GLOBALS['qb_last_http'] ?? 0;  // ilk yazarın OL kodu
     if (empty($works)) { $works = qb_firebase($author_name); if ($works) $src = 'fb'; }
     $dbg[$src ?: 'none']++;
 
@@ -248,7 +252,7 @@ $b2['books']         = array_merge($b2['books']??[], $new_books);
 $b2['total']         = count($b2['books']);
 $b2['authors_built'] = $end;
 $b2['build_msg']     = "{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır'
-    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']}";
+    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']} (OL HTTP " . ($dbg['ol_http'] ?? '?') . ")";
 if ($end >= $authors_total) {
     $b2['status']    = !empty($b2['list_only']) ? 'list_ready' : 'running';
     $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
