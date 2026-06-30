@@ -1508,7 +1508,12 @@ async function loadQueueList() {
       return;
     }
     body.innerHTML = incompleteBatchHtml + res.queues.map(q => {
-      const pct   = q.total > 0 ? Math.round(q.done / q.total * 100) : 0;
+      // 'building' (list_only) kuyrukta gerçek ilerleme = işlenen yazar oranı;
+      // diğerlerinde = üretilen içerik (done/total).
+      const isBuilding = q.status === 'building';
+      const pct = isBuilding
+        ? (q.authors_total > 0 ? Math.round((q.authors_built||0) / q.authors_total * 100) : 0)
+        : (q.total > 0 ? Math.round(q.done / q.total * 100) : 0);
       const color = q.status === 'done' ? 'var(--green)' : q.status === 'error' ? 'var(--red)' : 'var(--gold)';
       const statusLabel = {building:'Oluşturuluyor',running:'Çalışıyor',done:'Tamamlandı',error:'Hata',paused:'Duraklatıldı'}[q.status] || q.status;
       return `<div class="card" style="margin-bottom:10px;padding:14px">
@@ -1524,7 +1529,9 @@ async function loadQueueList() {
           <div style="background:#2a2a2a;border-radius:4px;height:6px;overflow:hidden">
             <div style="background:var(--green);height:100%;width:${pct}%;transition:width 0.3s"></div>
           </div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">${q.done}/${q.total} işlendi · ${q.ok} başarılı · ${q.failed} hata</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">${isBuilding
+            ? `${q.authors_built||0}/${q.authors_total||0} yazar işlendi · ${q.total||0} eser bulundu`
+            : `${q.done}/${q.total} işlendi · ${q.ok} başarılı · ${q.failed} hata`}</div>
         </div>
         <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
           ${q.status === 'building' ? `<button class="btn btn-primary btn-sm" onclick="continueBuilding('${q.id}',${q.authors_built||0},${q.authors_total||50})">⚙ Oluşturmayı Devam Ettir</button>` : ''}
