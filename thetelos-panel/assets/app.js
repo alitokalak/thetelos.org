@@ -1618,6 +1618,12 @@ async function continueBuilding(batchId, authorsBuilt, authorsTotal) {
     try {
       const br = await postData(API('queue-build.php'), { batch_id: batchId, chunk: 3 }, 180000);
       if (!br.ok) break;
+      // İlerleme yoksa (DNS/erişim hatası ya da takılı yazar) sonsuz döngüye girme.
+      if (br.authors_built <= built) {
+        notify('queue-create-notif',
+          br.infra_fail ? `Bu tarayıcıdan da OpenLibrary'ye erişilemedi: ${br.build_msg}` : br.build_msg, 'err');
+        break;
+      }
       failStreak = 0;
       built = br.authors_built;
       notify('queue-create-notif', br.build_msg, 'ok');

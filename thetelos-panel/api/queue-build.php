@@ -215,21 +215,30 @@ function qb_llm($author){
 
 // Sonraki chunk kadar yazarı işle
 $new_books   = [];
-$end         = min($authors_built + $chunk, $authors_total);
+$chunk_end   = min($authors_built + $chunk, $authors_total);
+$end         = $authors_built;   // SADECE gerçekten tamamlanan yazara kadar ilerlet
 $dbg         = ['ol'=>0,'fb'=>0,'llm'=>0,'none'=>0];  // son chunk kaynak teşhisi
+$infra_fail  = false;            // DNS/bağlantı hatası (HTTP 0) → ilerleme
 
-for ($i = $authors_built; $i < $end; $i++) {
+for ($i = $authors_built; $i < $chunk_end; $i++) {
     $author_name = trim($authors[$i]['author'] ?? '');
-    if (!$author_name) continue;
+    if (!$author_name) { $end = $i + 1; continue; }
 
     // Eser kaynağı: SADECE OpenLibrary (+ kendi Firebase DB'miz). AI YOK.
-    $works = qb_openlibrary($author_name);              $src = $works ? 'ol' : '';
+    $works   = qb_openlibrary($author_name);            $src = $works ? 'ol' : '';
+    $ol_http = $GLOBALS['qb_last_http'] ?? 0;
     if ($i === $authors_built) {  // ilk yazarın OL kodu + curl hatası
-        $dbg['ol_http'] = $GLOBALS['qb_last_http'] ?? 0;
+        $dbg['ol_http'] = $ol_http;
         $dbg['ol_err']  = $GLOBALS['qb_last_err'] ?? '';
     }
+    // HTTP 0 = bağlantı/DNS başarısız (gerçek "eseri yok" DEĞİL). Bu bağlamda
+    // (ör. DNS'i bozuk cron) yazarı atlama — chunk'ı durdur, ilerletme. Böylece
+    // DNS'in çalıştığı bağlam (tarayıcı) bu yazarları sonra gerçekten çeker.
+    if (empty($works) && $ol_http === 0) { $infra_fail = true; break; }
+
     if (empty($works)) { $works = qb_firebase($author_name); if ($works) $src = 'fb'; }
     $dbg[$src ?: 'none']++;
+    $end = $i + 1;   // bu yazar gerçekten işlendi (200 yanıt alındı)
 
     $author_last_main = preg_replace('/^.+\s/', '', $author_name);
     foreach ($works as $w) {
@@ -271,9 +280,13 @@ $b2 = json_decode($raw2,true) ?: $batch;
 $b2['books']         = array_merge($b2['books']??[], $new_books);
 $b2['total']         = count($b2['books']);
 $b2['authors_built'] = $end;
-$b2['build_msg']     = "{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır'
-    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']} (OL HTTP " . ($dbg['ol_http'] ?? '?')
-    . (!empty($dbg['ol_err']) ? ' — ' . $dbg['ol_err'] : '') . ")";
+$b2['build_msg']     = $infra_fail
+    ? ("⚠ Bu bağlamda OpenLibrary'ye erişilemiyor (OL HTTP " . ($dbg['ol_http'] ?? '0')
+       . (!empty($dbg['ol_err']) ? ' — ' . $dbg['ol_err'] : '') . "). İlerleme durduruldu — "
+       . "tarayıcıdan \"Oluşturmayı Devam Ettir\" ile çek. {$end}/{$authors_total} yazar, " . count($b2['books']) . ' eser.')
+    : ("{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır'
+       . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']} (OL HTTP " . ($dbg['ol_http'] ?? '?')
+       . (!empty($dbg['ol_err']) ? ' — ' . $dbg['ol_err'] : '') . ")");
 if ($end >= $authors_total) {
     $b2['status']    = !empty($b2['list_only']) ? 'list_ready' : 'running';
     $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
@@ -286,6 +299,7 @@ fflush($fp2); flock($fp2,LOCK_UN); fclose($fp2);
 echo json_encode([
     'ok'            => true,
     'done'          => ($end >= $authors_total),
+    'infra_fail'    => $infra_fail,   // bu bağlamda OpenLibrary'ye erişilemedi
     'authors_built' => $end,
     'authors_total' => $authors_total,
     'books_added'   => count($new_books),
