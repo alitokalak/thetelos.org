@@ -62,16 +62,31 @@ function qb_firebase($author){
 }
 
 function qb_http_get($url){
-    $ch=curl_init($url);
-    curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>18,CURLOPT_FOLLOWLOCATION=>true,
-        // OpenLibrary politikası: tanımlayıcı UA + iletişim e-postası ister; aksi halde 403/429.
-        CURLOPT_HTTPHEADER=>['Accept: application/json',
-            'User-Agent: ThetelosBot/1.0 (https://thetelos.org; mailto:alitokalak@gmail.com)']]);
-    $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE);
-    $GLOBALS['qb_last_http']=$c;   // teşhis: son OL/GB HTTP kodu
-    $GLOBALS['qb_last_err']=($r===false)?curl_error($ch):'';  // curl hata mesajı (HTTP 0 nedeni)
-    curl_close($ch);
-    return ($c===200&&$r)?json_decode($r,true):null;
+    // Cron (PHP CLI) bağlamında DNS arada "Could not resolve host" veriyor.
+    // Çözüm: IPv4'e zorla + Google/Cloudflare DNS sunucusu ver (varsa) +
+    // birkaç kez yeniden dene.
+    $last_c = 0; $last_err = '';
+    for ($attempt = 1; $attempt <= 3; $attempt++) {
+        $ch=curl_init($url);
+        $opts=[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>18,CURLOPT_CONNECTTIMEOUT=>10,
+            CURLOPT_FOLLOWLOCATION=>true,
+            CURLOPT_IPRESOLVE=>CURL_IPRESOLVE_V4,   // IPv6 resolver bozuksa "could not resolve" olur
+            // OpenLibrary politikası: tanımlayıcı UA + iletişim e-postası ister; aksi halde 403/429.
+            CURLOPT_HTTPHEADER=>['Accept: application/json',
+                'User-Agent: ThetelosBot/1.0 (https://thetelos.org; mailto:alitokalak@gmail.com)']];
+        // c-ares ile derlenmişse açık DNS sunucusu kullan (cron resolv.conf'u boş olabilir).
+        if (defined('CURLOPT_DNS_SERVERS')) @curl_setopt($ch, CURLOPT_DNS_SERVERS, '8.8.8.8,1.1.1.1');
+        curl_setopt_array($ch,$opts);
+        $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE);
+        $last_c=$c; $last_err=($r===false)?curl_error($ch):'';
+        curl_close($ch);
+        if ($c===200 && $r) { $GLOBALS['qb_last_http']=$c; $GLOBALS['qb_last_err']=''; return json_decode($r,true); }
+        if ($c!==0) break;                 // gerçek HTTP yanıtı (403/404 vs.) → tekrar denemenin anlamı yok
+        usleep($attempt*400000);           // DNS hatası → kısa bekle, tekrar dene
+    }
+    $GLOBALS['qb_last_http']=$last_c;   // teşhis: son OL/GB HTTP kodu
+    $GLOBALS['qb_last_err']=$last_err;  // curl hata mesajı (HTTP 0 nedeni)
+    return null;
 }
 
 function qb_tok($s){
