@@ -1090,10 +1090,25 @@ document.getElementById('btn-fetch-all-authors')?.addEventListener('click', asyn
   const CAP  = 20000;   // sonsuz döngü güvenliği
   let exhausted = false;
   try {
+    let interrupted = false;
     while (builderAuthorsOffset < CAP) {
       btn.innerHTML = `<span class="loader"></span> Getiriliyor... (${builderAuthors.length})`;
-      const res = await postData(API('list-authors.php'), { category, count: PAGE, offset: builderAuthorsOffset }, 120000);
-      if (!res.ok) { notify('builder-notif', res.error, 'err'); break; }
+      // Derin offset'te WDQS arada zaman aşımına uğrayabilir → aynı sayfayı
+      // 3 kez dene (kısa backoff). Yine olmazsa kopmadan dur, buton kalsın.
+      let res = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        res = await postData(API('list-authors.php'), { category, count: PAGE, offset: builderAuthorsOffset }, 120000);
+        if (res.ok) break;
+        btn.innerHTML = `<span class="loader"></span> Yeniden deneniyor... (${builderAuthors.length})`;
+        await new Promise(r => setTimeout(r, attempt * 1500));
+      }
+      if (!res || !res.ok) {
+        interrupted = true;
+        notify('builder-notif',
+          `Wikidata ${builderAuthorsOffset}. sırada yanıt vermedi. ${builderAuthors.length} yazar getirildi — `
+          + `"Sonraki 200 yazar" ile kaldığın yerden devam edebilirsin.`, 'err');
+        break;
+      }
       const got = res.authors || [];
       const have = new Set(builderAuthors.map(a => a.author.toLowerCase()));
       const fresh = got.filter(a => !have.has(a.author.toLowerCase()));
@@ -1105,11 +1120,13 @@ document.getElementById('btn-fetch-all-authors')?.addEventListener('click', asyn
       const raw = (res.raw != null) ? res.raw : got.length;
       if (raw < PAGE) { exhausted = true; break; }   // kategori tükendi
     }
-    if (builderAuthors.length) {
-      // Tümü geldiyse "Sonraki 50" butonunu gizle — gereksiz
+    if (builderAuthors.length && !interrupted) {
+      // Tümü geldiyse "Sonraki" butonunu gizle — gereksiz
       if (exhausted) { const nb = document.getElementById('btn-next-authors'); if (nb) nb.style.display = 'none'; }
       checkAuthorsOnSite();
       notify('builder-notif', `✓ Toplam ${builderAuthors.length} yazar getirildi${exhausted ? ' (kategori tamamı)' : ''}.`, 'ok');
+    } else if (builderAuthors.length && interrupted) {
+      checkAuthorsOnSite();
     }
   } catch(e) {
     notify('builder-notif', 'Hata: ' + e.message, 'err');
@@ -1200,24 +1217,26 @@ function renderBuilderAuthors() {
     document.getElementById('builder-authors-card').appendChild(nextBtn);
   }
   const category = document.getElementById('builder-category').value.trim();
-  nextBtn.textContent = `Sonraki 50 yazar (${builderAuthorsOffset + 1}–${builderAuthorsOffset + 50})`;
+  const STEP = 200;   // manuel adım: 200'erli (eskiden 50)
+  nextBtn.textContent = `Sonraki ${STEP} yazar (${builderAuthorsOffset + 1}–${builderAuthorsOffset + STEP})`;
   nextBtn.onclick = async () => {
     setLoading(nextBtn, true, 'Yükleniyor...');
     try {
       const res = await postData(API('list-authors.php'), {
-        category, count: 50, offset: builderAuthorsOffset, api_provider: activeProvider,
-      });
+        category, count: STEP, offset: builderAuthorsOffset, api_provider: activeProvider,
+      }, 120000);
       if (!res.ok) { notify('builder-notif', res.error, 'err'); return; }
       const have = new Set(builderAuthors.map(a => a.author.toLowerCase()));
       const fresh = res.authors.filter(a => !have.has(a.author.toLowerCase()));
       builderAuthors = builderAuthors.concat(fresh);
-      builderAuthorsOffset += 50;
+      builderAuthorsOffset += STEP;
+      // Ham QID sayısı STEP'ten azsa kategori tükendi → butonu gizle
+      const raw = (res.raw != null) ? res.raw : res.authors.length;
       renderBuilderAuthors();
+      if (raw < STEP) { const nb = document.getElementById('btn-next-authors'); if (nb) nb.style.display = 'none'; }
       checkAuthorsOnSite();
-      if (fresh.length < 10) {
-        notify('builder-notif',
-          `Yalnız ${fresh.length} YENİ isim geldi — "${category}" kategorisi tükeniyor. `
-          + `Alt kategori dene: ethics, metaphysics, ancient philosophy, political philosophy...`, 'err');
+      if (raw < STEP) {
+        notify('builder-notif', `✓ ${fresh.length} yeni yazar eklendi. Kategori tamamı: ${builderAuthors.length}.`, 'ok');
       } else {
         notify('builder-notif', `✓ ${fresh.length} yeni yazar eklendi. Toplam: ${builderAuthors.length}`, 'ok');
       }
