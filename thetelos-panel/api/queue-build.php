@@ -196,14 +196,16 @@ function qb_llm($author){
 // Sonraki chunk kadar yazarı işle
 $new_books   = [];
 $end         = min($authors_built + $chunk, $authors_total);
+$dbg         = ['ol'=>0,'fb'=>0,'llm'=>0,'none'=>0];  // son chunk kaynak teşhisi
 
 for ($i = $authors_built; $i < $end; $i++) {
     $author_name = trim($authors[$i]['author'] ?? '');
     if (!$author_name) continue;
 
-    $works = qb_openlibrary($author_name);
-    if (empty($works)) $works = qb_firebase($author_name);
-    if (empty($works)) $works = qb_llm($author_name);
+    $works = qb_openlibrary($author_name);              $src = $works ? 'ol' : '';
+    if (empty($works)) { $works = qb_firebase($author_name); if ($works) $src = 'fb'; }
+    if (empty($works)) { $works = qb_llm($author_name);      if ($works) $src = 'llm'; }
+    $dbg[$src ?: 'none']++;
 
     $author_last_main = preg_replace('/^.+\s/', '', $author_name);
     foreach ($works as $w) {
@@ -245,7 +247,8 @@ $b2 = json_decode($raw2,true) ?: $batch;
 $b2['books']         = array_merge($b2['books']??[], $new_books);
 $b2['total']         = count($b2['books']);
 $b2['authors_built'] = $end;
-$b2['build_msg']     = "{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır';
+$b2['build_msg']     = "{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır'
+    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·LLM {$dbg['llm']}·boş {$dbg['none']}";
 if ($end >= $authors_total) {
     $b2['status']    = !empty($b2['list_only']) ? 'list_ready' : 'running';
     $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
