@@ -202,9 +202,9 @@ for ($i = $authors_built; $i < $end; $i++) {
     $author_name = trim($authors[$i]['author'] ?? '');
     if (!$author_name) continue;
 
+    // Eser kaynağı: SADECE OpenLibrary (+ kendi Firebase DB'miz). AI YOK.
     $works = qb_openlibrary($author_name);              $src = $works ? 'ol' : '';
     if (empty($works)) { $works = qb_firebase($author_name); if ($works) $src = 'fb'; }
-    if (empty($works)) { $works = qb_llm($author_name);      if ($works) $src = 'llm'; }
     $dbg[$src ?: 'none']++;
 
     $author_last_main = preg_replace('/^.+\s/', '', $author_name);
@@ -248,7 +248,7 @@ $b2['books']         = array_merge($b2['books']??[], $new_books);
 $b2['total']         = count($b2['books']);
 $b2['authors_built'] = $end;
 $b2['build_msg']     = "{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır'
-    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·LLM {$dbg['llm']}·boş {$dbg['none']}";
+    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']}";
 if ($end >= $authors_total) {
     $b2['status']    = !empty($b2['list_only']) ? 'list_ready' : 'running';
     $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
