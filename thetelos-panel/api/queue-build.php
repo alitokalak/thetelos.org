@@ -67,8 +67,10 @@ function qb_http_get($url){
         // OpenLibrary politikası: tanımlayıcı UA + iletişim e-postası ister; aksi halde 403/429.
         CURLOPT_HTTPHEADER=>['Accept: application/json',
             'User-Agent: ThetelosBot/1.0 (https://thetelos.org; mailto:alitokalak@gmail.com)']]);
-    $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
+    $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE);
     $GLOBALS['qb_last_http']=$c;   // teşhis: son OL/GB HTTP kodu
+    $GLOBALS['qb_last_err']=($r===false)?curl_error($ch):'';  // curl hata mesajı (HTTP 0 nedeni)
+    curl_close($ch);
     return ($c===200&&$r)?json_decode($r,true):null;
 }
 
@@ -207,7 +209,10 @@ for ($i = $authors_built; $i < $end; $i++) {
 
     // Eser kaynağı: SADECE OpenLibrary (+ kendi Firebase DB'miz). AI YOK.
     $works = qb_openlibrary($author_name);              $src = $works ? 'ol' : '';
-    if ($i === $authors_built) $dbg['ol_http'] = $GLOBALS['qb_last_http'] ?? 0;  // ilk yazarın OL kodu
+    if ($i === $authors_built) {  // ilk yazarın OL kodu + curl hatası
+        $dbg['ol_http'] = $GLOBALS['qb_last_http'] ?? 0;
+        $dbg['ol_err']  = $GLOBALS['qb_last_err'] ?? '';
+    }
     if (empty($works)) { $works = qb_firebase($author_name); if ($works) $src = 'fb'; }
     $dbg[$src ?: 'none']++;
 
@@ -252,7 +257,8 @@ $b2['books']         = array_merge($b2['books']??[], $new_books);
 $b2['total']         = count($b2['books']);
 $b2['authors_built'] = $end;
 $b2['build_msg']     = "{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır'
-    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']} (OL HTTP " . ($dbg['ol_http'] ?? '?') . ")";
+    . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']} (OL HTTP " . ($dbg['ol_http'] ?? '?')
+    . (!empty($dbg['ol_err']) ? ' — ' . $dbg['ol_err'] : '') . ")";
 if ($end >= $authors_total) {
     $b2['status']    = !empty($b2['list_only']) ? 'list_ready' : 'running';
     $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
