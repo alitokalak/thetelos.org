@@ -61,12 +61,36 @@ function qb_firebase($author){
     return $out;
 }
 
+/**
+ * DoH ile (Cloudflare 1.1.1.1, IP üzerinden — yerel DNS GEREKMEZ) bir host'un
+ * IPv4 adresini çöz. Cron/CLI'ın bozuk resolv.conf'unu tamamen baypas eder.
+ * Sonuç süreç boyunca önbelleğe alınır.
+ */
+function qb_resolve_ip($host){
+    static $cache = [];
+    if (isset($cache[$host])) return $cache[$host];
+    $ip = '';
+    foreach (['https://1.1.1.1/dns-query', 'https://8.8.8.8/resolve'] as $doh) {
+        $ch = curl_init($doh . '?name=' . urlencode($host) . '&type=A');
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>8, CURLOPT_CONNECTTIMEOUT=>6,
+            CURLOPT_SSL_VERIFYPEER=>true, CURLOPT_HTTPHEADER=>['Accept: application/dns-json']]);
+        $r = curl_exec($ch); curl_close($ch);
+        $d = json_decode((string)$r, true);
+        foreach ($d['Answer'] ?? [] as $a) {
+            if ((int)($a['type'] ?? 0) === 1 && filter_var($a['data'] ?? '', FILTER_VALIDATE_IP)) { $ip = $a['data']; break; }
+        }
+        if ($ip) break;
+    }
+    return $cache[$host] = $ip;
+}
+
 function qb_http_get($url){
-    // Cron (PHP CLI) bağlamında DNS arada "Could not resolve host" veriyor.
-    // Çözüm: IPv4'e zorla + Google/Cloudflare DNS sunucusu ver (varsa) +
-    // birkaç kez yeniden dene.
-    $last_c = 0; $last_err = '';
-    for ($attempt = 1; $attempt <= 3; $attempt++) {
+    // Cron (PHP CLI) bağlamında yerel DNS "Could not resolve host" verebiliyor
+    // (web/litespeed'de sorun yok). Çözüm: önce normal dene; DNS patlarsa host'u
+    // DoH ile kendimiz çözüp CURLOPT_RESOLVE ile curl'e pinleyerek tekrar dene.
+    $host = parse_url($url, PHP_URL_HOST) ?: '';
+    $last_c = 0; $last_err = ''; $pinned_ip = '';
+    for ($attempt = 1; $attempt <= 4; $attempt++) {
         $ch=curl_init($url);
         $opts=[CURLOPT_RETURNTRANSFER=>true,CURLOPT_TIMEOUT=>18,CURLOPT_CONNECTTIMEOUT=>10,
             CURLOPT_FOLLOWLOCATION=>true,
@@ -74,18 +98,22 @@ function qb_http_get($url){
             // OpenLibrary politikası: tanımlayıcı UA + iletişim e-postası ister; aksi halde 403/429.
             CURLOPT_HTTPHEADER=>['Accept: application/json',
                 'User-Agent: ThetelosBot/1.0 (https://thetelos.org; mailto:alitokalak@gmail.com)']];
-        // c-ares ile derlenmişse açık DNS sunucusu kullan (cron resolv.conf'u boş olabilir).
-        if (defined('CURLOPT_DNS_SERVERS')) @curl_setopt($ch, CURLOPT_DNS_SERVERS, '8.8.8.8,1.1.1.1');
+        // DNS patladıysa: DoH ile bulduğumuz IP'yi 80/443 portlarına pinle.
+        if ($pinned_ip && $host) {
+            $opts[CURLOPT_RESOLVE] = ["$host:443:$pinned_ip", "$host:80:$pinned_ip"];
+        }
         curl_setopt_array($ch,$opts);
-        $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE);
+        $r=curl_exec($ch); $c=curl_getinfo($ch,CURLINFO_HTTP_CODE); $errno=curl_errno($ch);
         $last_c=$c; $last_err=($r===false)?curl_error($ch):'';
         curl_close($ch);
         if ($c===200 && $r) { $GLOBALS['qb_last_http']=$c; $GLOBALS['qb_last_err']=''; return json_decode($r,true); }
-        if ($c!==0) break;                 // gerçek HTTP yanıtı (403/404 vs.) → tekrar denemenin anlamı yok
-        usleep($attempt*400000);           // DNS hatası → kısa bekle, tekrar dene
+        if ($c!==0) break;   // gerçek HTTP yanıtı (403/404/429 vs.) → tekrar denemenin anlamı yok
+        // CURLE_COULDNT_RESOLVE_HOST (6) → DoH ile çöz, sonraki turda pinle.
+        if ($errno === 6 && !$pinned_ip && $host) { $pinned_ip = qb_resolve_ip($host); }
+        usleep($attempt*300000);
     }
     $GLOBALS['qb_last_http']=$last_c;   // teşhis: son OL/GB HTTP kodu
-    $GLOBALS['qb_last_err']=$last_err;  // curl hata mesajı (HTTP 0 nedeni)
+    $GLOBALS['qb_last_err']=$last_err . ($pinned_ip ? " (DoH IP: $pinned_ip)" : ' (DoH çözemedi)');
     return null;
 }
 
