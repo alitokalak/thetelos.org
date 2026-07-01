@@ -104,6 +104,20 @@ if (!is_dir($jobs_dir)) @mkdir($jobs_dir, 0755, true);
 // Teşhis: her yetkili çalışmada zaman damgası bırak (cron gerçekten geliyor mu?)
 @file_put_contents($jobs_dir . '/.cron-last', time());
 
+/* cron-job.org gibi dış servisler yanıtı ~30sn bekler; bir tik 8 yazarı
+   OpenLibrary'den çekerken bunu aşabilir → servis "başarısız" sayıp job'u
+   DEVRE DIŞI bırakabiliyor. Çözüm: yetkili web çağrısına HEMEN 200 dön,
+   asıl işi bağlantı kapansa da arka planda sürdür (fastcgi_finish_request +
+   ignore_user_abort). Böylece cron her zaman "başarılı" görünür. */
+if (!$is_cli) {
+    @ignore_user_abort(true);
+    @set_time_limit(0);
+    if (!headers_sent()) header('Content-Type: application/json');
+    echo json_encode(['ok' => true, 'msg' => 'tick started']);
+    if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); }
+    else { @ob_end_flush(); @flush(); }
+}
+
 /* ── ÖNCELİK 1: yarım kalan "building" kuyruğunu ilerlet ──
    queue-create ile oluşan kuyruklar yazarların eserlerini sunucuda parça
    parça çeker (status='building'). Tarayıcı/oturum kapalı olsa da cron bunu
