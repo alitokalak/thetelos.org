@@ -305,11 +305,14 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
     }
 }
 
-// Batch dosyasını güncelle (kilitle)
-$fp2 = fopen($batch_file, 'r+');
-flock($fp2, LOCK_EX);
-fseek($fp2,0); $raw2=''; while(!feof($fp2)) $raw2 .= fread($fp2,65536);
-$b2 = json_decode($raw2,true) ?: $batch;
+// Batch dosyasını ATOMİK güncelle: ayrı .lock ile karşılıklı dışlama,
+// veriyi geçici dosyaya yazıp rename ile değiştir. Yazma yarıda kesilse bile
+// canlı dosya ASLA 0 byte/bozuk kalmaz (eski 0-byte kaybının kök nedeni buydu).
+$lock = fopen($batch_file . '.lock', 'c');
+if ($lock) flock($lock, LOCK_EX);
+$raw2 = @file_get_contents($batch_file);
+$b2   = json_decode((string)$raw2, true);
+if (!is_array($b2)) $b2 = $batch;   // canlı dosya bozuk/boşsa bellekteki kopyadan kurtar
 
 $b2['books']         = array_merge($b2['books']??[], $new_books);
 $b2['total']         = count($b2['books']);
@@ -326,9 +329,13 @@ if ($end >= $authors_total) {
     $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
 }
 
-fseek($fp2,0); ftruncate($fp2,0);
-fwrite($fp2, json_encode($b2, JSON_UNESCAPED_UNICODE));
-fflush($fp2); flock($fp2,LOCK_UN); fclose($fp2);
+$json = json_encode($b2, JSON_UNESCAPED_UNICODE);
+if ($json !== false && $json !== '') {          // boş/başarısız encode'u ASLA yazma
+    $tmp = $batch_file . '.tmp.' . getmypid() . '.' . mt_rand();
+    if (@file_put_contents($tmp, $json) === strlen($json)) { @rename($tmp, $batch_file); }
+    else { @unlink($tmp); }
+}
+if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
 
 echo json_encode([
     'ok'            => true,
