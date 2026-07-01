@@ -186,7 +186,12 @@ function qb_openlibrary($author){
     if(!$author_key&&!empty($ad['docs'][0]['key'])) $author_key=$ad['docs'][0]['key'];
     if(!$author_key) return [];
 
-    $data = qb_http_get('https://openlibrary.org'.$author_key.'/works.json?limit=50');
+    // search/authors.json 'key'i çıplak OLID döner ("OL3175986A"); diğer uçlar
+    // "/authors/OL3175986A" bekler. İkisini de çıplak OLID'e indir, URL'yi doğru kur.
+    $olid = preg_replace('~^/?(authors/)?~', '', trim($author_key));  // → "OL3175986A"
+    if($olid==='') return [];
+
+    $data = qb_http_get('https://openlibrary.org/authors/'.$olid.'/works.json?limit=50');
     if(!$data) return [];
 
     $author_parts = array_filter(explode(' ', mb_strtolower($author)));
@@ -201,7 +206,8 @@ function qb_openlibrary($author){
         if(!empty($was)){
             $ok = false;
             foreach($was as $wa){
-                if(($wa['author']['key']??($wa['key']??''))===$author_key){$ok=true;break;}
+                $wk = preg_replace('~^/?(authors/)?~', '', (string)($wa['author']['key']??($wa['key']??'')));
+                if($wk===$olid){$ok=true;break;}
             }
             if(!$ok) continue;
         }
