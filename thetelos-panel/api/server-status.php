@@ -20,6 +20,9 @@ if (is_dir($jobs_dir)) {
         if (!$b) continue;
         $st = $b['status'] ?? '';
         if ($st === 'cancelled' || $st === 'paused') continue;
+        // Yalnız-liste / liste-kurulum kuyrukları İÇERİK ÜRETMEZ — bunları "aktif
+        // iş" sayma, yoksa tarayıcı bunlara batch-worker fırlatıp gereksiz taslak üretir.
+        if (!empty($b['list_only']) || $st === 'building' || $st === 'list_ready') continue;
         // Canlılık: iki katmanlı heartbeat (batch-worker ile aynı eşik, 180sn).
         // Üretim streaming olduğundan worker her birkaç saniyede heartbeat tazeler.
         // $processing = canlı .wk.* dosyası sayısı (per-worker, zincirleme boşluğu yok).
