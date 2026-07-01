@@ -132,7 +132,10 @@ foreach (glob("$jobs_dir/*.json") ?: [] as $f) {
 }
 if ($build_target) {
     $_POST['batch_id'] = $build_target;
-    $_POST['chunk']    = 8;               // her tikte ~8 yazarın eserini çek
+    // Her tik 30sn ALTINDA bitmeli: cron-job.org 30sn'de kesip "timeout/başarısız"
+    // sayıyor (iş sunucuda bitse de). 4 yazar ≈ 15-20sn → cron yeşil görür,
+    // çok-başarısızlıktan job'u devre dışı bırakmaz.
+    $_POST['chunk']    = 4;
     $_POST['_itok']    = $worker_itok;
     include __DIR__ . '/queue-build.php';
     exit;
