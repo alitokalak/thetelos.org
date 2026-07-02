@@ -15,8 +15,20 @@ if (!$batch_id) { http_response_code(400); exit; }
 $file = dirname(__DIR__) . '/jobs/' . $batch_id . '.json';
 if (!file_exists($file)) { http_response_code(404); exit; }
 
+@ini_set('memory_limit', '512M');   // büyük listelerde tüm eserleri belleğe alırken
+
 $batch     = json_decode(file_get_contents($file), true);
 $books     = $batch['books'] ?? [];
+// list_only kuyruklarda eserler ayrı .jsonl dosyasında (ölçeklenir model).
+if (empty($books)) {
+    $jsonl = preg_replace('/\.json$/', '.books.jsonl', $file);
+    if (is_file($jsonl)) {
+        foreach (file($jsonl, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $ln) {
+            $o = json_decode($ln, true);
+            if (is_array($o)) $books[] = $o;
+        }
+    }
+}
 $cat_raw   = $batch['category'] ?? 'export';
 $cat_slug  = ucfirst(preg_replace('/\s+/', '_', trim($cat_raw)));
 $per       = max(1, min(500, (int)($_GET['per'] ?? 100)));

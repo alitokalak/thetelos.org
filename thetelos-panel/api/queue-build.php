@@ -15,6 +15,7 @@ if (empty($_SESSION['tls_auth']) && !$qb_internal && !$qb_is_cli) { http_respons
 session_write_close();
 header('Content-Type: application/json');
 set_time_limit(150);
+@ini_set('memory_limit', '512M');   // dev list_only dosyasını işlerken/taşırken OOM olmasın
 
 $batch_id = preg_replace('/[^a-z0-9_.]/', '', trim($_POST['batch_id'] ?? ''));
 $chunk    = max(1, min(10, (int)($_POST['chunk'] ?? 3)));
@@ -36,6 +37,12 @@ if (!$batch) { echo json_encode(['ok'=>false,'error'=>'Batch okunamadı']); exit
 $authors      = $batch['authors']      ?? [];
 $authors_built = (int)($batch['authors_built'] ?? 0);
 $authors_total = count($authors);
+
+// list_only (dev liste) kuyruklarında eserleri iş dosyasına gömmek yerine ayrı
+// bir EKLEME dosyasına (.jsonl) yazarız → her tik koca dosyayı baştan yazmaz,
+// bellek/zaman sınırını aşmaz. İçerik kuyrukları (≤50 yazar) eski modelde kalır.
+$is_list_only = !empty($batch['list_only']);
+$books_file   = preg_replace('/\.json$/', '.books.jsonl', $batch_file);
 
 if ($authors_built >= $authors_total) {
     $batch['status']    = !empty($batch['list_only']) ? 'list_ready' : 'running';
@@ -305,28 +312,54 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
     }
 }
 
-// Batch dosyasını ATOMİK güncelle: ayrı .lock ile karşılıklı dışlama,
-// veriyi geçici dosyaya yazıp rename ile değiştir. Yazma yarıda kesilse bile
-// canlı dosya ASLA 0 byte/bozuk kalmaz (eski 0-byte kaybının kök nedeni buydu).
+// .lock ile karşılıklı dışlama; iş dosyası her zaman atomik (temp+rename) yazılır.
 $lock = fopen($batch_file . '.lock', 'c');
 if ($lock) flock($lock, LOCK_EX);
-$raw2 = @file_get_contents($batch_file);
-$b2   = json_decode((string)$raw2, true);
-if (!is_array($b2)) $b2 = $batch;   // canlı dosya bozuk/boşsa bellekteki kopyadan kurtar
 
-$b2['books']         = array_merge($b2['books']??[], $new_books);
-$b2['total']         = count($b2['books']);
-$b2['authors_built'] = $end;
-$b2['build_msg']     = $infra_fail
+if ($is_list_only) {
+    /* ── ÖLÇEKLENİR MODEL (list_only) ──
+       Eserler dev iş JSON'una GÖMÜLMEZ; ayrı .jsonl dosyasına EKLENİR.
+       Böylece her tik yalnız yeni eserleri yazar (koca dosyayı baştan yazmaz)
+       → 17 binlik listede bile bellek/zaman sınırı aşılmaz. */
+    $b2 = $batch;   // üstteki okumadan; dev dosyayı TEKRAR decode etme (bellek!)
+
+    // Mevcut gömülü books[] (eski 12MB dosyadan) → bir kez .jsonl'a taşı.
+    $lines = '';
+    if (!empty($b2['books'])) {
+        foreach ($b2['books'] as $bk) { $lines .= json_encode($bk, JSON_UNESCAPED_UNICODE) . "\n"; }
+    }
+    foreach ($new_books as $bk) { $lines .= json_encode($bk, JSON_UNESCAPED_UNICODE) . "\n"; }
+    if ($lines !== '') @file_put_contents($books_file, $lines, FILE_APPEND | LOCK_EX);
+
+    // total sayacı: mevcut (gömülü books zaten sayılıydı) + yeni eklenen.
+    $prev_total  = (int)($b2['total'] ?? count($b2['books'] ?? []));
+    $total_books = $prev_total + count($new_books);
+
+    $b2['books']          = [];      // dev diziyi JSON'dan çıkar → dosya küçülür
+    $b2['books_migrated'] = true;
+    $b2['total']          = $total_books;
+    $b2['authors_built']  = $end;
+} else {
+    /* ── Eski gömülü model (küçük içerik kuyrukları) ── */
+    $raw2 = @file_get_contents($batch_file);
+    $b2   = json_decode((string)$raw2, true);
+    if (!is_array($b2)) $b2 = $batch;   // canlı dosya bozuk/boşsa bellekteki kopyadan kurtar
+    $b2['books']         = array_merge($b2['books'] ?? [], $new_books);
+    $b2['total']         = count($b2['books']);
+    $b2['authors_built'] = $end;
+    $total_books         = count($b2['books']);
+}
+
+$b2['build_msg'] = $infra_fail
     ? ("⚠ Bu bağlamda OpenLibrary'ye erişilemiyor (OL HTTP " . ($dbg['ol_http'] ?? '0')
        . (!empty($dbg['ol_err']) ? ' — ' . $dbg['ol_err'] : '') . "). İlerleme durduruldu — "
-       . "tarayıcıdan \"Oluşturmayı Devam Ettir\" ile çek. {$end}/{$authors_total} yazar, " . count($b2['books']) . ' eser.')
-    : ("{$end}/{$authors_total} yazar işlendi, " . count($b2['books']) . ' eser hazır'
+       . "tarayıcıdan \"Oluşturmayı Devam Ettir\" ile çek. {$end}/{$authors_total} yazar, {$total_books} eser.")
+    : ("{$end}/{$authors_total} yazar işlendi, {$total_books} eser hazır"
        . " · son {$chunk}: OL {$dbg['ol']}·FB {$dbg['fb']}·boş {$dbg['none']} (OL HTTP " . ($dbg['ol_http'] ?? '?')
        . (!empty($dbg['ol_err']) ? ' — ' . $dbg['ol_err'] : '') . ")");
 if ($end >= $authors_total) {
-    $b2['status']    = !empty($b2['list_only']) ? 'list_ready' : 'running';
-    $b2['build_msg'] = 'Kuyruk hazır — ' . count($b2['books']) . ' eser.';
+    $b2['status']    = $is_list_only ? 'list_ready' : 'running';
+    $b2['build_msg'] = 'Kuyruk hazır — ' . $total_books . ' eser.';
 }
 
 $json = json_encode($b2, JSON_UNESCAPED_UNICODE);
@@ -344,6 +377,6 @@ echo json_encode([
     'authors_built' => $end,
     'authors_total' => $authors_total,
     'books_added'   => count($new_books),
-    'total_books'   => count($b2['books']),
+    'total_books'   => $total_books,
     'build_msg'     => $b2['build_msg'],
 ], JSON_UNESCAPED_UNICODE);
