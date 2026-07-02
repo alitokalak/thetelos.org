@@ -136,49 +136,45 @@ function qb_tok_match($a,$b){ $n=min(strlen($a),strlen($b)); if($n<5) return $a=
 function qb_titles_same($ta,$tb){ if(!$ta||!$tb) return false; $small=count($ta)<=count($tb)?$ta:$tb; $big=count($ta)<=count($tb)?$tb:$ta; $m=0; foreach($small as $x){ foreach($big as $y){ if(qb_tok_match($x,$y)){$m++;break;} } } $min=count($small); return $m>=2||($m>=1&&$m===$min); }
 
 /**
- * Python scriptindeki gibi: yazar için 1 GB isteği → title→cover_url map döner.
- * Sonra her kitap için qb_cover_from_map() ile eşleştir (N istek → 1 istek).
+ * Yazar için 1 Google Books isteği → title(lower) → ['cover'=>url,'year'=>yyyy] map.
+ * OpenLibrary yazar-eserler ucu kapak/yıl konusunda cimri; GB bunları doldurur.
  */
-function qb_gb_covers_for_author($author) {
+function qb_gb_meta_for_author($author) {
     $url = 'https://www.googleapis.com/books/v1/volumes?' . http_build_query([
         'q'          => 'inauthor:"' . $author . '"',
         'maxResults' => 40,
-        'langRestrict'=> 'en',
         'printType'  => 'books',
-        'fields'     => 'items(volumeInfo(title,imageLinks))',
+        'fields'     => 'items(volumeInfo(title,imageLinks,publishedDate))',
         'key'        => GOOGLE_BOOKS_KEY,
     ]);
     $data = qb_http_get($url);
     $map  = [];
     foreach ($data['items'] ?? [] as $item) {
-        $t = mb_strtolower(trim($item['volumeInfo']['title'] ?? ''));
+        $vi = $item['volumeInfo'] ?? [];
+        $t  = mb_strtolower(trim($vi['title'] ?? ''));
         if (!$t) continue;
-        $lnk = $item['volumeInfo']['imageLinks'] ?? [];
+        $lnk = $vi['imageLinks'] ?? [];
         $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
-        if (!$c) continue;
-        $c = str_replace(['http://','&edge=curl'], ['https://',''], $c);
-        $c = preg_replace('/zoom=\d/', 'zoom=3', $c);
-        $map[$t] = $c;
+        if ($c) { $c = str_replace(['http://','&edge=curl'], ['https://',''], $c); $c = preg_replace('/zoom=\d/', 'zoom=3', $c); }
+        $y = '';
+        if (!empty($vi['publishedDate']) && preg_match('/\d{4}/', $vi['publishedDate'], $m)) $y = $m[0];
+        if (!isset($map[$t])) $map[$t] = ['cover'=>$c, 'year'=>$y];
+        else { if ($c && !$map[$t]['cover']) $map[$t]['cover']=$c; if ($y && !$map[$t]['year']) $map[$t]['year']=$y; }
     }
     return $map;
 }
 
-function qb_cover_from_map($title, $orig, $map) {
-    if (empty($map)) return '';
-    $try = [mb_strtolower($title)];
-    if ($orig) $try[] = mb_strtolower($orig);
-    // Exact match
-    foreach ($try as $t) {
-        if (isset($map[$t])) return $map[$t];
+/* Başlığı GB map'inde eşleştir → ['cover','year'] (yoksa boş). */
+function qb_meta_from_map($title, $map) {
+    $empty = ['cover'=>'', 'year'=>''];
+    if (empty($map)) return $empty;
+    $t = mb_strtolower(trim($title));
+    if (isset($map[$t])) return $map[$t];
+    if (strlen($t) < 5) return $empty;
+    foreach ($map as $gt => $meta) {
+        if (str_contains($gt, $t) || str_contains($t, $gt)) return $meta;
     }
-    // Contains match — catches "Aristotle's Nicomachean Ethics" for "Nicomachean Ethics"
-    foreach ($try as $t) {
-        if (strlen($t) < 5) continue;
-        foreach ($map as $gt => $url) {
-            if (str_contains($gt, $t) || str_contains($t, $gt)) return $url;
-        }
-    }
-    return '';
+    return $empty;
 }
 
 function qb_openlibrary($author){
@@ -281,6 +277,10 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
     $dbg[$src ?: 'none']++;
     $end = $i + 1;   // bu yazar gerçekten işlendi (200 yanıt alındı)
 
+    // Kapak/yıl zenginleştirmesi: yazar başına 1 Google Books isteği.
+    // OL'de eksik olan kapak ve yılları buradan doldur.
+    $gbmeta = !empty($works) ? qb_gb_meta_for_author($author_name) : [];
+
     $author_last_main = preg_replace('/^.+\s/', '', $author_name);
     foreach ($works as $w) {
         $t    = trim($w['title']   ?? ''); if (!$t) continue;
@@ -301,11 +301,20 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
             $t = "$t ($orig)";
         }
 
+        // Kapak/yıl: OL'den geldiyse onu kullan, boşsa Google Books'tan doldur.
+        $cover = $w['cover'] ?? '';
+        $year  = $w['year']  ?? '';
+        if (!$cover || !$year) {
+            $gm = qb_meta_from_map($t, $gbmeta);
+            if (!$cover) $cover = $gm['cover'];
+            if (!$year)  $year  = $gm['year'];
+        }
+
         $new_books[] = [
             'book_title'  => $t,
             'author_name' => $author_name,
-            'cover_url'   => $w['cover']  ?? '',
-            'year'        => $w['year']   ?? '',
+            'cover_url'   => $cover,
+            'year'        => $year,
             'status'      => 'pending',
             'post_id'=>null,'post_url'=>null,'edit_url'=>null,'cover_set'=>false,'error'=>'',
         ];
