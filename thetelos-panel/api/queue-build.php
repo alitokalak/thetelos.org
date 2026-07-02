@@ -285,6 +285,8 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
     $gbmeta = !empty($works) ? qb_gb_meta_for_author($author_name) : [];
 
     $author_last_main = preg_replace('/^.+\s/', '', $author_name);
+    $seen_norm = [];   // bu yazar için normalize edilmiş başlık tekrar kontrolü
+    $al = preg_quote($author_last_main, '/');
     foreach ($works as $w) {
         $t    = trim($w['title']   ?? ''); if (!$t) continue;
         $orig = trim($w['original'] ?? '');
@@ -292,12 +294,27 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
         // Sahte başlıkları filtrele (Socrates vs.)
         if (preg_match('/^(none|no\s+(\w+\s+)?works|no\s+known|no\s+extant|not\s+applicable)/i', $t)) continue;
 
-        // İkincil literatür / derleme filtresi (Firebase ve LLM sonuçları için de geçerli)
-        if (preg_match('/\b(portable|reader|anthology|selected works|selected writings|compendium|handbook|encyclopedia|introduction to|readings in|letters of|letters to|essential texts|primary texts|key texts|complete texts)\b/i', $t)) continue;
+        // BLANKET ikincil literatür: neredeyse hiçbir zaman birincil eser adı değildir.
+        if (preg_match('/\b(portable|reader|anthology|omnibus|companion|festschrift|selected works|selected writings|selected essays|collected works|collected writings|complete works|compendium|handbook|encyclop|dictionary|readings in|essential texts|primary texts|key texts|complete texts|a biography|biography of|the life of|study guide|critical study|casebook|reconsidered|revisited|in context)\b/i', $t)) continue;
+
+        // YAZAR HAKKINDA yazılmış kitaplar (yazar adıyla BİRLİKTE) — kendi eseri sanılmasın.
+        // "The Philosophy of Right" gibi gerçek eserler adı içermediği için elenmez.
         if (strlen($author_last_main) >= 4) {
-            if (preg_match('/\b(of|on|to|about|after|against|beyond|from|with)\s+'.preg_quote($author_last_main,'/').'\\b/i', $t)) continue;
+            // "... {of|on|about|...} Einstein", "philosophy/life/thought/world of Einstein"
+            if (preg_match('/\b(of|on|to|about|after|against|beyond|from|with|reading|understanding|interpreting)\s+(the\s+\w+\s+of\s+)?'.$al.'\b/i', $t)) continue;
+            if (preg_match('/\b(philosophy|life|thought|world|legacy|letters|correspondence|biography)\s+of\s+'.$al.'\b/i', $t)) continue;
+            // "Einstein: a biography / his life / and his ... / reader / companion"
+            if (preg_match('/\b'.$al.'\b\s*[:,\-–].*\b(biography|life|study|reader|companion|thought|philosophy|legacy|letters|reconsidered|revisited|in context|and his|and her|the man)\b/i', $t)) continue;
             if (trim(mb_strtolower($t)) === mb_strtolower($author_last_main)) continue;
         }
+
+        // Normalize et → aynı eserin ufak varyantlarını (The/A öneki, noktalama) tekrar ekleme.
+        $norm = mb_strtolower(trim($t));
+        $norm = preg_replace('/^(the|a|an)\s+/', '', $norm);
+        $norm = preg_replace('/[\s\.,:;!\?"\']+/', ' ', $norm);
+        $norm = trim($norm);
+        if ($norm === '' || isset($seen_norm[$norm])) continue;
+        $seen_norm[$norm] = true;
 
         // "English Title (Original Title)" formatı — Wikidata origLabel varsa direkt kullan
         if ($orig && mb_strtolower($orig) !== mb_strtolower($t) && !preg_match('/\([^)]+\)/', $t)) {
