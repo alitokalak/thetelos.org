@@ -1382,7 +1382,9 @@ window.fetchOneAuthor = async function(i) {
 document.getElementById('btn-fetch-all-works')?.addEventListener('click', async () => {
   const btn = document.getElementById('btn-fetch-all-works');
   setLoading(btn, true, 'Hepsi getiriliyor...');
-  let skipped = 0;
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  let skipped = 0, failed = 0;
+  const total = builderAuthors.length;
   for (let i = 0; i < builderAuthors.length; i++) {
     const cell = document.querySelector(`#bauthor-${i} .action-cell`);
     if (builderAuthors[i].onSite) {
@@ -1391,16 +1393,28 @@ document.getElementById('btn-fetch-all-works')?.addEventListener('click', async 
       continue;
     }
     if (cell) cell.innerHTML = '<span class="loader"></span>';
-    const [added, errMsg] = await fetchAuthorWorks(builderAuthors[i].author);
+    btn.innerHTML = `<span class="loader"></span> Getiriliyor... (${i+1}/${total})`;
+
+    // Hız sınırı (429) gibi geçici hatalarda yazarı 3 kez dene, artan beklemeyle.
+    let added = -1, errMsg = '';
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      [added, errMsg] = await fetchAuthorWorks(builderAuthors[i].author);
+      if (added >= 0) break;
+      if (cell) cell.innerHTML = `<span class="loader"></span>`;
+      await sleep(attempt * 1500);   // 1.5s, 3s backoff
+    }
+    if (added < 0) failed++;
     if (cell) cell.innerHTML = added < 0
       ? `<span class="badge badge-gray" title="${errMsg||''}">hata</span>`
       : `<span class="badge badge-green">+${added}</span>`;
+
+    await sleep(250);   // yazarlar arası küçük bekleme → OpenLibrary'yi boğma
   }
   setLoading(btn, false);
-  const msg = skipped > 0
-    ? `✓ Tamamlandı — ${builderList.length} kitap (${skipped} sitede olan yazar atlandı).`
-    : `✓ Tamamlandı — toplam ${builderList.length} kitap.`;
-  notify('builder-notif', msg, 'ok');
+  let msg = `✓ Tamamlandı — toplam ${builderList.length} kitap`;
+  if (skipped) msg += ` · ${skipped} sitede olan atlandı`;
+  if (failed)  msg += ` · ${failed} yazar hata (tekrar denemek için "Eserleri" butonuna bas)`;
+  notify('builder-notif', msg, failed ? 'err' : 'ok');
 });
 
 // Bir yazarın eserlerini çek ve listeye ekle (dedup)
