@@ -167,7 +167,30 @@ function qb_gb_meta_for_author($author) {
     return $map;
 }
 
-/* Başlığı GB map'inde eşleştir → ['cover','year'] (yoksa boş). */
+/**
+ * OpenLibrary SEARCH ucu → title(lower) → ['cover'=>url,'year'=>yyyy].
+ * search.json, cover_i + first_publish_year'ı BOL verir (yazar→works ucu vermez).
+ * Başlıklar works.json ile aynı katalogdan olduğu için eşleşme oranı yüksek.
+ */
+function qb_ol_meta_for_author($author) {
+    $url = 'https://openlibrary.org/search.json?' . http_build_query([
+        'author' => $author,
+        'limit'  => 100,
+        'fields' => 'title,cover_i,first_publish_year',
+    ]);
+    $data = qb_http_get($url);
+    $map  = [];
+    foreach ($data['docs'] ?? [] as $d) {
+        $t = mb_strtolower(trim($d['title'] ?? '')); if (!$t) continue;
+        $cover = !empty($d['cover_i']) ? ('https://covers.openlibrary.org/b/id/' . (int)$d['cover_i'] . '-M.jpg') : '';
+        $year  = !empty($d['first_publish_year']) ? (string)((int)$d['first_publish_year']) : '';
+        if (!isset($map[$t])) $map[$t] = ['cover'=>$cover, 'year'=>$year];
+        else { if ($cover && !$map[$t]['cover']) $map[$t]['cover']=$cover; if ($year && !$map[$t]['year']) $map[$t]['year']=$year; }
+    }
+    return $map;
+}
+
+/* Başlığı map'te eşleştir → ['cover','year'] (yoksa boş). */
 function qb_meta_from_map($title, $map) {
     $empty = ['cover'=>'', 'year'=>''];
     if (empty($map)) return $empty;
@@ -280,8 +303,10 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
     $dbg[$src ?: 'none']++;
     $end = $i + 1;   // bu yazar gerçekten işlendi (200 yanıt alındı)
 
-    // Kapak/yıl zenginleştirmesi: yazar başına 1 Google Books isteği.
-    // OL'de eksik olan kapak ve yılları buradan doldur.
+    // Kapak/yıl zenginleştirmesi (yazar başına 1'er istek):
+    //  1) OL search ucu → cover_i + first_publish_year (BOL; works ucu vermiyor)
+    //  2) Google Books → OL'de de boş kalanları doldur
+    $olmeta = !empty($works) ? qb_ol_meta_for_author($author_name) : [];
     $gbmeta = !empty($works) ? qb_gb_meta_for_author($author_name) : [];
 
     $author_last_main = preg_replace('/^.+\s/', '', $author_name);
@@ -321,9 +346,14 @@ for ($i = $authors_built; $i < $chunk_end; $i++) {
             $t = "$t ($orig)";
         }
 
-        // Kapak/yıl: OL'den geldiyse onu kullan, boşsa Google Books'tan doldur.
+        // Kapak/yıl: works ucundan geldiyse onu kullan; boşsa OL-search, sonra GB.
         $cover = $w['cover'] ?? '';
         $year  = $w['year']  ?? '';
+        if (!$cover || !$year) {
+            $om = qb_meta_from_map($t, $olmeta);
+            if (!$cover) $cover = $om['cover'];
+            if (!$year)  $year  = $om['year'];
+        }
         if (!$cover || !$year) {
             $gm = qb_meta_from_map($t, $gbmeta);
             if (!$cover) $cover = $gm['cover'];
