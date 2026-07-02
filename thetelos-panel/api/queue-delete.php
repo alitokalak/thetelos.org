@@ -7,4 +7,8 @@ $batch_id = preg_replace('/[^a-z0-9_.]/', '', trim($_POST['batch_id'] ?? ''));
 if (!$batch_id || strpos($batch_id, 'queue_') !== 0) { echo json_encode(['ok'=>false,'error'=>'Geçersiz ID']); exit; }
 $file = dirname(__DIR__) . '/jobs/' . $batch_id . '.json';
 if (file_exists($file)) unlink($file);
+// Yan dosyaları da temizle: eser dosyası (.books.jsonl), kilit (.lock), yarım (.tmp.*)
+@unlink(preg_replace('/\.json$/', '.books.jsonl', $file));
+@unlink($file . '.lock');
+foreach (glob($file . '.tmp.*') ?: [] as $t) @unlink($t);
 echo json_encode(['ok'=>true]);
