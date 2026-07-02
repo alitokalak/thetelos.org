@@ -12,8 +12,8 @@
     if (!t) return;
 
     // Başlangıç boyutuna dön (yeniden çalıştırmada birikmesin)
-    t.style.fontSize = '';
-    t.style.lineHeight = '';
+    t.style.removeProperty('font-size');
+    t.style.removeProperty('line-height');
 
     var size = parseFloat(getComputedStyle(t).fontSize) || 12;
     var min = 7;
@@ -22,11 +22,13 @@
     // .cover-title flex:1 + overflow:hidden olduğundan metin KENDİ kutusu içinde
     // kesilir; kapak (cover) taşmaz. Bu yüzden başlığın kendi yüksekliğine bakarız:
     // metnin gerçek boyu (scrollHeight) görünür kutuyu (clientHeight) aşıyorsa küçült.
-    while (t.scrollHeight > t.clientHeight + 1 && size > min && guard < 80) {
+    // ÖNEMLİ: bazı sayfalarda (ör. tekil/post) CSS `.cover-title{font-size:...!important}`
+    // ile geliyor; inline stili de `!important` ile yazmazsak küçültme ezilir.
+    while (t.scrollHeight > t.clientHeight + 1 && size > min && guard < 120) {
       size -= 0.5;
       guard++;
-      t.style.fontSize = size + 'px';
-      t.style.lineHeight = '1.25';
+      t.style.setProperty('font-size', size + 'px', 'important');
+      t.style.setProperty('line-height', '1.25', 'important');
     }
   }
 

@@ -26,7 +26,7 @@ add_action( 'wp_enqueue_scripts', function() {
         'thetelos-book-cover-fit',
         get_template_directory_uri() . '/inc/book-cover.js',
         [],
-        '1.4',
+        '1.5',
         true
     );
 });
@@ -183,6 +183,16 @@ function thetelos_render_book_cover( $post_id ) {
     // Güvenlik: yazar eşleşmediyse hâlâ kalan " - …" kuyruğunu at
     $title  = preg_replace('/\s+[-–—]\s+\S.*$/u', '', $title);
     $title  = trim( $title );
+
+    // Aşırı uzun başlıkları (ör. 17. yy tam adları) kapak için akıllıca kısalt:
+    // yazar hariç en fazla ~80 karakter, kelime sınırında kesip "…" ekle.
+    $cover_max = 80;
+    if ( mb_strlen( $title ) > $cover_max ) {
+        $cut = mb_substr( $title, 0, $cover_max );
+        $sp  = mb_strrpos( $cut, ' ' );
+        if ( $sp !== false && $sp > $cover_max * 0.6 ) $cut = mb_substr( $cut, 0, $sp );
+        $title = rtrim( $cut, " \t\n\r,;:.—–-" ) . '…';
+    }
 
     // Title uzunluğuna göre başlangıç font size — JS auto-fit ayrıca sığdırır.
     // Uzun başlıklar sıkışmasın diye kademeler küçük tutuldu.
