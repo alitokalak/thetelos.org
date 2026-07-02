@@ -1179,6 +1179,84 @@ document.getElementById('btn-builder-to-queue')?.addEventListener('click', async
   }
 });
 
+// ── Toplu Yazar Ekle (CSV) → sunucu kuyruğu (arka planda eser çekme) ──
+// Basit CSV ayrıştırıcı (tırnaklı alanlar + gömülü virgül/newline destekli)
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');        // BOM at
+  const rows = []; let row = []; let field = ''; let inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i++; } else inQ = false; }
+      else field += c;
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+      else if (c === '\r') { /* yoksay */ }
+      else field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.some(x => (x || '').trim() !== ''));
+}
+
+document.getElementById('btn-bulk-authors-upload')?.addEventListener('click', () => {
+  const fileEl = document.getElementById('bulk-authors-file');
+  const file = fileEl?.files?.[0];
+  if (!file) { notify('builder-notif', 'Önce bir CSV dosyası seç.', 'err'); return; }
+  const btn = document.getElementById('btn-bulk-authors-upload');
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const rows = parseCSV(String(reader.result || ''));
+      if (!rows.length) { notify('builder-notif', 'CSV boş görünüyor.', 'err'); return; }
+
+      // "Yazar" sütununu bul: başlıkta Yazar/Yazar Adı/Author geçen sütun; yoksa
+      // ilk satır başlıksa ilk metin sütunu (sayı olmayan).
+      const header = rows[0].map(h => (h || '').trim().toLowerCase());
+      let col = header.findIndex(h => /^(yazar|yazar ad[ıi]|author|name|ad)$/.test(h));
+      let dataRows = rows;
+      if (col >= 0) { dataRows = rows.slice(1); }            // başlık var
+      else {
+        // başlık yok → sayı olmayan ilk sütunu yazar say
+        const first = rows[0];
+        col = first.findIndex(x => (x || '').trim() !== '' && isNaN(Number((x || '').trim())));
+        if (col < 0) col = first.length > 1 ? 1 : 0;
+      }
+
+      const seen = new Set(); const names = [];
+      for (const r of dataRows) {
+        const n = (r[col] || '').trim();
+        if (!n) continue;
+        const k = n.toLowerCase();
+        if (seen.has(k)) continue;
+        seen.add(k); names.push(n);
+      }
+      if (!names.length) { notify('builder-notif', 'CSV\'de yazar adı bulunamadı (sütun tespit edilemedi).', 'err'); return; }
+
+      const listName = document.getElementById('bulk-authors-name')?.value.trim() || file.name.replace(/\.csv$/i, '') || 'liste';
+      if (!confirm(`${names.length} yazar bulundu ("${listName}"). Eserleri sunucuda arka planda çekilecek (tarayıcı kapansa da). Devam edilsin mi?`)) return;
+
+      setLoading(btn, true, 'Sunucuya gönderiliyor...');
+      const res = await postData(API('queue-create.php'), {
+        category: listName,
+        list_only: 1,
+        authors: JSON.stringify(names),
+      }, 120000);
+      if (!res.ok) { notify('builder-notif', res.error || 'Hata', 'err'); return; }
+      notify('builder-notif',
+        `✓ Kuyruk oluşturuldu (${names.length} yazar). "Kuyruk" sayfasına geç — cron arka planda eserleri çekiyor. Bitince "100'erli ZIP" indir.`, 'ok');
+    } catch (e) {
+      notify('builder-notif', 'Hata: ' + e.message, 'err');
+    } finally {
+      setLoading(btn, false);
+    }
+  };
+  reader.onerror = () => notify('builder-notif', 'Dosya okunamadı.', 'err');
+  reader.readAsText(file, 'UTF-8');
+});
+
 function renderBuilderAuthors() {
   document.getElementById('builder-authors-card').style.display = '';
   document.getElementById('builder-authors-count').textContent = `(${builderAuthors.length})`;

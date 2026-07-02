@@ -299,6 +299,27 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <input type="text" id="builder-author" placeholder="Örn: Augustine of Hippo">
           </div></div>
           <button class="btn btn-primary" id="btn-fetch-works">📚 Tüm Eserlerini Getir</button>
+
+          <!-- Toplu yazar ekle (CSV) -->
+          <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)">
+            <div class="card-title" style="margin-bottom:6px">📋 Toplu Yazar Ekle (CSV)</div>
+            <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
+              Bir CSV yükle (içinde "Yazar" sütunu olan; ör. buradan indirdiğin yazar listesi).
+              Listedeki her yazarın eserleri <b>sunucuda arka planda</b> çekilir — tarayıcı kapansa da sürer.
+              Bittiğinde <b>Kuyruk</b> sayfasından 100'erli ZIP indirirsin.
+            </p>
+            <div class="form-row">
+              <div>
+                <label for="bulk-authors-file">CSV dosyası</label>
+                <input type="file" id="bulk-authors-file" accept=".csv,text/csv">
+              </div>
+              <div>
+                <label for="bulk-authors-name">Liste adı (opsiyonel)</label>
+                <input type="text" id="bulk-authors-name" placeholder="Örn: Felsefe seçkisi">
+              </div>
+            </div>
+            <button class="btn btn-green" id="btn-bulk-authors-upload" style="margin-top:10px">🌐 CSV'yi Yükle → Sunucuda Eserleri Çek</button>
+          </div>
         </div>
 
         <!-- Kategoriye göre -->
