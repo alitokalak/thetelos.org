@@ -303,23 +303,39 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <!-- Toplu yazar ekle (CSV) -->
           <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border)">
             <div class="card-title" style="margin-bottom:6px">📋 Toplu Yazar Ekle (CSV)</div>
-            <p style="font-size:12px;color:var(--muted);margin:0 0 10px">
-              Bir CSV yükle (içinde "Yazar" sütunu olan; ör. buradan indirdiğin yazar listesi).
-              Listedeki her yazarın eserleri <b>sunucuda arka planda</b> çekilir — tarayıcı kapansa da sürer.
-              Bittiğinde <b>Kuyruk</b> sayfasından 100'erli ZIP indirirsin.
+            <p style="font-size:12px;color:var(--muted);margin:0 0 12px">
+              İçinde <b>Yazar</b> sütunu olan bir CSV yükle. Yazarlar aşağıya dolar; sonra
+              <b>⚡ tarayıcıda</b> (hızlı, küçük listeler) ya da <b>🌐 sunucuda</b> (arka plan, binlerce yazar) çek.
             </p>
-            <div class="form-row">
-              <div>
-                <label for="bulk-authors-file">CSV dosyası</label>
-                <input type="file" id="bulk-authors-file" accept=".csv,text/csv">
-              </div>
-              <div>
-                <label for="bulk-authors-name">Liste adı (opsiyonel)</label>
-                <input type="text" id="bulk-authors-name" placeholder="Örn: Felsefe seçkisi">
-              </div>
+            <div class="form-row one" style="margin-bottom:12px"><div>
+              <label for="bulk-authors-name">Liste adı (opsiyonel)</label>
+              <input type="text" id="bulk-authors-name" placeholder="Örn: Felsefe seçkisi">
+            </div></div>
+
+            <input type="file" id="bulk-authors-file" accept=".csv,text/csv" hidden>
+            <div id="bulk-dropzone" class="tls-dropzone" tabindex="0" role="button" aria-label="CSV yükle">
+              <div class="tls-dz-emoji">📄</div>
+              <div class="tls-dz-main">CSV'yi buraya <b>sürükle</b> <span style="color:var(--muted)">ya da</span> <span class="tls-dz-link">bilgisayardan seç</span></div>
+              <div class="tls-dz-hint">.csv · "Yazar" sütunu · UTF-8</div>
+              <div class="tls-dz-file" id="bulk-dz-filename"></div>
             </div>
-            <button class="btn btn-green" id="btn-bulk-authors-upload" style="margin-top:10px">🌐 CSV'yi Yükle → Sunucuda Eserleri Çek</button>
+            <button class="btn btn-green" id="btn-bulk-authors-upload" style="margin-top:12px" disabled>📥 Listeyi Yükle</button>
           </div>
+
+          <style>
+            .tls-dropzone{
+              border:2px dashed var(--border,#3a3a3a); border-radius:12px;
+              padding:26px 18px; text-align:center; cursor:pointer;
+              background:rgba(255,255,255,0.02); transition:all .18s ease; outline:none;
+            }
+            .tls-dropzone:hover,.tls-dropzone:focus{ border-color:var(--gold,#c9a24b); background:rgba(201,162,75,0.06); }
+            .tls-dropzone.dragover{ border-color:var(--gold,#c9a24b); background:rgba(201,162,75,0.12); transform:scale(1.01); }
+            .tls-dz-emoji{ font-size:34px; line-height:1; margin-bottom:8px; opacity:.9; }
+            .tls-dz-main{ font-size:14px; }
+            .tls-dz-link{ color:var(--gold,#c9a24b); text-decoration:underline; }
+            .tls-dz-hint{ font-size:11px; color:var(--muted,#888); margin-top:6px; }
+            .tls-dz-file{ font-size:13px; color:var(--green,#3fae6a); font-weight:600; margin-top:10px; }
+          </style>
         </div>
 
         <!-- Kategoriye göre -->

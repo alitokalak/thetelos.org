@@ -1201,52 +1201,80 @@ function parseCSV(text) {
   return rows.filter(r => r.some(x => (x || '').trim() !== ''));
 }
 
+// Modern sürükle-bırak dosya alanı
+let bulkCsvFile = null;
+(function initBulkDropzone(){
+  const dz    = document.getElementById('bulk-dropzone');
+  const input = document.getElementById('bulk-authors-file');
+  const nameEl= document.getElementById('bulk-dz-filename');
+  const btn   = document.getElementById('btn-bulk-authors-upload');
+  if (!dz || !input) return;
+
+  const setFile = (f) => {
+    bulkCsvFile = f || null;
+    if (nameEl) nameEl.textContent = f ? ('✓ ' + f.name) : '';
+    if (btn) btn.disabled = !f;
+  };
+  dz.addEventListener('click', () => input.click());
+  dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+  input.addEventListener('change', () => setFile(input.files?.[0] || null));
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('dragover'); }));
+  ['dragleave','dragend','drop'].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove('dragover')));
+  dz.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer?.files?.[0];
+    if (f) setFile(f);
+  });
+})();
+
+// "Listeyi Yükle" → CSV'yi ayrıştır, yazarları EKRANDAKİ listeye doldur.
+// Sonra kullanıcı "⚡ tarayıcıda" veya "🌐 sunucuda" seçer (iki akış da hazır).
 document.getElementById('btn-bulk-authors-upload')?.addEventListener('click', () => {
-  const fileEl = document.getElementById('bulk-authors-file');
-  const file = fileEl?.files?.[0];
-  if (!file) { notify('builder-notif', 'Önce bir CSV dosyası seç.', 'err'); return; }
+  const file = bulkCsvFile || document.getElementById('bulk-authors-file')?.files?.[0];
+  if (!file) { notify('builder-notif', 'Önce bir CSV dosyası seç ya da sürükle.', 'err'); return; }
   const btn = document.getElementById('btn-bulk-authors-upload');
   const reader = new FileReader();
-  reader.onload = async () => {
+  reader.onload = () => {
     try {
       const rows = parseCSV(String(reader.result || ''));
       if (!rows.length) { notify('builder-notif', 'CSV boş görünüyor.', 'err'); return; }
 
-      // "Yazar" sütununu bul: başlıkta Yazar/Yazar Adı/Author geçen sütun; yoksa
-      // ilk satır başlıksa ilk metin sütunu (sayı olmayan).
+      // Sütunları tespit et: başlıkta Yazar/Author + varsa Dönem/Not.
       const header = rows[0].map(h => (h || '').trim().toLowerCase());
-      let col = header.findIndex(h => /^(yazar|yazar ad[ıi]|author|name|ad)$/.test(h));
+      let col   = header.findIndex(h => /^(yazar|yazar ad[ıi]|author|name|ad)$/.test(h));
+      let eraCol= header.findIndex(h => /^(d[öo]nem|era|y[ıi]llar)$/.test(h));
+      let noteCol=header.findIndex(h => /^(not|note|a[çc][ıi]klama|description)$/.test(h));
       let dataRows = rows;
-      if (col >= 0) { dataRows = rows.slice(1); }            // başlık var
+      if (col >= 0) { dataRows = rows.slice(1); }
       else {
-        // başlık yok → sayı olmayan ilk sütunu yazar say
         const first = rows[0];
         col = first.findIndex(x => (x || '').trim() !== '' && isNaN(Number((x || '').trim())));
         if (col < 0) col = first.length > 1 ? 1 : 0;
       }
 
-      const seen = new Set(); const names = [];
+      const seen = new Set(); const list = [];
       for (const r of dataRows) {
         const n = (r[col] || '').trim();
         if (!n) continue;
         const k = n.toLowerCase();
         if (seen.has(k)) continue;
-        seen.add(k); names.push(n);
+        seen.add(k);
+        list.push({ author: n, era: eraCol >= 0 ? (r[eraCol] || '').trim() : '', note: noteCol >= 0 ? (r[noteCol] || '').trim() : '' });
       }
-      if (!names.length) { notify('builder-notif', 'CSV\'de yazar adı bulunamadı (sütun tespit edilemedi).', 'err'); return; }
+      if (!list.length) { notify('builder-notif', 'CSV\'de yazar adı bulunamadı (sütun tespit edilemedi).', 'err'); return; }
 
-      const listName = document.getElementById('bulk-authors-name')?.value.trim() || file.name.replace(/\.csv$/i, '') || 'liste';
-      if (!confirm(`${names.length} yazar bulundu ("${listName}"). Eserleri sunucuda arka planda çekilecek (tarayıcı kapansa da). Devam edilsin mi?`)) return;
-
-      setLoading(btn, true, 'Sunucuya gönderiliyor...');
-      const res = await postData(API('queue-create.php'), {
-        category: listName,
-        list_only: 1,
-        authors: JSON.stringify(names),
-      }, 120000);
-      if (!res.ok) { notify('builder-notif', res.error || 'Hata', 'err'); return; }
+      // Ekrandaki listeye yükle → mevcut butonlar (⚡/🌐) bu liste üstünde çalışır.
+      const listName = document.getElementById('bulk-authors-name')?.value.trim() || file.name.replace(/\.csv$/i, '');
+      if (listName) { const bc = document.getElementById('builder-category'); if (bc) bc.value = listName; }
+      builderAuthors = list;
+      builderAuthorsOffset = list.length;
+      renderBuilderAuthors();
+      checkAuthorsOnSite();
+      document.getElementById('builder-authors-card')?.scrollIntoView({ behavior: 'smooth' });
+      // "Sonraki" butonu CSV yüklemesinde anlamsız → gizle
+      const nb = document.getElementById('btn-next-authors'); if (nb) nb.style.display = 'none';
       notify('builder-notif',
-        `✓ Kuyruk oluşturuldu (${names.length} yazar). "Kuyruk" sayfasına geç — cron arka planda eserleri çekiyor. Bitince "100'erli ZIP" indir.`, 'ok');
+        `✓ ${list.length} yazar yüklendi. Aşağıdan seç: "⚡ Tüm Yazarların Eserlerini Getir" (tarayıcıda, hızlı) ya da "🌐 Sunucuda Eserleri Çek" (arka plan, binlerce yazar için).`, 'ok');
     } catch (e) {
       notify('builder-notif', 'Hata: ' + e.message, 'err');
     } finally {
