@@ -190,15 +190,31 @@ function qb_ol_meta_for_author($author) {
     return $map;
 }
 
-/* Başlığı map'te eşleştir → ['cover','year'] (yoksa boş). */
+/* Başlığı eşleştirme için normalize et: küçük harf, "the/a/an" öneki + alt başlık
+   (":"/";" sonrası) at, noktalamayı boşluğa çevir. → daha çok kapak eşleşir. */
+function qb_norm_t($s) {
+    $s = mb_strtolower(trim((string)$s));
+    $s = preg_replace('/^(the|a|an)\s+/u', '', $s);
+    $s = preg_replace('/\s*[:;].*$/u', '', $s);           // alt başlığı at
+    $s = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;  // aksanları sadeleştir
+    $s = preg_replace('/[^a-z0-9]+/', ' ', mb_strtolower($s));
+    return trim(preg_replace('/\s+/', ' ', $s));
+}
+
+/* Başlığı map'te eşleştir → ['cover','year'] (yoksa boş). Normalize eşleşme. */
 function qb_meta_from_map($title, $map) {
     $empty = ['cover'=>'', 'year'=>''];
     if (empty($map)) return $empty;
-    $t = mb_strtolower(trim($title));
-    if (isset($map[$t])) return $map[$t];
-    if (strlen($t) < 5) return $empty;
-    foreach ($map as $gt => $meta) {
-        if (str_contains($gt, $t) || str_contains($t, $gt)) return $meta;
+    $tl = mb_strtolower(trim($title));
+    if (isset($map[$tl])) return $map[$tl];        // birebir (hızlı yol)
+    $q = qb_norm_t($title);
+    if ($q === '') return $empty;
+    foreach ($map as $gt => $meta) { if (qb_norm_t($gt) === $q) return $meta; }   // normalize birebir
+    if (strlen($q) >= 5) {                          // normalize içerme
+        foreach ($map as $gt => $meta) {
+            $ng = qb_norm_t($gt);
+            if ($ng !== '' && (str_contains($ng, $q) || str_contains($q, $ng))) return $meta;
+        }
     }
     return $empty;
 }
