@@ -29,6 +29,7 @@ $b['books']          = [];
 $b['total']          = 0;
 $b['books_migrated'] = false;
 $b['status']         = 'building';
+$b['epoch']          = (int)($b['epoch'] ?? 0) + 1;   // nesil damgası: eski/çakışan tikler bunu görüp yazmayı iptal eder
 $b['build_msg']      = 'Sıfırlandı — kapak/yıl ile baştan çekiliyor...';
 
 // Çekilmiş eserler dosyasını temizle

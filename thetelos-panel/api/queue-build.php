@@ -43,6 +43,9 @@ $authors_total = count($authors);
 // bellek/zaman sınırını aşmaz. İçerik kuyrukları (≤50 yazar) eski modelde kalır.
 $is_list_only = !empty($batch['list_only']);
 $books_file   = preg_replace('/\.json$/', '.books.jsonl', $batch_file);
+// Nesil damgası: queue-reset her sıfırlamada bunu artırır. Bu tik yazmadan önce
+// dosyadaki epoch hâlâ aynı mı bakar; değiştiyse (reset olduysa) yazmaz → sıfırlama ezilmez.
+$my_epoch     = (int)($batch['epoch'] ?? 0);
 
 if ($authors_built >= $authors_total) {
     $batch['status']    = !empty($batch['list_only']) ? 'list_ready' : 'running';
@@ -327,12 +330,27 @@ if ($lock) flock($lock, LOCK_EX);
 
 if ($is_list_only) {
     /* ── ÖLÇEKLENİR MODEL (list_only) ──
-       Eserler dev iş JSON'una GÖMÜLMEZ; ayrı .jsonl dosyasına EKLENİR.
-       Böylece her tik yalnız yeni eserleri yazar (koca dosyayı baştan yazmaz)
-       → 17 binlik listede bile bellek/zaman sınırı aşılmaz. */
-    $b2 = $batch;   // üstteki okumadan; dev dosyayı TEKRAR decode etme (bellek!)
+       Eserler .jsonl'a EKLENİR; iş JSON'u küçük kalır. Yazmadan ÖNCE dosyayı
+       kilit altında yeniden oku ve doğrula: epoch (reset) değiştiyse ya da
+       authors_built beklediğimden farklıysa (başka tik ilerletti) bu tik'in
+       sonucunu ATLA → reset ezilmez, çift ekleme olmaz. */
+    $b2 = json_decode((string)@file_get_contents($batch_file), true);
+    if (!is_array($b2)) $b2 = $batch;
+    $cur_epoch = (int)($b2['epoch'] ?? 0);
+    $cur_built = (int)($b2['authors_built'] ?? 0);
+    if ($cur_epoch !== $my_epoch || $cur_built !== $authors_built) {
+        // Sıfırlama olmuş ya da başka bir tik araya girmiş → yazma, sonucu at.
+        if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
+        echo json_encode([
+            'ok'=>true, 'done'=>false, 'skipped'=>true,
+            'authors_built'=>$cur_built, 'authors_total'=>$authors_total,
+            'books_added'=>0, 'total_books'=>(int)($b2['total'] ?? 0),
+            'build_msg'=>($b2['build_msg'] ?? ''),
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
-    // Mevcut gömülü books[] (eski 12MB dosyadan) → bir kez .jsonl'a taşı.
+    // Güvenli: yeni eserleri (+ varsa eski gömülü books[]) .jsonl'a EKLE.
     $lines = '';
     if (!empty($b2['books'])) {
         foreach ($b2['books'] as $bk) { $lines .= json_encode($bk, JSON_UNESCAPED_UNICODE) . "\n"; }
@@ -340,11 +358,10 @@ if ($is_list_only) {
     foreach ($new_books as $bk) { $lines .= json_encode($bk, JSON_UNESCAPED_UNICODE) . "\n"; }
     if ($lines !== '') @file_put_contents($books_file, $lines, FILE_APPEND | LOCK_EX);
 
-    // total sayacı: mevcut (gömülü books zaten sayılıydı) + yeni eklenen.
     $prev_total  = (int)($b2['total'] ?? count($b2['books'] ?? []));
     $total_books = $prev_total + count($new_books);
 
-    $b2['books']          = [];      // dev diziyi JSON'dan çıkar → dosya küçülür
+    $b2['books']          = [];
     $b2['books_migrated'] = true;
     $b2['total']          = $total_books;
     $b2['authors_built']  = $end;
