@@ -86,6 +86,43 @@ $removed = [];
 $ai_used = false;
 $ai_err  = '';
 
+/* ── Dil→alfabe eşlemesi (yapısal garanti için) ── */
+function cl_scripts_for_langs($langs) {
+    $map = [
+        'german'=>'Latin','english'=>'Latin','french'=>'Latin','italian'=>'Latin','spanish'=>'Latin',
+        'portuguese'=>'Latin','dutch'=>'Latin','latin'=>'Latin','turkish'=>'Latin','danish'=>'Latin',
+        'norwegian'=>'Latin','swedish'=>'Latin','polish'=>'Latin','czech'=>'Latin','hungarian'=>'Latin',
+        'romanian'=>'Latin','finnish'=>'Latin','vietnamese'=>'Latin','indonesian'=>'Latin',
+        'russian'=>'Cyrillic','ukrainian'=>'Cyrillic','bulgarian'=>'Cyrillic','serbian'=>'Cyrillic',
+        'greek'=>'Greek','ancient greek'=>'Greek','koine greek'=>'Greek',
+        'hebrew'=>'Hebrew','aramaic'=>'Hebrew','yiddish'=>'Hebrew',
+        'arabic'=>'Arabic','persian'=>'Arabic','farsi'=>'Arabic','urdu'=>'Arabic','ottoman turkish'=>'Arabic',
+        'chinese'=>'Han','classical chinese'=>'Han','mandarin'=>'Han',
+        'japanese'=>'Japanese','korean'=>'Hangul',
+        'sanskrit'=>'Devanagari','hindi'=>'Devanagari','pali'=>'Devanagari','bengali'=>'Bengali','tamil'=>'Tamil',
+    ];
+    $out = [];
+    foreach ((array)$langs as $l) {
+        $k = strtolower(trim((string)$l));
+        $out[$map[$k] ?? 'Latin'] = true;
+        if (($map[$k] ?? '') === 'Japanese') $out['Han'] = true;   // Japonca kanji kullanır
+    }
+    return $out;
+}
+function cl_script_of($s) {
+    if (preg_match('/[\x{3040}-\x{30FF}]/u', $s)) return 'Japanese';   // kana
+    if (preg_match('/[\x{4E00}-\x{9FFF}]/u', $s)) return 'Han';
+    if (preg_match('/[\x{0590}-\x{05FF}]/u', $s)) return 'Hebrew';
+    if (preg_match('/[\x{0600}-\x{06FF}]/u', $s)) return 'Arabic';
+    if (preg_match('/[\x{0400}-\x{04FF}]/u', $s)) return 'Cyrillic';
+    if (preg_match('/[\x{0370}-\x{03FF}]/u', $s)) return 'Greek';
+    if (preg_match('/[\x{AC00}-\x{D7AF}]/u', $s)) return 'Hangul';
+    if (preg_match('/[\x{0900}-\x{097F}]/u', $s)) return 'Devanagari';
+    if (preg_match('/[\x{0980}-\x{09FF}]/u', $s)) return 'Bengali';
+    if (preg_match('/[\x{0B80}-\x{0BFF}]/u', $s)) return 'Tamil';
+    return 'Latin';
+}
+
 /* ── AI hakem katmanı ── */
 if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !== '') {
     $cap = 120;                                    // token güvenliği (her giriş çıktıda yer alacak)
@@ -96,6 +133,8 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
     }
     $prompt = "You are a strict bibliographic judge. Below is a numbered list of titles catalogued under the author \"{$author}\".\n"
         . "Your job: produce the author's clean canonical bibliography from these entries.\n"
+        . "STEP 0 — first determine which language(s) {$author} actually WROTE their works in, and return them in \"wrote_in\" "
+        . "(e.g. Einstein → [\"German\",\"English\"]; Laozi → [\"Classical Chinese\"]). Every 'orig' you output must be in one of these languages.\n"
         . "OUTPUT CONTRACT — every entry number MUST appear in exactly one place: either in some group's members, or in not_by_author.\n"
         . "1) GROUP entries that are the SAME WORK (translations, different-language/script editions, transliterations, spelling variants) into ONE group. "
         . "A single-member group is normal for works appearing once.\n"
@@ -111,7 +150,7 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         . "titles that are just the author's name or a slogan, or entries you cannot identify at all. Short reason each.\n"
         . "Rules: judge ONLY the given entries; do NOT invent extra works; when unsure about a plausible entry, keep it as its own group.\n"
         . "Return ONLY JSON:\n"
-        . "{\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
+        . "{\"wrote_in\":[\"German\",\"English\"],\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
         . $lines;
 
     $ch = curl_init(DEEPSEEK_API_URL);
@@ -138,6 +177,8 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
 
     if (is_array($parsed)) {
         $ai_used  = true;
+        // Yazarın yazdığı dillerin alfabeleri — orig bu alfabelerde değilse GEÇERSİZ.
+        $wrote_scripts = cl_scripts_for_langs($parsed['wrote_in'] ?? []);
         $flagged  = [];   // index(0-based) → reason
         foreach ($parsed['not_by_author'] ?? [] as $f) {
             $ix = (int)($f['n'] ?? 0) - 1;
@@ -154,8 +195,12 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
 
             $en   = trim((string)($g['en']   ?? ''));
             $orig = trim((string)($g['orig'] ?? ''));
-            // GÜVENLİK: AI başlık uyduramaz — en az bir üyeyle kaba benzerlik yoksa üyenin başlığını kullan
             if ($en === '') $en = $slice[$members[0]]['title'];
+            // YAPISAL GARANTİ: orig'in alfabesi, yazarın yazdığı dillerin alfabesinde
+            // değilse (ör. Einstein + Japonca) orig bir ÇEVİRİ başlığıdır → at.
+            if ($orig !== '' && !empty($wrote_scripts) && !isset($wrote_scripts[cl_script_of($orig)])) {
+                $orig = '';
+            }
             $final = $en;
             if ($orig !== '' && mb_strtolower($orig) !== mb_strtolower($en)) $final = "$en ($orig)";
 
