@@ -98,8 +98,15 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         . "Tasks:\n"
         . "1) GROUP entries that are the SAME WORK (translations, different-language editions, spelling variants). "
         . "For each group give the work's standard ENGLISH title and its ORIGINAL-language title (empty if originally English).\n"
-        . "2) FLAG entries that are NOT a work written by {$author} (books ABOUT the author, works by someone else, commentaries, secondary literature). Give a short reason.\n"
-        . "Rules: judge ONLY the given entries; do NOT invent works; if unsure whether an entry belongs to the author, keep it (do not flag).\n"
+        . "2) Entries whose title is NOT in English — whether in a non-Latin script (Japanese, Chinese, Hebrew, Arabic, Cyrillic) "
+        . "or a Latin-script foreign language (German, French, transliterations) — are almost always TRANSLATIONS/EDITIONS "
+        . "of the author's works. You MUST resolve every one of them: (a) merge into the matching group, or "
+        . "(b) if you can identify the work, make a group with its standard English title (orig = that foreign title), or "
+        . "(c) if truly unidentifiable, flag it in not_by_author with reason \"unidentifiable translation\". "
+        . "A non-English title must NEVER remain standalone in the output.\n"
+        . "3) FLAG entries that are NOT a book written by {$author}: books ABOUT the author, secondary literature, "
+        . "quote/aphorism collections (\"Quotes\", \"Words of Wisdom\"), titles that are just the author's name or a slogan/formula. Short reason.\n"
+        . "Rules: judge ONLY the given entries; do NOT invent works; if unsure whether a normal Latin-script entry belongs to the author, keep it.\n"
         . "Return ONLY JSON:\n"
         . "{\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
         . $lines;
@@ -183,6 +190,34 @@ if (!isset($items_final)) {
         'title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'], 'merged'=>$it['merged'],
     ], $items);
 }
+
+/* ── SERT GÜVENLİK KATMANI (AI'dan bağımsız, çıkışta ZORUNLU) ──
+   AI ne derse desin şunlar temiz listeye GİREMEZ (Elenenler'e düşer, geri alınabilir):
+   1) Ana kısmında (parantez dışı) hiç Latin harfi olmayan başlık (物理学…, הקץ…, 爱因斯坦文集…)
+   2) Başlık == yazar adı ("Albert Einstein")
+   3) Alıntı/özlü söz derlemeleri ("Quotes", "Words of Wisdom") */
+$guarded = [];
+$auth_norm = cl_norm($author);
+foreach ($items_final as $it) {
+    $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana başlık
+    if (!preg_match('/\p{Latin}/u', $main)) {
+        $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
+                      'reason'=>'Latin-dışı başlık — eşleştirilemedi (çeviri olabilir)'];
+        continue;
+    }
+    if ($auth_norm !== '' && cl_norm($main) === $auth_norm) {
+        $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
+                      'reason'=>'başlık = yazar adı'];
+        continue;
+    }
+    if (preg_match('/\b(quotes?|quotations?|words of wisdom|sayings|aphorisms?)\b/i', $main)) {
+        $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
+                      'reason'=>'alıntı/özlü söz derlemesi'];
+        continue;
+    }
+    $guarded[] = $it;
+}
+$items_final = $guarded;
 
 echo json_encode([
     'ok'      => true,
