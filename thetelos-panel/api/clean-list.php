@@ -88,25 +88,24 @@ $ai_err  = '';
 
 /* ── AI hakem katmanı ── */
 if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !== '') {
-    $cap = 150;                                    // token güvenliği
+    $cap = 120;                                    // token güvenliği (her giriş çıktıda yer alacak)
     $slice = array_slice($items, 0, $cap);
     $lines = '';
     foreach ($slice as $i => $it) {
         $lines .= ($i+1) . '. ' . mb_substr($it['title'], 0, 160) . "\n";
     }
     $prompt = "You are a strict bibliographic judge. Below is a numbered list of titles catalogued under the author \"{$author}\".\n"
-        . "Tasks:\n"
-        . "1) GROUP entries that are the SAME WORK (translations, different-language editions, spelling variants). "
-        . "For each group give the work's standard ENGLISH title and its ORIGINAL-language title (empty if originally English).\n"
-        . "2) Entries whose title is NOT in English — whether in a non-Latin script (Japanese, Chinese, Hebrew, Arabic, Cyrillic) "
-        . "or a Latin-script foreign language (German, French, transliterations) — are almost always TRANSLATIONS/EDITIONS "
-        . "of the author's works. You MUST resolve every one of them: (a) merge into the matching group, or "
-        . "(b) if you can identify the work, make a group with its standard English title (orig = that foreign title), or "
-        . "(c) if truly unidentifiable, flag it in not_by_author with reason \"unidentifiable translation\". "
-        . "A non-English title must NEVER remain standalone in the output.\n"
-        . "3) FLAG entries that are NOT a book written by {$author}: books ABOUT the author, secondary literature, "
-        . "quote/aphorism collections (\"Quotes\", \"Words of Wisdom\"), titles that are just the author's name or a slogan/formula. Short reason.\n"
-        . "Rules: judge ONLY the given entries; do NOT invent works; if unsure whether a normal Latin-script entry belongs to the author, keep it.\n"
+        . "Your job: produce the author's clean canonical bibliography from these entries.\n"
+        . "OUTPUT CONTRACT — every entry number MUST appear in exactly one place: either in some group's members, or in not_by_author.\n"
+        . "1) GROUP entries that are the SAME WORK (translations, different-language/script editions, transliterations, spelling variants) into ONE group. "
+        . "A single-member group is normal for works appearing once.\n"
+        . "2) For EVERY group give:\n"
+        . "   en   = the work's standard title as used in ENGLISH literature (e.g. \"Tao Te Ching\", \"Critique of Pure Reason\", \"The Evolution of Physics\")\n"
+        . "   orig = the ORIGINAL-language title (e.g. \"道德经\", \"Kritik der reinen Vernunft\") — empty ONLY if the work was originally written in English.\n"
+        . "   The author may write in any language — Chinese, Japanese, Arabic, Russian works are welcome; they get their English literary title in en and the original in orig.\n"
+        . "3) not_by_author: entries that are NOT a book written by {$author} — books ABOUT the author, secondary literature, "
+        . "quote/aphorism collections (\"Quotes\", \"Words of Wisdom\"), titles that are just the author's name or a slogan, or entries you cannot identify at all. Short reason each.\n"
+        . "Rules: judge ONLY the given entries; do NOT invent extra works; when unsure about a plausible entry, keep it as its own group.\n"
         . "Return ONLY JSON:\n"
         . "{\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
         . $lines;
@@ -116,7 +115,7 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
         CURLOPT_POSTFIELDS => json_encode([
-            'model' => DEEPSEEK_MODEL, 'max_tokens' => 4000, 'temperature' => 0,
+            'model' => DEEPSEEK_MODEL, 'max_tokens' => 6000, 'temperature' => 0,
             'messages' => [['role'=>'user','content'=>$prompt]],
         ]),
     ]);
@@ -192,8 +191,10 @@ if (!isset($items_final)) {
 }
 
 /* ── SERT GÜVENLİK KATMANI (AI'dan bağımsız, çıkışta ZORUNLU) ──
-   AI ne derse desin şunlar temiz listeye GİREMEZ (Elenenler'e düşer, geri alınabilir):
-   1) Ana kısmında (parantez dışı) hiç Latin harfi olmayan başlık (物理学…, הקץ…, 爱因斯坦文集…)
+   Format kuralı: her başlığın ANA kısmı İngilizce literatür adı olmalı; orijinal
+   ad parantezdedir ("Tao Te Ching (道德经)" GEÇERLİDİR). Şunlar temiz listeye
+   giremez (Elenenler'e düşer, geri alınabilir):
+   1) Ana kısmı hâlâ Latin harfsiz kalan başlık = AI eseri İngilizce adıyla çözememiş
    2) Başlık == yazar adı ("Albert Einstein")
    3) Alıntı/özlü söz derlemeleri ("Quotes", "Words of Wisdom") */
 $guarded = [];
@@ -202,7 +203,7 @@ foreach ($items_final as $it) {
     $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana başlık
     if (!preg_match('/\p{Latin}/u', $main)) {
         $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
-                      'reason'=>'Latin-dışı başlık — eşleştirilemedi (çeviri olabilir)'];
+                      'reason'=>'İngilizce literatür adı çözülemedi — geri alıp elle "İngilizce Ad ('.$it['title'].')" yazabilirsin'];
         continue;
     }
     if ($auth_norm !== '' && cl_norm($main) === $auth_norm) {
