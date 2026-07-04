@@ -19,8 +19,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
   <aside class="tls-sidebar">
     <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
     <nav class="tls-nav">
-      <a href="panel.php" <?= ($_GET['mode']??'') !== 'queue' ? 'class="active"' : '' ?>><span class="ico">✍</span> İçerik Üret</a>
+      <a href="panel.php" <?= !in_array($_GET['mode']??'', ['queue','cleaner'], true) ? 'class="active"' : '' ?>><span class="ico">✍</span> İçerik Üret</a>
       <a href="panel.php?mode=queue" <?= ($_GET['mode']??'') === 'queue' ? 'class="active"' : '' ?>><span class="ico">📋</span> Kuyruk</a>
+      <a href="panel.php?mode=cleaner" <?= ($_GET['mode']??'') === 'cleaner' ? 'class="active"' : '' ?>><span class="ico">🧹</span> Liste Temizle</a>
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
       <a href="settings.php"><span class="ico">⚙</span> Ayarlar</a>
@@ -40,6 +41,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <button class="tab-top-btn active" data-mode="single">✍ Tek Kitap</button>
         <button class="tab-top-btn" data-mode="bulk">📋 Toplu Batch</button>
         <button class="tab-top-btn" data-mode="builder">🧱 Liste Oluştur</button>
+        <button class="tab-top-btn" data-mode="cleaner">🧹 Liste Temizle</button>
         <button class="tab-top-btn" data-mode="queue">⚙ Kuyruk</button>
       </div>
     </div>
@@ -399,6 +401,81 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <thead><tr><th>#</th><th>Kapak</th><th>Kitap</th><th>Yazar</th><th>Yıl</th><th>✓</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══ LİSTE TEMİZLE ═══════════════════════════════════ -->
+    <div id="mode-cleaner" style="display:none">
+
+      <div class="card">
+        <div class="card-title">🧹 Eser Listesi Temizleme</div>
+        <p style="font-size:13px;color:var(--muted);line-height:1.6;margin:0 0 14px">
+          Panelden indirdiğin eser CSV'sini yükle. Sistem iki katmanda temizler:
+          <b>1) Kurallar</b> — birebir/normalize tekrarları anında birleştirir (ücretsiz).
+          <b>2) AI hakem</b> — aynı eserin farklı dil/çeviri baskılarını tek kanonik girişte
+          (<i>"İngilizce ad (Orijinal ad)"</i> formatında) birleştirir, yazara ait olmayanları
+          gerekçesiyle işaretler. AI liste <u>üretmez</u>, yalnız eldeki veriyi yargılar.
+          Sonucu önizler, istediğini geri alır, temiz CSV indirirsin.
+        </p>
+
+        <input type="file" id="cleaner-file" accept=".csv,text/csv" hidden>
+        <div id="cleaner-dropzone" class="tls-dropzone" tabindex="0" role="button" aria-label="CSV yükle">
+          <div class="tls-dz-emoji">🧹</div>
+          <div class="tls-dz-main">Eser CSV'sini buraya <b>sürükle</b> <span style="color:var(--muted)">ya da</span> <span class="tls-dz-link">bilgisayardan seç</span></div>
+          <div class="tls-dz-hint">.csv · sütunlar: Kitap Adı, Yazar Adı, Yıl, Kapak</div>
+          <div class="tls-dz-file" id="cleaner-dz-filename"></div>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)">
+          <input type="checkbox" id="cleaner-use-ai" checked>
+          AI hakem kullan (çeviri birleştirme + yazara aidiyet kontrolü — DeepSeek)
+        </label>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+          <button class="btn btn-green" id="btn-cleaner-start" disabled>🧹 Temizlemeyi Başlat</button>
+          <button class="btn btn-ghost" id="btn-cleaner-cancel" style="display:none;color:var(--red)">⛔ Durdur</button>
+        </div>
+        <p style="font-size:11px;color:var(--muted);margin-top:8px">
+          Not: AI hakem yazar başına 1 istek yapar; 100 yazarlık dosya ~5-15 dk sürer. Sekmeyi açık tut.
+        </p>
+      </div>
+
+      <div id="cleaner-notif" class="notif"></div>
+
+      <!-- İlerleme -->
+      <div id="cleaner-progress-card" class="card" style="display:none">
+        <div class="card-title">İlerleme <span id="cleaner-progress-text" style="color:var(--muted);font-weight:400;font-size:11px"></span></div>
+        <div style="background:#2a2a2a;border-radius:4px;height:8px;overflow:hidden">
+          <div id="cleaner-progress-bar" style="background:var(--green);height:100%;width:0%;transition:width .3s"></div>
+        </div>
+        <div id="cleaner-stats" style="margin-top:10px;font-size:13px;color:var(--muted)"></div>
+      </div>
+
+      <!-- Sonuç -->
+      <div id="cleaner-result-card" class="card" style="display:none">
+        <div class="card-title">Sonuç
+          <span id="cleaner-result-summary" style="color:var(--muted);font-weight:400;font-size:11px"></span>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="btn btn-green btn-sm" id="btn-cleaner-export">⬇ Temiz CSV indir</button>
+          <button class="btn btn-ghost btn-sm" id="btn-cleaner-export-removed">⬇ Elenenler raporu (CSV)</button>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="bulk-table" id="cleaner-table">
+            <thead><tr><th>#</th><th>Eser (temiz)</th><th>Yazar</th><th>Yıl</th><th>Birleşen</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div id="cleaner-removed-wrap" style="margin-top:16px;display:none">
+          <div class="card-title" style="font-size:13px">Elenenler <span id="cleaner-removed-count" style="color:var(--muted);font-weight:400;font-size:11px"></span></div>
+          <div style="overflow-x:auto">
+            <table class="bulk-table" id="cleaner-removed-table">
+              <thead><tr><th>Eser</th><th>Yazar</th><th>Neden</th><th></th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
         </div>
       </div>
 

@@ -132,13 +132,14 @@ const modeTitles = {
   single:  ['Tek Kitap',     'Kitap adı ve yazar girerek özet veya analiz üretin'],
   bulk:    ['Toplu Batch',   'CSV/XLSX yükleyerek binlerce kitabı sunucu taraflı paralel işleyin'],
   builder: ['Liste Oluştur', 'Kategori/yazar bazlı kitap listesi üret — LLM küratör + OpenLibrary doğrulama'],
+  cleaner: ['Liste Temizle', 'Eser CSV\'sindeki tekrarları/çevirileri birleştir, yazara ait olmayanları ele'],
   queue:   ['Kuyruk',        'Kategori bazlı otomatik kuyruk — tarayıcı kapansa da devam eder'],
 };
 
 function switchMode(mode) {
   document.querySelectorAll('.tab-top-btn').forEach(b => b.classList.remove('active'));
   document.querySelector(`.tab-top-btn[data-mode="${mode}"]`)?.classList.add('active');
-  ['single','bulk','builder','queue'].forEach(m => {
+  ['single','bulk','builder','cleaner','queue'].forEach(m => {
     const el = document.getElementById('mode-' + m);
     if (el) el.style.display = m === mode ? '' : 'none';
   });
@@ -1772,3 +1773,201 @@ async function deleteQueue(batchId) {
   await postData(API('queue-delete.php'), { batch_id: batchId });
   loadQueueList();
 }
+
+/* ══ LİSTE TEMİZLE ═══════════════════════════════════════════
+ * CSV (Kitap Adı, Yazar Adı, Yıl, Kapak) → yazar bazında grupla →
+ * her yazar için clean-list.php (kural + AI hakem) → önizleme → temiz CSV.
+ */
+let cleanerFile = null;
+let cleanerWorks = [];     // temiz sonuç [{title,author,year,cover,merged}]
+let cleanerRemoved = [];   // elenenler  [{title,author,year,cover,reason,restored}]
+let cleanerCancel = false;
+
+(function initCleanerDropzone(){
+  const dz    = document.getElementById('cleaner-dropzone');
+  const input = document.getElementById('cleaner-file');
+  const nameEl= document.getElementById('cleaner-dz-filename');
+  const btn   = document.getElementById('btn-cleaner-start');
+  if (!dz || !input) return;
+  const setFile = (f) => {
+    cleanerFile = f || null;
+    if (nameEl) nameEl.textContent = f ? ('✓ ' + f.name) : '';
+    if (btn) btn.disabled = !f;
+  };
+  dz.addEventListener('click', () => input.click());
+  dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+  input.addEventListener('change', () => setFile(input.files?.[0] || null));
+  ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('dragover'); }));
+  ['dragleave','dragend','drop'].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove('dragover')));
+  dz.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) setFile(f); });
+})();
+
+document.getElementById('btn-cleaner-cancel')?.addEventListener('click', () => { cleanerCancel = true; });
+
+document.getElementById('btn-cleaner-start')?.addEventListener('click', () => {
+  const file = cleanerFile || document.getElementById('cleaner-file')?.files?.[0];
+  if (!file) { notify('cleaner-notif', 'Önce bir CSV seç.', 'err'); return; }
+  const reader = new FileReader();
+  reader.onload = () => runCleaner(String(reader.result || ''), file.name);
+  reader.onerror = () => notify('cleaner-notif', 'Dosya okunamadı.', 'err');
+  reader.readAsText(file, 'UTF-8');
+});
+
+async function runCleaner(text, fileName) {
+  const rows = parseCSV(text);
+  if (rows.length < 2) { notify('cleaner-notif', 'CSV boş ya da yalnız başlık satırı var.', 'err'); return; }
+
+  // Sütunları bul
+  const header = rows[0].map(h => (h || '').trim().toLowerCase());
+  const tCol = header.findIndex(h => /kitap|title|eser/.test(h));
+  const aCol = header.findIndex(h => /yazar|author/.test(h));
+  const yCol = header.findIndex(h => /y[ıi]l|year/.test(h));
+  const cCol = header.findIndex(h => /kapak|cover/.test(h));
+  if (tCol < 0 || aCol < 0) { notify('cleaner-notif', 'CSV\'de "Kitap Adı" ve "Yazar Adı" sütunları bulunamadı.', 'err'); return; }
+
+  // Yazara göre grupla (sıra korunur)
+  const byAuthor = new Map();
+  for (const r of rows.slice(1)) {
+    const t = (r[tCol] || '').trim(); if (!t) continue;
+    const a = (r[aCol] || '').trim() || '(yazarsız)';
+    if (!byAuthor.has(a)) byAuthor.set(a, []);
+    byAuthor.get(a).push({ title: t, year: yCol >= 0 ? (r[yCol] || '').trim() : '', cover: cCol >= 0 ? (r[cCol] || '').trim() : '' });
+  }
+
+  const authors = [...byAuthor.keys()];
+  const useAI   = document.getElementById('cleaner-use-ai')?.checked ? 1 : 0;
+  const totalIn = rows.length - 1;
+  if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${useAI ? 'AI hakem AÇIK (yazar başına 1 istek).' : 'Yalnız kural katmanı (AI kapalı).'} Başlatılsın mı?`)) return;
+
+  cleanerWorks = []; cleanerRemoved = []; cleanerCancel = false;
+  const startBtn = document.getElementById('btn-cleaner-start');
+  const cancelBtn= document.getElementById('btn-cleaner-cancel');
+  setLoading(startBtn, true, 'Temizleniyor...');
+  if (cancelBtn) cancelBtn.style.display = '';
+  document.getElementById('cleaner-progress-card').style.display = '';
+  document.getElementById('cleaner-result-card').style.display = 'none';
+
+  let aiFails = 0;
+  for (let i = 0; i < authors.length; i++) {
+    if (cleanerCancel) { notify('cleaner-notif', `Durduruldu — ${i}/${authors.length} yazar işlendi (sonuçlar korunuyor).`, 'err'); break; }
+    const a = authors[i];
+    const works = byAuthor.get(a);
+    setCleanerProgress(i, authors.length, a);
+
+    let res = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        res = await postData(API('clean-list.php'), { author: a, works: JSON.stringify(works), use_ai: useAI }, 150000);
+        if (res && res.ok) break;
+      } catch(_) {}
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+
+    if (res && res.ok) {
+      cleanerWorks.push(...(res.works || []));
+      cleanerRemoved.push(...(res.removed || []).map(x => ({ ...x, restored: false })));
+      if (useAI && !res.ai_used) aiFails++;
+    } else {
+      // Sunucu 3 denemede yanıt vermedi → bu yazarın satırlarını OLDUĞU GİBİ koru (veri kaybı olmasın)
+      cleanerWorks.push(...works.map(w => ({ title: w.title, author: a, year: w.year, cover: w.cover, merged: 1 })));
+      aiFails++;
+    }
+  }
+  setCleanerProgress(authors.length, authors.length, '');
+
+  setLoading(startBtn, false);
+  if (cancelBtn) cancelBtn.style.display = 'none';
+  renderCleanerResult(totalIn, fileName, aiFails);
+}
+
+function setCleanerProgress(done, total, current) {
+  const pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById('cleaner-progress-bar').style.width = pct + '%';
+  document.getElementById('cleaner-progress-text').textContent = `${done}/${total} yazar`;
+  document.getElementById('cleaner-stats').textContent =
+    (current ? `İşleniyor: ${current} · ` : '') +
+    `${cleanerWorks.length} temiz eser · ${cleanerRemoved.length} elendi`;
+}
+
+function renderCleanerResult(totalIn, fileName, aiFails) {
+  const card = document.getElementById('cleaner-result-card');
+  card.style.display = '';
+  const kept = cleanerWorks.length;
+  const mergedAway = totalIn - kept - cleanerRemoved.length;
+  document.getElementById('cleaner-result-summary').textContent =
+    ` — ${totalIn} satır → ${kept} temiz eser (${mergedAway > 0 ? mergedAway + ' tekrar birleşti, ' : ''}${cleanerRemoved.length} elendi)` +
+    (aiFails ? ` · ⚠ ${aiFails} yazarda AI atlandı (kural sonucu kullanıldı)` : '');
+
+  const tb = document.querySelector('#cleaner-table tbody');
+  tb.innerHTML = cleanerWorks.map((w, i) => `<tr>
+    <td style="color:var(--muted)">${i+1}</td>
+    <td>${escHtml(w.title)}</td>
+    <td style="font-size:12px">${escHtml(w.author)}</td>
+    <td style="font-size:12px">${escHtml(w.year || '')}</td>
+    <td style="font-size:12px;color:var(--muted)">${w.merged > 1 ? ('×' + w.merged) : ''}</td>
+  </tr>`).join('');
+
+  const rw = document.getElementById('cleaner-removed-wrap');
+  if (cleanerRemoved.length) {
+    rw.style.display = '';
+    document.getElementById('cleaner-removed-count').textContent = `(${cleanerRemoved.length})`;
+    renderCleanerRemoved();
+  } else rw.style.display = 'none';
+
+  notify('cleaner-notif', `✓ Temizlik bitti: ${totalIn} → ${kept} eser.`, 'ok');
+  card.scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderCleanerRemoved() {
+  const tb = document.querySelector('#cleaner-removed-table tbody');
+  tb.innerHTML = cleanerRemoved.map((r, i) => `<tr style="${r.restored ? 'opacity:.45' : ''}">
+    <td>${escHtml(r.title)}</td>
+    <td style="font-size:12px">${escHtml(r.author)}</td>
+    <td style="font-size:12px;color:var(--muted)">${escHtml(r.reason || '')}</td>
+    <td>${r.restored
+      ? '<span class="badge badge-green">geri alındı</span>'
+      : `<button class="btn btn-ghost btn-sm" onclick="cleanerRestore(${i})">↩ Geri al</button>`}</td>
+  </tr>`).join('');
+}
+
+window.cleanerRestore = function(i) {
+  const r = cleanerRemoved[i];
+  if (!r || r.restored) return;
+  r.restored = true;
+  cleanerWorks.push({ title: r.title, author: r.author, year: r.year || '', cover: r.cover || '', merged: 1 });
+  renderCleanerResult(
+    cleanerWorks.length + cleanerRemoved.filter(x => !x.restored).length,
+    '', 0
+  );
+};
+
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function cleanerCsvEscape(s) { return '"' + String(s ?? '').replace(/"/g, '""') + '"'; }
+
+function cleanerDownload(name, content) {
+  const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+document.getElementById('btn-cleaner-export')?.addEventListener('click', () => {
+  if (!cleanerWorks.length) { notify('cleaner-notif', 'İndirilecek temiz eser yok.', 'err'); return; }
+  let csv = 'Kitap Adı,Yazar Adı,Yıl,Kapak\n';
+  for (const w of cleanerWorks) {
+    csv += [cleanerCsvEscape(w.title), cleanerCsvEscape(w.author), cleanerCsvEscape(w.year || ''), cleanerCsvEscape(w.cover || '')].join(',') + '\n';
+  }
+  cleanerDownload('TEMIZ_liste_' + cleanerWorks.length + '.csv', csv);
+});
+
+document.getElementById('btn-cleaner-export-removed')?.addEventListener('click', () => {
+  const rows = cleanerRemoved.filter(r => !r.restored);
+  if (!rows.length) { notify('cleaner-notif', 'Elenen kayıt yok.', 'err'); return; }
+  let csv = 'Kitap Adı,Yazar Adı,Neden\n';
+  for (const r of rows) csv += [cleanerCsvEscape(r.title), cleanerCsvEscape(r.author), cleanerCsvEscape(r.reason || '')].join(',') + '\n';
+  cleanerDownload('ELENENLER_' + rows.length + '.csv', csv);
+});
