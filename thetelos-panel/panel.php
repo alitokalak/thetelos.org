@@ -432,6 +432,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <input type="checkbox" id="cleaner-use-ai" checked>
           AI hakem kullan (çeviri birleştirme + yazara aidiyet kontrolü — DeepSeek)
         </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--muted)">
+          <input type="checkbox" id="cleaner-drop-onsite" checked>
+          Sitede zaten olan yazarların eserlerini ele (varyant adları da tanır: "Avicenna (İbn Sina)" vb.)
+        </label>
 
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
           <button class="btn btn-green" id="btn-cleaner-start" disabled>🧹 Temizlemeyi Başlat</button>

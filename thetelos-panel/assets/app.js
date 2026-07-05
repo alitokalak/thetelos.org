@@ -1353,15 +1353,41 @@ function renderBuilderAuthors() {
 }
 
 // Sitedeki yazar terimlerini çek — eşleşenlere "Sitede var" rozeti koy
+// Yazar adı normalize: aksan/noktalama/parantez duyarsız eşleşme.
+// "Avicenna (İbn Sînâ)" → hem "avicenna" hem "ibn sina" anahtarı üretir.
+function normAuthorName(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function authorNameKeys(s) {
+  const keys = new Set();
+  const full = normAuthorName(s);
+  if (full) keys.add(full);
+  const m = String(s || '').match(/^(.*?)\s*[\(（](.+?)[\)）]\s*$/);
+  if (m) {
+    const outer = normAuthorName(m[1]); if (outer) keys.add(outer);
+    const inner = normAuthorName(m[2]); if (inner) keys.add(inner);
+  }
+  return keys;
+}
+// Sitedeki yazar terimlerinden normalize anahtar seti kur (tüm varyantlar dahil)
+async function fetchSiteAuthorKeys() {
+  const res = await postData(API('list-works.php'), { author: '_', mode: 'authors_exist' });
+  if (!res.ok || !Array.isArray(res.authors)) return null;
+  const set = new Set();
+  for (const n of res.authors) for (const k of authorNameKeys(n)) set.add(k);
+  return set;
+}
+
 async function checkAuthorsOnSite() {
   try {
-    const res = await postData(API('list-works.php'), { author: '_', mode: 'authors_exist' });
-    if (!res.ok || !Array.isArray(res.authors)) return;
-    const siteSet = new Set(res.authors);
+    const siteSet = await fetchSiteAuthorKeys();
+    if (!siteSet) return;
     let changed = false;
     builderAuthors.forEach(a => {
       const was = a.onSite;
-      a.onSite = siteSet.has(a.author.toLowerCase());
+      // Liste tarafındaki adın da tüm varyantlarını dene
+      a.onSite = [...authorNameKeys(a.author)].some(k => siteSet.has(k));
       if (a.onSite !== was) changed = true;
     });
     if (changed) renderBuilderAuthors();
@@ -1834,12 +1860,38 @@ async function runCleaner(text, fileName) {
     byAuthor.get(a).push({ title: t, year: yCol >= 0 ? (r[yCol] || '').trim() : '', cover: cCol >= 0 ? (r[cCol] || '').trim() : '' });
   }
 
-  const authors = [...byAuthor.keys()];
+  let authors = [...byAuthor.keys()];
   const useAI   = document.getElementById('cleaner-use-ai')?.checked ? 1 : 0;
+  const dropOnsite = document.getElementById('cleaner-drop-onsite')?.checked;
   const totalIn = rows.length - 1;
   if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${useAI ? 'AI hakem AÇIK (yazar başına 1 istek).' : 'Yalnız kural katmanı (AI kapalı).'} Başlatılsın mı?`)) return;
 
-  cleanerWorks = []; cleanerRemoved = []; cleanerCancel = false;
+  cleanerWorks = []; cleanerRemoved = [];
+
+  // Sitede zaten olan yazarlar → tüm eserleri Elenenler'e (AI'ya da gitmez, token yakmaz)
+  if (dropOnsite) {
+    try {
+      const siteSet = await fetchSiteAuthorKeys();
+      if (siteSet) {
+        const kept = [];
+        for (const a of authors) {
+          const onSite = [...authorNameKeys(a)].some(k => siteSet.has(k));
+          if (onSite) {
+            for (const w of byAuthor.get(a)) {
+              cleanerRemoved.push({ title: w.title, author: a, year: w.year, cover: w.cover, reason: 'yazar sitede zaten var', restored: false });
+            }
+            byAuthor.delete(a);
+          } else kept.push(a);
+        }
+        if (authors.length !== kept.length) {
+          notify('cleaner-notif', `⊘ ${authors.length - kept.length} yazar sitede zaten var — eserleri Elenenler'e taşındı.`, 'ok');
+        }
+        authors = kept;
+      }
+    } catch(_) {}
+  }
+
+  cleanerCancel = false;   // (works/removed yukarıda sıfırlandı; onsite elenenler korunur)
   const startBtn = document.getElementById('btn-cleaner-start');
   const cancelBtn= document.getElementById('btn-cleaner-cancel');
   setLoading(startBtn, true, 'Temizleniyor...');
