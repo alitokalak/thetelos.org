@@ -147,10 +147,15 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         . "Never copy a listed foreign edition title into orig unless it IS the language the author wrote in.\n"
         . "3) not_by_author: entries that are NOT a single book written by {$author} — books ABOUT the author, secondary literature, "
         . "quote/aphorism collections (\"Quotes\", \"Words of Wisdom\"), publisher compilations (\"Collected/Complete Works\", \"Selected Writings\", omnibus editions), "
+        . "anthologies/views/studies titled \"<Something> of/about {$author}\" (a memoir the author wrote about themselves is fine), "
         . "titles that are just the author's name or a slogan, or entries you cannot identify at all. Short reason each.\n"
+        . "4) ERA CHECK — consider when {$author} lived and what they could have written. Entries chronologically or thematically "
+        . "IMPOSSIBLE for this author (e.g. a modern travel book under an 8th-century poet — likely a different person with the same name) MUST be flagged with reason \"implausible for this author\".\n"
+        . "5) For each group also give year = the work's ORIGINAL first-publication/composition year as an integer if you know it "
+        . "(e.g. 868 for the Diamond Sutra printing, 1687 for Principia) — NOT a modern reprint year; empty string if unknown.\n"
         . "Rules: judge ONLY the given entries; do NOT invent extra works; when unsure about a plausible entry, keep it as its own group.\n"
         . "Return ONLY JSON:\n"
-        . "{\"wrote_in\":[\"German\",\"English\"],\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
+        . "{\"wrote_in\":[\"German\",\"English\"],\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"year\":\"1687\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
         . $lines;
 
     $ch = curl_init(DEEPSEEK_API_URL);
@@ -204,12 +209,16 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
             $final = $en;
             if ($orig !== '' && mb_strtolower($orig) !== mb_strtolower($en)) $final = "$en ($orig)";
 
-            // Üyelerin en iyi yıl/kapak değeri
-            $year = ''; $cover = ''; $mergedN = 0;
+            // Yıl: AI'nın verdiği İLK YAYIN yılı öncelikli (modern baskı yılı değil);
+            // yoksa üyelerin en küçük yılı. Kapak: ilk dolu.
+            $ai_year = trim((string)($g['year'] ?? ''));
+            $year = preg_match('/^\d{1,4}$/', $ai_year) ? $ai_year : '';
+            $cover = ''; $mergedN = 0;
             foreach ($members as $ix) {
                 $it = $slice[$ix]; $mergedN += $it['merged'];
                 if ($cover === '' && $it['cover'] !== '') $cover = $it['cover'];
-                if (preg_match('/^\d{3,4}$/', $it['year']) && ($year === '' || (int)$it['year'] < (int)$year)) $year = $it['year'];
+                if ($year === '' && preg_match('/^\d{3,4}$/', $it['year'])) $year = $it['year'];
+                elseif ($ai_year === '' && preg_match('/^\d{3,4}$/', $it['year']) && $year !== '' && (int)$it['year'] < (int)$year) $year = $it['year'];
             }
             $out[] = ['title'=>$final, 'author'=>$author, 'year'=>$year, 'cover'=>$cover, 'merged'=>$mergedN];
         }
@@ -250,6 +259,12 @@ $guarded = [];
 $guard_seen = [];   // norm ana başlık → guarded index (yazar içi tekrar garantisi)
 $auth_norm = cl_norm($author);
 foreach ($items_final as $it) {
+    // SAHTE PARANTEZ: "(Hebrew translation)", "(Latin edition)" gibi AÇIKLAMA
+    // parantezleri orijinal ad değildir → paranteze at, ana başlık kalsın.
+    if (preg_match('/^(.*?)\s*[\(\（]([^\)）]*)[\)）]\s*$/u', $it['title'], $pm)
+        && preg_match('/\b(translation|edition|version|reprint|commentar\w*|abridged|selection|excerpt|subtitle|alternative|volume|part\s+\d)\b/i', $pm[2])) {
+        $it['title'] = trim($pm[1]);
+    }
     $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana başlık
     if (!preg_match('/\p{Latin}/u', $main)) {
         $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
