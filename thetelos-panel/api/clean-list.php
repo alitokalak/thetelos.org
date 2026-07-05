@@ -247,6 +247,7 @@ if (!isset($items_final)) {
    2) Başlık == yazar adı ("Albert Einstein")
    3) Alıntı/özlü söz derlemeleri ("Quotes", "Words of Wisdom") */
 $guarded = [];
+$guard_seen = [];   // norm ana başlık → guarded index (yazar içi tekrar garantisi)
 $auth_norm = cl_norm($author);
 foreach ($items_final as $it) {
     $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana başlık
@@ -265,6 +266,24 @@ foreach ($items_final as $it) {
                       'reason'=>'alıntı/özlü söz derlemesi'];
         continue;
     }
+    if (preg_match('/\b(collected|complete|selected)\s+(works|writings|papers|essays)\b|\bomnibus\b/i', $main)) {
+        $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
+                      'reason'=>'yayıncı külliyatı/derlemesi — tekil eser değil'];
+        continue;
+    }
+    // TEKRAR GARANTİSİ: aynı yazarda aynı ana başlık (normalize) tek satır olur.
+    // (AI aynı eseri farklı parantez varyantlarıyla ayrı gruplara koyabiliyor.)
+    $nk = cl_norm($main);
+    if ($nk !== '' && isset($guard_seen[$nk])) {
+        $j = $guard_seen[$nk];   // ilk görüleni zenginleştir
+        if ($guarded[$j]['year']  === '' && $it['year']  !== '') $guarded[$j]['year']  = $it['year'];
+        if ($guarded[$j]['cover'] === '' && $it['cover'] !== '') $guarded[$j]['cover'] = $it['cover'];
+        // Parantezli (orijinalli) başlık, parantezsize tercih edilir
+        if (!preg_match('/\(/', $guarded[$j]['title']) && preg_match('/\(/', $it['title'])) $guarded[$j]['title'] = $it['title'];
+        $guarded[$j]['merged'] += $it['merged'];
+        continue;
+    }
+    if ($nk !== '') $guard_seen[$nk] = count($guarded);
     $guarded[] = $it;
 }
 $items_final = $guarded;
