@@ -303,6 +303,78 @@ foreach ($items_final as $it) {
 }
 $items_final = $guarded;
 
+/* ── KAPAK/YIL TAMAMLAMA (temizlik SONRASI, kanonik İngilizce adla) ──
+   Ham varyant adla bulunamayan kapak, temiz İngilizce adla çoğu kez bulunur.
+   Yazar başına 1 OpenLibrary search + 1 Google Books isteği; yalnız eksikler dolar. */
+function cl_http_get($url) {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER=>true, CURLOPT_TIMEOUT=>15, CURLOPT_CONNECTTIMEOUT=>8,
+        CURLOPT_FOLLOWLOCATION=>true, CURLOPT_IPRESOLVE=>CURL_IPRESOLVE_V4,
+        CURLOPT_HTTPHEADER=>['Accept: application/json',
+            'User-Agent: ThetelosBot/1.0 (https://thetelos.org; mailto:alitokalak@gmail.com)']]);
+    $r = curl_exec($ch); $c = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    return ($c === 200 && $r) ? json_decode($r, true) : null;
+}
+function cl_meta_from_map($title, $map) {
+    $empty = ['cover'=>'', 'year'=>''];
+    if (empty($map)) return $empty;
+    $q = cl_norm($title);
+    if ($q === '') return $empty;
+    if (isset($map[$q])) return $map[$q];
+    if (strlen($q) >= 5) {
+        foreach ($map as $k => $m) {
+            if (str_contains($k, $q) || str_contains($q, $k)) return $m;
+        }
+    }
+    return $empty;
+}
+
+$missing = 0;
+foreach ($items_final as $it) if ($it['cover'] === '' || $it['year'] === '') $missing++;
+if ($missing > 0) {
+    $maps = [];
+    // OpenLibrary search — cover_i + first_publish_year bol
+    $ol = cl_http_get('https://openlibrary.org/search.json?' . http_build_query([
+        'author'=>$author, 'limit'=>100, 'fields'=>'title,cover_i,first_publish_year']));
+    $m = [];
+    foreach ($ol['docs'] ?? [] as $d) {
+        $k = cl_norm($d['title'] ?? ''); if ($k === '') continue;
+        $c = !empty($d['cover_i']) ? ('https://covers.openlibrary.org/b/id/'.(int)$d['cover_i'].'-M.jpg') : '';
+        $y = !empty($d['first_publish_year']) ? (string)(int)$d['first_publish_year'] : '';
+        if (!isset($m[$k])) $m[$k] = ['cover'=>$c,'year'=>$y];
+        else { if ($c && !$m[$k]['cover']) $m[$k]['cover']=$c; if ($y && !$m[$k]['year']) $m[$k]['year']=$y; }
+    }
+    if ($m) $maps[] = $m;
+    // Google Books
+    if (defined('GOOGLE_BOOKS_KEY') && GOOGLE_BOOKS_KEY !== '') {
+        $gb = cl_http_get('https://www.googleapis.com/books/v1/volumes?' . http_build_query([
+            'q'=>'inauthor:"'.$author.'"', 'maxResults'=>40, 'printType'=>'books',
+            'fields'=>'items(volumeInfo(title,imageLinks,publishedDate))', 'key'=>GOOGLE_BOOKS_KEY]));
+        $m2 = [];
+        foreach ($gb['items'] ?? [] as $item) {
+            $vi = $item['volumeInfo'] ?? [];
+            $k = cl_norm($vi['title'] ?? ''); if ($k === '') continue;
+            $lnk = $vi['imageLinks'] ?? [];
+            $c = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
+            if ($c) { $c = str_replace(['http://','&edge=curl'], ['https://',''], $c); $c = preg_replace('/zoom=\d/', 'zoom=3', $c); }
+            $y = (!empty($vi['publishedDate']) && preg_match('/\d{4}/', $vi['publishedDate'], $ym)) ? $ym[0] : '';
+            if (!isset($m2[$k])) $m2[$k] = ['cover'=>$c,'year'=>$y];
+        }
+        if ($m2) $maps[] = $m2;
+    }
+    foreach ($items_final as &$it) {
+        if ($it['cover'] !== '' && $it['year'] !== '') continue;
+        $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));
+        foreach ($maps as $map) {
+            if ($it['cover'] !== '' && $it['year'] !== '') break;
+            $mm = cl_meta_from_map($main, $map);
+            if ($it['cover'] === '' && $mm['cover'] !== '') $it['cover'] = $mm['cover'];
+            if ($it['year']  === '' && $mm['year']  !== '') $it['year']  = $mm['year'];
+        }
+    }
+    unset($it);
+}
+
 echo json_encode([
     'ok'      => true,
     'author'  => $author,
