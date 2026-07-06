@@ -522,7 +522,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div class="card-title" style="color:var(--gold)">&#9888; Yarım Kalan Toplu Batchler</div>
         <?php
         /* Tek kart render eden yardımcı */
-        $render_batch = function($b) {
+        $newest_total = $stuck_batches[0]['_total'] ?? 0;
+        $render_batch = function($b, $is_active = false) use ($newest_total) {
           $tot     = $b['_total'];
           $cnt     = $b['_cnt'];
           $pending = $b['_remaining'];
@@ -532,12 +533,30 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           $bid     = htmlspecialchars($b['id'] ?? '');
           $when    = !empty($b['created_at']) ? date('d.m.Y H:i', (int)$b['created_at']) : '';
           $wkrs    = max(1, min(5, (int)($b['workers'] ?? 1)));
+          // Canlılık: en son ne zaman ilerledi
+          $la  = (int)($b['last_activity'] ?? 0);
+          $ago = $la ? (time() - $la) : null;
+          $agoTxt = $ago === null ? '' : ($ago < 90 ? $ago . ' sn önce' : ($ago < 5400 ? round($ago/60) . ' dk önce' : round($ago/3600) . ' sa önce'));
+          $alive  = $ago !== null && $ago < 300;
+          // Eski kopya şüphesi: aktif olmayan + hiç ilerlememiş + aynı boyut
+          $dup_hint = (!$is_active && $okc === 0 && $errs === 0 && $tot === $newest_total);
           ob_start(); ?>
-        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>" data-workers="<?= $wkrs ?>">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-size:13px;font-weight:600"><?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?> <span style="color:#555;font-weight:400;font-size:11px"><?= $when ?></span></span>
+        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px;<?= $is_active ? 'border:1px solid var(--gold);' : 'opacity:.85;' ?>" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>" data-workers="<?= $wkrs ?>">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
+            <span style="font-size:13px;font-weight:600">
+              <?php if ($is_active): ?><span style="background:var(--gold);color:#111;font-size:10px;padding:2px 7px;border-radius:10px;margin-right:6px;vertical-align:1px">AKTİF</span>
+              <?php else: ?><span style="background:#333;color:#999;font-size:10px;padding:2px 7px;border-radius:10px;margin-right:6px;vertical-align:1px">ESKİ</span><?php endif; ?>
+              <?= $b['type'] === 'analysis' ? 'Derin Analiz' : 'Özet' ?> &middot; <?= $tot ?> kitap
+              <span style="color:#555;font-weight:400;font-size:11px"> &middot; başlatıldı <?= $when ?></span>
+              <?php if ($agoTxt): ?>
+                <span style="font-weight:400;font-size:11px;color:<?= $alive ? 'var(--green)' : '#cc6b00' ?>"> &middot; <?= $alive ? '● çalışıyor' : '⏸ duraklamış olabilir' ?> &middot; <?= $agoTxt ?> ilerledi</span>
+              <?php endif; ?>
+            </span>
             <span style="font-size:12px;color:var(--muted)" data-bc-meta><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
           </div>
+          <?php if ($dup_hint): ?>
+          <div style="font-size:12px;color:#cc6b00;margin-bottom:8px">⚠ Bu, aynı listenin hiç ilerlememiş eski kopyası görünüyor — güvenle silebilirsin.</div>
+          <?php endif; ?>
           <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin-bottom:10px">
             <div style="background:var(--gold);height:100%;width:<?= $pct ?>%" data-bc-bar></div>
           </div>
@@ -616,7 +635,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         };
 
         // İlk (en yeni) batch — ana listen, her zaman açık
-        echo $render_batch($stuck_batches[0]);
+        echo $render_batch($stuck_batches[0], true);
 
         // Geri kalan eski batch'ler — katlanır bölümde gizli
         $rest = array_slice($stuck_batches, 1);

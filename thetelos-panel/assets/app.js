@@ -1615,10 +1615,14 @@ async function loadQueueList() {
   const body = document.getElementById('queue-list-body');
   if (!body) return;
 
-  /* ── Yarım kalan toplu batchler ── */
+  /* ── Yarım kalan toplu batchler ──
+     NOT: Kuyruk sayfasında bu blok ARTIK render edilmez — aynı bilgiyi kitap
+     listesiyle birlikte PHP tarafı (Yarım Kalan Toplu Batchler kartı) gösteriyor;
+     iki ayrı blok kafa karıştırıyordu. Kod, PHP kartı olmayan sayfalar için duruyor. */
   let incompleteBatchHtml = '';
+  const phpBatchCardExists = !!document.querySelector('[data-batch-card]');
   try {
-    const bl = await postData(API('batch-list.php'), {});
+    const bl = phpBatchCardExists ? { batches: [] } : await postData(API('batch-list.php'), {});
     const incomplete = (bl.batches || []).filter(b => b.status !== 'done' && b.total > 0 && b.done < b.total);
     if (incomplete.length) {
       incompleteBatchHtml = `<div style="margin-bottom:14px">
