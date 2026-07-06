@@ -147,7 +147,7 @@ if ($build_target) {
    bekleyen kitabı olan batch'ler ele alınır — böylece donmuş batch'ler de
    cron tarafından kurtarılır. */
 $target = null;
-$oldest = PHP_INT_MAX;
+$newest = -1;
 
 if (is_dir($jobs_dir)) {
     foreach (glob("$jobs_dir/*.json") ?: [] as $f) {
@@ -166,8 +166,11 @@ if (is_dir($jobs_dir)) {
         }
         if (!$has_work) continue;
 
+        // EN YENİ batch öncelikli: kullanıcının son başlattığı iş asıl istenen iştir.
+        // (Eskiden en eski seçiliyordu; unutulmuş eski bir kopya tüm cron tiklerini
+        // çalıp yeni batch'i "tarayıcı kapalıyken durdu" hissine sokuyordu.)
         $ct = (int)($b['created_at'] ?? 0);
-        if ($ct < $oldest) { $oldest = $ct; $target = $b['id'] ?? basename($f, '.json'); }
+        if ($ct > $newest) { $newest = $ct; $target = $b['id'] ?? basename($f, '.json'); }
     }
 }
 
