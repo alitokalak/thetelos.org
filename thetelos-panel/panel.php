@@ -541,6 +541,22 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin-bottom:10px">
             <div style="background:var(--gold);height:100%;width:<?= $pct ?>%" data-bc-bar></div>
           </div>
+          <?php
+          // "Nerede kaldık" işaretçisi: şu an işlenen (yoksa sıradaki) kitap
+          $cur_i = -1; $cur_t = ''; $cur_mode = '';
+          foreach ($b['books'] as $ci => $cb) {
+              if (($cb['status'] ?? '') === 'processing' && empty($cb['post_id'])) { $cur_i = $ci; $cur_t = trim($cb['book_title'] ?? ''); $cur_mode = 'işleniyor'; break; }
+          }
+          if ($cur_i < 0) foreach ($b['books'] as $ci => $cb) {
+              if (($cb['status'] ?? '') === 'pending') { $cur_i = $ci; $cur_t = trim($cb['book_title'] ?? ''); $cur_mode = 'sırada'; break; }
+          }
+          if ($cur_i >= 0): ?>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px">
+            <span style="color:var(--gold)">📍 <?= $cur_mode === 'işleniyor' ? 'Şu an işleniyor' : 'Sırada' ?> (<?= $cur_i + 1 ?>/<?= $tot ?>):</span>
+            <span style="color:#ddd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:50%"><?= htmlspecialchars(mb_substr($cur_t, 0, 70)) ?></span>
+            <button class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px" onclick="tlsJumpToCurrent('<?= $bid ?>',<?= $cur_i ?>)">↓ listede göster</button>
+          </div>
+          <?php endif; ?>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             <?php if ($pending > 0): ?>
             <button class="btn btn-primary btn-sm" onclick="tlsResumeBatch('<?= $bid ?>',this)">&#9654; Kaldigi Yerden Devam Et (<?= $pending ?>)</button>
@@ -617,6 +633,33 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       </div>
       <script>
       var _tlsPanelBase = (function(){ var p=window.location.pathname; return p.substring(0,p.lastIndexOf('/')+1); })();
+
+      /* "Nerede kaldık": listeyi ilgili satıra kaydır + vurgula */
+      function tlsJumpToCurrent(bid, idx) {
+        var card = document.querySelector('[data-batch-card="'+bid+'"]');
+        if (!card) return;
+        var det = card.querySelector('details'); if (det) det.open = true;
+        var row = card.querySelector('[data-bc-row="'+idx+'"]');
+        if (!row) return;
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row.style.transition = 'background .3s';
+        row.style.background = 'rgba(200,161,101,.25)';
+        setTimeout(function(){ row.style.background = ''; }, 2500);
+      }
+      /* Sayfa açılınca her listeyi kaldığı yere (ilk işlenen/bekleyen satıra) kaydır */
+      document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('[data-batch-card]').forEach(function (card) {
+          var list = card.querySelector('[data-bc-list]'); if (!list) return;
+          var target = null;
+          card.querySelectorAll('[data-bc-row]').forEach(function (row) {
+            if (target) return;
+            var ico = row.querySelector('[data-bc-ico]');
+            var t = ico ? ico.textContent.trim() : '';
+            if (t === '⚙' || t === '!' || t === '…') target = row;
+          });
+          if (target) list.scrollTop = Math.max(0, target.offsetTop - list.clientHeight / 2);
+        });
+      });
       function _tlsFireWorkers(id, count) {
         for (var i = 0; i < count; i++) {
           fetch(_tlsPanelBase+'api/batch-worker.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id}).catch(()=>{});

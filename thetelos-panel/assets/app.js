@@ -190,6 +190,7 @@ async function checkActiveJobs() {
       const staleTag = stale > 0 ? ` · <span style="color:#cc6b00">${stale} takılı</span>` : '';
       return `<div style="margin-top:4px">
         <strong>${j.category || j.id}</strong> — ${j.done}/${j.total} işlendi · ${j.ok} başarılı · ${j.failed} hata · ${proc} aktif · ${pend} bekliyor${staleTag}
+        <a href="panel.php?mode=queue" style="margin-left:10px;color:var(--gold);font-size:12px;text-decoration:underline">📋 Listeyi Gör</a>
         <div style="background:#2a2a2a;border-radius:3px;height:4px;margin-top:3px;overflow:hidden">
           <div style="background:var(--gold);height:100%;width:${pct}%;transition:width 0.5s"></div>
         </div>
