@@ -91,20 +91,35 @@ function bw_hb_dead($batch_file, $idx, $thr = 180) {
  * STALE RECOVERY: Kilit içinde çalışır — ölen worker'ların "processing" bıraktığı
  * kitapları (hb dosyası bayatlamış) otomatik "pending"e döndürür.
  */
-function bw_claim_next($batch_file) {
-    $fp = fopen($batch_file, 'r+');
-    if (!$fp) return [-1, null];
-    if (!flock($fp, LOCK_EX)) { fclose($fp); return [-2, null]; }
+/* ATOMİK YAZ: geçici dosyaya yaz + rename. Yarıda kesilse bile canlı dosya
+ * ASLA 0 byte/bozuk kalmaz (eski ftruncate+fwrite deseni tam bunu yapabiliyordu
+ * ve kuyruk dosyasını bir kez böyle kaybettik). Kilit ayrı .lock dosyasında
+ * tutulur (rename ile inode değiştiği için kilidi ana dosyada tutmak yanlış). */
+function bw_write_atomic($batch_file, $batch) {
+    $json = json_encode($batch, JSON_UNESCAPED_UNICODE);
+    if ($json === false || $json === '') return false;
+    $tmp = $batch_file . '.tmp.' . getmypid() . '.' . mt_rand();
+    if (@file_put_contents($tmp, $json) !== strlen($json)) { @unlink($tmp); return false; }
+    return @rename($tmp, $batch_file);
+}
+function bw_lock($batch_file) {
+    $lk = @fopen($batch_file . '.lock', 'c');
+    if (!$lk) return null;
+    if (!flock($lk, LOCK_EX)) { fclose($lk); return null; }
+    return $lk;
+}
+function bw_unlock($lk) { if ($lk) { flock($lk, LOCK_UN); fclose($lk); } }
 
-    fseek($fp, 0);
-    $raw = '';
-    while (!feof($fp)) $raw .= fread($fp, 65536);
-    $batch = json_decode($raw, true);
-    if (!$batch) { flock($fp, LOCK_UN); fclose($fp); return [-1, null]; }
+function bw_claim_next($batch_file) {
+    $lk = bw_lock($batch_file);
+    if (!$lk) return [-2, null];
+
+    $batch = json_decode((string)@file_get_contents($batch_file), true);
+    if (!$batch) { bw_unlock($lk); return [-1, null]; }
 
     $st = $batch['status'] ?? '';
-    if ($st === 'cancelled') { flock($fp, LOCK_UN); fclose($fp); return [-3, null]; }
-    if ($st === 'paused')    { flock($fp, LOCK_UN); fclose($fp); return [-4, null]; }
+    if ($st === 'cancelled') { bw_unlock($lk); return [-3, null]; }
+    if ($st === 'paused')    { bw_unlock($lk); return [-4, null]; }
 
     // Bayat (ölü worker'dan kalan) processing kitapları kurtar.
     // Canlılık ucuz heartbeat dosyasından okunur (hb mtime). Worker canlıysa
@@ -139,21 +154,15 @@ function bw_claim_next($batch_file) {
             $batch['status'] = 'done';
             $changed = true;
         }
-        if ($changed) {
-            fseek($fp, 0); ftruncate($fp, 0);
-            fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
-            fflush($fp);
-        }
-        flock($fp, LOCK_UN); fclose($fp);
+        if ($changed) bw_write_atomic($batch_file, $batch);
+        bw_unlock($lk);
         return [-1, null];
     }
 
     $batch['books'][$idx]['status'] = 'processing';
     $batch['books'][$idx]['processing_since'] = time();
-    fseek($fp, 0); ftruncate($fp, 0);
-    fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
-    fflush($fp);
-    flock($fp, LOCK_UN); fclose($fp);
+    bw_write_atomic($batch_file, $batch);
+    bw_unlock($lk);
     bw_touch_hb($batch_file, $idx);   // canlılık damgası — anında "ölü" sanılmasın
     return [$idx, $batch];
 }
@@ -200,13 +209,9 @@ function bw_wp($url, $method, $body, $auth, $timeout = 30) {
 }
 
 function bw_update_book($batch_file, $idx, $updates) {
-    $fp = fopen($batch_file, 'r+');
-    if (!$fp) return;
-    if (!flock($fp, LOCK_EX)) { fclose($fp); return; }
-    fseek($fp, 0);
-    $raw = '';
-    while (!feof($fp)) $raw .= fread($fp, 65536);
-    $batch = json_decode($raw, true);
+    $lk = bw_lock($batch_file);
+    if (!$lk) return;
+    $batch = json_decode((string)@file_get_contents($batch_file), true);
     if ($batch) {
         foreach ($updates as $k => $v) $batch['books'][$idx][$k] = $v;
         $done = $ok = $failed = 0;
@@ -218,12 +223,11 @@ function bw_update_book($batch_file, $idx, $updates) {
         $batch['done']   = $done;
         $batch['ok']     = $ok;
         $batch['failed'] = $failed;
+        $batch['last_activity'] = time();   // görünürlük: "en son ne zaman ilerledi"
         if ($done >= $batch['total'] && ($batch['status'] ?? '') !== 'cancelled') $batch['status'] = 'done';
-        fseek($fp, 0); ftruncate($fp, 0);
-        fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
-        fflush($fp);
+        bw_write_atomic($batch_file, $batch);
     }
-    flock($fp, LOCK_UN); fclose($fp);
+    bw_unlock($lk);
     // Kitap tamamlandıysa/hata aldıysa heartbeat dosyasını temizle.
     if (isset($updates['status']) && in_array($updates['status'], ['done','error'], true)) {
         bw_clear_hb($batch_file, $idx);

@@ -27,12 +27,11 @@ if (!isset($map[$action])) { echo json_encode(['ok'=>false,'error'=>'Geçersiz a
 
 if (!file_exists($batch_file)) { echo json_encode(['ok'=>false,'error'=>'Batch bulunamadı']); exit; }
 
-$fp = fopen($batch_file, 'r+');
-if (!$fp || !flock($fp, LOCK_EX)) { echo json_encode(['ok'=>false,'error'=>'Dosya kilitli']); exit; }
-fseek($fp, 0);
-$raw = ''; while (!feof($fp)) $raw .= fread($fp, 65536);
-$batch = json_decode($raw, true);
-if (!$batch) { flock($fp, LOCK_UN); fclose($fp); echo json_encode(['ok'=>false,'error'=>'Batch okunamadı']); exit; }
+// ATOMİK desen: kilit ayrı .lock dosyasında; yazma tmp+rename ile (bozulma imkânsız).
+$lk = fopen($batch_file . '.lock', 'c');
+if (!$lk || !flock($lk, LOCK_EX)) { if ($lk) fclose($lk); echo json_encode(['ok'=>false,'error'=>'Dosya kilitli']); exit; }
+$batch = json_decode((string)@file_get_contents($batch_file), true);
+if (!$batch) { flock($lk, LOCK_UN); fclose($lk); echo json_encode(['ok'=>false,'error'=>'Batch okunamadı']); exit; }
 
 $batch['status'] = $map[$action];
 
@@ -80,9 +79,12 @@ if ($action === 'resume') {
     $batch['ok']     = $ok;
     $batch['failed'] = $failed;
 }
-fseek($fp, 0); ftruncate($fp, 0);
-fwrite($fp, json_encode($batch, JSON_UNESCAPED_UNICODE));
-fflush($fp);
-flock($fp, LOCK_UN); fclose($fp);
+$json = json_encode($batch, JSON_UNESCAPED_UNICODE);
+if ($json !== false && $json !== '') {
+    $tmp = $batch_file . '.tmp.' . getmypid() . '.' . mt_rand();
+    if (@file_put_contents($tmp, $json) === strlen($json)) { @rename($tmp, $batch_file); }
+    else { @unlink($tmp); }
+}
+flock($lk, LOCK_UN); fclose($lk);
 
 echo json_encode(['ok'=>true, 'status'=>$batch['status']]);

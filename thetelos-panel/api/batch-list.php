@@ -26,6 +26,9 @@ if (is_dir($jobs_dir)) {
             'failed'     => (int)($data['failed'] ?? 0),
             'type'       => $data['type']         ?? '',
             'created_at' => (int)($data['created_at'] ?? filemtime($file)),
+            // Görünürlük: en son ne zaman ilerledi (kitap bitti/hata aldı).
+            // last_activity alanı yoksa dosyanın değişme zamanı kullanılır.
+            'last_activity' => (int)($data['last_activity'] ?? filemtime($file)),
         ];
     }
 }

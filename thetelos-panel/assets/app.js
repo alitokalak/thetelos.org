@@ -1627,6 +1627,15 @@ async function loadQueueList() {
         ${incomplete.map(b => {
           const pending = b.total - b.done;
           const pct = Math.round(b.done / b.total * 100);
+          // Canlılık göstergesi: son ilerlemeden bu yana geçen süre
+          const agoS = b.last_activity ? Math.max(0, Math.floor(Date.now()/1000 - b.last_activity)) : null;
+          const agoTxt = agoS === null ? '' :
+            agoS < 90 ? `${agoS} sn önce ilerledi` :
+            agoS < 5400 ? `${Math.round(agoS/60)} dk önce ilerledi` :
+            `${Math.round(agoS/3600)} sa önce ilerledi`;
+          const alive = agoS !== null && agoS < 300;   // 5 dk içinde ilerlemişse canlı say
+          const liveBadge = agoS === null ? '' :
+            `<span style="font-size:11px;color:${alive ? 'var(--green)' : '#cc6b00'}">${alive ? '● çalışıyor' : '⏸ duraklamış olabilir'} · ${agoTxt}</span>`;
           return `<div class="card" style="margin-bottom:8px;padding:12px;border-left:3px solid var(--gold)">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
               <div>
@@ -1635,6 +1644,7 @@ async function loadQueueList() {
               </div>
               <span style="font-size:12px;color:var(--muted)">${b.ok} ✓ · ${b.failed} hata · ${pending} bekliyor</span>
             </div>
+            ${liveBadge ? `<div style="margin-top:4px">${liveBadge}</div>` : ''}
             <div style="background:#2a2a2a;border-radius:4px;height:5px;overflow:hidden;margin:8px 0">
               <div style="background:var(--gold);height:100%;width:${pct}%"></div>
             </div>
