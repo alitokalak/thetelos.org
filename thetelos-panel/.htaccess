@@ -1,0 +1,12 @@
+# ── LiteSpeed: arka plan işçilerini öldürme ─────────────────────────────
+# cron-job.org isteği 30 sn'de kapatıyor; LiteSpeed varsayılan olarak
+# "bağlantısı kopan" PHP sürecini de öldürüyor. Batch worker'ları bir kitabı
+# 4-6 dakikada işlediği için hep yarıda kesiliyordu (gecede ~30 kitap).
+# noabort      → istemci bağlantıyı kapatsa bile PHP çalışmaya devam eder
+# noconntimeout→ bağlantı zaman aşımı yüzünden süreç sonlandırılmaz
+<IfModule mod_env.c>
+    SetEnv noabort 1
+    SetEnv noconntimeout 1
+</IfModule>
+SetEnvIf Request_URI . noabort=1
+SetEnvIf Request_URI . noconntimeout=1
