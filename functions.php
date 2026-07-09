@@ -2515,12 +2515,10 @@ function thetelos_seo_redirects() {
         '/author/ad392f64cca76908d723/'       => '/authors/',
         '/author/ad392f64cca76908d723/page/10/' => '/authors/',
 
-        // Pagination 404'leri → kategori ana sayfaları
-        '/category/history-of-philosophy/page/8/' => '/category/history-of-philosophy/',
-        '/category/science/page/3/'           => '/category/science/',
-        '/category/metaphysics/page/4/'       => '/category/metaphysics/',
-        '/authors/plato/page/3/'              => '/authors/plato/',
-        '/page/10/'                           => '/',
+        // NOTE: Eski "pagination 404'leri" redirect'leri kaldirildi.
+        // Kategoriler buyudu (or. history-of-philosophy 1.300+ ozet); o
+        // sayfalar artik gecerli. Redirect'ler derin sayfalari (or. /page/8/)
+        // ana sayfaya atip sayfalamayi bozuyordu.
     ];
 
     $request = isset( $_SERVER['REQUEST_URI'] )
@@ -2534,3 +2532,127 @@ function thetelos_seo_redirects() {
         }
     }
 }
+
+// -----------------------------------------------------
+// Category archive — live filter (AJAX)
+// Scoped search / A–Z filtering within a single category,
+// by work title or by author name. Returns rendered book
+// cards so the archive grid can be refreshed in place.
+// -----------------------------------------------------
+function tls_cat_filter_where( $where, $q ) {
+    global $wpdb;
+    $letter = isset( $GLOBALS['tls_cf_letter'] ) ? $GLOBALS['tls_cf_letter'] : '';
+    $needle = isset( $GLOBALS['tls_cf_needle'] ) ? $GLOBALS['tls_cf_needle'] : '';
+
+    if ( $letter === '#' ) {
+        $where .= " AND {$wpdb->posts}.post_title NOT REGEXP '^[A-Za-z]'";
+    } elseif ( $letter !== '' ) {
+        $where .= $wpdb->prepare(
+            " AND {$wpdb->posts}.post_title LIKE %s",
+            $wpdb->esc_like( $letter ) . '%'
+        );
+    } elseif ( $needle !== '' ) {
+        $where .= $wpdb->prepare(
+            " AND {$wpdb->posts}.post_title LIKE %s",
+            '%' . $wpdb->esc_like( $needle ) . '%'
+        );
+    }
+    return $where;
+}
+
+function tls_cat_filter() {
+    $cat_id = isset( $_POST['cat'] )    ? absint( $_POST['cat'] ) : 0;
+    $search = isset( $_POST['s'] )      ? sanitize_text_field( wp_unslash( $_POST['s'] ) ) : '';
+    $letter = isset( $_POST['letter'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_POST['letter'] ) ) ) : '';
+    $mode   = ( isset( $_POST['mode'] ) && $_POST['mode'] === 'author' ) ? 'author' : 'title';
+    $paged  = isset( $_POST['paged'] )  ? max( 1, absint( $_POST['paged'] ) ) : 1;
+
+    if ( ! $cat_id ) {
+        wp_send_json_error( [ 'message' => 'missing category' ] );
+    }
+
+    // Only a single leading letter is a valid alphabet filter.
+    if ( $letter !== '' && $letter !== '#' && ! preg_match( '/^[A-Z]$/', $letter ) ) {
+        $letter = '';
+    }
+
+    $per_page = (int) get_option( 'posts_per_page', 12 );
+    if ( $per_page < 1 ) { $per_page = 12; }
+
+    $args = [
+        'post_type'           => 'post',
+        'post_status'         => 'publish',
+        'cat'                 => $cat_id,
+        'posts_per_page'      => $per_page,
+        'paged'               => $paged,
+        'orderby'             => 'title',
+        'order'               => 'ASC',
+        'ignore_sticky_posts' => 1,
+    ];
+
+    $has_query = ( $search !== '' || $letter !== '' );
+    $where_added = false;
+
+    if ( $mode === 'author' && $has_query ) {
+        // Resolve author terms whose name matches the letter / search text.
+        // Reuse the cached author list (same transient smart-search uses).
+        $terms = get_transient( 'thetelos_all_authors' );
+        if ( false === $terms ) {
+            $terms = get_terms( [ 'taxonomy' => 'authors', 'hide_empty' => true, 'number' => 0 ] );
+            if ( is_wp_error( $terms ) ) { $terms = []; }
+            set_transient( 'thetelos_all_authors', $terms, HOUR_IN_SECONDS );
+        }
+        $term_ids = [];
+        if ( ! is_wp_error( $terms ) ) {
+            foreach ( $terms as $t ) {
+                if ( $letter === '#' ) {
+                    $ok = ! preg_match( '/^\p{L}/u', $t->name );
+                } elseif ( $letter !== '' ) {
+                    $ok = ( mb_strtoupper( mb_substr( $t->name, 0, 1 ) ) === $letter );
+                } else {
+                    $ok = ( mb_stripos( $t->name, $search ) !== false );
+                }
+                if ( $ok ) { $term_ids[] = (int) $t->term_id; }
+            }
+        }
+        if ( empty( $term_ids ) ) {
+            wp_send_json_success( [ 'html' => '', 'found' => 0, 'max_pages' => 0, 'paged' => $paged ] );
+        }
+        $args['tax_query'] = [ [
+            'taxonomy' => 'authors',
+            'field'    => 'term_id',
+            'terms'    => $term_ids,
+        ] ];
+    } elseif ( $mode === 'title' && $has_query ) {
+        $GLOBALS['tls_cf_letter'] = $letter;
+        $GLOBALS['tls_cf_needle'] = $search;
+        add_filter( 'posts_where', 'tls_cat_filter_where', 10, 2 );
+        $where_added = true;
+    }
+
+    $q = new WP_Query( $args );
+
+    if ( $where_added ) {
+        remove_filter( 'posts_where', 'tls_cat_filter_where', 10 );
+        unset( $GLOBALS['tls_cf_letter'], $GLOBALS['tls_cf_needle'] );
+    }
+
+    ob_start();
+    if ( $q->have_posts() ) {
+        while ( $q->have_posts() ) {
+            $q->the_post();
+            echo thetelos_book_card( get_the_ID() );
+        }
+    }
+    wp_reset_postdata();
+    $html = ob_get_clean();
+
+    wp_send_json_success( [
+        'html'      => $html,
+        'found'     => (int) $q->found_posts,
+        'max_pages' => (int) $q->max_num_pages,
+        'paged'     => $paged,
+    ] );
+}
+add_action( 'wp_ajax_tls_cat_filter',        'tls_cat_filter' );
+add_action( 'wp_ajax_nopriv_tls_cat_filter', 'tls_cat_filter' );
