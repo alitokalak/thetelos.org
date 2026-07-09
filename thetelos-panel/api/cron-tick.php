@@ -114,7 +114,13 @@ if (!$is_cli) {
     @set_time_limit(0);
     if (!headers_sent()) header('Content-Type: application/json');
     echo json_encode(['ok' => true, 'msg' => 'tick started']);
-    if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); }
+    // Bağlantıyı HEMEN kapat ki dış cron (cron-job.org) 30sn'de timeout'a
+    // düşüp job'u "başarısız/devre dışı" saymasın. Sunucu tipine göre:
+    //   fastcgi_finish_request  → PHP-FPM
+    //   litespeed_finish_request → LiteSpeed/LSAPI (bu sitenin sunucusu)
+    // İş, .htaccess'teki noabort sayesinde bağlantı kapansa da arka planda sürer.
+    if (function_exists('fastcgi_finish_request'))       { @fastcgi_finish_request(); }
+    elseif (function_exists('litespeed_finish_request')) { @litespeed_finish_request(); }
     else { @ob_end_flush(); @flush(); }
 }
 
