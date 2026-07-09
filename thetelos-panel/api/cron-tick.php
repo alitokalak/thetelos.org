@@ -112,10 +112,28 @@ if (!is_dir($jobs_dir)) @mkdir($jobs_dir, 0755, true);
 if (!$is_cli) {
     @ignore_user_abort(true);
     @set_time_limit(0);
-    if (!headers_sent()) header('Content-Type: application/json');
-    echo json_encode(['ok' => true, 'msg' => 'tick started']);
-    if (function_exists('fastcgi_finish_request')) { @fastcgi_finish_request(); }
-    else { @ob_end_flush(); @flush(); }
+    if (function_exists('fastcgi_finish_request')) {
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode(['ok' => true, 'msg' => 'tick started']);
+        @fastcgi_finish_request();
+    } else {
+        // LiteSpeed'de flush yeterli değil: yanıt ancak süreç bitince gidiyordu →
+        // cron-job.org 30sn'de "timeout/failed" sayıp job'u OTOMATİK KAPATIYORDU.
+        // Çözüm: sıkıştırma/buffer kapat + Content-Length + Connection: close →
+        // istemci yanıtın bittiğini anlar, saniyeler içinde "Successful" görür;
+        // süreç noabort sayesinde arkada çalışmaya devam eder.
+        @ini_set('zlib.output_compression', '0');
+        while (ob_get_level() > 0) { @ob_end_clean(); }
+        $ack = json_encode(['ok' => true, 'msg' => 'tick started']);
+        if (!headers_sent()) {
+            header('Content-Type: application/json');
+            header('Content-Length: ' . strlen($ack));
+            header('Connection: close');
+            header('X-Accel-Buffering: no');
+        }
+        echo $ack;
+        @flush();
+    }
 }
 
 /* ── ÖNCELİK 1: yarım kalan "building" kuyruğunu ilerlet ──
@@ -175,14 +193,31 @@ if (is_dir($jobs_dir)) {
 }
 
 if (!$target) {
-    header('Content-Type: application/json');
+    if (!headers_sent()) header('Content-Type: application/json');
     echo json_encode(['ok' => true, 'msg' => 'no running batch with pending work']);
     exit;
 }
 
+/* ── WORKER TAVANI (502 koruması) ──
+   noabort açıkken worker'lar istemci koptuktan sonra da yaşıyor; cron her dakika
+   bir tane daha eklerse birikip PHP süreç limitini doldurur (sabahki 502 buydu).
+   Bu batch için CANLI worker sayısını (.wk.* dosyaları, 180sn tazelik) say; tavanı
+   aşıyorsa yeni worker BAŞLATMA. Ölü worker'ın işi zaten stale-recovery ile kurtulur. */
+$WORKER_CAP = 3;
+$base = preg_replace('/\.json$/', '', "$jobs_dir/$target.json");
+$live = 0; $now2 = time();
+foreach (glob($base . '.wk.*') ?: [] as $wk) {
+    if (($now2 - @filemtime($wk)) <= 180) $live++;
+}
+if ($live >= $WORKER_CAP) {
+    if (!headers_sent()) header('Content-Type: application/json');
+    echo json_encode(['ok' => true, 'msg' => "worker cap reached ($live/$WORKER_CAP) — skipping"]);
+    exit;
+}
+
 // batch-worker'ı bu istek içinde çalıştır (Cloudflare self-call YOK).
-// ignore_user_abort sayesinde cron servisi 30sn'de bağlantıyı kesse bile
-// drain döngüsü sunucuda 70sn boyunca çalışmaya devam eder.
+// ignore_user_abort + noabort sayesinde cron servisi 30sn'de bağlantıyı kesse bile
+// worker kitabı sonuna kadar işler.
 $_POST['batch_id'] = $target;
 $_POST['_itok']    = $worker_itok;
 include __DIR__ . '/batch-worker.php';
