@@ -186,6 +186,21 @@ if (!$target) {
     exit;
 }
 
+/* ── ÇAKIŞMA KİLİDİ ──────────────────────────────────────────────────
+   Bu batch'te hâlâ CANLI bir worker varsa ikincisini BAŞLATMA. İki worker
+   aynı listede aynı anda çalışınca, "bu kitap zaten var mı?" kontrolü ikisinde
+   de "yok" görüp aynı kitabı iki kez yayınlıyordu (duplicate). batch-worker
+   her chunk'ta {batch}.wk.{id} heartbeat dosyasını tazeler; 90sn içinde
+   dokunulmuş bir dosya varsa bir worker aktif demektir → yeni worker açma.
+   Worker ölürse dosyası bayatlar (90sn+) ve sonraki tik normal devam eder. */
+foreach (glob("$jobs_dir/{$target}.wk.*") ?: [] as $wk) {
+    if (time() - (int) @filemtime($wk) < 90) {
+        header('Content-Type: application/json');
+        echo json_encode(['ok' => true, 'msg' => 'worker already active', 'batch' => $target]);
+        exit;
+    }
+}
+
 // batch-worker'ı bu istek içinde çalıştır (Cloudflare self-call YOK).
 // ignore_user_abort sayesinde cron servisi 30sn'de bağlantıyı kesse bile
 // drain döngüsü sunucuda 70sn boyunca çalışmaya devam eder.

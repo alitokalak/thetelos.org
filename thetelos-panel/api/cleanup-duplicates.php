@@ -94,11 +94,14 @@ if ($dry_run) {
     exit;
 }
 
-// Gerçek silme
+// Gerçek silme.
+// GÜVENLİ VARSAYILAN: Çöp Kutusu'na taşı (geri alınabilir).
+// Kalıcı silmek istenirse ?force=1 eklenir.
+$force = ($_GET['force'] ?? '0') === '1';
 $deleted = []; $failed = [];
 foreach ($to_delete as $p) {
-    // force=true → çöp kutusuna atmadan direkt sil
-    $code = cd_wp_delete("$wp_api/posts/{$p['id']}?force=true", $auth);
+    $del_url = "$wp_api/posts/{$p['id']}" . ($force ? '?force=true' : '');
+    $code = cd_wp_delete($del_url, $auth);
     $title = html_entity_decode(strip_tags($p['title']['rendered'] ?? ''), ENT_QUOTES, 'UTF-8');
     if ($code === 200) {
         $deleted[] = ['id' => $p['id'], 'title' => $title];

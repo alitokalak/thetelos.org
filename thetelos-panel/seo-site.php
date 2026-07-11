@@ -130,6 +130,21 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div class="progress-wrap" id="prog-authors-link" style="margin-top:12px"><div class="progress-inner" id="prog-authors-link-bar" style="width:0%"></div></div>
         <div id="result-authors-link" style="margin-top:12px"></div>
       </div>
+
+      <div class="tech-section" style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px">
+        <h3>🧹 Duplicate (Kopya) Yazıları Temizle</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Aynı başlıkla iki kez yayınlanmış yazıları bulur. Her başlıktan <b>en eskisini korur</b>,
+          kopyaları <b>Çöp Kutusu'na</b> taşır (kalıcı silmez — yanlışlık olursa geri alırsın).
+          Önce "Bul"a bas, listeyi gör; sonra "Çöpe Taşı"yı onayla.
+        </p>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-dup-scan">🔎 Kopyaları Bul</button>
+          <button class="btn" id="btn-dup-clean" style="display:none">🗑️ Kopyaları Çöpe Taşı</button>
+          <span id="dup-status" style="font-size:12px;color:var(--tls-gold)"></span>
+        </div>
+        <div id="result-dup" style="margin-top:12px"></div>
+      </div>
     </div>
 
     <div id="tab-keyphrase" style="display:none">
@@ -447,6 +462,53 @@ document.getElementById('btn-fix-all-authors').addEventListener('click', () => b
 const WP_URL = '<?= rtrim(WP_URL, '/') ?>';
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+
+// ── Duplicate (kopya) temizleme ──────────────────────────
+(function(){
+  const scanBtn = document.getElementById('btn-dup-scan');
+  if (!scanBtn) return;
+  const cleanBtn = document.getElementById('btn-dup-clean');
+  const statusEl = document.getElementById('dup-status');
+  const result   = document.getElementById('result-dup');
+
+  scanBtn.addEventListener('click', () => {
+    scanBtn.disabled = true; scanBtn.textContent = 'Aranıyor…';
+    cleanBtn.style.display = 'none'; statusEl.textContent = '';
+    result.innerHTML = '<div style="color:var(--muted);padding:12px">Tüm yazılar taranıyor…</div>';
+    fetch(API('cleanup-duplicates.php') + '?dry_run=1', { credentials:'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        scanBtn.disabled = false; scanBtn.textContent = '🔎 Kopyaları Bul';
+        const n = d.to_delete_count || 0;
+        if (!n) { result.innerHTML = '<div style="color:#00ab6b;padding:16px">✓ Kopya bulunamadı. Temiz!</div>'; return; }
+        let html = '<div style="margin-bottom:10px;font-size:13px"><b>' + (d.duplicate_groups||0)
+          + '</b> başlıkta kopya var · <b>' + n + '</b> yazı çöpe taşınacak (en eskiler korunur).</div>';
+        html += '<table class="site-table"><thead><tr><th>Çöpe taşınacak (kopya)</th><th>ID</th></tr></thead><tbody>';
+        (d.to_delete||[]).forEach(p => { html += '<tr><td>' + escHtml(p.title) + '</td><td>' + p.id + '</td></tr>'; });
+        html += '</tbody></table>';
+        result.innerHTML = html;
+        cleanBtn.style.display = ''; cleanBtn.textContent = '🗑️ ' + n + ' Kopyayı Çöpe Taşı';
+      })
+      .catch(() => { scanBtn.disabled = false; scanBtn.textContent = '🔎 Kopyaları Bul'; result.innerHTML = '<div style="color:#cc1818;padding:12px">Hata oluştu.</div>'; });
+  });
+
+  cleanBtn.addEventListener('click', () => {
+    if (!confirm('Kopyalar Çöp Kutusu\'na taşınacak. Devam edilsin mi?')) return;
+    cleanBtn.disabled = true; cleanBtn.textContent = 'Taşınıyor…';
+    fetch(API('cleanup-duplicates.php') + '?dry_run=0', { credentials:'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        cleanBtn.disabled = false;
+        const ok = d.deleted_count || 0, fail = d.failed_count || 0;
+        statusEl.textContent = '✓ ' + ok + ' kopya çöpe taşındı' + (fail ? (' · ' + fail + ' başarısız') : '');
+        result.innerHTML = '<div style="color:#00ab6b;padding:16px">✓ ' + ok + ' kopya Çöp Kutusu\'na taşındı.'
+          + (fail ? ' <span style="color:#cc1818">' + fail + ' tanesi taşınamadı.</span>' : '')
+          + '<br><span style="color:var(--muted);font-size:12px">Yanlışlık olursa WP Admin → Yazılar → Çöp\'ten geri alabilirsin.</span></div>';
+        cleanBtn.style.display = 'none';
+      })
+      .catch(() => { cleanBtn.disabled = false; cleanBtn.textContent = '🗑️ Kopyaları Çöpe Taşı'; statusEl.textContent = 'Hata oluştu.'; });
+  });
+})();
 
 // ── Odak kelime toplu doldurma ───────────────────────────
 (function(){
