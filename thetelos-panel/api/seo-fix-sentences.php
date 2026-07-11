@@ -60,11 +60,18 @@ function tls_fix_field($text, $post_content, $max = 155) {
     return [null, 'skip'];
 }
 
-/* ── AJAX çalışma adımı ── */
-if (isset($_GET['run'])) {
+/* ── AJAX çalışma adımı (POST — cache'lenmesin diye) ── */
+if (isset($_REQUEST['run'])) {
     header('Content-Type: application/json');
-    $offset = max(0, (int) ($_GET['offset'] ?? 0));
+    // LiteSpeed/tarayıcı bu dinamik endpoint'i CACHE'LEMESİN — yoksa her
+    // çağrıda eski "0 düzeltildi" yanıtı döner ve iş hiç çalışmaz.
+    header('Cache-Control: no-cache, no-store, must-revalidate');
+    header('X-LiteSpeed-Cache-Control: no-cache');
+    header('Pragma: no-cache');
+
+    $offset = max(0, (int) ($_REQUEST['offset'] ?? 0));
     $chunk  = 30;
+    $dbg = ['kept' => 0, 'trimmed' => 0, 'frombody' => 0, 'skip' => 0, 'borrow' => 0];
 
     $q = new WP_Query([
         'post_type'      => 'post',
@@ -87,17 +94,26 @@ if (isset($_GET['run'])) {
         if (!$post) continue;
         $content = $post->post_content;
 
-        // Excerpt
-        [$new_ex, $mx] = tls_fix_field($post->post_excerpt, $content);
-        if ($new_ex !== null && $new_ex !== trim($post->post_excerpt)) {
+        $cur_ex = trim((string) $post->post_excerpt);
+        $meta   = get_post_meta($pid, '_yoast_wpseo_metadesc', true);
+        $cur_mt = trim((string) $meta);
+
+        [$new_ex, $mx] = tls_fix_field($cur_ex, $content);
+        [$new_mt, $mm] = tls_fix_field($cur_mt, $content);
+
+        // Bir alan kurtarılamadıysa (skip), diğeri temiz bir cümleyse ondan ödünç al.
+        $ex_clean = ($mx === 'kept') ? $cur_ex : $new_ex;   // temiz excerpt adayı
+        $mt_clean = ($mm === 'kept') ? $cur_mt : $new_mt;   // temiz meta adayı
+        if ($mx === 'skip' && is_string($mt_clean) && $mt_clean !== '') { $new_ex = $mt_clean; $mx = 'borrow'; }
+        if ($mm === 'skip' && is_string($ex_clean) && $ex_clean !== '') { $new_mt = $ex_clean; $mm = 'borrow'; }
+
+        $dbg[$mx]++; $dbg[$mm]++;
+
+        if ($new_ex !== null && $new_ex !== $cur_ex) {
             wp_update_post(['ID' => $pid, 'post_excerpt' => $new_ex]);
             $fixed++;
         }
-
-        // Meta description (Yoast)
-        $meta = get_post_meta($pid, '_yoast_wpseo_metadesc', true);
-        [$new_mt, $mm] = tls_fix_field($meta, $content);
-        if ($new_mt !== null && $new_mt !== trim((string) $meta)) {
+        if ($new_mt !== null && $new_mt !== $cur_mt) {
             update_post_meta($pid, '_yoast_wpseo_metadesc', $new_mt);
             $fixed++;
         }
@@ -111,6 +127,7 @@ if (isset($_GET['run'])) {
         'fixed'     => $fixed,
         'done'      => ($seen === 0 || $next >= $total),
         'next'      => $next,
+        'dbg'       => $dbg,
     ]);
     exit;
 }

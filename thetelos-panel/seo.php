@@ -392,7 +392,12 @@ document.getElementById('btn-fix-fast').addEventListener('click', () => {
   if (pb) pb.style.width = '0%';
   let totalFixed = 0;
   const run = (offset) => {
-    fetch(API('seo-fix-sentences.php') + '?run=1&offset=' + offset, { credentials: 'same-origin' })
+    fetch(API('seo-fix-sentences.php'), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'run=1&offset=' + offset
+    })
       .then(r => r.json())
       .then(d => {
         if (!d || !d.ok) throw new Error('bad');
