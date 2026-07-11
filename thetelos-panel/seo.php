@@ -127,6 +127,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <button class="btn" id="btn-fix-ex">📝 Tüm Excerpt Sorunları</button>
       <button class="btn" id="btn-fix-mt">🏷 Tüm Meta Sorunları</button>
       <button class="btn btn-primary" id="btn-fix-all">⚡ Tümünü Düzelt</button>
+      <button class="btn" id="btn-fix-fast" title="AI kullanmadan: yarım/uzun excerpt & meta'yı anlamlı tam cümleye getirir. Tüm yazılarda çalışır, token harcamaz.">🚀 Hızlı Düzelt (AI'sız)</button>
     </div>
 
     <div class="prog-wrap" id="prog-wrap"><div class="prog-bar" id="prog-bar" style="width:0%"></div></div>
@@ -380,6 +381,37 @@ async function bulkFix(ff) {
 document.getElementById('btn-fix-ex').addEventListener('click',  () => bulkFix('excerpt'));
 document.getElementById('btn-fix-mt').addEventListener('click',  () => bulkFix('meta'));
 document.getElementById('btn-fix-all').addEventListener('click', () => bulkFix('all'));
+
+// ── Hızlı Düzelt (AI'sız, sunucu tarafı, TÜM yazılar) ──
+document.getElementById('btn-fix-fast').addEventListener('click', () => {
+  if (!confirm('Tüm yazıların yarım/uzun excerpt ve meta açıklamaları AI kullanmadan anlamlı cümlelere düzeltilecek.\n\nMetni tam cümleye kırpar; olmazsa yazının gövdesinden anlamlı bir cümle üretir. Devam edilsin mi?')) return;
+  const ids = ['btn-fix-ex','btn-fix-mt','btn-fix-all','btn-fix-fast','btn-scan'];
+  ids.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = true; });
+  const pw = document.getElementById('prog-wrap'), pb = document.getElementById('prog-bar');
+  if (pw) pw.style.display = 'block';
+  if (pb) pb.style.width = '0%';
+  let totalFixed = 0;
+  const run = (offset) => {
+    fetch(API('seo-fix-sentences.php') + '?run=1&offset=' + offset, { credentials: 'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        if (!d || !d.ok) throw new Error('bad');
+        totalFixed += d.fixed;
+        const pct = d.total ? Math.min(100, Math.round(d.processed / d.total * 100)) : 100;
+        if (pb) pb.style.width = pct + '%';
+        setStatus(d.processed + ' / ' + d.total + ' tarandı · ' + totalFixed + ' alan düzeltildi');
+        if (d.done) {
+          setStatus('✓ Bitti · ' + totalFixed + ' alan anlamlı cümleye getirildi. Yeniden taranıyor…');
+          ids.forEach(id => { const b = document.getElementById(id); if (b) b.disabled = false; });
+          setTimeout(() => document.getElementById('btn-scan').click(), 700);
+          return;
+        }
+        run(d.next);
+      })
+      .catch(() => { setStatus('Hata — 3 sn sonra tekrar deneniyor…'); setTimeout(() => run(offset), 3000); });
+  };
+  run(0);
+});
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 function setStatus(m) { document.getElementById('status-line').textContent = m; }
