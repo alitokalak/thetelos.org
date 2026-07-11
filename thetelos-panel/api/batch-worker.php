@@ -606,10 +606,17 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
     $cat_ids = array_values(array_unique($cat_ids));
 
-    // Hiç geçerli kategori çıkmadıysa güvenli varsayılana ata (Uncategorized olmasın).
+    // Son çare: hiç uygun kategori çıkmazsa "General" kovasına ata (nadir).
+    // Bu tek sistem kategorisi yoksa bir kez oluşturulur; AI slug'ları YİNE
+    // oluşturulmaz — "General" AI'a seçenek olarak sunulmaz, yalnız buraya düşer.
     if (!$cat_ids) {
-        [$def] = bw_wp("$wp_api/categories?slug=philosophy&per_page=1", 'GET', [], $auth);
-        if (!empty($def[0]['id'])) $cat_ids[] = (int) $def[0]['id'];
+        [$gen] = bw_wp("$wp_api/categories?slug=general&per_page=1", 'GET', [], $auth);
+        if (!empty($gen[0]['id'])) {
+            $cat_ids[] = (int) $gen[0]['id'];
+        } else {
+            [$ngen] = bw_wp("$wp_api/categories", 'POST', ['name' => 'General', 'slug' => 'general'], $auth);
+            if (!empty($ngen['id'])) $cat_ids[] = (int) $ngen['id'];
+        }
     }
     bw_touch_hb($batch_file, $idx);   // kategori çözümü bitti — canlılığı tazele
 
