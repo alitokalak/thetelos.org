@@ -73,6 +73,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <button class="tab-btn active" data-tab="categories">📁 Kategoriler</button>
       <button class="tab-btn" data-tab="authors">👤 Yazarlar</button>
       <button class="tab-btn" data-tab="technical">🔧 Teknik SEO</button>
+      <button class="tab-btn" data-tab="keyphrase">🔑 Odak Kelime</button>
     </div>
 
     <div id="tab-categories">
@@ -130,6 +131,26 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div id="result-authors-link" style="margin-top:12px"></div>
       </div>
     </div>
+
+    <div id="tab-keyphrase" style="display:none">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;max-width:640px;line-height:1.6">
+        Yoast'ın kırmızı/yeşil <b>SEO skoru</b> "odak anahtar kelime" üzerinden hesaplanır.
+        Otomatik üretilen yazılara bu kelime atanmadığından hepsi kırmızı görünüyordu.
+        Bu araç, odak kelimesi <b>boş olan</b> her yayınlanmış yazıya başlıktan türetilen
+        temiz kitap adını yazar (ör. <code>On Wealth (Περὶ Πλούτου…) – Diogenes</code> →
+        <b>On Wealth</b>). İçeriğe/başlığa dokunmaz, elle girdiklerini korur, tekrar çalıştırmak güvenlidir.
+      </p>
+      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" id="btn-kw-run">🔑 Odak Kelimeleri Doldur</button>
+        <span id="kw-status" style="font-size:12px;color:var(--tls-gold)"></span>
+      </div>
+      <div class="stats-row" id="stats-kw" style="display:none">
+        <div class="stat-box"><div class="stat-val" id="kw-total">0</div><div class="stat-lbl">Toplam Yazı</div></div>
+        <div class="stat-box"><div class="stat-val" id="kw-updated" style="color:#00ab6b">0</div><div class="stat-lbl">Kelime Yazıldı</div></div>
+      </div>
+      <div class="progress-wrap" id="prog-kw"><div class="progress-inner" id="prog-kw-bar" style="width:0%"></div></div>
+      <div id="result-kw"><div style="text-align:center;padding:40px;color:var(--muted)">Doldur butonuna bas.</div></div>
+    </div>
   </main>
 </div>
 
@@ -141,7 +162,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    ['categories','authors','technical'].forEach(t => {
+    ['categories','authors','technical','keyphrase'].forEach(t => {
       document.getElementById('tab-' + t).style.display = t === btn.dataset.tab ? '' : 'none';
     });
   });
@@ -426,6 +447,50 @@ document.getElementById('btn-fix-all-authors').addEventListener('click', () => b
 const WP_URL = '<?= rtrim(WP_URL, '/') ?>';
 function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function escAttr(s){ return String(s).replace(/"/g,'&quot;'); }
+
+// ── Odak kelime toplu doldurma ───────────────────────────
+(function(){
+  const btn = document.getElementById('btn-kw-run');
+  if (!btn) return;
+  const statusEl = document.getElementById('kw-status');
+  const stats    = document.getElementById('stats-kw');
+  const totalEl  = document.getElementById('kw-total');
+  const updEl    = document.getElementById('kw-updated');
+  const prog     = document.getElementById('prog-kw');
+  const bar      = document.getElementById('prog-kw-bar');
+  const result   = document.getElementById('result-kw');
+  let totalUpdated = 0;
+
+  function step(offset){
+    fetch(API('seo-backfill-keyphrase.php') + '?run=1&offset=' + offset, { credentials:'same-origin' })
+      .then(r => r.json())
+      .then(d => {
+        if (!d || !d.ok) { statusEl.textContent = 'Hata — 3sn sonra tekrar…'; setTimeout(() => step(offset), 3000); return; }
+        totalUpdated += d.updated;
+        stats.style.display = '';
+        totalEl.textContent = (d.total || 0).toLocaleString();
+        updEl.textContent   = totalUpdated.toLocaleString();
+        const pct = d.total ? Math.min(100, Math.round(d.processed / d.total * 100)) : 100;
+        bar.style.width = pct + '%';
+        statusEl.textContent = d.processed + ' / ' + d.total + ' tarandı';
+        if (d.done) {
+          statusEl.textContent = '✓ Bitti · ' + totalUpdated.toLocaleString() + ' yazıya odak kelime eklendi';
+          result.innerHTML = '<div style="text-align:center;padding:32px;color:#00ab6b;font-size:14px">✓ Tamamlandı. Yoast skorlarının çoğu artık yeşile dönecek.</div>';
+          btn.disabled = false; btn.textContent = '🔑 Tekrar Çalıştır';
+          return;
+        }
+        step(d.next);
+      })
+      .catch(() => { statusEl.textContent = 'Bağlantı hatası — 3sn sonra tekrar…'; setTimeout(() => step(offset), 3000); });
+  }
+
+  btn.addEventListener('click', () => {
+    btn.disabled = true; btn.textContent = 'Çalışıyor…';
+    totalUpdated = 0; bar.style.width = '0%';
+    result.innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">İşleniyor…</div>';
+    step(0);
+  });
+})();
 </script>
 </body>
 </html>
