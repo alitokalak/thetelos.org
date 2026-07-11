@@ -671,6 +671,14 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_yoast_wpseo_metadesc'=>$meta['meta_description']]], $auth);
     }
 
+    // Yoast odak anahtar kelimesi — SEO analiz skoru (kırmızı/yeşil) bunun
+    // üzerinden hesaplanır; ayarlanmazsa Yoast otomatik "kırmızı" gösterir.
+    // Temiz, parantezsiz kitap adını kullan.
+    $focus_kw = trim($search_book !== '' ? $search_book : $book);
+    if ($focus_kw !== '') {
+        bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_yoast_wpseo_focuskw'=>$focus_kw]], $auth);
+    }
+
     // Yıl bulunduysa onu, bulunamadıysa "(–)" işareti olarak '-' kaydet.
     bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_pub_year'=>($pub_year !== '' ? $pub_year : '-')]], $auth);
 
