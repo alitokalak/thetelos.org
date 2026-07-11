@@ -586,19 +586,30 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     // ── WordPress'e yayınla ────────────────────────────────────────
     bw_touch_hb($batch_file, $idx);   // meta+kapak bitti — yayın öncesi tazele
+    // Onaylı kategori kümesi ($cats_list). YENİ KATEGORİ ASLA OLUŞTURULMAZ —
+    // AI listede olmayan bir slug uydurursa (ör. "confucianism") atlanır.
+    $allowed = array_fill_keys( array_map('trim', explode(',', $cats_list)), true );
+
     $cat_ids = [];
     foreach ($meta['categories'] ?? [] as $raw_slug) {
         $slug = strtolower(trim(preg_replace('/[\s_]+/', '-', $raw_slug)));
         $slug = preg_replace('/[^a-z0-9\-]/', '', $slug);
         if (!$slug) continue;
+        $slug_u = str_replace('-', '_', $slug);
+        // Onaylı listede değilse: atla, OLUŞTURMA.
+        if (empty($allowed[$slug]) && empty($allowed[$slug_u])) continue;
+        // Var olan kategoriyi bul ('-' ve '_' varyantı); yoksa oluşturmadan geç.
         [$cats] = bw_wp("$wp_api/categories?slug=" . urlencode($slug) . '&per_page=1', 'GET', [], $auth);
         if (!empty($cats[0]['id'])) { $cat_ids[] = $cats[0]['id']; continue; }
-        $slug_u = str_replace('-', '_', $slug);
         [$cats2] = bw_wp("$wp_api/categories?slug=" . urlencode($slug_u) . '&per_page=1', 'GET', [], $auth);
         if (!empty($cats2[0]['id'])) { $cat_ids[] = $cats2[0]['id']; continue; }
-        $name = ucwords(str_replace('-', ' ', $slug));
-        [$nc] = bw_wp("$wp_api/categories", 'POST', ['name'=>$name,'slug'=>$slug], $auth);
-        if (!empty($nc['id'])) $cat_ids[] = $nc['id'];
+    }
+    $cat_ids = array_values(array_unique($cat_ids));
+
+    // Hiç geçerli kategori çıkmadıysa güvenli varsayılana ata (Uncategorized olmasın).
+    if (!$cat_ids) {
+        [$def] = bw_wp("$wp_api/categories?slug=philosophy&per_page=1", 'GET', [], $auth);
+        if (!empty($def[0]['id'])) $cat_ids[] = (int) $def[0]['id'];
     }
     bw_touch_hb($batch_file, $idx);   // kategori çözümü bitti — canlılığı tazele
 

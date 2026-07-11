@@ -99,10 +99,8 @@ foreach($categories as $raw_slug){
         }
     }
 
-    /* Gerçekten yoksa oluştur — artık her zaman tireli slug ile */
-    $name = ucwords(str_replace('-', ' ', $slug));
-    [$nc,$ncode]=wp_req("$wp_api/categories",'POST',['name'=>$name,'slug'=>$slug],$auth);
-    if(!empty($nc['id'])) $cat_ids[]=$nc['id'];
+    /* Var olmayan kategori: ARTIK OLUŞTURULMUYOR, atlanır.
+       Kural: yalnızca sitede zaten tanımlı (onaylı) kategoriler kullanılır. */
 }
 
 // ── Post oluştur ──────────────────────────────────────────

@@ -108,12 +108,17 @@ $wp_api = rtrim(WP_URL,'/').'/wp-json/wp/v2';
 $ep     = $type==='analysis'?'analysis':'posts';
 
 $cat_ids=array();
+$allowed=array_fill_keys(array_map('trim',explode(',',$cats)),true); // onaylı ~100 kategori
 $meta_cats=isset($meta['categories'])?$meta['categories']:array();
 foreach($meta_cats as $slug){
     $slug=preg_replace('/[^a-z0-9_-]/','',strtolower($slug));
+    if($slug==='')continue;
+    $slug_u=str_replace('-','_',$slug);
+    if(empty($allowed[$slug])&&empty($allowed[$slug_u]))continue; // liste dışı → OLUŞTURMA, atla
     list($cats_r)=bp_wr("$wp_api/categories?slug=".urlencode($slug).'&per_page=1','GET',array(),$auth);
-    if(!empty($cats_r[0]['id'])) $cat_ids[]=$cats_r[0]['id'];
-    else{list($nc)=bp_wr("$wp_api/categories",'POST',array('name'=>ucwords(str_replace('_',' ',$slug)),'slug'=>$slug),$auth);if(!empty($nc['id']))$cat_ids[]=$nc['id'];}
+    if(!empty($cats_r[0]['id'])){$cat_ids[]=$cats_r[0]['id'];continue;}
+    list($cats_r2)=bp_wr("$wp_api/categories?slug=".urlencode($slug_u).'&per_page=1','GET',array(),$auth);
+    if(!empty($cats_r2[0]['id']))$cat_ids[]=$cats_r2[0]['id'];
 }
 
 $pb=array('title'=>$author?"$book -{$author}-":$book,'content'=>bp_md2h($content),
