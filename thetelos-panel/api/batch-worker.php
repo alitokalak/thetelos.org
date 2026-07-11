@@ -293,6 +293,31 @@ function bw_trim_sentence($text, $max = 155) {
     return trim($sp !== false ? mb_substr($slice, 0, $sp) : $slice);
 }
 
+/**
+ * bw_norm_sentence — Bir excerpt/meta metnini TAM CÜMLE + sınır içinde garantiler.
+ *   1) Fazla boşlukları sadeleştirir.
+ *   2) $max'ı aşıyorsa sınır içinde son cümle bitişine (yoksa son tam kelimeye) kırpar.
+ *   3) Sonda nokta/!/? yoksa: önceki tam cümleye geri döner; o da yoksa nokta ekler.
+ * Böylece sonuç asla "Çok Uzun" ya da "Kesilmiş" olmaz.
+ */
+function bw_norm_sentence($text, $max = 155) {
+    $text = trim(preg_replace('/\s+/u', ' ', (string) $text));
+    if ($text === '') return '';
+
+    if (mb_strlen($text) > $max) {
+        $text = bw_trim_sentence($text, $max);
+    }
+    // Sonda cümle bitişi var mı? (kapanış tırnağı/parantez tolere edilir)
+    if (!preg_match('/[.!?][")\']?$/u', $text)) {
+        if (preg_match('/^.*[.!?](?=\s|$)/su', $text, $m) && mb_strlen(trim($m[0])) >= 20) {
+            $text = trim($m[0]);                       // son tam cümleye kırp
+        } else {
+            $text = rtrim($text, " ,;:—–-") . '.';     // kurtarılamıyorsa nokta ekle
+        }
+    }
+    return $text;
+}
+
 function bw_clean_content($text) {
     $text = preg_replace('/%%PART[12]_(?:END|START)%%/i', '', $text);
     $text = preg_replace('/%%PART_END%%/i', '', $text);
@@ -508,10 +533,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $meta_text = preg_replace('/```json|```/', '', $meta_text);
     $meta = json_decode(trim($meta_text), true) ?? [];
 
-    // DeepSeek limiti aşarsa PHP tarafında TAM cümlede kes (155 altı son nokta/!/?)
+    // excerpt & meta_description'ı DAİMA normalize et: 155 karaktere sığdır VE
+    // mutlaka tam bir cümle (nokta/!/? ile biten) olsun. AI kısa ama yarıda
+    // kesik bir cümle döndürse bile ("...the role of the") burada düzeltilir —
+    // böylece panelde "Kesilmiş / Çok Uzun" olarak işaretlenmez.
     foreach (['excerpt', 'meta_description'] as $mf) {
-        if (!empty($meta[$mf]) && mb_strlen($meta[$mf]) > 155) {
-            $meta[$mf] = bw_trim_sentence($meta[$mf], 155);
+        if (!empty($meta[$mf])) {
+            $meta[$mf] = bw_norm_sentence($meta[$mf], 155);
         }
     }
 
