@@ -74,7 +74,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <button class="tab-btn" data-tab="authors">👤 Yazarlar</button>
       <button class="tab-btn" data-tab="technical">🔧 Teknik SEO</button>
       <button class="tab-btn" data-tab="keyphrase">🔑 Odak Kelime</button>
-      <button class="tab-btn" data-tab="rogue">🗂 Kaçak Kategoriler</button>
     </div>
 
     <div id="tab-categories">
@@ -168,21 +167,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <div id="result-kw"><div style="text-align:center;padding:40px;color:var(--muted)">Doldur butonuna bas.</div></div>
     </div>
 
-    <div id="tab-rogue" style="display:none">
-      <p style="font-size:13px;color:var(--muted);margin-bottom:16px;max-width:680px;line-height:1.6">
-        Onaylı ~100 kategori <b>dışında</b> kalan ("kaçak") kategorileri listeler.
-        Seçip sildiğinde <b>güvenlidir</b>: bir kategoriyi silmeden önce, o kategorideki
-        her yazının başka onaylı kategorisi var mı bakar; yoksa yazıyı <b>"General"</b>
-        kovasına bağlar — böylece <b>hiçbir yazı kategorisiz kalmaz</b>. Onaylı kategoriler
-        asla silinmez.
-      </p>
-      <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-primary" id="btn-rogue-scan">🔎 Kaçakları Listele</button>
-        <button class="btn" id="btn-rogue-del" style="display:none">🗑️ Seçilenleri Sil</button>
-        <span id="rogue-status" style="font-size:12px;color:var(--tls-gold)"></span>
-      </div>
-      <div id="result-rogue"><div style="text-align:center;padding:40px;color:var(--muted)">Listele butonuna bas.</div></div>
-    </div>
   </main>
 </div>
 
@@ -194,7 +178,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    ['categories','authors','technical','keyphrase','rogue'].forEach(t => {
+    ['categories','authors','technical','keyphrase'].forEach(t => {
       document.getElementById('tab-' + t).style.display = t === btn.dataset.tab ? '' : 'none';
     });
   });
@@ -524,75 +508,6 @@ function escAttr(s){ return String(s).replace(/"/g,'&quot;'); }
         cleanBtn.style.display = 'none';
       })
       .catch(() => { cleanBtn.disabled = false; cleanBtn.textContent = '🗑️ Kopyaları Çöpe Taşı'; statusEl.textContent = 'Hata oluştu.'; });
-  });
-})();
-
-// ── Kaçak kategoriler: listele & sil ─────────────────────
-(function(){
-  const scanBtn = document.getElementById('btn-rogue-scan');
-  if (!scanBtn) return;
-  const delBtn   = document.getElementById('btn-rogue-del');
-  const statusEl = document.getElementById('rogue-status');
-  const result   = document.getElementById('result-rogue');
-
-  function post(action, body){
-    return fetch(API('category-audit.php'), {
-      method:'POST', credentials:'same-origin',
-      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
-      body: 'action=' + action + (body ? ('&' + body) : '')
-    }).then(r => r.json());
-  }
-
-  function selectedIds(){
-    return Array.prototype.slice.call(result.querySelectorAll('.rogue-cb:checked')).map(c => c.value);
-  }
-  function refreshDelBtn(){
-    const n = selectedIds().length;
-    delBtn.style.display = n ? '' : 'none';
-    delBtn.textContent = '🗑️ Seçili ' + n + ' Kategoriyi Sil';
-  }
-
-  scanBtn.addEventListener('click', () => {
-    scanBtn.disabled = true; scanBtn.textContent = 'Listeleniyor…';
-    delBtn.style.display = 'none'; statusEl.textContent = '';
-    result.innerHTML = '<div style="color:var(--muted);padding:12px">Kategoriler taranıyor…</div>';
-    post('list').then(d => {
-      scanBtn.disabled = false; scanBtn.textContent = '🔎 Kaçakları Listele';
-      if (!d || !d.ok) { result.innerHTML = '<div style="color:#cc1818;padding:12px">Hata.</div>'; return; }
-      if (!d.rogue_count) { result.innerHTML = '<div style="color:#00ab6b;padding:16px">✓ Kaçak kategori yok. Hepsi onaylı listede!</div>'; return; }
-      let html = '<div style="margin-bottom:10px;font-size:13px"><b>' + d.rogue_count + '</b> kaçak kategori bulundu (onaylı 100 dışında).</div>';
-      html += '<div style="margin-bottom:10px"><label style="font-size:12px;cursor:pointer"><input type="checkbox" id="rogue-all"> Tümünü seç</label></div>';
-      html += '<table class="site-table"><thead><tr><th style="width:32px"></th><th>Kategori</th><th>Slug</th><th style="width:80px">Yazı</th></tr></thead><tbody>';
-      d.rogue.forEach(r => {
-        html += '<tr><td><input type="checkbox" class="rogue-cb" value="' + r.id + '"></td>'
-             +  '<td>' + escHtml(r.name) + '</td><td style="color:var(--muted)">' + escHtml(r.slug) + '</td>'
-             +  '<td>' + r.count + '</td></tr>';
-      });
-      html += '</tbody></table>';
-      result.innerHTML = html;
-      const all = document.getElementById('rogue-all');
-      all.addEventListener('change', () => {
-        result.querySelectorAll('.rogue-cb').forEach(c => { c.checked = all.checked; });
-        refreshDelBtn();
-      });
-      result.querySelectorAll('.rogue-cb').forEach(c => c.addEventListener('change', refreshDelBtn));
-      refreshDelBtn();
-    }).catch(() => { scanBtn.disabled = false; scanBtn.textContent = '🔎 Kaçakları Listele'; result.innerHTML = '<div style="color:#cc1818;padding:12px">Bağlantı hatası.</div>'; });
-  });
-
-  delBtn.addEventListener('click', () => {
-    const ids = selectedIds();
-    if (!ids.length) return;
-    if (!confirm(ids.length + ' kaçak kategori silinecek. Yazıları olanlar önce onaylı bir kategoriye (gerekirse "General") taşınacak, hiçbir yazı kategorisiz kalmayacak.\n\nDevam edilsin mi?')) return;
-    delBtn.disabled = true; delBtn.textContent = 'Siliniyor…';
-    post('delete', 'ids=' + encodeURIComponent(ids.join(','))).then(d => {
-      delBtn.disabled = false;
-      if (!d || !d.ok) { statusEl.textContent = 'Hata oluştu.'; delBtn.textContent = '🗑️ Seçilenleri Sil'; return; }
-      statusEl.textContent = '✓ ' + d.deleted_count + ' kategori silindi'
-        + (d.reassigned ? (' · ' + d.reassigned + ' yazı General\'e taşındı') : '');
-      // Listeyi tazele
-      scanBtn.click();
-    }).catch(() => { delBtn.disabled = false; delBtn.textContent = '🗑️ Seçilenleri Sil'; statusEl.textContent = 'Bağlantı hatası.'; });
   });
 })();
 
