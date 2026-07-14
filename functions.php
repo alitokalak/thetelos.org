@@ -2669,6 +2669,13 @@ add_action( 'template_redirect', 'thetelos_smart_404_redirect' );
 function thetelos_smart_404_redirect() {
     if ( ! is_404() ) return;
 
+    // 404 yanıtlarını CACHE'LEME — yoksa LiteSpeed eski 404'ü PHP'yi hiç
+    // çalıştırmadan servis eder ve aşağıdaki yönlendirmeler devreye girmez.
+    if ( ! headers_sent() ) {
+        header( 'X-LiteSpeed-Cache-Control: no-cache' );
+        header( 'Cache-Control: no-cache, no-store, must-revalidate' );
+    }
+
     $path = parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
     if ( ! $path ) return;
     $path = '/' . trim( $path, '/' ) . '/';
