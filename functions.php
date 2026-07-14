@@ -2656,3 +2656,43 @@ function tls_cat_filter() {
 }
 add_action( 'wp_ajax_tls_cat_filter',        'tls_cat_filter' );
 add_action( 'wp_ajax_nopriv_tls_cat_filter', 'tls_cat_filter' );
+
+// -----------------------------------------------------
+// Akıllı 404 kurtarma — kaldırılan/taşınan URL'leri doğru yere 301'le.
+// YALNIZCA gerçek 404'lerde çalışır; normal sayfalara maliyeti yoktur.
+//   1) /category/alt_cizgili/      → /category/tireli/
+//   2) /.../page/N/ (aralık dışı)  → temel arşiv sayfası (/page/N/ atılır)
+//   3) /{slug}-2..9/ (kopya)       → temel /{slug}/ yayında varsa oraya
+// Kalanlar (gerçekten silinmiş yazılar, /feed/, ?p=…) 404 kalır — doğrusu bu.
+// -----------------------------------------------------
+add_action( 'template_redirect', 'thetelos_smart_404_redirect' );
+function thetelos_smart_404_redirect() {
+    if ( ! is_404() ) return;
+
+    $path = parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ?? '' ), PHP_URL_PATH );
+    if ( ! $path ) return;
+    $path = '/' . trim( $path, '/' ) . '/';
+
+    // 2) Aralık dışı sayfalama → temel arşive (ör. /authors/plato/page/3/ → /authors/plato/,
+    //    /category/philosophy/page/103/ → /category/philosophy/, /page/116/ → /).
+    if ( preg_match( '#^(/.*?)/page/\d+/$#', $path, $m ) ) {
+        $base = $m[1] . '/';
+        if ( strpos( $base, '/category/' ) === 0 ) $base = str_replace( '_', '-', $base );
+        wp_redirect( home_url( $base ), 301 ); exit;
+    }
+    if ( preg_match( '#^/page/\d+/$#', $path ) ) { wp_redirect( home_url( '/' ), 301 ); exit; }
+
+    // 1) Kategoride alt çizgi → tire (ör. /category/ancient_history/ → /category/ancient-history/).
+    if ( strpos( $path, '/category/' ) === 0 && strpos( $path, '_' ) !== false ) {
+        $fixed = str_replace( '_', '-', $path );
+        if ( $fixed !== $path ) { wp_redirect( home_url( $fixed ), 301 ); exit; }
+    }
+
+    // 3) Kopya sonek: /{slug}-2..9/ → temel /{slug}/ (yayında bir post varsa).
+    if ( preg_match( '#^/([a-z0-9-]+)-[2-9]/$#', $path, $m ) ) {
+        $base_post = get_page_by_path( $m[1], OBJECT, 'post' );
+        if ( $base_post && $base_post->post_status === 'publish' ) {
+            wp_redirect( get_permalink( $base_post->ID ), 301 ); exit;
+        }
+    }
+}
