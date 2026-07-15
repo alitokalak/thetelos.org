@@ -3686,3 +3686,32 @@
   .tls-thanks-frame { padding: 44px 26px 40px; }
   .tls-thanks-headline { font-size: 36px; }
 }
+
+/* ────────────────────────────────
+   İÇ LİNKLEME: Breadcrumbs + More-by-author
+──────────────────────────────── */
+.tls-crumbs { font-family: var(--tls-sans); font-size: 12px; margin-bottom: 14px; }
+.tls-crumbs ol { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; }
+.tls-crumbs li { display: flex; align-items: center; gap: 6px; color: var(--tls-muted); }
+.tls-crumbs li + li::before { content: "›"; color: var(--tls-muted); opacity: .6; }
+.tls-crumbs a { color: var(--tls-muted); text-decoration: none; }
+.tls-crumbs a:hover { color: var(--tls-gold); }
+.tls-crumbs span[aria-current] {
+  color: var(--tls-bg-dark); max-width: 340px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; display: inline-block;
+}
+/* Koyu hero'larda açık renk */
+.tls-archive-hero .tls-crumbs a, .tls-archive-hero .tls-crumbs li,
+.tls-author-hero  .tls-crumbs a, .tls-author-hero  .tls-crumbs li { color: rgba(255,255,255,.55); }
+.tls-archive-hero .tls-crumbs a:hover, .tls-author-hero .tls-crumbs a:hover { color: var(--tls-gold-light); }
+.tls-archive-hero .tls-crumbs span[aria-current],
+.tls-author-hero  .tls-crumbs span[aria-current] { color: rgba(255,255,255,.85); }
+.tls-archive-hero .tls-crumbs, .tls-author-hero .tls-crumbs { margin-bottom: 22px; }
+
+.tls-more-author-all { margin-top: 22px; text-align: center; font-family: var(--tls-sans); font-size: 14px; }
+.tls-more-author-all a { color: var(--tls-gold); text-decoration: none; font-weight: 600; }
+.tls-more-author-all a:hover { text-decoration: underline; }
+
+/* Gövde içi otomatik yazar linki */
+.tls-article-content a.tls-author-inline { color: inherit; border-bottom: 1px solid var(--tls-gold); text-decoration: none; }
+.tls-article-content a.tls-author-inline:hover { color: var(--tls-gold); }

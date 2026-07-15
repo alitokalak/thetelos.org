@@ -25,6 +25,7 @@ $author_count = $term ? (int) $term->count  : 0;
 ══════════════════════════════════ -->
 <div class="tls-author-hero">
     <div class="container">
+        <?php if ( function_exists( 'thetelos_breadcrumbs' ) ) thetelos_breadcrumbs(); ?>
         <p class="tls-author-eyebrow">Author Archive</p>
         <h1 class="tls-author-name"><?php echo esc_html( $author_name ); ?></h1>
         <?php if ( $author_desc ) : ?>

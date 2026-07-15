@@ -24,6 +24,7 @@ $is_filterable = ( is_category() || is_tag() );
 ══════════════════════════════════ -->
 <div class="tls-archive-hero">
     <div class="container">
+        <?php if ( function_exists( 'thetelos_breadcrumbs' ) ) thetelos_breadcrumbs(); ?>
         <p class="tls-archive-eyebrow">
             <?php
             if ( is_category() ) echo 'Category';

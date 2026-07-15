@@ -140,6 +140,9 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
             <!-- ── RIGHT: Meta + Article (continuous flow) ── -->
             <div class="tls-single-content">
 
+                <!-- Breadcrumbs (iç linkleme) -->
+                <?php if ( function_exists( 'thetelos_breadcrumbs' ) ) thetelos_breadcrumbs(); ?>
+
                 <!-- Genre badges -->
                 <?php if ( ! empty( $cats ) ) : ?>
                 <div class="tls-book-genres">
@@ -323,6 +326,37 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
 </div><!-- /.tls-single-wrap -->
 
 <?php endwhile; endif; ?>
+
+<!-- More by this author (iç linkleme) -->
+<?php
+if ( $book_author ) :
+    $tls_more_by = get_posts( [
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'posts_per_page' => 4,
+        'post__not_in'   => [ get_the_ID() ],
+        'no_found_rows'  => true,
+        'tax_query'      => [ [
+            'taxonomy' => 'authors',
+            'field'    => 'term_id',
+            'terms'    => $book_author->term_id,
+        ] ],
+    ] );
+    if ( ! empty( $tls_more_by ) ) : ?>
+<div class="tls-related tls-more-author">
+    <div class="container">
+        <h2 class="tls-related-title">More by <?php echo esc_html( $book_author->name ); ?></h2>
+        <div class="tls-books-grid">
+            <?php foreach ( $tls_more_by as $tls_mb ) { echo thetelos_book_card( $tls_mb->ID ); } ?>
+        </div>
+        <p class="tls-more-author-all">
+            <a href="<?php echo esc_url( get_term_link( $book_author ) ); ?>">
+                All <?php echo (int) $book_author->count; ?> summaries by <?php echo esc_html( $book_author->name ); ?> &rarr;
+            </a>
+        </p>
+    </div>
+</div>
+<?php endif; endif; ?>
 
 <!-- Related books -->
 <?php if ( $disable_rp == 0 ) : ?>

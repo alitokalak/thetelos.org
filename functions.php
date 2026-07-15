@@ -489,7 +489,7 @@ function thetelos_enqueue_custom_assets() {
         'thetelos-styles',
         get_template_directory_uri() . '/assets/css/thetelos.css',
         [ 'mediumish-style' ],
-        THEME_VERSION . '.m23'
+        THEME_VERSION . '.m24'
     );
 
     wp_enqueue_script(
@@ -2744,4 +2744,82 @@ function thetelos_smart_404_redirect() {
             wp_redirect( get_permalink( $base_post->ID ), 301 ); exit;
         }
     }
+}
+
+// -----------------------------------------------------
+// İç linkleme: breadcrumb izi (Home › Category › Başlık).
+// Görsel linkler tarama yolu + anchor değeri sağlar. BreadcrumbList
+// şeması Yoast'ın schema grafiğinden zaten çıktığı için burada ayrıca
+// JSON-LD basılmaz (mükerrer şema olmasın).
+// -----------------------------------------------------
+function thetelos_breadcrumbs() {
+    $items = [ [ 'Home', home_url( '/' ) ] ];
+
+    if ( is_singular( 'post' ) ) {
+        $cats = get_the_category();
+        if ( ! empty( $cats ) ) {
+            $items[] = [ $cats[0]->name, get_category_link( $cats[0]->term_id ) ];
+        }
+        $items[] = [ get_the_title(), '' ];
+    } elseif ( is_category() ) {
+        $items[] = [ 'Categories', home_url( '/categories/' ) ];
+        $items[] = [ single_cat_title( '', false ), '' ];
+    } elseif ( is_tax( 'authors' ) ) {
+        $items[] = [ 'Authors', home_url( '/authors/' ) ];
+        $items[] = [ single_term_title( '', false ), '' ];
+    } else {
+        return;
+    }
+
+    echo '<nav class="tls-crumbs" aria-label="Breadcrumb"><ol>';
+    $last = count( $items ) - 1;
+    foreach ( $items as $i => $it ) {
+        echo '<li>';
+        if ( $i < $last && $it[1] ) {
+            echo '<a href="' . esc_url( $it[1] ) . '">' . esc_html( $it[0] ) . '</a>';
+        } else {
+            echo '<span aria-current="page">' . esc_html( $it[0] ) . '</span>';
+        }
+        echo '</li>';
+    }
+    echo '</ol></nav>';
+}
+
+// -----------------------------------------------------
+// İç linkleme: gövdede yazar adının İLK geçtiği yeri yazar arşivine
+// linkle (bağlamsal iç link). Mevcut linklerin ve başlıkların içine
+// dokunmaz; kitap başına tek link ekler.
+// -----------------------------------------------------
+add_filter( 'the_content', 'thetelos_autolink_author', 20 );
+function thetelos_autolink_author( $content ) {
+    if ( ! is_singular( 'post' ) || ! in_the_loop() || ! is_main_query() ) return $content;
+
+    $terms = get_the_terms( get_the_ID(), 'authors' );
+    if ( empty( $terms ) || is_wp_error( $terms ) ) return $content;
+    $term = $terms[0];
+    $url  = get_term_link( $term );
+    if ( is_wp_error( $url ) ) return $content;
+
+    // HTML'i etiket/metin parçalarına ayır; yalnız <a> ve <h1-6> DIŞINDAKİ
+    // düz metinde, adın ilk geçtiği yeri linkle.
+    $parts = preg_split( '/(<[^>]*>)/u', $content, -1, PREG_SPLIT_DELIM_CAPTURE );
+    $in_a = 0; $in_h = 0; $done = false;
+    foreach ( $parts as $i => $chunk ) {
+        if ( $chunk === '' ) continue;
+        if ( $chunk[0] === '<' ) {
+            if     ( preg_match( '/^<a[\s>]/i', $chunk ) )      $in_a++;
+            elseif ( preg_match( '/^<\/a>/i', $chunk ) )        $in_a = max( 0, $in_a - 1 );
+            elseif ( preg_match( '/^<h[1-6][\s>]/i', $chunk ) ) $in_h++;
+            elseif ( preg_match( '/^<\/h[1-6]>/i', $chunk ) )   $in_h = max( 0, $in_h - 1 );
+            continue;
+        }
+        if ( $done || $in_a > 0 || $in_h > 0 ) continue;
+        $new = preg_replace(
+            '/' . preg_quote( $term->name, '/' ) . '/u',
+            '<a class="tls-author-inline" href="' . esc_url( $url ) . '">' . esc_html( $term->name ) . '</a>',
+            $chunk, 1, $count
+        );
+        if ( $count ) { $parts[ $i ] = $new; $done = true; }
+    }
+    return $done ? implode( '', $parts ) : $content;
 }
