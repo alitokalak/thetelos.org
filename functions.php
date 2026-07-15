@@ -2147,13 +2147,41 @@ function thetelos_post_reading_time($post_id=null){if(!$post_id)$post_id=get_the
 
 function thetelos_analysis_reading_time($analysis_post){$content=strip_tags($analysis_post->post_content);$words=str_word_count($content);$minutes=floor($words/295);$seconds=floor($words%295/(295/60));return $minutes>=1?$minutes.' min read':$seconds.' sec read';}
 
+// Kesme işareti varyantlarını (’ ‘ ‛ ʼ ` ´) düz apostrofa çevir.
+// Başlıklar DB'de kıvrık ’ ile saklanıyor; kullanıcı düz ' yazınca
+// (ör. "On the Lord's Prayer") arama boş dönüyordu.
+function tls_norm_apostrophes($s){
+    return preg_replace('/[\x{2018}\x{2019}\x{201B}\x{02BC}\x{FF07}\x{0060}\x{00B4}]/u', "'", (string) $s);
+}
+
+// Tek arama kelimesi için apostrof-toleranslı SQL koşulu üret.
+// LIKE deseninde apostrof % jokerine çevrilir → "Lord's", "Lord’s" ve
+// "Lords" üçü de eşleşir. Kullanıcı apostrofsuz yazdıysa, başlıktaki
+// apostroflar REPLACE ile silinerek de denenir.
+function tls_search_token_clause($token){
+    global $wpdb;
+    $tok  = tls_norm_apostrophes($token);
+    $flex = '%' . str_replace("'", '%', $wpdb->esc_like($tok)) . '%';
+    $c = [
+        $wpdb->prepare("{$wpdb->posts}.post_title LIKE %s",   $flex),
+        $wpdb->prepare("{$wpdb->posts}.post_content LIKE %s", $flex),
+    ];
+    if (strpos($tok, "'") === false) {
+        $c[] = $wpdb->prepare(
+            "REPLACE(REPLACE({$wpdb->posts}.post_title, '’', ''), '''', '') LIKE %s",
+            '%' . $wpdb->esc_like($tok) . '%'
+        );
+    }
+    return '(' . implode(' OR ', $c) . ')';
+}
+
 function thetelos_similarity($a,$b){$a=mb_strtolower($a);$b=mb_strtolower($b);if($a===$b)return 100;similar_text($a,$b,$pct);$lev=levenshtein($a,$b);$max=max(mb_strlen($a),mb_strlen($b));$lev_score=$max>0?(1-$lev/$max)*100:0;return($pct+$lev_score)/2;}
 
-function thetelos_fuzzy_match($needle,$haystack,$threshold=72){$needle=mb_strtolower(trim($needle));$haystack=mb_strtolower(trim($haystack));if(mb_strlen($needle)<3)return false;if(mb_strpos($haystack,$needle)!==false)return true;foreach(preg_split('/\s+/',$haystack)as $t){if(thetelos_similarity($needle,$t)>=$threshold)return true;}return thetelos_similarity($needle,$haystack)>=$threshold;}
+function thetelos_fuzzy_match($needle,$haystack,$threshold=72){$needle=mb_strtolower(trim(tls_norm_apostrophes($needle)));$haystack=mb_strtolower(trim(tls_norm_apostrophes($haystack)));if(mb_strlen($needle)<3)return false;if(mb_strpos($haystack,$needle)!==false)return true;foreach(preg_split('/\s+/',$haystack)as $t){if(thetelos_similarity($needle,$t)>=$threshold)return true;}return thetelos_similarity($needle,$haystack)>=$threshold;}
 
 function thetelos_smart_search($query){
     if(!$query->is_search()||!$query->is_main_query()||is_admin())return;
-    $raw=trim(get_query_var('s'));
+    $raw=tls_norm_apostrophes(trim(get_query_var('s')));
     if(empty($raw))return;
     $all_authors=get_transient('thetelos_all_authors');
     if(false===$all_authors){$all_authors=get_terms(['taxonomy'=>'authors','hide_empty'=>true,'number'=>0]);if(is_wp_error($all_authors))$all_authors=[];set_transient('thetelos_all_authors',$all_authors,3600);}
@@ -2162,10 +2190,22 @@ function thetelos_smart_search($query){
     $author_term_ids=[];$title_tokens=[];
     foreach($parts as $part){$found=false;foreach($all_authors as $term){if(thetelos_fuzzy_match($part,$term->name)){$author_term_ids[]=$term->term_id;$found=true;break;}}if(!$found)$title_tokens[]=$part;}
     $author_term_ids=array_unique($author_term_ids);
-    if(empty($author_term_ids))return;
+    if(empty($author_term_ids)){
+        // Yazar eşleşmedi → varsayılan WP aramasını apostrof-toleranslı
+        // sürümle değiştir. ("Lord's" vs "Lord’s" farkı yüzünden boş
+        // sonuç dönmesin; kelimeler yine AND ile aranır.)
+        $tokens=array_values(array_filter(preg_split('/\s+/u',$raw),function($w){return mb_strlen($w)>=2;}));
+        if(empty($tokens))return;
+        add_filter('posts_search',function($search,$q)use($tokens){
+            if(!$q->is_main_query()||!$q->is_search())return $search;
+            $clauses=[];foreach($tokens as $t){$clauses[]=tls_search_token_clause($t);}
+            return ' AND ('.implode(' AND ',$clauses).')';
+        },10,2);
+        return;
+    }
     $query->set('tax_query',[['taxonomy'=>'authors','field'=>'term_id','terms'=>$author_term_ids,'operator'=>'IN']]);
     if(!empty($title_tokens)){
-        add_filter('posts_search',function($search,$q)use($title_tokens){global $wpdb;if(!$q->is_main_query()||!$q->is_search())return $search;$clauses=[];foreach($title_tokens as $token){$clauses[]=$wpdb->prepare("({$wpdb->posts}.post_title LIKE %s OR {$wpdb->posts}.post_content LIKE %s)",'%'.$wpdb->esc_like($token).'%','%'.$wpdb->esc_like($token).'%');}return' AND ('.implode(' AND ',$clauses).')';},10,2);
+        add_filter('posts_search',function($search,$q)use($title_tokens){if(!$q->is_main_query()||!$q->is_search())return $search;$clauses=[];foreach($title_tokens as $token){$clauses[]=tls_search_token_clause($token);}return' AND ('.implode(' AND ',$clauses).')';},10,2);
     }else{
         add_filter('posts_search',function($search,$q){if(!$q->is_main_query()||!$q->is_search())return $search;return '';},10,2);
     }
@@ -2552,9 +2592,11 @@ function tls_cat_filter_where( $where, $q ) {
             $wpdb->esc_like( $letter ) . '%'
         );
     } elseif ( $needle !== '' ) {
+        // Apostrof-toleranslı: "Lord's" / "Lord’s" / "Lords" hepsi eşleşsin.
+        $flex = '%' . str_replace( "'", '%', $wpdb->esc_like( tls_norm_apostrophes( $needle ) ) ) . '%';
         $where .= $wpdb->prepare(
             " AND {$wpdb->posts}.post_title LIKE %s",
-            '%' . $wpdb->esc_like( $needle ) . '%'
+            $flex
         );
     }
     return $where;
@@ -2610,7 +2652,7 @@ function tls_cat_filter() {
                 } elseif ( $letter !== '' ) {
                     $ok = ( mb_strtoupper( mb_substr( $t->name, 0, 1 ) ) === $letter );
                 } else {
-                    $ok = ( mb_stripos( $t->name, $search ) !== false );
+                    $ok = ( mb_stripos( tls_norm_apostrophes( $t->name ), tls_norm_apostrophes( $search ) ) !== false );
                 }
                 if ( $ok ) { $term_ids[] = (int) $t->term_id; }
             }
