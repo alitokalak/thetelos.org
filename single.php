@@ -140,6 +140,9 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
             <!-- ── RIGHT: Meta + Article (continuous flow) ── -->
             <div class="tls-single-content">
 
+                <!-- Breadcrumbs: Home › Authors › Yazar -->
+                <?php if ( function_exists( 'thetelos_breadcrumbs' ) ) thetelos_breadcrumbs(); ?>
+
                 <!-- Genre badges -->
                 <?php if ( ! empty( $cats ) ) : ?>
                 <div class="tls-book-genres">

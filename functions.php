@@ -2756,11 +2756,15 @@ function thetelos_breadcrumbs() {
     $items = [ [ 'Home', home_url( '/' ) ] ];
 
     if ( is_singular( 'post' ) ) {
-        $cats = get_the_category();
-        if ( ! empty( $cats ) ) {
-            $items[] = [ $cats[0]->name, get_category_link( $cats[0]->term_id ) ];
-        }
-        $items[] = [ get_the_title(), '' ];
+        // Kitap sayfasında yazar hattı: Home › Authors › Yazar Adı.
+        // (Kategori rozetleri sayfada zaten var; bu iz tekrara girmeden
+        // Authors dizinine + yazar arşivine link kazandırır.)
+        $terms = get_the_terms( get_the_ID(), 'authors' );
+        if ( empty( $terms ) || is_wp_error( $terms ) ) return;
+        $turl = get_term_link( $terms[0] );
+        if ( is_wp_error( $turl ) ) return;
+        $items[] = [ 'Authors', home_url( '/authors/' ) ];
+        $items[] = [ $terms[0]->name, $turl ];
     } elseif ( is_category() ) {
         $items[] = [ 'Categories', home_url( '/categories/' ) ];
         $items[] = [ single_cat_title( '', false ), '' ];
@@ -2772,10 +2776,9 @@ function thetelos_breadcrumbs() {
     }
 
     echo '<nav class="tls-crumbs" aria-label="Breadcrumb"><ol>';
-    $last = count( $items ) - 1;
-    foreach ( $items as $i => $it ) {
+    foreach ( $items as $it ) {
         echo '<li>';
-        if ( $i < $last && $it[1] ) {
+        if ( $it[1] ) {
             echo '<a href="' . esc_url( $it[1] ) . '">' . esc_html( $it[0] ) . '</a>';
         } else {
             echo '<span aria-current="page">' . esc_html( $it[0] ) . '</span>';
