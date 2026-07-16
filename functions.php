@@ -2775,6 +2775,28 @@ function thetelos_breadcrumbs() {
         return;
     }
 
+    // Kritik stiller inline: LiteSpeed'in birleştirilmiş/minify CSS cache'i
+    // (özellikle mobil varyant) tazelenmeden de doğru görünsün — yoksa
+    // tarayıcı varsayılanına düşüp "1. 2. 3." numaralı liste basıyor.
+    static $tls_crumbs_css_done = false;
+    if ( ! $tls_crumbs_css_done ) {
+        $tls_crumbs_css_done = true;
+        echo '<style>'
+           . '.tls-crumbs{font-family:var(--tls-sans);font-size:12px;margin-bottom:14px}'
+           . '.tls-crumbs ol{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0}'
+           . '.tls-crumbs li{display:flex;align-items:center;gap:6px;color:var(--tls-muted)}'
+           . '.tls-crumbs li+li::before{content:"\203A";color:var(--tls-muted);opacity:.6}'
+           . '.tls-crumbs a{color:var(--tls-muted);text-decoration:none}'
+           . '.tls-crumbs a:hover{color:var(--tls-gold)}'
+           . '.tls-crumbs span[aria-current]{color:var(--tls-bg-dark);max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:inline-block}'
+           . '.tls-archive-hero .tls-crumbs a,.tls-archive-hero .tls-crumbs li,'
+           . '.tls-author-hero .tls-crumbs a,.tls-author-hero .tls-crumbs li{color:rgba(255,255,255,.55)}'
+           . '.tls-archive-hero .tls-crumbs span[aria-current],'
+           . '.tls-author-hero .tls-crumbs span[aria-current]{color:rgba(255,255,255,.85)}'
+           . '.tls-archive-hero .tls-crumbs,.tls-author-hero .tls-crumbs{margin-bottom:22px}'
+           . '</style>';
+    }
+
     echo '<nav class="tls-crumbs" aria-label="Breadcrumb"><ol>';
     foreach ( $items as $it ) {
         echo '<li>';
