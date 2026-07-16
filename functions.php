@@ -2747,6 +2747,53 @@ function thetelos_smart_404_redirect() {
 }
 
 // -----------------------------------------------------
+// AFFILIATE: Amazon Ortaklık ayarları + link üretici.
+// WP Admin → Ayarlar → Genel altına iki alan eklenir:
+//   tls_amazon_tag    → izleme etiketi (ör. thetelos-21). BOŞSA buton görünmez.
+//   tls_amazon_domain → etiketin ait olduğu mağaza (www.amazon.com / .com.tr).
+// -----------------------------------------------------
+add_action( 'admin_init', function () {
+    register_setting( 'general', 'tls_amazon_tag',    [ 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field', 'default' => '' ] );
+    register_setting( 'general', 'tls_amazon_domain', [ 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field', 'default' => 'www.amazon.com' ] );
+    add_settings_field( 'tls_amazon_tag', 'Amazon Affiliate Tag', function () {
+        echo '<input type="text" name="tls_amazon_tag" value="' . esc_attr( get_option( 'tls_amazon_tag', '' ) ) . '" class="regular-text" placeholder="thetelos-21">';
+        echo '<p class="description">Amazon Associates izleme etiketi. Boş bırakılırsa sitede "Buy on Amazon" butonu görünmez.</p>';
+    }, 'general' );
+    add_settings_field( 'tls_amazon_domain', 'Amazon Domain', function () {
+        echo '<input type="text" name="tls_amazon_domain" value="' . esc_attr( get_option( 'tls_amazon_domain', 'www.amazon.com' ) ) . '" class="regular-text" placeholder="www.amazon.com">';
+        echo '<p class="description">Etiketin kayıtlı olduğu mağaza: <code>www.amazon.com</code> veya <code>www.amazon.com.tr</code>.</p>';
+    }, 'general' );
+} );
+
+// Kitap için Amazon ortaklık linki. ASIN meta'sı (_tls_amazon_asin) varsa
+// doğrudan ürün sayfası; yoksa temiz "kitap adı + yazar" araması (Books
+// kategorisi). Etiket ayarlanmamışsa boş döner → buton hiç basılmaz.
+function tls_amazon_url( $post_id ) {
+    $tag = trim( (string) get_option( 'tls_amazon_tag', '' ) );
+    if ( $tag === '' ) return '';
+    $domain = trim( (string) get_option( 'tls_amazon_domain', 'www.amazon.com' ) );
+    if ( $domain === '' ) $domain = 'www.amazon.com';
+
+    $asin = trim( (string) get_post_meta( $post_id, '_tls_amazon_asin', true ) );
+    if ( $asin !== '' ) {
+        return 'https://' . $domain . '/dp/' . rawurlencode( $asin ) . '?tag=' . rawurlencode( $tag );
+    }
+
+    // Başlıktan " - Yazar" ekini ve sondaki parantezli orijinal adı temizle.
+    $title   = html_entity_decode( get_the_title( $post_id ), ENT_QUOTES, 'UTF-8' );
+    $authors = get_the_terms( $post_id, 'authors' );
+    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0]->name : '';
+    if ( $author !== '' ) {
+        $title = preg_replace( '/\s*[-–—]\s*' . preg_quote( $author, '/' ) . '\s*$/u', '', $title );
+    }
+    $title = trim( preg_replace( '/\s*\([^()]*\)\s*$/u', '', $title ) );
+    $q     = trim( $title . ' ' . $author );
+    if ( $q === '' ) return '';
+
+    return 'https://' . $domain . '/s?k=' . rawurlencode( $q ) . '&i=stripbooks&tag=' . rawurlencode( $tag );
+}
+
+// -----------------------------------------------------
 // İç linkleme: breadcrumb izi (Home › Category › Başlık).
 // Görsel linkler tarama yolu + anchor değeri sağlar. BreadcrumbList
 // şeması Yoast'ın schema grafiğinden zaten çıktığı için burada ayrıca

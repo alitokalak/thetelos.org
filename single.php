@@ -220,7 +220,28 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"/></svg>
                         Save PDF
                     </button>
+
+                    <?php
+                    // ── Affiliate CTA: Buy on Amazon ──
+                    $tls_amz = function_exists( 'tls_amazon_url' ) ? tls_amazon_url( get_the_ID() ) : '';
+                    if ( $tls_amz ) : ?>
+                    <style>
+                    .tls-amazon-btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--tls-sans);font-size:13px;font-weight:600;padding:9px 18px;border-radius:999px;background:var(--tls-gold);color:#fff !important;border:1px solid var(--tls-gold);text-decoration:none !important;transition:background .15s,border-color .15s}
+                    .tls-amazon-btn:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light);color:#fff}
+                    .tls-amazon-btn svg{width:15px;height:15px}
+                    .tls-affiliate-note{font-family:var(--tls-sans);font-size:11px;color:var(--tls-muted);margin:8px 0 0}
+                    </style>
+                    <a class="tls-amazon-btn" href="<?php echo esc_url( $tls_amz ); ?>"
+                       target="_blank" rel="sponsored nofollow noopener"
+                       title="Buy this book on Amazon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2 3h3l2.6 12.5a2 2 0 002 1.5h9.7a2 2 0 002-1.6L23 7H6"/></svg>
+                        Buy on Amazon
+                    </a>
+                    <?php endif; ?>
                 </div>
+                <?php if ( ! empty( $tls_amz ) ) : ?>
+                <p class="tls-affiliate-note">As an Amazon Associate, The Telos earns from qualifying purchases.</p>
+                <?php endif; ?>
 
 
                 <!-- ── Article content (flows directly below meta) ── -->
