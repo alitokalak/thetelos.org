@@ -230,6 +230,14 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     .tls-amazon-btn:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light);color:#fff}
                     .tls-amazon-btn svg{width:15px;height:15px}
                     .tls-affiliate-note{font-family:var(--tls-sans);font-size:11px;color:var(--tls-muted);margin:8px 0 0}
+                    /* Mobil: üç buton tek satıra sığsın diye kompaktlaş */
+                    @media (max-width:480px){
+                        .tls-post-actions{gap:8px}
+                        .tls-post-actions .tls-status-btn{padding:8px 12px;font-size:12px}
+                        .tls-post-actions .tls-status-btn svg{width:13px;height:13px}
+                        .tls-amazon-btn{padding:8px 13px;font-size:12px;gap:6px}
+                        .tls-amazon-btn svg{width:13px;height:13px}
+                    }
                     </style>
                     <a class="tls-amazon-btn" href="<?php echo esc_url( $tls_amz ); ?>"
                        target="_blank" rel="sponsored nofollow noopener"
