@@ -66,6 +66,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <a href="panel.php"><span class="ico">✍</span> İçerik Üret</a>
       <a href="seo.php" class="active"><span class="ico">🔍</span> İçerik SEO</a>
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
+      <a href="amazon-match.php"><span class="ico">🛒</span> Amazon</a>
       <a href="settings.php"><span class="ico">⚙</span> Ayarlar</a>
       <a href="<?= rtrim(WP_URL,'/') ?>/wp-admin/" target="_blank"><span class="ico">🔗</span> WP Admin</a>
       <a href="<?= rtrim(WP_URL,'/') ?>/" target="_blank"><span class="ico">↗</span> Siteyi Gör</a>

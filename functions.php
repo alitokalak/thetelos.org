@@ -2774,8 +2774,9 @@ function tls_amazon_url( $post_id ) {
     $domain = trim( (string) get_option( 'tls_amazon_domain', 'www.amazon.com' ) );
     if ( $domain === '' ) $domain = 'www.amazon.com';
 
+    // '-' = panelde "eşleşme bulunamadı, bir daha sorma" işareti → arama linkine düş.
     $asin = trim( (string) get_post_meta( $post_id, '_tls_amazon_asin', true ) );
-    if ( $asin !== '' ) {
+    if ( $asin !== '' && $asin !== '-' ) {
         return 'https://' . $domain . '/dp/' . rawurlencode( $asin ) . '?tag=' . rawurlencode( $tag );
     }
 
