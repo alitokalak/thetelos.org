@@ -2794,6 +2794,34 @@ function tls_amazon_url( $post_id ) {
 }
 
 // -----------------------------------------------------
+// AFFILIATE: GA4 tıklama izleme. "Buy on Amazon" butonlarına tıklamada
+// Analytics'e affiliate_click olayı gönderir (kitap + yazar ile) — hangi
+// kitapların Amazon tıklaması getirdiği GA4'te görünür. Site Kit'in
+// gtag'i yoksa sessizce hiçbir şey yapmaz.
+// -----------------------------------------------------
+add_action( 'wp_footer', function () {
+    if ( ! is_singular( 'post' ) ) return;
+    if ( trim( (string) get_option( 'tls_amazon_tag', '' ) ) === '' ) return;
+    $authors = get_the_terms( get_the_ID(), 'authors' );
+    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0]->name : '';
+    ?>
+    <script>
+    (function () {
+        var t = <?php echo wp_json_encode( html_entity_decode( get_the_title(), ENT_QUOTES, 'UTF-8' ) ); ?>,
+            a = <?php echo wp_json_encode( $author ); ?>;
+        document.querySelectorAll('.tls-amazon-btn,.tls-amazon-side').forEach(function (el) {
+            el.addEventListener('click', function () {
+                var p = { affiliate_network: 'amazon', book_title: t, book_author: a };
+                if (typeof gtag === 'function') { gtag('event', 'affiliate_click', p); }
+                else if (window.dataLayer) { p.event = 'affiliate_click'; window.dataLayer.push(p); }
+            });
+        });
+    })();
+    </script>
+    <?php
+}, 99 );
+
+// -----------------------------------------------------
 // İç linkleme: breadcrumb izi (Home › Category › Başlık).
 // Görsel linkler tarama yolu + anchor değeri sağlar. BreadcrumbList
 // şeması Yoast'ın schema grafiğinden zaten çıktığı için burada ayrıca
