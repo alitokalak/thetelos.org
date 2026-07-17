@@ -109,6 +109,23 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     <div class="tls-rating-msg"></div>
                 </div>
 
+                <?php
+                // ── Affiliate CTA (sidebar): tam genişlik Buy on Amazon ──
+                $tls_amz_side = function_exists( 'tls_amazon_url' ) ? tls_amazon_url( $post_id ) : '';
+                if ( $tls_amz_side ) : ?>
+                <style>
+                .tls-amazon-side{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:var(--tls-sans);font-size:14px;font-weight:600;padding:12px 18px;margin:0 0 10px;border-radius:999px;background:var(--tls-gold);color:#fff !important;border:1px solid var(--tls-gold);text-decoration:none !important;transition:background .15s,border-color .15s}
+                .tls-amazon-side:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light);color:#fff}
+                .tls-amazon-side svg{width:15px;height:15px}
+                </style>
+                <a class="tls-amazon-side" href="<?php echo esc_url( $tls_amz_side ); ?>"
+                   target="_blank" rel="sponsored nofollow noopener"
+                   title="Buy this book on Amazon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2 3h3l2.6 12.5a2 2 0 002 1.5h9.7a2 2 0 002-1.6L23 7H6"/></svg>
+                    Buy on Amazon
+                </a>
+                <?php endif; ?>
+
                 <!-- Reading status -->
                 <div class="tls-read-status" role="group" aria-label="Reading status"
                      data-post-id="<?php echo (int)$post_id; ?>">
