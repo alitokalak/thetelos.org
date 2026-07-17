@@ -230,11 +230,11 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     .tls-amazon-btn:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light);color:#fff}
                     .tls-amazon-btn svg{width:15px;height:15px}
                     .tls-affiliate-note{font-family:var(--tls-sans);font-size:11px;color:var(--tls-muted);margin:8px 0 0}
-                    /* Mobil: ikon gizle + yan boşluğu kıs → buton üst satıra,
-                       Save PDF'in yanına sığar. Yazı boyutu/yükseklik aynı. */
+                    /* Mobil: yan boşluğu ve ikon aralığını kıs → buton ikonlu
+                       haliyle Save PDF'in yanına sığar. Yazı boyutu aynı. */
                     @media (max-width:480px){
-                        .tls-amazon-btn svg{display:none}
-                        .tls-amazon-btn{padding:9px 12px}
+                        .tls-amazon-btn{padding:9px 12px;gap:6px}
+                        .tls-amazon-btn svg{width:13px;height:13px}
                     }
                     </style>
                     <a class="tls-amazon-btn" href="<?php echo esc_url( $tls_amz ); ?>"
