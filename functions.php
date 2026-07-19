@@ -489,7 +489,7 @@ function thetelos_enqueue_custom_assets() {
         'thetelos-styles',
         get_template_directory_uri() . '/assets/css/thetelos.css',
         [ 'mediumish-style' ],
-        THEME_VERSION . '.m24'
+        THEME_VERSION . '.m25'
     );
 
     wp_enqueue_script(
@@ -2794,6 +2794,131 @@ function tls_amazon_url( $post_id ) {
     return 'https://' . $domain . '/s?k=' . rawurlencode( $q ) . '&i=stripbooks&tag=' . rawurlencode( $tag );
 }
 
+// Kitap için temiz "başlık + yazar" araması (Amazon dışı mağaza aramalarında
+// da kullanılır). Başlıktan " - Yazar" ekini ve sondaki parantezli orijinal
+// adı temizler.
+function tls_book_query( $post_id ) {
+    $title   = html_entity_decode( get_the_title( $post_id ), ENT_QUOTES, 'UTF-8' );
+    $authors = get_the_terms( $post_id, 'authors' );
+    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0]->name : '';
+    if ( $author !== '' ) {
+        $title = preg_replace( '/\s*[-–—]\s*' . preg_quote( $author, '/' ) . '\s*$/u', '', $title );
+    }
+    $title = trim( preg_replace( '/\s*\([^()]*\)\s*$/u', '', $title ) );
+    return trim( $title . ' ' . $author );
+}
+
+// Kitap için satın-alma mağazalarının ortaklık linkleri (hepsi Amazon ailesi,
+// tek `tls_amazon_tag` etiketiyle çalışır → ekstra affiliate kaydı gerekmez):
+//   amazon → basılı / ana ürün (ASIN varsa doğrudan sayfa, yoksa Kitaplar araması)
+//   kindle → Kindle mağazası araması (dijital-metin)
+//   audible → Audible araması (sesli kitap; trial bounty'si de bu etiketle sayılır)
+// Etiket ayarlı değilse boş dizi döner → butonlar hiç basılmaz.
+function tls_retailer_urls( $post_id ) {
+    $tag = trim( (string) get_option( 'tls_amazon_tag', '' ) );
+    if ( $tag === '' ) return [];
+    $domain = trim( (string) get_option( 'tls_amazon_domain', 'www.amazon.com' ) );
+    if ( $domain === '' ) $domain = 'www.amazon.com';
+
+    $out = [];
+
+    // Amazon (basılı / ana ürün) — ASIN'li derin link ya da Kitaplar araması.
+    $amz = tls_amazon_url( $post_id );
+    if ( $amz !== '' ) $out['amazon'] = $amz;
+
+    $q = tls_book_query( $post_id );
+    if ( $q === '' ) return $out;
+
+    // Kindle — dijital-metin mağazasında arama (Kindle ASIN'i basılıdan farklı
+    // olduğu için ASIN'e değil aramaya bağlanır → yanlış baskıya düşmez).
+    $out['kindle'] = 'https://' . $domain . '/s?k=' . rawurlencode( $q )
+                   . '&i=digital-text&tag=' . rawurlencode( $tag );
+
+    // Audible — Amazon Associates etiketini kabul eder; ".com.tr" mağazası
+    // Audible'da yok, o yüzden daima audible.com üzerinden arama.
+    $out['audible'] = 'https://www.audible.com/search?keywords=' . rawurlencode( $q )
+                    . '&tag=' . rawurlencode( $tag );
+
+    return $out;
+}
+
+// "Buy ▾" satın-alma dropdown'unu basar (sobrief tarzı). $variant:
+//   'inline' → aksiyon satırında kompakt buton (Print / Save PDF yanında)
+//   'side'   → sidebar'da tam genişlik buton
+// CSS/SVG tanımları yalnızca ilk çağrıda basılır. Etiket yoksa hiçbir şey basmaz.
+function tls_buy_dropdown( $post_id, $variant = 'inline' ) {
+    $urls = tls_retailer_urls( $post_id );
+    if ( empty( $urls ) ) return;
+
+    // İkonlar (currentColor) — cart / kindle / headphones.
+    $icons = [
+        'amazon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2 3h3l2.6 12.5a2 2 0 002 1.5h9.7a2 2 0 002-1.6L23 7H6"/></svg>',
+        'kindle'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2"/><line x1="9" y1="18" x2="15" y2="18"/></svg>',
+        'audible' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 13v-1a8 8 0 0116 0v1"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/></svg>',
+    ];
+    $labels = [ 'amazon' => 'Amazon', 'kindle' => 'Kindle', 'audible' => 'Audible' ];
+
+    static $css_done = false;
+    if ( ! $css_done ) {
+        $css_done = true;
+        ?>
+        <style>
+        .tls-buy{position:relative;display:inline-block;font-family:var(--tls-sans)}
+        .tls-buy[open]{z-index:30}
+        .tls-buy__btn{list-style:none;display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+            font-size:13px;font-weight:600;padding:9px 16px;border-radius:999px;
+            background:var(--tls-gold);color:#fff;border:1px solid var(--tls-gold);
+            transition:background .15s,border-color .15s;user-select:none;white-space:nowrap}
+        .tls-buy__btn::-webkit-details-marker{display:none}
+        .tls-buy__btn:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light)}
+        .tls-buy__btn svg{width:15px;height:15px}
+        .tls-buy__chev{width:12px !important;height:12px !important;margin-left:-2px;transition:transform .15s}
+        .tls-buy[open] .tls-buy__chev{transform:rotate(180deg)}
+        .tls-buy__menu{position:absolute;top:calc(100% + 6px);left:0;min-width:180px;z-index:40;
+            background:var(--tls-bg,#fff);border:1px solid var(--tls-border,#e6e2d8);border-radius:12px;
+            box-shadow:0 8px 28px rgba(0,0,0,.14);padding:6px;overflow:hidden}
+        .tls-buy--side{display:block;width:100%}
+        .tls-buy--side .tls-buy__btn{width:100%;justify-content:center;font-size:14px;padding:12px 18px}
+        .tls-buy--side .tls-buy__menu{left:0;right:0;min-width:0}
+        .tls-buy__item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;
+            font-size:13px;font-weight:500;color:var(--tls-text,#2a2a2a) !important;
+            text-decoration:none !important;transition:background .12s}
+        .tls-buy__item:hover{background:var(--tls-surface,#f5f2ea)}
+        .tls-buy__item svg{width:16px;height:16px;flex:none;color:var(--tls-muted)}
+        .tls-buy__item:hover svg{color:var(--tls-gold)}
+        @media (max-width:480px){
+            .tls-buy--inline .tls-buy__btn{padding:9px 12px;gap:6px}
+            .tls-buy--inline .tls-buy__btn svg{width:13px;height:13px}
+        }
+        </style>
+        <script>
+        document.addEventListener('click', function (e) {
+            document.querySelectorAll('details.tls-buy[open]').forEach(function (d) {
+                if (!d.contains(e.target)) d.removeAttribute('open');
+            });
+        });
+        </script>
+        <?php
+    }
+
+    $chev = '<svg class="tls-buy__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+    ?>
+    <details class="tls-buy tls-buy--<?php echo esc_attr( $variant ); ?>">
+        <summary class="tls-buy__btn" title="Buy this book">
+            <?php echo $icons['amazon']; ?> Buy <?php echo $chev; ?>
+        </summary>
+        <div class="tls-buy__menu">
+            <?php foreach ( $urls as $key => $url ) : ?>
+            <a class="tls-buy__item tls-buy-link" data-retailer="<?php echo esc_attr( $key ); ?>"
+               href="<?php echo esc_url( $url ); ?>" target="_blank" rel="sponsored nofollow noopener">
+                <?php echo $icons[ $key ]; ?><?php echo esc_html( $labels[ $key ] ); ?>
+            </a>
+            <?php endforeach; ?>
+        </div>
+    </details>
+    <?php
+}
+
 // -----------------------------------------------------
 // AFFILIATE: GA4 tıklama izleme. "Buy on Amazon" butonlarına tıklamada
 // Analytics'e affiliate_click olayı gönderir (kitap + yazar ile) — hangi
@@ -2810,9 +2935,10 @@ add_action( 'wp_footer', function () {
     (function () {
         var t = <?php echo wp_json_encode( html_entity_decode( get_the_title(), ENT_QUOTES, 'UTF-8' ) ); ?>,
             a = <?php echo wp_json_encode( $author ); ?>;
-        document.querySelectorAll('.tls-amazon-btn,.tls-amazon-side').forEach(function (el) {
+        document.querySelectorAll('.tls-amazon-btn,.tls-amazon-side,.tls-buy-link').forEach(function (el) {
             el.addEventListener('click', function () {
-                var p = { affiliate_network: 'amazon', book_title: t, book_author: a };
+                var r = el.getAttribute('data-retailer') || 'amazon',
+                    p = { affiliate_network: r, book_title: t, book_author: a };
                 if (typeof gtag === 'function') { gtag('event', 'affiliate_click', p); }
                 else if (window.dataLayer) { p.event = 'affiliate_click'; window.dataLayer.push(p); }
             });

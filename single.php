@@ -110,21 +110,13 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 </div>
 
                 <?php
-                // ── Affiliate CTA (sidebar): tam genişlik Buy on Amazon ──
-                $tls_amz_side = function_exists( 'tls_amazon_url' ) ? tls_amazon_url( $post_id ) : '';
-                if ( $tls_amz_side ) : ?>
-                <style>
-                .tls-amazon-side{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-family:var(--tls-sans);font-size:14px;font-weight:600;padding:12px 18px;margin:0 0 10px;border-radius:999px;background:var(--tls-gold);color:#fff !important;border:1px solid var(--tls-gold);text-decoration:none !important;transition:background .15s,border-color .15s}
-                .tls-amazon-side:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light);color:#fff}
-                .tls-amazon-side svg{width:15px;height:15px}
-                </style>
-                <a class="tls-amazon-side" href="<?php echo esc_url( $tls_amz_side ); ?>"
-                   target="_blank" rel="sponsored nofollow noopener"
-                   title="Buy this book on Amazon">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2 3h3l2.6 12.5a2 2 0 002 1.5h9.7a2 2 0 002-1.6L23 7H6"/></svg>
-                    Buy on Amazon
-                </a>
-                <?php endif; ?>
+                // ── Affiliate CTA (sidebar): tam genişlik Buy dropdown'u ──
+                if ( function_exists( 'tls_buy_dropdown' ) ) {
+                    echo '<div style="margin:0 0 10px">';
+                    tls_buy_dropdown( $post_id, 'side' );
+                    echo '</div>';
+                }
+                ?>
 
                 <!-- Reading status -->
                 <div class="tls-read-status" role="group" aria-label="Reading status"
@@ -239,31 +231,15 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </button>
 
                     <?php
-                    // ── Affiliate CTA: Buy on Amazon ──
-                    $tls_amz = function_exists( 'tls_amazon_url' ) ? tls_amazon_url( get_the_ID() ) : '';
-                    if ( $tls_amz ) : ?>
-                    <style>
-                    .tls-amazon-btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--tls-sans);font-size:13px;font-weight:600;padding:9px 18px;border-radius:999px;background:var(--tls-gold);color:#fff !important;border:1px solid var(--tls-gold);text-decoration:none !important;transition:background .15s,border-color .15s}
-                    .tls-amazon-btn:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light);color:#fff}
-                    .tls-amazon-btn svg{width:15px;height:15px}
-                    .tls-affiliate-note{font-family:var(--tls-sans);font-size:11px;color:var(--tls-muted);margin:8px 0 0}
-                    /* Mobil: yan boşluğu ve ikon aralığını kıs → buton ikonlu
-                       haliyle Save PDF'in yanına sığar. Yazı boyutu aynı. */
-                    @media (max-width:480px){
-                        .tls-amazon-btn{padding:9px 12px;gap:6px}
-                        .tls-amazon-btn svg{width:13px;height:13px}
+                    // ── Affiliate CTA: Buy dropdown (Amazon / Kindle / Audible) ──
+                    $tls_has_buy = function_exists( 'tls_retailer_urls' ) && ! empty( tls_retailer_urls( get_the_ID() ) );
+                    if ( $tls_has_buy ) {
+                        tls_buy_dropdown( get_the_ID(), 'inline' );
                     }
-                    </style>
-                    <a class="tls-amazon-btn" href="<?php echo esc_url( $tls_amz ); ?>"
-                       target="_blank" rel="sponsored nofollow noopener"
-                       title="Buy this book on Amazon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2 3h3l2.6 12.5a2 2 0 002 1.5h9.7a2 2 0 002-1.6L23 7H6"/></svg>
-                        Buy on Amazon
-                    </a>
-                    <?php endif; ?>
+                    ?>
                 </div>
-                <?php if ( ! empty( $tls_amz ) ) : ?>
-                <p class="tls-affiliate-note">As an Amazon Associate, The Telos earns from qualifying purchases.</p>
+                <?php if ( ! empty( $tls_has_buy ) ) : ?>
+                <p class="tls-affiliate-note" style="font-family:var(--tls-sans);font-size:11px;color:var(--tls-muted);margin:8px 0 0">As an Amazon Associate, The Telos earns from qualifying purchases.</p>
                 <?php endif; ?>
 
 
