@@ -112,7 +112,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <?php
                 // ── Affiliate CTA (sidebar): tam genişlik Buy dropdown'u ──
                 if ( function_exists( 'tls_buy_dropdown' ) ) {
-                    echo '<div style="margin:0 0 10px">';
+                    echo '<div style="width:100%;margin:0 0 10px">';
                     tls_buy_dropdown( $post_id, 'side' );
                     echo '</div>';
                 }
