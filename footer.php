@@ -1227,40 +1227,48 @@ $ajax_url     = admin_url('admin-ajax.php');
     /* ══════════════════════════════════════════
        DROPDOWN MENU
     ══════════════════════════════════════════ */
+    /* Event delegation ile bağlanır: dropdown PHP'den mi geldi yoksa login
+       sonrası updateHeader() ile sonradan mı basıldı fark etmez — buton her
+       durumda çalışır. (Eskiden trigger'a doğrudan bağlanıyordu; JS ile
+       sonradan basılan menü bağlanamadan kalıyordu → "yenileyince düzeliyor".) */
+    var _dropdownDelegated = false;
     function initDropdown() {
-        var menuWrap = document.getElementById('tls-user-menu');
-        var trigger  = document.getElementById('tls-user-trigger');
-        var iconEl   = document.getElementById('tls-user-icon');
+        if (_dropdownDelegated) return;
+        _dropdownDelegated = true;
 
-        if (menuWrap && trigger) {
-            trigger.addEventListener('click', function(e){
+        document.addEventListener('click', function(e){
+            var t = e.target;
+            var closest = function(sel){ return t.closest ? t.closest(sel) : null; };
+
+            /* Kullanıcı menüsü aç/kapa */
+            var trigger = closest('#tls-user-trigger');
+            if (trigger) {
+                e.preventDefault();
                 e.stopPropagation();
-                var open = menuWrap.classList.toggle('open');
-                trigger.setAttribute('aria-expanded', open);
-            });
-            document.addEventListener('click', function(e){
-                if (!menuWrap.contains(e.target)){
-                    menuWrap.classList.remove('open');
-                }
-            });
-            /* Sign out */
-            var soBtn = document.getElementById('tls-header-signout');
-            if (soBtn) {
-                soBtn.addEventListener('click', function(){
-                    var fd=new FormData();
-                    fd.append('action','tls_logout');
-                    fd.append('nonce', authNonce);
-                    fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'})
+                var menu = document.getElementById('tls-user-menu');
+                if (menu) trigger.setAttribute('aria-expanded', menu.classList.toggle('open'));
+                return;
+            }
+
+            /* Çıkış yap */
+            if (closest('#tls-header-signout')) {
+                var fd = new FormData();
+                fd.append('action','tls_logout');
+                fd.append('nonce', authNonce);
+                fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'})
                     .then(function(r){return r.json();})
                     .then(function(res){ if(res.success) window.location.href=res.data.redirect; });
-                });
+                return;
             }
-        } else if (iconEl) {
-            iconEl.addEventListener('click', function(e){
-                e.preventDefault();
-                openOverlay('tls-auth-overlay');
-            });
-        }
+
+            /* Giriş ikonu → auth popup */
+            var icon = closest('#tls-user-icon');
+            if (icon) { e.preventDefault(); openOverlay('tls-auth-overlay'); return; }
+
+            /* Dışarı tıklama → menüyü kapat */
+            var openMenu = document.getElementById('tls-user-menu');
+            if (openMenu && !openMenu.contains(t)) openMenu.classList.remove('open');
+        });
     }
 
     /* ── AUTH POPUP ── */
