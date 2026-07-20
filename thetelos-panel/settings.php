@@ -34,6 +34,7 @@ if (file_exists(PROMPTS_FILE)) {
     <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
     <nav class="tls-nav">
       <a href="panel.php"><span class="ico">✍</span> İçerik Üret</a>
+      <a href="cover-backfill.php"><span class="ico">🖼</span> Kapak Bul</a>
       <a href="amazon-match.php"><span class="ico">🛒</span> Amazon</a>
       <a href="settings.php" class="active"><span class="ico">⚙</span> Ayarlar</a>
       <a href="<?= rtrim(WP_URL,'/') ?>/wp-admin/" target="_blank"><span class="ico">🔗</span> WP Admin</a>
