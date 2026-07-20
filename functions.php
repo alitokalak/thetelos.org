@@ -489,7 +489,7 @@ function thetelos_enqueue_custom_assets() {
         'thetelos-styles',
         get_template_directory_uri() . '/assets/css/thetelos.css',
         [ 'mediumish-style' ],
-        THEME_VERSION . '.m25'
+        THEME_VERSION . '.m26'
     );
 
     wp_enqueue_script(
@@ -2852,7 +2852,8 @@ function tls_buy_dropdown( $post_id, $variant = 'inline' ) {
 
     // İkonlar (currentColor) — cart / kindle / headphones.
     $icons = [
-        'amazon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="21" r="1.6"/><circle cx="19" cy="21" r="1.6"/><path d="M2 3h3l2.6 12.5a2 2 0 002 1.5h9.7a2 2 0 002-1.6L23 7H6"/></svg>',
+        // Amazon: "gülümseme" oku (a→z). Kindle: e-okuyucu. Audible: kulaklık.
+        'amazon'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 14.5c3.4 2.6 12.6 2.6 16 0"/><path d="M17.3 12.9l3.1 1.6-1 3.3"/></svg>',
         'kindle'  => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2"/><line x1="9" y1="18" x2="15" y2="18"/></svg>',
         'audible' => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 13v-1a8 8 0 0116 0v1"/><rect x="3" y="13" width="4" height="6" rx="1.5"/><rect x="17" y="13" width="4" height="6" rx="1.5"/></svg>',
     ];
@@ -2865,14 +2866,16 @@ function tls_buy_dropdown( $post_id, $variant = 'inline' ) {
         <style>
         .tls-buy{position:relative;display:inline-block;font-family:var(--tls-sans)}
         .tls-buy[open]{z-index:30}
-        .tls-buy__btn{list-style:none;display:inline-flex;align-items:center;gap:8px;cursor:pointer;
-            font-size:13px;font-weight:600;padding:9px 16px;border-radius:999px;
+        .tls-buy__btn{list-style:none;display:inline-flex;align-items:center;gap:9px;cursor:pointer;
+            font-size:13px;font-weight:600;padding:9px 18px;border-radius:999px;
             background:var(--tls-gold);color:#fff;border:1px solid var(--tls-gold);
             transition:background .15s,border-color .15s;user-select:none;white-space:nowrap}
         .tls-buy__btn::-webkit-details-marker{display:none}
         .tls-buy__btn:hover{background:var(--tls-gold-light);border-color:var(--tls-gold-light)}
-        .tls-buy__btn svg{width:15px;height:15px}
-        .tls-buy__chev{width:12px !important;height:12px !important;margin-left:-2px;transition:transform .15s}
+        /* Butondaki üç mini mağaza logosu: Amazon · Kindle · Audible */
+        .tls-buy__brands{display:inline-flex;align-items:center;gap:7px}
+        .tls-buy__brands svg{width:15px;height:15px;opacity:.95}
+        .tls-buy__chev{width:12px !important;height:12px !important;margin-left:-1px;transition:transform .15s}
         .tls-buy[open] .tls-buy__chev{transform:rotate(180deg)}
         .tls-buy__menu{position:absolute;top:calc(100% + 6px);left:0;min-width:180px;z-index:40;
             background:var(--tls-bg,#fff);border:1px solid var(--tls-border,#e6e2d8);border-radius:12px;
@@ -2902,10 +2905,14 @@ function tls_buy_dropdown( $post_id, $variant = 'inline' ) {
     }
 
     $chev = '<svg class="tls-buy__chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+
+    // Buton üstünde yalnızca mevcut mağazaların mini logoları.
+    $brands = '';
+    foreach ( array_keys( $urls ) as $k ) { $brands .= $icons[ $k ]; }
     ?>
     <details class="tls-buy tls-buy--<?php echo esc_attr( $variant ); ?>">
-        <summary class="tls-buy__btn" title="Buy this book">
-            <?php echo $icons['amazon']; ?> Buy <?php echo $chev; ?>
+        <summary class="tls-buy__btn" title="Buy this book on Amazon, Kindle or Audible">
+            <span class="tls-buy__brands"><?php echo $brands; ?></span> Buy <?php echo $chev; ?>
         </summary>
         <div class="tls-buy__menu">
             <?php foreach ( $urls as $key => $url ) : ?>
