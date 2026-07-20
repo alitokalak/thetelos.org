@@ -2834,10 +2834,10 @@ function tls_retailer_urls( $post_id ) {
     $out['kindle'] = 'https://' . $domain . '/s?k=' . rawurlencode( $q )
                    . '&i=digital-text&tag=' . rawurlencode( $tag );
 
-    // Audible — Amazon Associates etiketini kabul eder; ".com.tr" mağazası
-    // Audible'da yok, o yüzden daima audible.com üzerinden arama.
-    $out['audible'] = 'https://www.audible.com/search?keywords=' . rawurlencode( $q )
-                    . '&tag=' . rawurlencode( $tag );
+    // Audible — Amazon Associates "Bounty" programı: asıl kazanç ücretsiz
+    // deneme kaydından gelir. O yüzden butonu doğrudan 30 günlük ücretsiz
+    // deneme sayfasına götürüyoruz (Associates etiketiyle → prim buradan sayılır).
+    $out['audible'] = 'https://www.audible.com/ep/freetrial?tag=' . rawurlencode( $tag );
 
     return $out;
 }
