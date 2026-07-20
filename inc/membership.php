@@ -62,6 +62,12 @@ add_action( 'wp_ajax_nopriv_tls_register', function() {
     if ( is_wp_error($uid) ) wp_send_json_error(['message' => $uid->get_error_message()]);
 
     wp_update_user(['ID'=>$uid,'display_name'=>$name,'first_name'=>$name,'role'=>'subscriber']);
+
+    // Kayıt izleri (bot/sahte hesap tespiti + aktivite paneli için).
+    update_user_meta($uid, '_tls_reg_ip',      preg_replace('/[^0-9a-fA-F:.]/', '', $_SERVER['REMOTE_ADDR'] ?? ''));
+    update_user_meta($uid, '_tls_reg_ua',      substr(sanitize_text_field($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255));
+    update_user_meta($uid, '_tls_reg_referer', esc_url_raw($_SERVER['HTTP_REFERER'] ?? ''));
+
     wp_set_current_user($uid);
     wp_set_auth_cookie($uid, true);
     wp_send_json_success(['redirect' => home_url('/profile/')]);
