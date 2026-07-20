@@ -82,19 +82,59 @@ function cb_parse_book($post_id) {
     return [$book, $author];
 }
 
-/* Bir post için sıralı aday kapak URL'leri üret. */
+/* ── Eşleşme doğrulama (yanlış kapağı önler) ── */
+function cb_norm($s) {
+    $s = mb_strtolower((string) $s, 'UTF-8');
+    $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+    if ($t !== false && $t !== '') $s = $t;
+    return trim(preg_replace('/[^a-z0-9]+/', ' ', $s));
+}
+function cb_tokens($s) {
+    static $stop = null;
+    if ($stop === null) $stop = array_flip(explode(' ',
+        'the a an of on to and by with in for from about into that this his her its les des'));
+    $out = [];
+    foreach (explode(' ', cb_norm($s)) as $w) {
+        if (strlen($w) >= 3 && !isset($stop[$w])) $out[] = $w;
+    }
+    return $out;
+}
+/* Aday yazar(lar)ı, sorgulanan yazarın soyadını içeriyor mu? Aday yazarsızsa
+   doğrulanamaz → reddet. Sorguda yazar yoksa kontrol atlanır. */
+function cb_author_ok($query_author, $cand_authors) {
+    $ql = cb_tokens($query_author);
+    if (!$ql) return true;                         // doğrulanacak yazar yok
+    $qlast = end($ql);
+    $hay = cb_norm(is_array($cand_authors) ? implode(' ', $cand_authors) : $cand_authors);
+    if ($hay === '') return false;                 // aday yazarsız → güvenme
+    if (strlen($qlast) >= 4) return strpos($hay, $qlast) !== false;
+    return in_array($qlast, explode(' ', $hay), true);
+}
+/* Aday başlık, sorgu başlığının anlamlı kelimelerinin en az yarısını içeriyor mu? */
+function cb_title_ok($query_title, $cand_title) {
+    $a = cb_tokens($query_title);
+    $b = cb_tokens($cand_title);
+    if (!$a || !$b) return false;
+    $m = 0;
+    foreach ($a as $x) { if (in_array($x, $b, true)) $m++; }
+    return $m >= max(1, (int) ceil(count($a) / 2));
+}
+
+/* Bir post için sıralı aday kapak URL'leri üret (yazar+başlık doğrulamalı). */
 function cb_find_covers($post_id) {
     [$book, $author] = cb_parse_book($post_id);
     $cands  = [];
     $olisbn = [];
 
-    // 1) OpenLibrary
+    // 1) OpenLibrary — yalnızca yazarı+başlığı doğrulanan edisyonu al
     $ol = json_decode((string) cb_http_get(
         'https://openlibrary.org/search.json?title=' . urlencode($book)
         . ($author !== '' ? '&author=' . urlencode($author) : '')
-        . '&limit=3&fields=title,cover_i,isbn'
+        . '&limit=6&fields=title,author_name,cover_i,isbn'
     ), true);
     foreach (($ol['docs'] ?? []) as $doc) {
+        if (!cb_author_ok($author, $doc['author_name'] ?? []))  continue;
+        if (!cb_title_ok($book, $doc['title'] ?? ''))           continue;
         if (!empty($doc['isbn']) && is_array($doc['isbn'])) {
             $olisbn = array_merge($olisbn, array_slice($doc['isbn'], 0, 4));
         }
@@ -104,18 +144,21 @@ function cb_find_covers($post_id) {
         }
     }
 
-    // 2) Google Books
+    // 2) Google Books — aynı doğrulama
     if (defined('GOOGLE_BOOKS_KEY') && GOOGLE_BOOKS_KEY !== '') {
         $q  = 'intitle:' . $book . ($author !== '' ? ' inauthor:' . $author : '');
         $gb = json_decode((string) cb_http_get('https://www.googleapis.com/books/v1/volumes?' . http_build_query([
             'q'          => $q,
-            'maxResults' => 3,
+            'maxResults' => 5,
             'printType'  => 'books',
-            'fields'     => 'items(volumeInfo(title,imageLinks))',
+            'fields'     => 'items(volumeInfo(title,authors,imageLinks))',
             'key'        => GOOGLE_BOOKS_KEY,
         ])), true);
         foreach (($gb['items'] ?? []) as $it) {
-            $lnk = $it['volumeInfo']['imageLinks'] ?? [];
+            $vi  = $it['volumeInfo'] ?? [];
+            if (!cb_author_ok($author, $vi['authors'] ?? [])) continue;
+            if (!cb_title_ok($book, $vi['title'] ?? ''))      continue;
+            $lnk = $vi['imageLinks'] ?? [];
             $c   = $lnk['thumbnail'] ?? ($lnk['smallThumbnail'] ?? '');
             if ($c) {
                 $c = str_replace(['http://', '&edge=curl'], ['https://', ''], $c);
@@ -126,7 +169,7 @@ function cb_find_covers($post_id) {
         }
     }
 
-    // 3) Amazon (ASIN meta'sı ya da OL ISBN'i)
+    // 3) Amazon — yalnızca elle onaylanmış ASIN meta'sı ya da doğrulanmış OL ISBN'i
     $asin = trim((string) get_post_meta($post_id, '_tls_amazon_asin', true));
     if ($asin === '' || $asin === '-') $asin = cb_pick_isbn10($olisbn);
     if ($asin !== '' && $asin !== '-' && preg_match('/^[0-9A-Z]{10}$/', $asin)) {
