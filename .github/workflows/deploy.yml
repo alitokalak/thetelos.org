@@ -1,0 +1,59 @@
+name: Deploy to FTP
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+      - claude/**
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Tema dosyalarını deploy et ──────────────────────────────────
+      - name: Deploy theme to FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:           ${{ secrets.FTP_HOST }}
+          username:         ${{ secrets.FTP_USER }}
+          password:         ${{ secrets.FTP_PASS }}
+          port:             21
+          protocol:         ftp
+          local-dir:        ./
+          server-dir:       ${{ secrets.FTP_THEME_PATH }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.github/**
+            **/thetelos-panel/**
+            **/error_log
+            **/*.log
+            **/thetelos-panel/config.php
+
+      # ── Panel dosyalarını deploy et ─────────────────────────────────
+      - name: Deploy panel to FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:           ${{ secrets.FTP_HOST }}
+          username:         ${{ secrets.FTP_USER }}
+          password:         ${{ secrets.FTP_PASS }}
+          port:             21
+          protocol:         ftp
+          local-dir:        ./thetelos-panel/
+          server-dir:       ${{ secrets.FTP_PANEL_PATH }}
+          state-name:       .ftp-deploy-sync-state-panel.json
+          exclude: |
+            **/.git*
+            **/config.php
+            **/error_log
+            **/*.log
+            jobs/*.json
+            jobs/**
+            **/jobs/*.json
+            **/jobs/**
