@@ -1391,13 +1391,15 @@ $ajax_url     = admin_url('admin-ajax.php');
             var hp=document.getElementById('tls-reg-hp').value;
             if(!name||!email||!pass){authMsg('Please fill in all fields.','error');return;}
             if(pass.length<6){authMsg('Password must be at least 6 characters.','error');return;}
-            authPost('tls_register',{tls_name:name,tls_email:email,tls_pass:pass,tls_hp:hp},function(){
+            authPost('tls_register',{tls_name:name,tls_email:email,tls_pass:pass,tls_hp:hp},function(d){
                 if (window._tlsPendingStatus) {
                     sessionStorage.setItem('tls_pending', JSON.stringify(window._tlsPendingStatus));
                 }
                 if (window._tlsPendingListId) {
                     sessionStorage.setItem('tls_pending_list', window._tlsPendingListId);
                 }
+                /* Yeni kayıt → ilgi alanı seçim ekranı (/profile/?welcome=1) */
+                if (d && d.redirect) { window.location.href = d.redirect; return; }
                 if (window._tlsAuthRedirect) { window.location.href = window._tlsAuthRedirect; return; }
                 window.location.reload();
             },'tls-btn-register');

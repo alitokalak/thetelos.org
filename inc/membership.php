@@ -70,7 +70,7 @@ add_action( 'wp_ajax_nopriv_tls_register', function() {
 
     wp_set_current_user($uid);
     wp_set_auth_cookie($uid, true);
-    wp_send_json_success(['redirect' => home_url('/profile/')]);
+    wp_send_json_success(['redirect' => home_url('/profile/?welcome=1')]);
 } );
 
 /* Giriş */
