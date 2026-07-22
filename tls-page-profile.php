@@ -126,20 +126,6 @@ get_header();
 
       <!-- SETTINGS TAB -->
       <div class="tls-prof-tab" id="tab-settings" style="display:none;">
-        <div class="tls-welcome-banner" id="tls-welcome-banner" style="display:none;">
-          <span style="font-size:30px;line-height:1;">🎉</span>
-          <div>
-            <h3>Welcome to The Telos!</h3>
-            <p>Pick a few interests below — we'll tailor your recommendations and (soon) a weekly digest to your taste.</p>
-          </div>
-        </div>
-        <div class="tls-sett-card" id="tls-interests-card">
-          <h2 class="tls-sett-title">Your Interests</h2>
-          <p class="tls-int-help">Choose the areas you care about. This shapes what we recommend and the weekly book digest we're building.</p>
-          <div id="tls-int-msg" class="tls-sett-notice" style="display:none;"></div>
-          <?php echo tls_render_interest_grid( tls_get_user_interests( $uid ) ); ?>
-          <button class="tls-sett-btn" id="s-save-interests" style="margin-top:18px;">Save Interests</button>
-        </div>
         <div class="tls-sett-card">
           <h2 class="tls-sett-title">Profile Information</h2>
           <div id="tls-prof-msg" class="tls-sett-notice" style="display:none;"></div>
@@ -262,16 +248,10 @@ get_header();
 .tls-rl-remove-btn { display:inline-flex; align-items:center; gap:6px; margin-top:14px; padding:7px 14px; background:none; border:1px solid var(--tls-border); border-radius:8px; font-family:var(--tls-sans); font-size:12px; color:var(--tls-muted); cursor:pointer; transition:all .15s; }
 .tls-rl-remove-btn:hover { border-color:#b91c1c; color:#b91c1c; }
 
-/* Welcome banner */
-.tls-welcome-banner{display:flex;align-items:center;gap:14px;background:linear-gradient(120deg,#fff,var(--tls-bg));border:1px solid var(--tls-gold);border-radius:14px;padding:18px 22px;margin-bottom:20px;}
-.tls-welcome-banner h3{font-family:var(--tls-serif);font-size:18px;font-weight:400;color:var(--tls-bg-dark);margin:0 0 3px;}
-.tls-welcome-banner p{font-family:var(--tls-sans);font-size:13px;color:var(--tls-muted);margin:0;line-height:1.5;}
-
 @media(max-width:768px){
   .tls-prof-outer{grid-template-columns:1fr;gap:16px;}
   .tls-prof-sidebar{position:static;border-radius:12px;}
   .tls-prof-topbtn{padding:10px 12px;font-size:11px;}
-  .tls-int-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));}
 }
 </style>
 
@@ -476,40 +456,6 @@ get_header();
         });
     });
 
-    /* ── İlgi alanları: chip aç/kapa + kaydet ── */
-    document.addEventListener('click', function(e){
-        var chip = e.target.closest('.tls-int-chip');
-        if(!chip) return;
-        var on = chip.classList.toggle('tls-int-chip--on');
-        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-    var siBtn = document.getElementById('s-save-interests');
-    if(siBtn) siBtn.addEventListener('click', function(){
-        var slugs = [];
-        document.querySelectorAll('.tls-int-chip--on').forEach(function(c){ slugs.push(c.dataset.slug); });
-        var fd = new FormData();
-        fd.append('action','tls_save_interests');
-        fd.append('nonce', authNonce);
-        fd.append('interests', slugs.join(','));
-        siBtn.disabled = true;
-        fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'})
-        .then(function(r){return r.json();})
-        .then(function(res){
-            siBtn.disabled = false;
-            notice('tls-int-msg', res.success ? ('✓ Saved '+res.data.count+' interest'+(res.data.count===1?'':'s')+'.') : 'Could not save. Please try again.', res.success ? 'success' : 'error');
-        })
-        .catch(function(){ siBtn.disabled=false; notice('tls-int-msg','Connection error.','error'); });
-    });
-
-    /* Yeni kayıt (welcome=1): Settings sekmesine geç, banner göster, kaydır. */
-    if (location.search.indexOf('welcome=1') > -1) {
-        var stab = document.querySelector('[data-tab="settings"]');
-        if (stab) stab.click();
-        var wb = document.getElementById('tls-welcome-banner');
-        if (wb) wb.style.display = 'flex';
-        var ic = document.getElementById('tls-interests-card');
-        if (ic) setTimeout(function(){ ic.scrollIntoView({behavior:'smooth', block:'center'}); }, 250);
-    }
 })();
 </script>
 
