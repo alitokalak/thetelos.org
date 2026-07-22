@@ -262,16 +262,6 @@ get_header();
 .tls-rl-remove-btn { display:inline-flex; align-items:center; gap:6px; margin-top:14px; padding:7px 14px; background:none; border:1px solid var(--tls-border); border-radius:8px; font-family:var(--tls-sans); font-size:12px; color:var(--tls-muted); cursor:pointer; transition:all .15s; }
 .tls-rl-remove-btn:hover { border-color:#b91c1c; color:#b91c1c; }
 
-/* Interests */
-.tls-int-help{font-family:var(--tls-sans);font-size:13px;color:var(--tls-muted);margin:0 0 16px;line-height:1.6;}
-.tls-int-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px;}
-.tls-int-chip{position:relative;display:flex;align-items:center;gap:10px;padding:12px 14px;text-align:left;background:var(--tls-bg);border:1.5px solid var(--tls-border);border-radius:12px;font-family:var(--tls-sans);font-size:13px;font-weight:500;color:var(--tls-bg-dark);cursor:pointer;transition:all .15s;}
-.tls-int-chip:hover{border-color:var(--tls-gold);background:#fff;}
-.tls-int-chip--on{border-color:var(--tls-gold);background:#fff;box-shadow:0 0 0 2px rgba(184,146,42,.18);}
-.tls-int-emoji{font-size:18px;line-height:1;flex-shrink:0;}
-.tls-int-label{flex:1;line-height:1.25;}
-.tls-int-check{flex-shrink:0;width:18px;height:18px;border-radius:50%;background:var(--tls-gold);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(.5);transition:all .15s;}
-.tls-int-chip--on .tls-int-check{opacity:1;transform:scale(1);}
 /* Welcome banner */
 .tls-welcome-banner{display:flex;align-items:center;gap:14px;background:linear-gradient(120deg,#fff,var(--tls-bg));border:1px solid var(--tls-gold);border-radius:14px;padding:18px 22px;margin-bottom:20px;}
 .tls-welcome-banner h3{font-family:var(--tls-serif);font-size:18px;font-weight:400;color:var(--tls-bg-dark);margin:0 0 3px;}

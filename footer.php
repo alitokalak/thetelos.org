@@ -726,6 +726,17 @@ $ajax_url     = admin_url('admin-ajax.php');
             <button type="button" class="tls-auth-textbtn" id="tls-back-login" style="display:block;text-align:center;margin-top:10px;">← Back to Sign In</button>
         </div>
 
+        <!-- INTERESTS (kayıt sonrası adım) -->
+        <div class="tls-auth-form" id="tls-tab-interests" style="display:none;">
+            <p style="font-size:15px;font-weight:600;color:var(--tls-bg-dark);margin:0 0 4px;text-align:center;">Welcome aboard! 🎉</p>
+            <p class="tls-int-help" style="text-align:center;margin-bottom:14px;">Pick a few areas you love — we'll tune your recommendations and weekly digest.</p>
+            <div style="max-height:44vh;overflow-y:auto;margin:0 -4px;padding:2px 4px;">
+                <?php echo tls_render_interest_grid( [] ); ?>
+            </div>
+            <button class="tls-auth-submit" id="tls-btn-interests" type="button" style="margin-top:16px;">Continue &rarr;</button>
+            <button type="button" class="tls-auth-textbtn" id="tls-skip-interests" style="display:block;text-align:center;margin-top:10px;">Skip for now</button>
+        </div>
+
     </div>
 </div>
 <?php endif; ?>
@@ -1291,10 +1302,13 @@ $ajax_url     = admin_url('admin-ajax.php');
         document.getElementById('tls-back-login').addEventListener('click', function(){ showAuthForm('tls-tab-login'); clearAuthMsg(); });
 
         function showAuthForm(id){
-            ['tls-tab-login','tls-tab-register','tls-tab-forgot'].forEach(function(f){
+            ['tls-tab-login','tls-tab-register','tls-tab-forgot','tls-tab-interests'].forEach(function(f){
                 var el=document.getElementById(f);
                 if(el) el.style.display=f===id?'':'none';
             });
+            /* İlgi adımında üstteki sekme çubuğunu gizle (ayrı bir ekran hissi) */
+            var tabs=document.querySelector('.tls-auth-tabs');
+            if(tabs) tabs.style.display = (id==='tls-tab-interests') ? 'none' : '';
         }
         function authMsg(text,type){
             var el=document.getElementById('tls-auth-msg');
@@ -1398,10 +1412,10 @@ $ajax_url     = admin_url('admin-ajax.php');
                 if (window._tlsPendingListId) {
                     sessionStorage.setItem('tls_pending_list', window._tlsPendingListId);
                 }
-                /* Yeni kayıt → ilgi alanı seçim ekranı (/profile/?welcome=1) */
-                if (d && d.redirect) { window.location.href = d.redirect; return; }
-                if (window._tlsAuthRedirect) { window.location.href = window._tlsAuthRedirect; return; }
-                window.location.reload();
+                /* Kayıt başarılı → çıkış yolunu sakla, pop-up içinde ilgi adımını göster */
+                window._tlsPostRegRedirect = window._tlsAuthRedirect || '/profile/';
+                clearAuthMsg();
+                showAuthForm('tls-tab-interests');
             },'tls-btn-register');
         });
 
@@ -1420,6 +1434,35 @@ $ajax_url     = admin_url('admin-ajax.php');
                 }
             },'tls-btn-forgot');
         });
+
+        /* ── İlgi alanı adımı (kayıt sonrası pop-up) ── */
+        function tlsFinishRegistration(){
+            var url = window._tlsPostRegRedirect || '/profile/';
+            window.location.href = url;
+        }
+        /* Chip aç/kapa — yalnızca overlay içindeki grid (profil kendi handler'ını kullanır) */
+        document.addEventListener('click', function(e){
+            var chip = e.target.closest ? e.target.closest('#tls-tab-interests .tls-int-chip') : null;
+            if(!chip) return;
+            var on = chip.classList.toggle('tls-int-chip--on');
+            chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        var biBtn = document.getElementById('tls-btn-interests');
+        if(biBtn) biBtn.addEventListener('click', function(){
+            var slugs = [];
+            document.querySelectorAll('#tls-tab-interests .tls-int-chip--on').forEach(function(c){ slugs.push(c.dataset.slug); });
+            biBtn.disabled = true; biBtn.textContent = '…';
+            var fd = new FormData();
+            fd.append('action','tls_save_interests');
+            fd.append('nonce', authNonce);
+            fd.append('interests', slugs.join(','));
+            fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'})
+            .then(function(r){return r.json();})
+            .then(function(){ tlsFinishRegistration(); })
+            .catch(function(){ tlsFinishRegistration(); });
+        });
+        var skBtn = document.getElementById('tls-skip-interests');
+        if(skBtn) skBtn.addEventListener('click', tlsFinishRegistration);
 
         /* Enter key */
         document.addEventListener('keydown',function(e){

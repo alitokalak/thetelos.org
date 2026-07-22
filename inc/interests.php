@@ -60,10 +60,28 @@ add_action( 'wp_ajax_tls_save_interests', function () {
     wp_send_json_success( [ 'count' => count( $clean ), 'interests' => $clean ] );
 } );
 
-/* Chip-grid HTML (sunucu tarafı, seçili olanlar işaretli döner). */
+/* Chip-grid HTML (sunucu tarafı, seçili olanlar işaretli döner).
+   CSS yalnızca ilk çağrıda basılır → hem profil sayfasında hem kayıt
+   pop-up'ında (footer overlay) çalışır. */
 function tls_render_interest_grid( $selected = [] ) {
+    static $css_done = false;
+    $out = '';
+    if ( ! $css_done ) {
+        $css_done = true;
+        $out .= '<style>'
+            . '.tls-int-help{font-family:var(--tls-sans);font-size:13px;color:var(--tls-muted);margin:0 0 16px;line-height:1.6}'
+            . '.tls-int-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:9px}'
+            . '.tls-int-chip{position:relative;display:flex;align-items:center;gap:9px;padding:11px 13px;text-align:left;background:var(--tls-bg);border:1.5px solid var(--tls-border);border-radius:12px;font-family:var(--tls-sans);font-size:12.5px;font-weight:500;color:var(--tls-bg-dark);cursor:pointer;transition:all .15s}'
+            . '.tls-int-chip:hover{border-color:var(--tls-gold);background:#fff}'
+            . '.tls-int-chip--on{border-color:var(--tls-gold);background:#fff;box-shadow:0 0 0 2px rgba(184,146,42,.18)}'
+            . '.tls-int-emoji{font-size:17px;line-height:1;flex-shrink:0}'
+            . '.tls-int-label{flex:1;line-height:1.2}'
+            . '.tls-int-check{flex-shrink:0;width:17px;height:17px;border-radius:50%;background:var(--tls-gold);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center;opacity:0;transform:scale(.5);transition:all .15s}'
+            . '.tls-int-chip--on .tls-int-check{opacity:1;transform:scale(1)}'
+            . '</style>';
+    }
     $sel = array_flip( (array) $selected );
-    $out = '<div class="tls-int-grid">';
+    $out .= '<div class="tls-int-grid">';
     foreach ( tls_interest_areas() as $slug => $a ) {
         $on = isset( $sel[ $slug ] ) ? ' tls-int-chip--on' : '';
         $out .= '<button type="button" class="tls-int-chip' . $on . '" data-slug="' . esc_attr( $slug ) . '" aria-pressed="' . ( $on ? 'true' : 'false' ) . '">'
