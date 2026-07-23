@@ -24,6 +24,7 @@ jobs:
           password:         ${{ secrets.FTP_PASS }}
           port:             21
           protocol:         ftp
+          timeout:          120000
           local-dir:        ./
           server-dir:       ${{ secrets.FTP_THEME_PATH }}
           exclude: |
@@ -45,6 +46,7 @@ jobs:
           password:         ${{ secrets.FTP_PASS }}
           port:             21
           protocol:         ftp
+          timeout:          120000
           local-dir:        ./thetelos-panel/
           server-dir:       ${{ secrets.FTP_PANEL_PATH }}
           state-name:       .ftp-deploy-sync-state-panel.json
