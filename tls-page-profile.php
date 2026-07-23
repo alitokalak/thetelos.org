@@ -40,6 +40,10 @@ get_header();
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
       Reading Paths
     </button>
+    <button class="tls-prof-topbtn" data-tab="interests">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+      Interests
+    </button>
     <button class="tls-prof-topbtn" data-tab="settings">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
       Settings
@@ -124,6 +128,17 @@ get_header();
         </div>
       </div>
 
+      <!-- INTERESTS TAB -->
+      <div class="tls-prof-tab" id="tab-interests" style="display:none;">
+        <div class="tls-sett-card" id="tls-interests-card">
+          <h2 class="tls-sett-title">Your Interests</h2>
+          <p class="tls-int-help">Choose the areas you care about — this shapes your recommendations and the weekly book digest we send.</p>
+          <div id="tls-int-msg" class="tls-sett-notice" style="display:none;"></div>
+          <?php echo tls_render_interest_grid( tls_get_user_interests( $uid ) ); ?>
+          <button class="tls-sett-btn" id="s-save-interests" style="margin-top:18px;">Save Interests</button>
+        </div>
+      </div>
+
       <!-- SETTINGS TAB -->
       <div class="tls-prof-tab" id="tab-settings" style="display:none;">
         <div class="tls-sett-card">
@@ -139,13 +154,6 @@ get_header();
           <div class="tls-sett-field"><label>Current Password</label><input type="password" id="s-pass-old" placeholder="••••••••"></div>
           <div class="tls-sett-field"><label>New Password <span>(min. 6 characters)</span></label><input type="password" id="s-pass-new" placeholder="••••••••"></div>
           <button class="tls-sett-btn" id="s-save-pass">Update Password</button>
-        </div>
-        <div class="tls-sett-card" id="tls-interests-card">
-          <h2 class="tls-sett-title">Your Interests</h2>
-          <p class="tls-int-help">Choose the areas you care about — this shapes your recommendations and the weekly book digest.</p>
-          <div id="tls-int-msg" class="tls-sett-notice" style="display:none;"></div>
-          <?php echo tls_render_interest_grid( tls_get_user_interests( $uid ) ); ?>
-          <button class="tls-sett-btn" id="s-save-interests" style="margin-top:18px;">Save Interests</button>
         </div>
         <div class="tls-sett-card tls-sett-card--flat">
           <h2 class="tls-sett-title">Account</h2>
