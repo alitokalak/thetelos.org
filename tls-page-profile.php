@@ -140,6 +140,13 @@ get_header();
           <div class="tls-sett-field"><label>New Password <span>(min. 6 characters)</span></label><input type="password" id="s-pass-new" placeholder="••••••••"></div>
           <button class="tls-sett-btn" id="s-save-pass">Update Password</button>
         </div>
+        <div class="tls-sett-card" id="tls-interests-card">
+          <h2 class="tls-sett-title">Your Interests</h2>
+          <p class="tls-int-help">Choose the areas you care about — this shapes your recommendations and the weekly book digest.</p>
+          <div id="tls-int-msg" class="tls-sett-notice" style="display:none;"></div>
+          <?php echo tls_render_interest_grid( tls_get_user_interests( $uid ) ); ?>
+          <button class="tls-sett-btn" id="s-save-interests" style="margin-top:18px;">Save Interests</button>
+        </div>
         <div class="tls-sett-card tls-sett-card--flat">
           <h2 class="tls-sett-title">Account</h2>
           <button class="tls-sett-btn tls-sett-btn--outline" id="tls-ph-signout-2">Sign Out</button>
@@ -454,6 +461,31 @@ get_header();
             notice('tls-pass-msg',res.success?res.data.message:res.data.message,res.success?'success':'error');
             if(res.success){document.getElementById('s-pass-old').value='';document.getElementById('s-pass-new').value='';}
         });
+    });
+
+    /* ── İlgi alanları (profil düzenleme): chip aç/kapa + kaydet ── */
+    document.addEventListener('click', function(e){
+        var chip = e.target.closest('#tls-interests-card .tls-int-chip');
+        if(!chip) return;
+        var on = chip.classList.toggle('tls-int-chip--on');
+        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var siBtn = document.getElementById('s-save-interests');
+    if(siBtn) siBtn.addEventListener('click', function(){
+        var slugs = [];
+        document.querySelectorAll('#tls-interests-card .tls-int-chip--on').forEach(function(c){ slugs.push(c.dataset.slug); });
+        siBtn.disabled = true;
+        var fd = new FormData();
+        fd.append('action','tls_save_interests');
+        fd.append('nonce', authNonce);
+        fd.append('interests', slugs.join(','));
+        fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'})
+        .then(function(r){return r.json();})
+        .then(function(res){
+            siBtn.disabled = false;
+            notice('tls-int-msg', res.success ? ('✓ Saved '+res.data.count+' interest'+(res.data.count===1?'':'s')+'.') : 'Could not save. Please try again.', res.success ? 'success' : 'error');
+        })
+        .catch(function(){ siBtn.disabled=false; notice('tls-int-msg','Connection error.','error'); });
     });
 
 })();
