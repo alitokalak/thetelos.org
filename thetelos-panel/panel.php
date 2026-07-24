@@ -607,6 +607,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <?php endif; ?>
             <?php if ($errs > 0): ?>
             <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="tlsRetryErrors('<?= $bid ?>',this)">&#8634; <?= $errs ?> hatayi tekrar dene</button>
+            <a class="btn btn-ghost btn-sm" style="color:var(--green);text-decoration:none" href="api/export-errors.php?batch_id=<?= urlencode($bid) ?>">&#8595; Hataları CSV indir</a>
             <?php endif; ?>
             <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-left:auto" onclick="tlsDeleteBatch('<?= $bid ?>',this)">&#10005; Sil</button>
           </div>
