@@ -147,6 +147,23 @@ if ($build_target) {
     exit;
 }
 
+/* ── DeepSeek YOĞUN-SAAT KORUMASI ──────────────────────────────────
+   DeepSeek yoğun saatlerde (UTC 01:00–04:00 ve 06:00–10:00 → TR 04–07 ve
+   09–13) tüm kalemleri 2× fiyatlandırıyor. İçerik üretimi ücretli DeepSeek
+   çağrısı yaptığı için bu saatlerde ATLANIR; liste oluşturma (ücretsiz,
+   yukarıda ÖNCELİK 1) etkilenmez → kuyruk boşalmaya devam eder ama pahalı
+   üretim normal-fiyat saatlere kayar. Zorla üretmek için cron URL'ine
+   &peak=off ekle, ya da config.php'de define('TLS_DEEPSEEK_SKIP_PEAK', false). */
+$peak_skip = !defined('TLS_DEEPSEEK_SKIP_PEAK') || TLS_DEEPSEEK_SKIP_PEAK;
+if ($peak_skip && (($_GET['peak'] ?? '') !== 'off')) {
+    $h = (int) gmdate('G'); // UTC saati 0–23
+    if (($h >= 1 && $h < 4) || ($h >= 6 && $h < 10)) {
+        if (!headers_sent()) header('Content-Type: application/json');
+        echo json_encode(['ok' => true, 'msg' => 'skipped: DeepSeek peak hour (2x price)', 'utc_hour' => $h]);
+        exit;
+    }
+}
+
 /* ── ÖNCELİK 2: içerik üretimi ──
    Yarım kalan en eski batch'i bul. Sadece 'paused'/'cancelled' atlanır;
    'running' ya da (ölü worker yüzünden) belirsiz durumda kalmış ama hâlâ
