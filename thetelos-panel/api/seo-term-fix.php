@@ -43,7 +43,7 @@ curl_setopt_array($ch,[
     CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>20,
     CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
     CURLOPT_POSTFIELDS=>json_encode([
-        'model'     =>DEEPSEEK_MODEL,
+        'model'     =>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),
         'max_tokens'=>150,
         'messages'  =>[['role'=>'user','content'=>$prompt]],
     ]),

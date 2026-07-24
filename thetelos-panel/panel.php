@@ -75,7 +75,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <button class="api-sub-btn active" data-model="claude-haiku-4-5-20251001" data-label="haiku">Haiku <span class="api-sub-hint">Hızlı</span></button>
         <button class="api-sub-btn" data-model="claude-sonnet-4-20250514" data-label="sonnet">Sonnet <span class="api-sub-hint">Kaliteli</span></button>
       </div>
-      <span class="api-active-label" id="api-active-label"><?= defined('DEEPSEEK_MODEL') ? htmlspecialchars(DEEPSEEK_MODEL) : 'deepseek' ?></span>
+      <span class="api-active-label" id="api-active-label"><?= defined('DEEPSEEK_MODEL') ? htmlspecialchars(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL) : 'deepseek' ?></span>
     </div>
 
     <div id="gen-notif"  class="notif"></div>

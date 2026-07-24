@@ -171,7 +171,7 @@ if($author){
         curl_setopt_array($bio_ch,[
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
             CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
         ]);
         $bio_raw = curl_exec($bio_ch); curl_close($bio_ch);
         $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
@@ -185,7 +185,7 @@ if($author){
         curl_setopt_array($bio_ch,[
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
             CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>DEEPSEEK_MODEL,'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
         ]);
         $bio_raw = curl_exec($bio_ch); curl_close($bio_ch);
         $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
