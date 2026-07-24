@@ -288,7 +288,7 @@ curl_setopt_array($ch, [
         'Authorization: Bearer ' . DEEPSEEK_KEY,
     ],
     CURLOPT_POSTFIELDS    => json_encode([
-        'model'       => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),
+        'model'       => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
         'max_tokens'  => $max_tokens,
         'stream'      => true,
         'messages'    => [['role'=>'user','content'=>$prompt]],

@@ -163,7 +163,7 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
         CURLOPT_POSTFIELDS => json_encode([
-            'model' => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL), 'max_tokens' => 6000, 'temperature' => 0,
+            'model' => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL), 'max_tokens' => 6000, 'temperature' => 0,
             'messages' => [['role'=>'user','content'=>$prompt]],
         ]),
     ]);

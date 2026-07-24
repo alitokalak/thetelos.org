@@ -64,7 +64,7 @@ function bp_md2h($text){
 }
 
 // İçerik üret
-list($raw,$code) = bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>$max_tokens,'messages'=>array(array('role'=>'user','content'=>$prompt))));
+list($raw,$code) = bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>$max_tokens,'messages'=>array(array('role'=>'user','content'=>$prompt))));
 if (!$raw||$code!==200) {
     $d2=json_decode($raw,true);
     $err=isset($d2['error']['message'])?$d2['error']['message']:"API Hatasi $code";
@@ -78,7 +78,7 @@ if (!$content) { echo json_encode(array('ok'=>false,'error'=>'Bos icerik.','book
 $cats='philosophy,philosophy_of_religion,ethics,metaphysics,epistemology,logic,aesthetics,political_philosophy,history_of_philosophy,religion,theology,systematic_theology,christian_theology,islamic_theology,christianity,islam,judaism,buddhism,hinduism,atheism,agnosticism,history,world_history,ancient_history,medieval_history,modern_history,military_history,cultural_history,biography,autobiography,memoir,literature,classic_literature,world_literature,poetry,drama,novel,fiction,historical_fiction,science_fiction,dystopian_fiction,fantasy,horror,mystery,detective_fiction,romance,adventure,psychology,cognitive_psychology,social_psychology,psychoanalysis,sociology,anthropology,politics,political_science,economics,microeconomics,macroeconomics,education,law,international_law,science,physics,astronomy,chemistry,mathematics,statistics,biology,evolution,genetics,medicine,neuroscience,public_health,technology,computers,artificial_intelligence,programming,data_science,art,art_history,music,music_history,architecture,design,photography,film,theatre,geography,travel,culture,mythology,folklore,children,young_adult,self_help,personal_development,business,management,marketing,entrepreneurship';
 $snippet=mb_substr(strip_tags($content),0,1500);
 $mp="Return ONLY JSON for \"{$book}\" by {$author}:\n{\"excerpt\":\"max 155 chars\",\"meta_description\":\"max 155 chars\",\"categories\":[\"slug\"],\"quotes\":[{\"text\":\"quote\",\"source\":\"section\"}]}\nPick 2-5 from: {$cats}\n\n{$snippet}";
-list($rm)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>600,'messages'=>array(array('role'=>'user','content'=>$mp))),30);
+list($rm)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>600,'messages'=>array(array('role'=>'user','content'=>$mp))),30);
 $mt=preg_replace('/```json|```/','',isset(json_decode($rm,true)['choices'][0]['message']['content'])?json_decode($rm,true)['choices'][0]['message']['content']:'{}');
 $meta=json_decode(trim($mt),true);
 if (!$meta) $meta=array();
@@ -133,12 +133,12 @@ if($author){
     $tid=null; $edesc='';
     foreach((isset($terms)?$terms:array()) as $t){if(strtolower($t['name'])===strtolower($author)){$tid=$t['id'];$edesc=isset($t['description'])?$t['description']:'';break;}}
     if(!$tid){
-        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>array(array('role'=>'user','content'=>"Write a 2-3 sentence biography of \"{$author}\". English, encyclopedic."))),20);
+        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>array(array('role'=>'user','content'=>"Write a 2-3 sentence biography of \"{$author}\". English, encyclopedic."))),20);
         $bio=isset(json_decode($bio_r,true)['choices'][0]['message']['content'])?json_decode($bio_r,true)['choices'][0]['message']['content']:'';
         list($nt)=bp_wr("$wp_api/authors",'POST',array('name'=>$author,'description'=>$bio),$auth);
         $tid=isset($nt['id'])?$nt['id']:null;
     } elseif(empty($edesc)){
-        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>array(array('role'=>'user','content'=>"Write a 2-3 sentence biography of \"{$author}\". English, encyclopedic."))),20);
+        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>array(array('role'=>'user','content'=>"Write a 2-3 sentence biography of \"{$author}\". English, encyclopedic."))),20);
         $bio=isset(json_decode($bio_r,true)['choices'][0]['message']['content'])?json_decode($bio_r,true)['choices'][0]['message']['content']:'';
         if($bio)bp_wr("$wp_api/authors/$tid",'POST',array('description'=>$bio),$auth);
     }

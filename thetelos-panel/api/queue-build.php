@@ -278,7 +278,7 @@ function qb_llm($author){
     $ch=curl_init(DEEPSEEK_API_URL);
     curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>30,
         CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>1500,
+        CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>1500,
             'messages'=>[['role'=>'user','content'=>"List the most important works by {$author}. Return ONLY JSON: [{\"title\":\"...\",\"year\":\"...\"}]"]]])]);
     $r=curl_exec($ch); curl_close($ch);
     $d=json_decode($r,true); $txt=$d['choices'][0]['message']['content']??'';

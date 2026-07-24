@@ -36,7 +36,7 @@ function lw_call_llm($provider, $prompt, $max_tokens = 4000) {
             CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true,
             CURLOPT_TIMEOUT=>85, CURLOPT_CONNECTTIMEOUT=>10,
             CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-pro':DEEPSEEK_MODEL),'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>$max_tokens,'temperature'=>0,'messages'=>[['role'=>'user','content'=>$prompt]]]),
         ]);
         $r = curl_exec($ch); $e = curl_error($ch); curl_close($ch);
         if ($e || !$r) return ['', 'DeepSeek: '.($e ?: 'boş yanıt'), false];
