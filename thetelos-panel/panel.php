@@ -260,10 +260,33 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           </div>
         </div>
 
+        <?php
+          $tls_peak_flag = __DIR__ . '/jobs/.peak-skip';
+          $tls_peak_on   = !file_exists($tls_peak_flag) || trim((string) @file_get_contents($tls_peak_flag)) !== '0';
+        ?>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-top:16px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.5">
+          <input type="checkbox" id="cb-peak-skip" style="margin-top:2px" <?= $tls_peak_on ? 'checked' : '' ?>>
+          <span>💤 <b style="color:var(--text)">Yoğun saatlerde tasarruf et</b> — DeepSeek'in 2× fiyatlı saatlerinde (TR 04:00–07:00 &amp; 09:00–13:00) üretimi otomatik duraklatır, uygun saat gelince kaldığı yerden devam eder. Liste oluşturma (ücretsiz) etkilenmez. <span style="font-size:11px">(önerilen: açık)</span></span>
+        </label>
+        <span id="peak-skip-msg" style="display:block;margin-top:6px;font-size:12px;color:var(--gold)"></span>
+
         <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
           <button class="btn btn-primary" id="btn-batch-start" disabled>▶ Batch İşlemi Başlat</button>
           <button class="btn btn-ghost" id="btn-batch-pause" style="display:none">⏸ Duraklat</button>
         </div>
+        <script>
+        (function(){
+          var cb = document.getElementById('cb-peak-skip'), msg = document.getElementById('peak-skip-msg');
+          if(!cb) return;
+          cb.addEventListener('change', function(){
+            var fd = new FormData(); fd.append('on', cb.checked ? '1' : '0');
+            fetch('api/peak-skip.php', {method:'POST', body:fd, credentials:'same-origin'})
+              .then(function(r){return r.json();})
+              .then(function(d){ msg.textContent = d && d.ok ? (cb.checked ? '✓ Tasarruf açık — yoğun saatlerde duraklatılacak.' : '✓ Tasarruf kapalı — her saat üretir.') : 'Kaydedilemedi.'; })
+              .catch(function(){ msg.textContent = 'Bağlantı hatası.'; });
+          });
+        })();
+        </script>
         <p style="font-size:11px;color:var(--muted);margin-top:8px">
           ℹ Sunucu taraflı batch — tarayıcıyı kapatsan bile işleme devam eder.
           Sayfayı yeniden açarak devam edebilirsin.

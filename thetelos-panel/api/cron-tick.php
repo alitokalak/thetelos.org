@@ -152,9 +152,13 @@ if ($build_target) {
    09–13) tüm kalemleri 2× fiyatlandırıyor. İçerik üretimi ücretli DeepSeek
    çağrısı yaptığı için bu saatlerde ATLANIR; liste oluşturma (ücretsiz,
    yukarıda ÖNCELİK 1) etkilenmez → kuyruk boşalmaya devam eder ama pahalı
-   üretim normal-fiyat saatlere kayar. Zorla üretmek için cron URL'ine
-   &peak=off ekle, ya da config.php'de define('TLS_DEEPSEEK_SKIP_PEAK', false). */
-$peak_skip = !defined('TLS_DEEPSEEK_SKIP_PEAK') || TLS_DEEPSEEK_SKIP_PEAK;
+   üretim normal-fiyat saatlere kayar. Aç/kapa PANELDEN yapılır
+   (jobs/.peak-skip bayrağı; dosya yoksa varsayılan AÇIK). Zorla üretmek için
+   cron URL'ine &peak=off ekle. config.php'de define('TLS_DEEPSEEK_SKIP_PEAK', …)
+   tanımlıysa o her şeyi ezer. */
+$peak_flag = $jobs_dir . '/.peak-skip';
+$peak_skip = !file_exists($peak_flag) || trim((string) @file_get_contents($peak_flag)) !== '0';
+if (defined('TLS_DEEPSEEK_SKIP_PEAK')) $peak_skip = (bool) TLS_DEEPSEEK_SKIP_PEAK;
 if ($peak_skip && (($_GET['peak'] ?? '') !== 'off')) {
     $h = (int) gmdate('G'); // UTC saati 0–23
     if (($h >= 1 && $h < 4) || ($h >= 6 && $h < 10)) {
