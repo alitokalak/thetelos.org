@@ -521,9 +521,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     bw_touch_hb($batch_file, $idx);   // yayın aşaması başlıyor — canlılığı tazele
 
     // ── Meta (excerpt, meta_desc, kategoriler, alıntılar) ──────────
-    // Kategori paleti = sitede VAR OLAN tüm kategoriler. Üretici yeni kategori
-    // OLUŞTURMAZ, yalnızca mevcutlardan seçer → onaylı listeye kattığın (WP'de
-    // tanımlı) her kategori otomatik kullanılır, ayrı liste bakımı gerekmez.
+    // Kategori paleti = sitedeki kategorilerin ÇEKİRDEK LİSTEYLE KESİŞİMİ.
+    // Üretici yeni kategori OLUŞTURMAZ ve çekirdek dışına da çıkamaz; böylece
+    // zamanla "Veterinary/Construction" gibi tekil kategoriler birikip kategori
+    // enflasyonu yaratmaz (temizlik sonrası liste sabit kalır).
     // Bir worker çalışmasında bir kez çekilir, sonraki kitaplarda tekrar kullanılır.
     static $tls_all_cat_slugs = null;
     if ($tls_all_cat_slugs === null) {
@@ -537,7 +538,17 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
     // REST başarısız olursa güvenli temel liste (base ~100).
     $cats_fallback = 'philosophy,philosophy_of_religion,ethics,metaphysics,epistemology,logic,aesthetics,political_philosophy,history_of_philosophy,religion,theology,systematic_theology,christian_theology,islamic_theology,christianity,islam,judaism,buddhism,hinduism,atheism,agnosticism,history,world_history,ancient_history,medieval_history,modern_history,military_history,cultural_history,biography,autobiography,memoir,literature,classic_literature,world_literature,poetry,drama,novel,fiction,historical_fiction,science_fiction,dystopian_fiction,fantasy,horror,mystery,detective_fiction,romance,adventure,psychology,cognitive_psychology,social_psychology,psychoanalysis,sociology,anthropology,politics,political_science,economics,microeconomics,macroeconomics,education,law,international_law,science,physics,astronomy,chemistry,mathematics,statistics,biology,evolution,genetics,medicine,neuroscience,public_health,technology,computers,artificial_intelligence,programming,data_science,art,art_history,music,music_history,architecture,design,photography,film,theatre,geography,travel,culture,mythology,folklore,children,young_adult,self_help,personal_development,business,management,marketing,entrepreneurship';
-    $cats_list = $tls_all_cat_slugs ? implode(',', $tls_all_cat_slugs) : $cats_fallback;
+    // Paleti çekirdekle sınırla: sitede olsa bile çekirdek dışı slug sunulmaz.
+    // (Slug'lar WP'de tire, çekirdek listede alt çizgi olabilir → normalize et.)
+    $core_norm = [];
+    foreach (explode(',', $cats_fallback) as $cs) {
+        $core_norm[str_replace('_', '-', trim($cs))] = trim($cs);
+    }
+    $palette = [];
+    foreach ($tls_all_cat_slugs ?: [] as $s) {
+        if (isset($core_norm[str_replace('_', '-', strtolower($s))])) $palette[] = $s;
+    }
+    $cats_list = $palette ? implode(',', $palette) : $cats_fallback;
 
     $snippet = mb_substr(strip_tags($content), 0, 1500);
     $mp = "Return ONLY valid JSON (no extra text, no markdown fences):\n"

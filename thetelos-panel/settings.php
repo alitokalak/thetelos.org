@@ -35,6 +35,7 @@ if (file_exists(PROMPTS_FILE)) {
     <nav class="tls-nav">
       <a href="panel.php"><span class="ico">✍</span> İçerik Üret</a>
       <a href="recategorize.php"><span class="ico">🗂️</span> Kategori Düzelt</a>
+      <a href="category-cleanup.php"><span class="ico">🧹</span> Kategori Temizle</a>
       <a href="cover-backfill.php"><span class="ico">🖼</span> Kapak Bul</a>
       <a href="amazon-match.php"><span class="ico">🛒</span> Amazon</a>
       <a href="settings.php" class="active"><span class="ico">⚙</span> Ayarlar</a>
