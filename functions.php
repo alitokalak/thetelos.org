@@ -2724,6 +2724,30 @@ function thetelos_smart_404_redirect() {
     if ( ! $path ) return;
     $path = '/' . trim( $path, '/' ) . '/';
 
+    // 0) BİRLEŞTİRİLMİŞ KATEGORİ → hedefe 301.
+    //    Kategori temizliğinde kaldırılan kategorilerin URL'leri (ve sayfalı
+    //    varyantları) 404 olmasın diye tls_cat_redirects haritasından hedefe
+    //    yönlendirilir. Hedef 0 ise kategori dizinine gider.
+    $tls_cat_map = get_option( 'tls_cat_redirects', [] );
+    if ( is_array( $tls_cat_map ) && $tls_cat_map ) {
+        $cat_base = trim( (string) get_option( 'category_base' ) );
+        if ( $cat_base === '' ) $cat_base = 'category';
+        $cat_base = trim( $cat_base, '/' );
+
+        if ( preg_match( '#^/' . preg_quote( $cat_base, '#' ) . '/([^/]+)/(?:page/\d+/)?$#', $path, $m ) ) {
+            $slug_try = [ $m[1], str_replace( '_', '-', $m[1] ), str_replace( '-', '_', $m[1] ) ];
+            foreach ( $slug_try as $s ) {
+                if ( ! array_key_exists( $s, $tls_cat_map ) ) continue;
+                $target = (int) $tls_cat_map[ $s ];
+                if ( $target > 0 ) {
+                    $link = get_category_link( $target );
+                    if ( $link && ! is_wp_error( $link ) ) { wp_redirect( $link, 301 ); exit; }
+                }
+                wp_redirect( home_url( '/categories/' ), 301 ); exit;
+            }
+        }
+    }
+
     // 2) Aralık dışı sayfalama → temel arşive (ör. /authors/plato/page/3/ → /authors/plato/,
     //    /category/philosophy/page/103/ → /category/philosophy/, /page/116/ → /).
     if ( preg_match( '#^(/.*?)/page/\d+/$#', $path, $m ) ) {

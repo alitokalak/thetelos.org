@@ -81,7 +81,30 @@ function cc_guess_target($cat, $core_terms) {
     return $best;
 }
 
-/** Yazıları kaynaktan hedefe taşı, kaynağı sil. */
+/**
+ * Silinen kategori URL'si 404 vermesin: eski slug → hedef terim eşlemesi
+ * tls_cat_redirects seçeneğinde tutulur; tema bunu okuyup 301 atar.
+ * $to_id = 0 → /categories/ dizinine yönlendir (boş kategori silindiğinde).
+ * Zincir düzeltme: daha önce bu kategoriye işaret eden kayıtlar yeni hedefe kaydırılır.
+ */
+function cc_remember_redirect($old_slug, $old_id, $to_id) {
+    $old_slug = trim((string)$old_slug);
+    if ($old_slug === '') return;
+    $map = get_option('tls_cat_redirects', []);
+    if (!is_array($map)) $map = [];
+
+    $map[$old_slug] = (int)$to_id;
+    // Zincir: daha önce SİLİNEN bu kategoriye yönlenenler varsa (A→B, şimdi B→C)
+    // onları da yeni hedefe kaydır ki 301 zinciri kırılmasın.
+    if ((int)$old_id > 0) {
+        foreach ($map as $s => $tid) {
+            if ((int)$tid === (int)$old_id) $map[$s] = (int)$to_id;
+        }
+    }
+    update_option('tls_cat_redirects', $map, false);
+}
+
+/** Yazıları kaynaktan hedefe taşı, kaynağı sil (+301 haritasına yaz). */
 function cc_merge($from_id, $to_id) {
     $from = get_term($from_id, 'category');
     $to   = get_term($to_id, 'category');
@@ -95,7 +118,9 @@ function cc_merge($from_id, $to_id) {
         wp_set_object_terms($pid, [(int)$to_id], 'category', true);    // hedefi ekle
         wp_remove_object_terms($pid, [(int)$from_id], 'category');     // kaynağı çıkar
     }
+    $old_slug = $from->slug;
     wp_delete_term($from_id, 'category');
+    cc_remember_redirect($old_slug, (int)$from_id, (int)$to_id);   // eski URL → hedef (301)
     return count($posts);
 }
 
@@ -167,7 +192,10 @@ if ($action === 'delete_empty') {
         if (in_array(cc_norm($c->slug), $core_slugs, true)) continue;
         if (cc_norm($c->slug) === 'general' || cc_norm($c->slug) === 'uncategorized') continue;
         if ((int)$c->count > 0) continue;
-        wp_delete_term((int)$c->term_id, 'category');
+        $slug = $c->slug; $tid = (int)$c->term_id;
+        wp_delete_term($tid, 'category');
+        // Yazısı yoktu ama URL indekslenmiş olabilir → kategori dizinine 301 (0 = dizin)
+        cc_remember_redirect($slug, $tid, 0);
         $deleted[] = $c->name;
     }
     echo json_encode(['ok'=>true, 'deleted'=>count($deleted), 'names'=>$deleted], JSON_UNESCAPED_UNICODE);
