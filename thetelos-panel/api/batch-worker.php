@@ -672,8 +672,36 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // AI listede olmayan bir slug uydurursa (ör. "confucianism") atlanır.
     $allowed = array_fill_keys( array_map('trim', explode(',', $cats_list)), true );
 
+    /* ── KAYNAK 1: OpenLibrary konuları (kütüphane sınıflandırması) ──────
+       Kategoriyi AI'ın yorumuna bırakmak yerine önce kitabın OpenLibrary'deki
+       KONU etiketlerine bakarız: bunlar kütüphaneciler tarafından atanmış
+       gerçek sınıflandırma verisidir. Konular yalnızca ONAYLI listeye
+       eşlenir; eşleşmeyen konu atılır, yeni kategori açılmaz.
+       Yeterli eşleşme çıkarsa AI'ın önerisine hiç gerek kalmaz. */
+    $ol_slugs = [];
+    $ol_raw = json_decode((string) $bw_http_get(
+        'https://openlibrary.org/search.json?title=' . urlencode($search_book)
+        . ($author !== '' ? '&author=' . urlencode($author) : '')
+        . '&limit=1&fields=subject'
+    ), true);
+    $subjects = $ol_raw['docs'][0]['subject'] ?? [];
+    if (is_array($subjects) && $subjects) {
+        // Konu metnini tek gövdede birleştir → onaylı slug'ları içinde ara
+        $hay = ' ' . strtolower(preg_replace('/[^a-zA-Z0-9]+/', ' ', implode(' ', array_slice($subjects, 0, 60)))) . ' ';
+        foreach (array_keys($allowed) as $cslug) {
+            $words = trim(str_replace(['_', '-'], ' ', $cslug));
+            if ($words === '' || strlen($words) < 4) continue;
+            if (strpos($hay, ' ' . $words . ' ') !== false) $ol_slugs[] = $cslug;
+        }
+        $ol_slugs = array_slice(array_values(array_unique($ol_slugs)), 0, 5);
+    }
+
+    /* Kaynak sırası: OpenLibrary konuları → (yetersizse) AI önerisi. */
+    $picked_slugs = count($ol_slugs) >= 2 ? $ol_slugs
+                  : array_merge($ol_slugs, (array)($meta['categories'] ?? []));
+
     $cat_ids = [];
-    foreach ($meta['categories'] ?? [] as $raw_slug) {
+    foreach ($picked_slugs as $raw_slug) {
         $slug = strtolower(trim(preg_replace('/[\s_]+/', '-', $raw_slug)));
         $slug = preg_replace('/[^a-z0-9\-]/', '', $slug);
         if (!$slug) continue;
