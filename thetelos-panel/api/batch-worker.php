@@ -471,17 +471,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             bw_touch_hb($batch_file, $idx);   // her chunk = canlılık damgası
             return strlen($chunk);
         };
-        $ch = curl_init(DEEPSEEK_API_URL);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS => json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>16000,'stream'=>true,'messages'=>[['role'=>'user','content'=>$pr]]]),
-            CURLOPT_WRITEFUNCTION => $stream_cb,
-        ]);
-        curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
+        // Bağlantı hatası (timeout / SSL reset) GEÇİCİdir → 3 kez dene, aralarda
+        // kısa bekleme + heartbeat. Böylece anlık ağ kopmaları kitabı hataya
+        // düşürmeden kendiliğinden toparlanır.
+        $cerr = '';
+        for ($try = 1; $try <= 3; $try++) {
+            $piece = ''; $sbuf = ''; $raw_tail = '';   // her denemede buffer sıfırla
+            $ch = curl_init(DEEPSEEK_API_URL);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+                CURLOPT_POSTFIELDS => json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>16000,'stream'=>true,'messages'=>[['role'=>'user','content'=>$pr]]]),
+                CURLOPT_WRITEFUNCTION => $stream_cb,
+            ]);
+            curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
+            if (!$cerr) break;                              // bağlantı başarılı
+            if ($try < 3) { bw_touch_hb($batch_file, $idx); sleep(3); }  // geçici → bekle, tekrar dene
+        }
 
         if ($cerr) {
-            if ($k === 1) $gen_error = "DeepSeek Part {$k} bağlantı hatası: {$cerr}";
+            if ($k === 1) $gen_error = "DeepSeek Part {$k} bağlantı hatası (3 deneme): {$cerr}";
             break;
         }
         $piece = trim(str_replace('%%PART_END%%', '', $piece));
