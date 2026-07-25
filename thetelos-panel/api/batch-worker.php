@@ -547,16 +547,35 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         . "For quotes: only truly verbatim passages; 0-2 quotes max.\n"
         . "Book: \"{$book}\" by {$author}\n\n{$snippet}";
 
-    $mch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($mch, [
-        CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>30,
-        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>500,'messages'=>[['role'=>'user','content'=>$mp]]]),
-    ]);
-    $meta_raw = curl_exec($mch); curl_close($mch);
-    $meta_text = json_decode($meta_raw,true)['choices'][0]['message']['content'] ?? '{}';
-    $meta_text = preg_replace('/```json|```/', '', $meta_text);
-    $meta = json_decode(trim($meta_text), true) ?? [];
+    // Meta/kategori isteği. max_tokens dar tutulursa JSON yarıda kesilir →
+    // json_decode boş döner → kategori bulunamaz → her kitap "General"e düşer.
+    // Bu yüzden bütçe geniş, JSON çıkarımı toleranslı ve 2 denemeli.
+    $meta = [];
+    for ($mtry = 1; $mtry <= 2; $mtry++) {
+        $mch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($mch, [
+            CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>60,
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS=>json_encode([
+                'model'           => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
+                'max_tokens'      => 3000,
+                'response_format' => ['type' => 'json_object'],
+                'messages'        => [['role'=>'user','content'=>$mp]],
+            ]),
+        ]);
+        $meta_raw = curl_exec($mch); $merr = curl_error($mch); curl_close($mch);
+
+        $meta_text = json_decode((string)$meta_raw, true)['choices'][0]['message']['content'] ?? '';
+        $meta_text = trim(preg_replace('/```json|```/', '', (string)$meta_text));
+        $meta = json_decode($meta_text, true) ?: [];
+        // Model JSON'un başına/sonuna laf eklediyse gövdedeki ilk {...} bloğunu çek
+        if (!$meta && $meta_text !== '' && preg_match('/\{.*\}/s', $meta_text, $mm)) {
+            $meta = json_decode($mm[0], true) ?: [];
+        }
+        if ($meta) break;                      // başarılı
+        if ($mtry < 2) { bw_touch_hb($batch_file, $idx); sleep(2); }
+    }
+    if (!is_array($meta)) $meta = [];
 
     // excerpt & meta_description'ı DAİMA normalize et: 155 karaktere sığdır VE
     // mutlaka tam bir cümle (nokta/!/? ile biten) olsun. AI kısa ama yarıda
