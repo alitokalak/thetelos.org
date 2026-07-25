@@ -22,6 +22,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 .badge-core{background:rgba(0,171,107,.15);color:#00ab6b}
 .badge-extra{background:rgba(212,180,131,.18);color:var(--tls-gold)}
 .badge-thin{background:rgba(204,24,24,.15);color:#cc1818}
+.badge-big{background:rgba(74,158,255,.15);color:#4a9eff}
 .cc-sel{padding:4px 8px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);max-width:230px}
 .bulk-row{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap;align-items:center}
 #cc-status{font-size:12px;color:var(--tls-gold);min-height:16px}
@@ -57,7 +58,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     <div class="stats-row">
       <div class="stat-box"><div class="stat-val" id="st-total">–</div><div class="stat-lbl">Toplam Kategori</div></div>
       <div class="stat-box"><div class="stat-val" id="st-core" style="color:#00ab6b">–</div><div class="stat-lbl">Çekirdek (kalacak)</div></div>
-      <div class="stat-box"><div class="stat-val" id="st-extra" style="color:var(--tls-gold)">–</div><div class="stat-lbl">Fazla (birleşecek)</div></div>
+      <div class="stat-box"><div class="stat-val" id="st-big" style="color:#4a9eff">–</div><div class="stat-lbl">Büyük (korunur)</div></div>
+      <div class="stat-box"><div class="stat-val" id="st-extra" style="color:var(--tls-gold)">–</div><div class="stat-lbl">İnce (aday)</div></div>
     </div>
 
     <div class="bulk-row">
@@ -68,11 +70,13 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     </div>
 
     <p style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:820px">
-      <b>Çekirdek</b> = sitenin sabit ana kategori listesi (~100) — bunlar kalır.
-      <b>Fazla</b> = sonradan birikmiş kategoriler; her biri için uygun bir hedef önerilir,
-      yanlışsa açılır menüden değiştir. Birleştirince <b>yazılar hedefe taşınır</b> ve boşalan
-      kategori silinir — hiçbir yazı kategorisiz kalmaz, içerik kaybolmaz.
-      Az yazılı olanlar en üstte listelenir.
+      <b>Çekirdek</b> = sitenin sabit ana kategori listesi — kalır.
+      <b>Büyük</b> (25+ yazı) = çekirdekte olmasa da gerçek bir alan sayılır; <b>otomatik
+      işaretlenmez ve öneri verilmez</b>, yine de istersen elle hedef seçip birleştirebilirsin.
+      <b>İnce</b> = az yazılı birikinti; yalnızca <b>emin olunan</b> bir hedef varsa öneri
+      dolu gelir, emin olunmayan satırlar boş bırakılır (yanlış öneri vermektense boş bırakılır).
+      Birleştirince <b>yazılar hedefe taşınır</b>, boşalan kategori silinir ve eski URL
+      <b>301 ile hedefe yönlenir</b> — içerik de bağlantı da kaybolmaz.
     </p>
 
     <div id="result"><div style="text-align:center;padding:40px;color:var(--muted)">Tara butonuna bas.</div></div>
@@ -96,16 +100,19 @@ function render(){
     '<th style="width:80px">Durum</th><th style="width:250px">Birleştirilecek Hedef</th>'+
     '</tr></thead><tbody>';
   rows.forEach(r=>{
-    const thin = !r.core && r.count <= 3;
+    const sys  = r.slug==='general' || r.slug==='uncategorized';
+    const editable = !r.core && !sys;              // büyükler de elle seçilebilir
+    const thin = editable && !r.big && r.count <= 3;
     html += '<tr data-id="'+r.id+'">'+
-      '<td>'+(!r.core && r.slug!=='general' && r.slug!=='uncategorized'
-              ? '<input type="checkbox" class="cc-cb"'+(r.target_id?' checked':'')+'>' : '')+'</td>'+
+      // Otomatik işaret YALNIZCA emin önerisi olan ince kategorilerde
+      '<td>'+(editable ? '<input type="checkbox" class="cc-cb"'+(r.target_id?' checked':'')+'>' : '')+'</td>'+
       '<td><b>'+escH(r.name)+'</b><br><small style="color:var(--muted)">'+escH(r.slug)+'</small></td>'+
       '<td>'+r.count+'</td>'+
-      '<td>'+(r.core?'<span class="badge badge-core">Çekirdek</span>'
-              : thin?'<span class="badge badge-thin">İnce</span>'
+      '<td>'+(r.core ? '<span class="badge badge-core">Çekirdek</span>'
+              : r.big ? '<span class="badge badge-big">Büyük</span>'
+              : thin  ? '<span class="badge badge-thin">İnce</span>'
               : '<span class="badge badge-extra">Fazla</span>')+'</td>'+
-      '<td>'+(!r.core && r.slug!=='general' && r.slug!=='uncategorized'
+      '<td>'+(editable
               ? '<select class="cc-sel"><option value="0">— seç —</option>'+opts+'</select>' : '')+'</td>'+
       '</tr>';
   });
@@ -134,8 +141,9 @@ $('btn-load').addEventListener('click', ()=>{
     $('btn-load').disabled = false;
     if(!d||!d.ok){ $('cc-status').textContent='Hata.'; return; }
     rows = d.rows; coreList = d.core_list;
-    $('st-total').textContent = d.total; $('st-core').textContent = d.core; $('st-extra').textContent = d.extra;
-    $('cc-status').textContent = d.extra+' fazla kategori bulundu.';
+    $('st-total').textContent = d.total; $('st-core').textContent = d.core;
+    $('st-big').textContent = d.big || 0; $('st-extra').textContent = d.extra;
+    $('cc-status').textContent = d.extra+' ince kategori birleştirmeye aday ('+(d.big||0)+' büyük kategori korunuyor).';
     render();
   }).catch(()=>{ $('btn-load').disabled=false; $('cc-status').textContent='Bağlantı hatası.'; });
 });

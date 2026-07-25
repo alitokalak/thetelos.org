@@ -30,55 +30,69 @@ ob_end_clean();
 
 /** Sitenin sabit çekirdek kategori listesi (üretici de bunu palet olarak kullanır). */
 function cc_core_slugs() {
-    return array_map('trim', explode(',', 'philosophy,philosophy_of_religion,ethics,metaphysics,epistemology,logic,aesthetics,political_philosophy,history_of_philosophy,religion,theology,systematic_theology,christian_theology,islamic_theology,christianity,islam,judaism,buddhism,hinduism,atheism,agnosticism,history,world_history,ancient_history,medieval_history,modern_history,military_history,cultural_history,biography,autobiography,memoir,literature,classic_literature,world_literature,poetry,drama,novel,fiction,historical_fiction,science_fiction,dystopian_fiction,fantasy,horror,mystery,detective_fiction,romance,adventure,psychology,cognitive_psychology,social_psychology,psychoanalysis,sociology,anthropology,politics,political_science,economics,microeconomics,macroeconomics,education,law,international_law,science,physics,astronomy,chemistry,mathematics,statistics,biology,evolution,genetics,medicine,neuroscience,public_health,technology,computers,artificial_intelligence,programming,data_science,art,art_history,music,music_history,architecture,design,photography,film,theatre,geography,travel,culture,mythology,folklore,children,young_adult,self_help,personal_development,business,management,marketing,entrepreneurship'));
+    return array_map('trim', explode(',', 'philosophy,philosophy_of_religion,philosophy_of_science,philosophy_of_mind,philosophy_of_language,history_of_science,critical_theory,cultural_studies,ethics,metaphysics,epistemology,logic,aesthetics,political_philosophy,history_of_philosophy,religion,theology,systematic_theology,christian_theology,islamic_theology,christianity,islam,judaism,buddhism,hinduism,atheism,agnosticism,history,world_history,ancient_history,medieval_history,modern_history,military_history,cultural_history,biography,autobiography,memoir,literature,classic_literature,world_literature,poetry,drama,novel,fiction,historical_fiction,science_fiction,dystopian_fiction,fantasy,horror,mystery,detective_fiction,romance,adventure,psychology,cognitive_psychology,social_psychology,psychoanalysis,sociology,anthropology,politics,political_science,economics,microeconomics,macroeconomics,education,law,international_law,science,physics,astronomy,chemistry,mathematics,statistics,biology,evolution,genetics,medicine,neuroscience,public_health,technology,computers,artificial_intelligence,programming,data_science,art,art_history,music,music_history,architecture,design,photography,film,theatre,geography,travel,culture,mythology,folklore,children,young_adult,self_help,personal_development,business,management,marketing,entrepreneurship'));
 }
 
 /** WP slug'ları tire kullanır; çekirdek liste alt çizgi. İkisini de karşılaştırabilmek için normalize et. */
 function cc_norm($s) { return str_replace('_', '-', strtolower(trim((string)$s))); }
 
-/** Çekirdek dışı bir kategori için en uygun çekirdek hedefi anahtar kelimeyle bul. */
+/**
+ * Çekirdek dışı bir kategori için hedef öner — YALNIZCA emin olduğunda.
+ * Yanlış öneri (ör. "Philosophy of Science" → "Data Science") hiç öneri
+ * vermemekten kötüdür; emin değilse null döner ve kullanıcı kendi seçer.
+ *
+ * Kural: İngilizcede bileşik kategori adının "başı" belirleyicidir.
+ *   "philosophy of science" → of'tan ÖNCEKİ kelime  → philosophy
+ *   "history of science"    → of'tan ÖNCEKİ kelime  → history
+ *   "church history"        → SON kelime            → history
+ *   "german literature"     → SON kelime            → literature
+ * Baş kelime bir çekirdek kategoriyle birebir eşleşmiyorsa aile tablosuna,
+ * o da tutmazsa null'a düşer.
+ */
 function cc_guess_target($cat, $core_terms) {
-    $name = cc_norm($cat->name . ' ' . $cat->slug);
-    $words = array_filter(preg_split('/[^a-z0-9]+/', $name), fn($w) => strlen($w) >= 4);
+    $slug  = cc_norm($cat->slug);
+    $words = array_values(array_filter(preg_split('/[^a-z0-9]+/', $slug)));
+    if (!$words) return null;
 
-    $best = null; $best_score = 0;
+    // Çekirdek terimleri baş kelimeyle aramak için indeksle
+    $by_head = [];
     foreach ($core_terms as $ct) {
-        $cname = cc_norm($ct->name . ' ' . $ct->slug);
-        $score = 0;
-        // Birebir/parça içerme en güçlü sinyal
-        foreach ($words as $w) {
-            if (strpos($cname, $w) !== false) $score += 3;
-            elseif (strlen($w) >= 6 && strpos($cname, substr($w, 0, 5)) !== false) $score += 1;
-        }
-        if ($score > $best_score) { $best_score = $score; $best = $ct; }
+        $cw = array_values(array_filter(preg_split('/[^a-z0-9]+/', cc_norm($ct->slug))));
+        if (!$cw) continue;
+        $by_head[implode('-', $cw)] = $ct;              // tam slug
+        if (count($cw) === 1) $by_head[$cw[0]] = $ct;   // tek kelimelik çekirdek
     }
-    // Konu ailesi kaba eşlemesi (anahtar kelime tutmayanlar için)
-    if (!$best) {
-        $fam = [
-            'science'    => ['veterinar','agricultur','engineer','construct','nutrition','environment','ecolog','zoolog','botan','geolog','climate'],
-            'technology' => ['software','internet','robot','cyber','digital','comput','machine'],
-            'business'   => ['finance','account','trade','industry','manufactur','commerce','startup','leadership'],
-            'psychology' => ['emotion','behaviour','behavior','therap','mental'],
-            'sociology'  => ['gender','feminis','race','urban','migration','communit'],
-            'politics'   => ['govern','democra','war','peace','diplomac','revolution','commun','social'],
-            'religion'   => ['spiritual','mystic','saint','church','bible','quran','prayer'],
-            'literature' => ['essay','story','tale','narrat','writing','author'],
-            'history'    => ['century','empire','civiliz','antiqu','war'],
-            'art'        => ['paint','sculpt','craft','fashion','cinema'],
-            'medicine'   => ['health','disease','anatom','surg','clinic'],
-            'education'  => ['teach','learn','pedagog','school','universit'],
-        ];
-        foreach ($fam as $target_slug => $keys) {
-            foreach ($keys as $k) {
-                if (strpos($name, $k) !== false) {
-                    foreach ($core_terms as $ct) {
-                        if (cc_norm($ct->slug) === cc_norm($target_slug)) return $ct;
-                    }
-                }
-            }
-        }
+
+    // 1) Birebir aynı konu (ör. classical-literature → classic-literature değil,
+    //    ama literature'a düşecek; yine de tam eşleşme varsa onu al)
+    if (isset($by_head[$slug])) return $by_head[$slug];
+
+    // 2) Baş kelimeyi belirle
+    $of = array_search('of', $words, true);
+    $head = ($of !== false && $of > 0) ? $words[$of - 1] : end($words);
+
+    if (isset($by_head[$head])) return $by_head[$head];
+
+    // 3) Aile tablosu — baş kelime çekirdekte yoksa konu ailesine bak
+    $fam = [
+        'history'    => ['century','empire','civilization','civilisation','antiquity','renaissance','reformation','dynasty','war','revolution'],
+        'religion'   => ['spirituality','church','bible','quran','saint','prayer','faith','mysticism','scripture'],
+        'literature' => ['essay','essays','story','stories','tale','tales','narrative','writing','prose','satire','criticism'],
+        'science'    => ['veterinary','agriculture','engineering','nutrition','environment','ecology','zoology','botany','geology','climate','physics'],
+        'technology' => ['software','internet','robotics','cyber','digital','computing','machine'],
+        'business'   => ['finance','accounting','trade','industry','manufacturing','commerce','startup','leadership'],
+        'psychology' => ['emotion','emotions','behaviour','behavior','therapy','mental'],
+        'sociology'  => ['gender','feminism','race','urban','migration','community','studies'],
+        'politics'   => ['government','democracy','peace','diplomacy','communism','socialism','liberalism'],
+        'art'        => ['painting','sculpture','craft','fashion','cinema'],
+        'medicine'   => ['health','disease','anatomy','surgery','clinical'],
+        'education'  => ['teaching','learning','pedagogy','school','university'],
+    ];
+    foreach ($fam as $target => $keys) {
+        if (in_array($head, $keys, true) && isset($by_head[$target])) return $by_head[$target];
     }
-    return $best;
+
+    return null;   // emin değiliz → öneri yok
 }
 
 /**
@@ -136,15 +150,22 @@ if ($action === 'list') {
         if (in_array(cc_norm($c->slug), $core_slugs, true)) $core_terms[] = $c;
     }
 
+    // Çok yazısı olan kategori "çöp" değildir: çekirdekte olmasa bile korunur,
+    // otomatik öneri/işaret almaz — istersen elle hedef seçip birleştirirsin.
+    $BIG = 25;
+
     $rows = [];
     foreach ($all as $c) {
         $is_core = in_array(cc_norm($c->slug), $core_slugs, true);
+        $is_sys  = in_array(cc_norm($c->slug), ['general','uncategorized'], true);
+        $is_big  = !$is_core && !$is_sys && (int)$c->count >= $BIG;
         $row = [
             'id' => (int)$c->term_id, 'name' => $c->name, 'slug' => $c->slug,
-            'count' => (int)$c->count, 'core' => $is_core,
+            'count' => (int)$c->count, 'core' => $is_core, 'big' => $is_big,
             'target_id' => 0, 'target_name' => '',
         ];
-        if (!$is_core && cc_norm($c->slug) !== 'general' && cc_norm($c->slug) !== 'uncategorized') {
+        // Öneri YALNIZCA ince (az yazılı) çekirdek-dışı kategoriler için üretilir.
+        if (!$is_core && !$is_sys && !$is_big) {
             $t = cc_guess_target($c, $core_terms);
             if ($t) { $row['target_id'] = (int)$t->term_id; $row['target_name'] = $t->name; }
         }
@@ -156,9 +177,10 @@ if ($action === 'list') {
         return $a['count'] <=> $b['count'];
     });
 
-    $core_n  = count(array_filter($rows, fn($r) => $r['core']));
+    $core_n = count(array_filter($rows, fn($r) => $r['core']));
+    $big_n  = count(array_filter($rows, fn($r) => !empty($r['big'])));
     echo json_encode(['ok'=>true, 'rows'=>$rows, 'total'=>count($rows),
-        'core'=>$core_n, 'extra'=>count($rows)-$core_n,
+        'core'=>$core_n, 'big'=>$big_n, 'extra'=>count($rows)-$core_n-$big_n,
         'core_list'=>array_map(fn($t)=>['id'=>(int)$t->term_id,'name'=>$t->name], $core_terms),
     ], JSON_UNESCAPED_UNICODE);
     exit;
