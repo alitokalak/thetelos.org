@@ -829,11 +829,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 /* ════════════════ DRAIN DÖNGÜSÜ ════════════════
  * Tüm bekleyen kitaplar bitene (ya da iptal/duraklat) kadar işle.
  */
+/* DeepSeek yoğun saati mi? (UTC 01-04 ve 06-10 → 2× fiyat)
+   Panelden kapatılabilir: jobs/.peak-skip = "0". Dosya yoksa koruma AÇIK.
+   NOT: Bu kontrol cron-tick'te de var; ama worker kendini zincirlediği için
+   (bw_spawn_successor) cron'u baypas ediyordu → koruma burada da şart. */
+function bw_peak_now() {
+    if (defined('TLS_DEEPSEEK_SKIP_PEAK') && !TLS_DEEPSEEK_SKIP_PEAK) return false;
+    $flag = dirname(__DIR__) . '/jobs/.peak-skip';
+    if (file_exists($flag) && trim((string)@file_get_contents($flag)) === '0') return false;
+    $h = (int) gmdate('G');
+    return ($h >= 1 && $h < 4) || ($h >= 6 && $h < 10);
+}
+
 $processed = 0;
 $start     = time();
 $budget    = 70;          // saniye — sunucu uzun süreçleri öldürmeden önce kendini yenile
 $reason    = 'no_more';
 while (true) {
+    // Yoğun saat başladıysa üretimi burada bırak: zincirleme yapılmaz, wk dosyası
+    // temizlenir; saat normale dönünce cron-tick kaldığı yerden devam ettirir.
+    if (bw_peak_now()) { $reason = 'peak'; break; }
     [$idx, $batch] = bw_claim_next($batch_file);
     if ($idx === -1) { $reason = 'done';      break; }      // bekleyen yok
     if ($idx === -3) { $reason = 'cancelled'; break; }      // iptal
