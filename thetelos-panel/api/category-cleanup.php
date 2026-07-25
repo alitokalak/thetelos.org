@@ -159,9 +159,19 @@ if ($action === 'list') {
         $is_core = in_array(cc_norm($c->slug), $core_slugs, true);
         $is_sys  = in_array(cc_norm($c->slug), ['general','uncategorized'], true);
         $is_big  = !$is_core && !$is_sys && (int)$c->count >= $BIG;
+        // Marka güvenliği / reklam uygunluğu için gözden geçirilmesi gereken adlar.
+        // "young adult" (gençlik edebiyatı) masumdur → elenir.
+        $hay = cc_norm($c->name . ' ' . $c->slug);
+        $sensitive = false;
+        if (strpos($hay, 'young-adult') === false) {
+            foreach (['sex','erotic','erotica','adult','porn','nude','nudity','fetish','sensual','obscen','xxx'] as $kw) {
+                if (strpos($hay, $kw) !== false) { $sensitive = true; break; }
+            }
+        }
         $row = [
             'id' => (int)$c->term_id, 'name' => $c->name, 'slug' => $c->slug,
             'count' => (int)$c->count, 'core' => $is_core, 'big' => $is_big,
+            'sensitive' => $sensitive,
             'target_id' => 0, 'target_name' => '',
         ];
         // Öneri YALNIZCA ince (az yazılı) çekirdek-dışı kategoriler için üretilir.
@@ -171,8 +181,9 @@ if ($action === 'list') {
         }
         $rows[] = $row;
     }
-    // Fazlalar önce, az yazılı olan en üstte
+    // Hassas olanlar en üstte (gözden kaçmasın), sonra fazlalar, en az yazılı önce
     usort($rows, function ($a, $b) {
+        if (!empty($a['sensitive']) !== !empty($b['sensitive'])) return !empty($a['sensitive']) ? -1 : 1;
         if ($a['core'] !== $b['core']) return $a['core'] ? 1 : -1;
         return $a['count'] <=> $b['count'];
     });

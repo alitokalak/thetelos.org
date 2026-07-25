@@ -23,6 +23,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 .badge-extra{background:rgba(212,180,131,.18);color:var(--tls-gold)}
 .badge-thin{background:rgba(204,24,24,.15);color:#cc1818}
 .badge-big{background:rgba(74,158,255,.15);color:#4a9eff}
+.badge-sens{background:rgba(255,140,0,.2);color:#ff8c00}
 .cc-sel{padding:4px 8px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text);max-width:230px}
 .bulk-row{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap;align-items:center}
 #cc-status{font-size:12px;color:var(--tls-gold);min-height:16px}
@@ -103,12 +104,13 @@ function render(){
     const sys  = r.slug==='general' || r.slug==='uncategorized';
     const editable = !r.core && !sys;              // büyükler de elle seçilebilir
     const thin = editable && !r.big && r.count <= 3;
-    html += '<tr data-id="'+r.id+'">'+
+    html += '<tr data-id="'+r.id+'"'+(r.sensitive?' style="background:rgba(255,140,0,.07)"':'')+'>'+
       // Otomatik işaret YALNIZCA emin önerisi olan ince kategorilerde
       '<td>'+(editable ? '<input type="checkbox" class="cc-cb"'+(r.target_id?' checked':'')+'>' : '')+'</td>'+
       '<td><b>'+escH(r.name)+'</b><br><small style="color:var(--muted)">'+escH(r.slug)+'</small></td>'+
       '<td>'+r.count+'</td>'+
-      '<td>'+(r.core ? '<span class="badge badge-core">Çekirdek</span>'
+      '<td>'+(r.sensitive?'<span class="badge badge-sens">⚠ Hassas</span><br>':'')+
+      (r.core ? '<span class="badge badge-core">Çekirdek</span>'
               : r.big ? '<span class="badge badge-big">Büyük</span>'
               : thin  ? '<span class="badge badge-thin">İnce</span>'
               : '<span class="badge badge-extra">Fazla</span>')+'</td>'+
