@@ -402,9 +402,36 @@ function bw_part_instruction($k, $n, $headings, $tail, $part_words) {
 }
 
 /* ════════════════ Bir kitabı baştan sona işle ════════════════ */
+/* ── YETİŞKİN İÇERİK ENGELİ ────────────────────────────────────────
+ * Site bu tür içerik yayınlamaz. Kitap adı/yazar bu listeyle eşleşirse
+ * ÜRETİM HİÇ BAŞLAMAZ (API çağrısı yapılmaz → maliyet de doğmaz) ve kitap
+ * 'blocked_adult' işaretiyle atlanır. Panelde neden görünür. */
+function bw_adult_terms() {
+    return ['erotic','erotica','erotique','porn','pornograph','kama sutra','kamasutra',
+            'sex ','sex,','sexual','sexuality','sexology','nude','nudity','naked',
+            'fetish','bdsm','sadomasochism','orgasm','aphrodisiac','lust ','libertine',
+            'obscene','obscenity','brothel','prostitut','courtesan','harem','concubine',
+            'perfumed garden','ananga ranga','fanny hill','venus in furs','justine','juliette',
+            '120 days of sodom','delta of venus','lady chatterley'];
+}
+function bw_is_adult($text) {
+    $t = ' ' . mb_strtolower((string)$text, 'UTF-8') . ' ';
+    $t = preg_replace('/[^a-z0-9 ]+/u', ' ', $t);
+    foreach (bw_adult_terms() as $kw) {
+        if (strpos($t, trim($kw)) !== false) return true;
+    }
+    return false;
+}
+
 function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $book         = $batch['books'][$idx]['book_title'];
     $author       = $batch['books'][$idx]['author_name'];
+
+    // Yetişkin içerik → üretme, yayınlama; hiç API çağrısı yapma.
+    if (bw_is_adult($book . ' ' . $author)) {
+        bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'blocked_adult (yetişkin içerik — üretilmedi)']);
+        return;
+    }
     $pre_cover    = trim($batch['books'][$idx]['cover_url'] ?? '');
     $pre_year     = trim((string)($batch['books'][$idx]['pub_year'] ?? '')); // listeden gelen yayın yılı
     // Dış aramalar (Google Books / OpenLibrary / dedup) için başlığın

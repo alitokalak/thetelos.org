@@ -34,6 +34,7 @@ if (file_exists(PROMPTS_FILE)) {
     <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
     <nav class="tls-nav">
       <a href="panel.php"><span class="ico">✍</span> İçerik Üret</a>
+      <a href="content-guard.php"><span class="ico">🛡️</span> İçerik Koruma</a>
       <a href="recategorize.php"><span class="ico">🗂️</span> Kategori Düzelt</a>
       <a href="category-cleanup.php"><span class="ico">🧹</span> Kategori Temizle</a>
       <a href="cover-backfill.php"><span class="ico">🖼</span> Kapak Bul</a>
