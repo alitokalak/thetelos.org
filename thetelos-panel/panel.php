@@ -542,8 +542,27 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       // En yeni önce
       usort($stuck_batches, fn($a,$b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
       ?>
+      <?php
+      /* Yoğun saat durumu: batch "durmuş" görünüyorsa sebebi burada yazsın —
+         arıza mı, tasarruf molası mı ayırt edilebilsin. */
+      $tls_peak_flag = __DIR__ . '/jobs/.peak-skip';
+      $tls_peak_on   = !file_exists($tls_peak_flag) || trim((string) @file_get_contents($tls_peak_flag)) !== '0';
+      $tls_h_utc     = (int) gmdate('G');
+      $tls_in_peak   = ($tls_h_utc >= 1 && $tls_h_utc < 4) || ($tls_h_utc >= 6 && $tls_h_utc < 10);
+      if ($tls_peak_on && $tls_in_peak):
+          $tls_end_utc = ($tls_h_utc < 4) ? 4 : 10;                 // yoğunluğun biteceği UTC saat
+          $tls_end_tr  = ($tls_end_utc + 3) % 24;                    // TR = UTC+3
+      ?>
+      <div style="margin-bottom:10px;padding:10px 14px;background:rgba(212,180,131,.12);border:1px solid var(--gold);border-radius:6px;font-size:13px;color:var(--gold)">
+        &#9208; <b>Üretim duraklatıldı — yoğun saat tasarrufu</b> (arıza değil).
+        DeepSeek şu an <b>2× fiyat</b> uyguluyor.
+        <b><?= sprintf('%02d:00', $tls_end_tr) ?></b>'te kendiliğinden devam edecek.
+        <span style="color:var(--muted)">Beklemek istemezsen "Yoğun saatlerde tasarruf et" kutusunu kaldır.</span>
+      </div>
+      <?php endif; ?>
       <div style="font-size:11px;color:#555;margin-bottom:8px;padding:6px 10px;background:#111;border-radius:4px">
         panel v6 &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
+        &middot; tasarruf: <?= $tls_peak_on ? 'açık' : 'kapalı' ?><?= $tls_in_peak ? ' (şu an yoğun saat)' : '' ?>
       </div>
       <?php if ($stuck_batches): ?>
       <div class="card" style="border-left:3px solid var(--gold)">
@@ -809,11 +828,19 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       document.querySelectorAll('[data-batch-card]').forEach(function (c) {
         if (parseInt(c.getAttribute('data-pending') || '0', 10) > 0) _tlsWatch(c.getAttribute('data-batch-card'));
       });
+      /* Yoğun saat bilgisi (sunucu saatine göre) — devam butonunda uyarı için */
+      window._tlsInPeak    = <?= ( ! empty($tls_peak_on) && ! empty($tls_in_peak) ) ? 'true' : 'false' ?>;
+      window._tlsPeakEndTr = <?= isset($tls_end_tr) ? (int) $tls_end_tr : 13 ?>;
       function _tlsCardWorkers(id) {
         var c = document.querySelector('[data-batch-card="'+id+'"]');
         return Math.max(1, Math.min(5, parseInt((c && c.getAttribute('data-workers')) || '1', 10)));
       }
       async function tlsResumeBatch(id,btn) {
+        // Yoğun saatte devam ettirmek 2× fiyat demek DEĞİL: worker saati kontrol
+        // edip üretmeden çıkar. Kullanıcı boşuna beklemesin diye açıkça söyle.
+        if (window._tlsInPeak) {
+          if (!confirm('Şu an DeepSeek yoğun saati (2× fiyat). Tasarruf açık olduğu için worker üretim yapmadan duracak — yani şimdi başlatmak bir şey değiştirmez, saat '+window._tlsPeakEndTr+':00\'te zaten kendiliğinden devam edecek.\n\nYine de denemek istiyor musun?')) return;
+        }
         btn.disabled=true; btn.textContent='Baslatiliyor...';
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=resume'}).catch(()=>{});
         var w = _tlsCardWorkers(id);
