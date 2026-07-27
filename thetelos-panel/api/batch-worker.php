@@ -193,18 +193,29 @@ function bw_spawn_successor($batch_id) {
 }
 
 // ── WP REST yardımcısı ────────────────────────────────────────────
+/* WP REST çağrısı. Bağlantı kopması (HTTP 0 = yanıt hiç gelmedi) ya da
+   geçici sunucu hatası (502/503/504) GEÇİCİdir → 3 kez denenir, aralarda
+   kısa bekleme. Toplu üretimdeki "WP HTTP 0" hatalarının başlıca sebebi
+   buydu: kitap üretiliyor ama yayınlanırken bağlantı düşünce boşa gidiyordu. */
 function bw_wp($url, $method, $body, $auth, $timeout = 30) {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST  => $method,
-        CURLOPT_TIMEOUT        => $timeout,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: ' . $auth],
-    ]);
-    if ($method !== 'GET') curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-    $r = curl_exec($ch);
-    $c = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    $r = null; $c = 0;
+    for ($try = 1; $try <= 3; $try++) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST  => $method,
+            CURLOPT_TIMEOUT        => $timeout,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: ' . $auth],
+        ]);
+        if ($method !== 'GET') curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
+        $r = curl_exec($ch);
+        $c = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        // Başarılı ya da kalıcı hata (4xx) → tekrar deneme, olduğu gibi dön.
+        if ($c !== 0 && !in_array($c, [502, 503, 504], true)) break;
+        if ($try < 3) sleep(2);
+    }
     return [json_decode($r, true), $c];
 }
 
