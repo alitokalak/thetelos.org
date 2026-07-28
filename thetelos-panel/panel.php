@@ -470,7 +470,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <button class="btn btn-ghost" id="btn-cleaner-cancel" style="display:none;color:var(--red)">⛔ Durdur</button>
         </div>
         <p style="font-size:11px;color:var(--muted);margin-top:8px">
-          Not: AI hakem yazar başına 1 istek yapar; 100 yazarlık dosya ~5-15 dk sürer. Sekmeyi açık tut.
+          Not: AI hakem yazar başına 1 istek yapar (aynı anda 4 yazar işlenir); 100 yazarlık dosya
+          ~20-40 dk sürer. Sekmeyi kapatsan da ilerleme kaydedilir — sonra "Kaldığı Yerden Devam Et" ile sürdürürsün.
         </p>
       </div>
 

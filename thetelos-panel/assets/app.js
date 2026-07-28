@@ -1977,14 +1977,18 @@ async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneO
 
   let aiFails = 0;
   const grandTotal = authors.length + doneOffset;
-  for (let i = 0; i < authors.length; i++) {
-    if (cleanerCancel) { notify('cleaner-notif', `Durduruldu — ${i + doneOffset}/${grandTotal} yazar işlendi (sonuçlar sunucuda korunuyor, sonra devam edebilirsin).`, 'err'); break; }
-    const a = authors[i];
-    const works = byAuthor.get(a);
-    setCleanerProgress(i + doneOffset, grandTotal, a);
 
+  /* PARALEL HAVUZ: yazarlar birbirinden bağımsız olduğu için aynı anda birkaçı
+     işlenebilir. Sıralı çalışırken yazar başına ~100sn sürüyordu (100 yazar ≈ 3 saat);
+     4 eşzamanlı istekle bu süre ~4 kat kısalır. Sunucuyu boğmamak için 4'te tutuldu. */
+  const CONCURRENCY = 4;
+  let nextIdx = 0, finished = 0;
+
+  const processOne = async (a) => {
+    const works = byAuthor.get(a) || [];
     let res = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
+      if (cleanerCancel) return;
       try {
         res = await postData(API('clean-list.php'), { author: a, works: JSON.stringify(works), use_ai: useAI }, 150000);
         if (res && res.ok) break;
@@ -2012,8 +2016,26 @@ async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneO
       works: JSON.stringify(stepWorks), removed: JSON.stringify(stepRemoved),
       ai_fail: stepAiFail
     }, 60000).catch(()=>{});
+
+    finished++;
+    setCleanerProgress(finished + doneOffset, grandTotal, a);
+  };
+
+  const runner = async () => {
+    while (true) {
+      if (cleanerCancel) return;
+      const i = nextIdx++;
+      if (i >= authors.length) return;
+      await processOne(authors[i]);
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, authors.length) }, runner));
+
+  if (cleanerCancel) {
+    notify('cleaner-notif', `Durduruldu — ${finished + doneOffset}/${grandTotal} yazar işlendi (sonuçlar sunucuda korunuyor, sonra devam edebilirsin).`, 'err');
   }
-  setCleanerProgress(grandTotal, grandTotal, '');
+  setCleanerProgress(finished + doneOffset, grandTotal, '');
 
   setLoading(startBtn, false);
   if (cancelBtn) cancelBtn.style.display = 'none';
