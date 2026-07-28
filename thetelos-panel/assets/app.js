@@ -978,8 +978,11 @@ function renderBatchStatus(b) {
       else { procLabel = `İşleniyor... ${t}`; }
     }
     const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
+    // Tamamlandı ama bir parçası eksik kaldıysa ⚠ ile göster (içerik kısa olabilir)
+    const partial = st==='done' && bk.error && bk.error !== 'duplicate_skipped';
     const lbl = st==='done'
       ? `✓ <a href="${bk.edit_url}" target="_blank">#${bk.post_id}</a>${bk.cover_set?' 🖼':''}`
+        + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
       : st==='processing'? procLabel

@@ -467,6 +467,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // ── İçerik üretimi ────────────────────────────────────────────
     $content   = '';
     $gen_error = '';
+    $part_warn = '';      // parça eksik kaldıysa uyarı (yayınlanır ama işaretlenir)
 
     $accumulated = '';
     $part_words  = (int)ceil($target_words / max(1, $parts));
@@ -509,10 +510,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             bw_touch_hb($batch_file, $idx);   // her chunk = canlılık damgası
             return strlen($chunk);
         };
-        // Bağlantı hatası (timeout / SSL reset) GEÇİCİdir → 3 kez dene, aralarda
-        // kısa bekleme + heartbeat. Böylece anlık ağ kopmaları kitabı hataya
-        // düşürmeden kendiliğinden toparlanır.
-        $cerr = '';
+        // Hem bağlantı hatası (timeout/SSL) hem BOŞ YANIT geçicidir → 3 kez dene.
+        // ÖNEMLİ: Eskiden yalnız bağlantı hatası tekrarlanıyordu; bir ara parça
+        // boş dönerse döngü SESSİZCE kırılıp yalnız önceki parçalar yayınlanıyordu
+        // → istenen 8000 kelime yerine ~3000 kelimelik "başarılı" yazı çıkıyordu.
+        $cerr = ''; $piece_ok = false;
         for ($try = 1; $try <= 3; $try++) {
             $piece = ''; $sbuf = ''; $raw_tail = '';   // her denemede buffer sıfırla
             $ch = curl_init(DEEPSEEK_API_URL);
@@ -523,20 +525,25 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 CURLOPT_WRITEFUNCTION => $stream_cb,
             ]);
             curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
-            if (!$cerr) break;                              // bağlantı başarılı
-            if ($try < 3) { bw_touch_hb($batch_file, $idx); sleep(3); }  // geçici → bekle, tekrar dene
+
+            if (!$cerr) {
+                $piece = trim(str_replace('%%PART_END%%', '', $piece));
+                if ($piece !== '') { $piece_ok = true; break; }   // gerçek içerik geldi
+            }
+            if ($try < 3) { bw_touch_hb($batch_file, $idx); sleep(3); }
         }
 
-        if ($cerr) {
-            if ($k === 1) $gen_error = "DeepSeek Part {$k} bağlantı hatası (3 deneme): {$cerr}";
-            break;
-        }
-        $piece = trim(str_replace('%%PART_END%%', '', $piece));
-        if ($piece === '') {
-            // Hiç içerik gelmediyse gövdede SSE yerine düz JSON hata olabilir
+        if (!$piece_ok) {
             if ($k === 1) {
+                // İlk parça hiç gelmedi → kitap üretilemedi
                 $errj = json_decode($raw_tail, true);
-                $gen_error = "DeepSeek Part {$k}: " . ($errj['error']['message'] ?? 'boş yanıt');
+                $gen_error = $cerr
+                    ? "DeepSeek Part {$k} bağlantı hatası (3 deneme): {$cerr}"
+                    : "DeepSeek Part {$k} (3 deneme): " . ($errj['error']['message'] ?? 'boş yanıt');
+            } else {
+                // Ara/son parça gelmedi → elimizdeki kısmı yayınla AMA işaretle,
+                // yoksa kısa içerik "tam" sanılıp fark edilmiyor.
+                $part_warn = "eksik: Part {$k}/{$parts} boş döndü (3 deneme) — içerik hedeflenenden kısa";
             }
             break;
         }
@@ -889,6 +896,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         'post_url'  => $post['link'] ?? '',
         'edit_url'  => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
         'cover_set' => $cover_set,
+        // Parça eksik kaldıysa kayda düş: panelde ⚠ ile görünür, hangi kitapların
+        // kısa kaldığı fark edilir ve istenirse yeniden üretilir.
+        'error'     => $part_warn,
     ]);
 }
 
