@@ -2764,10 +2764,20 @@ function thetelos_smart_404_redirect() {
     }
 
     // 3) Kopya sonek: /{slug}-2..9/ → temel /{slug}/ (yayında bir post varsa).
-    if ( preg_match( '#^/([a-z0-9-]+)-[2-9]/$#', $path, $m ) ) {
-        $base_post = get_page_by_path( $m[1], OBJECT, 'post' );
-        if ( $base_post && $base_post->post_status === 'publish' ) {
-            wp_redirect( get_permalink( $base_post->ID ), 301 ); exit;
+    //    Mükerrer temizliğinde çöpe atılan kopyaların URL'leri Google'da indeksli
+    //    kaldı. Slug ASCII olmak zorunda değil: 杜威全集-john-dewey-2 gibi Çince,
+    //    Kiril ya da Arapça başlıklar WP'de yüzde-kodlu saklanır; bu yüzden hem
+    //    kodlu hem çözülmüş biçim denenir.
+    $seg = trim( $path, '/' );
+    if ( $seg !== '' && strpos( $seg, '/' ) === false && preg_match( '/^(.+)-[2-9]$/u', $seg, $m ) ) {
+        $base_raw = $m[1];
+        $cands    = [ $base_raw, rawurldecode( $base_raw ), rawurlencode( rawurldecode( $base_raw ) ) ];
+        foreach ( array_unique( $cands ) as $cand ) {
+            if ( $cand === '' ) continue;
+            $base_post = get_page_by_path( $cand, OBJECT, 'post' );
+            if ( $base_post && $base_post->post_status === 'publish' ) {
+                wp_redirect( get_permalink( $base_post->ID ), 301 ); exit;
+            }
         }
     }
 }
