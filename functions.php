@@ -2780,6 +2780,62 @@ function thetelos_smart_404_redirect() {
             }
         }
     }
+
+    // 4) SİLİNMİŞ KİTAP → aynı kitabın yaşayan kaydına 301.
+    //    Mükerrer temizliğinde kopya silindiğinde kalan kayıt çoğu zaman FARKLI
+    //    bir slug taşıyor ("the-six-enneads-plotinus" silinir, "enneads-plotinus"
+    //    kalır) — bu yüzden sonek kuralı yetmiyor. Burada slug kelimelere
+    //    çevrilip aranır ve YALNIZCA yüksek benzerlikte eşleşme varsa yönlendirilir;
+    //    zayıf eşleşmede 404 bırakılır (yanlış yönlendirme yapmaktansa 404 iyidir).
+    if ( $seg !== '' && strpos( $seg, '/' ) === false ) {
+        $slug_dec = rawurldecode( $seg );
+        $words    = trim( preg_replace( '/[^\p{L}\p{N}]+/u', ' ', $slug_dec ) );
+
+        if ( mb_strlen( $words ) >= 8 ) {
+            $q = new WP_Query( [
+                'post_type'           => 'post',
+                'post_status'         => 'publish',
+                's'                   => $words,
+                'posts_per_page'      => 5,
+                'ignore_sticky_posts' => true,
+                'no_found_rows'       => true,
+                'fields'              => 'ids',
+            ] );
+
+            $norm = function ( $s ) {
+                $s = mb_strtolower( rawurldecode( (string) $s ), 'UTF-8' );
+                $s = preg_replace( '/[^\p{L}\p{N}]+/u', ' ', $s );
+                return array_values( array_filter( explode( ' ', trim( $s ) ), fn( $w ) => mb_strlen( $w ) > 2 ) );
+            };
+            $want_all = $norm( $seg );
+
+            foreach ( $q->posts as $cand_id ) {
+                if ( ! $want_all ) break;
+
+                // Yazar adı iki slug'da da ortak olduğundan karşılaştırmayı bozar
+                // ("law-tracts-francis-bacon" ile "novum-organum-francis-bacon"
+                // yalnızca yazardan ötürü benzer görünür). Bu yüzden yazar
+                // kelimeleri ÇIKARILIR ve sadece KİTAP ADI karşılaştırılır.
+                $terms  = get_the_terms( $cand_id, 'authors' );
+                $atoks  = ( ! empty( $terms ) && ! is_wp_error( $terms ) ) ? $norm( $terms[0]->name ) : [];
+
+                // Yazar gerçekten bu URL'ye ait mi? Değilse başka yazarın kitabına atlamayalım.
+                if ( $atoks && count( array_intersect( $atoks, $want_all ) ) < count( $atoks ) ) continue;
+
+                $want_t = array_values( array_diff( $want_all, $atoks ) );
+                $have_t = array_values( array_diff( $norm( get_post_field( 'post_name', $cand_id ) ), $atoks ) );
+                if ( ! $want_t || ! $have_t ) continue;
+
+                // Kısa olan başlık, uzun olanın içinde tamamen geçiyor mu?
+                // ("the six enneads" ⊃ "enneads" → aynı eser; "law tracts" vs
+                // "novum organum" → hiç ortak yok, yönlendirme yapılmaz.)
+                $common = count( array_intersect( $want_t, $have_t ) );
+                if ( $common >= 1 && $common === min( count( $want_t ), count( $have_t ) ) ) {
+                    wp_redirect( get_permalink( $cand_id ), 301 ); exit;
+                }
+            }
+        }
+    }
 }
 
 // -----------------------------------------------------
