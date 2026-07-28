@@ -1841,6 +1841,51 @@ let cleanerCancel = false;
   ['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('dragover'); }));
   ['dragleave','dragend','drop'].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove('dragover')));
   dz.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer?.files?.[0]; if (f) setFile(f); });
+
+  /* Yarım kalan temizleme var mı? Varsa dosyayı tekrar yüklemeye gerek yok —
+     durum sunucuda duruyor, kaldığı yerden devam edilebilir. */
+  postData(API('clean-progress.php'), { action: 'load' }, 60000)
+    .then(job => {
+      if (!job || !job.ok || job.none) return;
+      const pending = job.pending || [];
+      const bar = document.createElement('div');
+      bar.style.cssText = 'margin:0 0 14px;padding:12px 16px;background:rgba(212,180,131,.12);border:1px solid var(--gold);border-radius:8px;font-size:13px;color:var(--gold)';
+      bar.innerHTML = pending.length
+        ? '&#9202; <b>Yarım kalan temizleme var</b> — ' + job.done + '/' + job.total +
+          ' yazar bitti, <b>' + pending.length + '</b> kaldı. <span style="color:var(--muted)">(' +
+          String(job.file_name||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) + ')</span>'
+        : '&#10003; <b>Tamamlanmış temizleme sonucu duruyor</b> — ' + job.total +
+          ' yazar. <span style="color:var(--muted)">(' + String(job.file_name||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])) + ')</span>';
+
+      const go = document.createElement('button');
+      go.className = 'btn btn-primary btn-sm';
+      go.style.cssText = 'margin-left:12px';
+      go.textContent = pending.length ? '▶ Kaldığı Yerden Devam Et' : '⬇ Sonucu Göster';
+      go.onclick = async () => {
+        go.disabled = true;
+        cleanerWorks   = job.works   || [];
+        cleanerRemoved = job.removed || [];
+        if (!pending.length) { renderCleanerResult(job.total_in || 0, job.file_name || 'liste.csv', job.ai_fails || 0); return; }
+        const map = new Map();
+        for (const a of pending) map.set(a, (job.by_author || {})[a] || []);
+        document.getElementById('cleaner-progress-card').style.display = '';
+        await runCleanerLoop(pending, map, job.use_ai ? 1 : 0, job.total_in || 0, job.file_name || 'liste.csv', job.done || 0);
+      };
+
+      const del = document.createElement('button');
+      del.className = 'btn btn-ghost btn-sm';
+      del.style.cssText = 'margin-left:8px;color:var(--red)';
+      del.textContent = '✕ Sil';
+      del.onclick = async () => {
+        if (!confirm('Kayıtlı temizleme işi silinecek. Emin misin?')) return;
+        await postData(API('clean-progress.php'), { action: 'clear' }, 30000).catch(()=>{});
+        bar.remove();
+      };
+
+      bar.appendChild(go); bar.appendChild(del);
+      dz.parentNode.insertBefore(bar, dz);
+    })
+    .catch(()=>{});
 })();
 
 document.getElementById('btn-cleaner-cancel')?.addEventListener('click', () => { cleanerCancel = true; });
@@ -1906,6 +1951,22 @@ async function runCleaner(text, fileName) {
     } catch(_) {}
   }
 
+  // Sunucuda kontrol noktası oluştur: sekme kapansa/oturum düşse bile
+  // sayfa yeniden açıldığında kaldığı yerden devam edilebilsin.
+  const byAuthorObj = {};
+  for (const a of authors) byAuthorObj[a] = byAuthor.get(a);
+  await postData(API('clean-progress.php'), {
+    action: 'start', file_name: fileName, use_ai: useAI, total_in: totalIn,
+    authors: JSON.stringify(authors), by_author: JSON.stringify(byAuthorObj),
+    removed: JSON.stringify(cleanerRemoved)
+  }, 60000).catch(()=>{});
+
+  await runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName);
+}
+
+/* Yazar döngüsü — hem ilk çalıştırmada hem "kaldığı yerden devam"da kullanılır.
+   Her yazar bitince sonuç sunucuya eklenir (checkpoint). */
+async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneOffset = 0) {
   cleanerCancel = false;   // (works/removed yukarıda sıfırlandı; onsite elenenler korunur)
   const startBtn = document.getElementById('btn-cleaner-start');
   const cancelBtn= document.getElementById('btn-cleaner-cancel');
@@ -1915,11 +1976,12 @@ async function runCleaner(text, fileName) {
   document.getElementById('cleaner-result-card').style.display = 'none';
 
   let aiFails = 0;
+  const grandTotal = authors.length + doneOffset;
   for (let i = 0; i < authors.length; i++) {
-    if (cleanerCancel) { notify('cleaner-notif', `Durduruldu — ${i}/${authors.length} yazar işlendi (sonuçlar korunuyor).`, 'err'); break; }
+    if (cleanerCancel) { notify('cleaner-notif', `Durduruldu — ${i + doneOffset}/${grandTotal} yazar işlendi (sonuçlar sunucuda korunuyor, sonra devam edebilirsin).`, 'err'); break; }
     const a = authors[i];
     const works = byAuthor.get(a);
-    setCleanerProgress(i, authors.length, a);
+    setCleanerProgress(i + doneOffset, grandTotal, a);
 
     let res = null;
     for (let attempt = 1; attempt <= 3; attempt++) {
@@ -1930,17 +1992,28 @@ async function runCleaner(text, fileName) {
       await new Promise(r => setTimeout(r, attempt * 2000));
     }
 
+    let stepWorks, stepRemoved, stepAiFail = 0;
     if (res && res.ok) {
-      cleanerWorks.push(...(res.works || []));
-      cleanerRemoved.push(...(res.removed || []).map(x => ({ ...x, restored: false })));
-      if (useAI && !res.ai_used) aiFails++;
+      stepWorks   = res.works || [];
+      stepRemoved = (res.removed || []).map(x => ({ ...x, restored: false }));
+      if (useAI && !res.ai_used) { aiFails++; stepAiFail = 1; }
     } else {
       // Sunucu 3 denemede yanıt vermedi → bu yazarın satırlarını OLDUĞU GİBİ koru (veri kaybı olmasın)
-      cleanerWorks.push(...works.map(w => ({ title: w.title, author: a, year: w.year, cover: w.cover, merged: 1 })));
-      aiFails++;
+      stepWorks   = works.map(w => ({ title: w.title, author: a, year: w.year, cover: w.cover, merged: 1 }));
+      stepRemoved = [];
+      aiFails++; stepAiFail = 1;
     }
+    cleanerWorks.push(...stepWorks);
+    cleanerRemoved.push(...stepRemoved);
+
+    // Kontrol noktası: bu yazar bitti → sunucuya yaz (tarayıcı kapansa bile kalıcı)
+    postData(API('clean-progress.php'), {
+      action: 'append', author: a,
+      works: JSON.stringify(stepWorks), removed: JSON.stringify(stepRemoved),
+      ai_fail: stepAiFail
+    }, 60000).catch(()=>{});
   }
-  setCleanerProgress(authors.length, authors.length, '');
+  setCleanerProgress(grandTotal, grandTotal, '');
 
   setLoading(startBtn, false);
   if (cancelBtn) cancelBtn.style.display = 'none';
