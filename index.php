@@ -163,6 +163,158 @@ if ( $featured_q->have_posts() ) {
 </section>
 
 <!-- ══════════════════════════════════
+     MOST READ — yatay kaydırmalı raf
+══════════════════════════════════ -->
+<?php
+/* En çok okunanlar: post_views_count'a göre sıralanır. Sayaç yeni devrede
+   olduğu için henüz yeterli veri yoksa raf, son eklenenlerle tamamlanır —
+   böylece bölüm hiçbir zaman boş/eksik görünmez. */
+$mr_ids = get_posts( [
+    'post_type'        => 'post',
+    'post_status'      => 'publish',
+    'posts_per_page'   => 12,
+    'fields'           => 'ids',
+    'meta_key'         => 'post_views_count',
+    'orderby'          => 'meta_value_num',
+    'order'            => 'DESC',
+    'meta_query'       => [ [ 'key' => 'post_views_count', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ] ],
+    'no_found_rows'    => true,
+    'suppress_filters' => true,
+] );
+if ( count( $mr_ids ) < 12 ) {
+    $mr_ids = array_merge( $mr_ids, get_posts( [
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'posts_per_page' => 12 - count( $mr_ids ),
+        'fields'         => 'ids',
+        'post__not_in'   => $mr_ids ?: [ 0 ],
+        'orderby'        => 'date',
+        'order'          => 'DESC',
+        'no_found_rows'  => true,
+    ] ) );
+}
+if ( $mr_ids ) :
+?>
+<style>
+.tls-rail-wrap{position:relative}
+.tls-rail{display:flex;gap:22px;overflow-x:auto;scroll-behavior:smooth;scroll-snap-type:x mandatory;
+    padding:4px 2px 18px;margin:0 -2px;-ms-overflow-style:none;scrollbar-width:none}
+.tls-rail::-webkit-scrollbar{display:none}
+.tls-rail-card{flex:0 0 264px;scroll-snap-align:start;display:block;text-decoration:none;
+    background:#fff;border:1px solid var(--tls-border);border-radius:14px;padding:22px 20px 24px;
+    transition:box-shadow .22s,transform .18s}
+.tls-rail-card:hover{box-shadow:0 10px 30px rgba(0,0,0,.09);transform:translateY(-3px)}
+.tls-rail-num{font-family:var(--tls-sans);font-size:10px;font-weight:700;letter-spacing:.1em;
+    text-transform:uppercase;color:var(--tls-muted);margin-bottom:16px}
+.tls-rail-cover{display:flex;align-items:flex-end;justify-content:center;height:170px;margin-bottom:18px}
+.tls-rail-cover img{max-width:112px;max-height:170px;border-radius:2px;box-shadow:0 8px 26px rgba(0,0,0,.24)}
+.tls-rail-divider{width:34px;height:2px;background:var(--tls-gold);margin-bottom:14px}
+.tls-rail-title{font-family:var(--tls-serif);font-size:17px;line-height:1.32;color:var(--tls-bg-dark);
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tls-rail-author{font-family:var(--tls-sans);font-style:italic;font-size:13px;color:var(--tls-muted);margin-top:6px}
+.tls-rail-views{font-family:var(--tls-sans);font-size:11px;color:var(--tls-muted);margin-top:10px;
+    display:flex;align-items:center;gap:5px}
+.tls-rail-views svg{width:13px;height:13px}
+.tls-rail-nav{position:absolute;top:44%;transform:translateY(-50%);z-index:5;width:40px;height:40px;
+    border-radius:50%;border:1px solid var(--tls-border);background:#fff;color:var(--tls-bg-dark);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:0 4px 14px rgba(0,0,0,.10);transition:opacity .2s,background .15s}
+.tls-rail-nav:hover{background:var(--tls-bg)}
+.tls-rail-nav[hidden]{display:none}
+.tls-rail-prev{left:-18px}
+.tls-rail-next{right:-18px}
+.tls-rail-nav svg{width:17px;height:17px}
+@media(max-width:640px){
+  .tls-rail-card{flex-basis:210px;padding:18px 16px 20px}
+  .tls-rail-cover{height:140px}
+  .tls-rail-cover img{max-width:92px;max-height:140px}
+  .tls-rail-nav{display:none}
+}
+</style>
+<section class="tls-section">
+    <div class="container">
+        <p class="tls-section-label">Most Read</p>
+        <div class="tls-section-header">
+            <h2 class="tls-section-title">What Readers Return To</h2>
+            <a class="tls-view-all" href="<?php echo esc_url( home_url( '/' ) ); ?>">
+                View entire archive
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+        </div>
+
+        <div class="tls-rail-wrap">
+            <button class="tls-rail-nav tls-rail-prev" type="button" aria-label="Önceki" hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>
+            </button>
+
+            <div class="tls-rail" id="tls-most-read">
+                <?php
+                $mi = 1;
+                foreach ( $mr_ids as $mid ) :
+                    $m_authors = get_the_terms( $mid, 'authors' );
+                    $m_auth    = ( ! empty( $m_authors ) && ! is_wp_error( $m_authors ) ) ? $m_authors[0]->name : '';
+                    $m_cats    = get_the_category( $mid );
+                    $m_cat     = ! empty( $m_cats ) ? $m_cats[0]->name : '';
+                    $m_views   = function_exists( 'tls_get_views' ) ? tls_get_views( $mid ) : 0;
+                ?>
+                <a class="tls-rail-card" href="<?php echo esc_url( get_permalink( $mid ) ); ?>">
+                    <div class="tls-rail-num">
+                        <?php printf( '%02d', $mi ); ?>
+                        <?php if ( $m_cat ) echo ' &mdash; <span style="color:var(--tls-gold)">' . esc_html( strtoupper( $m_cat ) ) . '</span>'; ?>
+                    </div>
+                    <div class="tls-rail-cover">
+                        <?php if ( has_post_thumbnail( $mid ) ) :
+                            echo get_the_post_thumbnail( $mid, 'medium', [ 'alt' => esc_attr( get_the_title( $mid ) ), 'loading' => 'lazy' ] );
+                        else :
+                            echo thetelos_render_book_cover( $mid );
+                        endif; ?>
+                    </div>
+                    <div class="tls-rail-divider"></div>
+                    <div class="tls-rail-title"><?php echo esc_html( get_the_title( $mid ) ); ?></div>
+                    <?php if ( $m_auth ) : ?><div class="tls-rail-author"><?php echo esc_html( $m_auth ); ?></div><?php endif; ?>
+                    <?php if ( $m_views > 0 ) : ?>
+                    <div class="tls-rail-views">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        <?php echo esc_html( number_format_i18n( $m_views ) ); ?> reads
+                    </div>
+                    <?php endif; ?>
+                </a>
+                <?php $mi++; endforeach; ?>
+            </div>
+
+            <button class="tls-rail-nav tls-rail-next" type="button" aria-label="Sonraki">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+        </div>
+    </div>
+</section>
+<script>
+(function () {
+    var rail = document.getElementById('tls-most-read');
+    if (!rail) return;
+    var wrap = rail.closest('.tls-rail-wrap'),
+        prev = wrap.querySelector('.tls-rail-prev'),
+        next = wrap.querySelector('.tls-rail-next');
+
+    // Kart genişliği + boşluk kadar kaydır (bir "sayfa" hissi)
+    function step() {
+        var card = rail.querySelector('.tls-rail-card');
+        return card ? (card.offsetWidth + 22) * Math.max(1, Math.floor(rail.clientWidth / (card.offsetWidth + 22))) : 300;
+    }
+    function sync() {
+        prev.hidden = rail.scrollLeft <= 4;
+        next.hidden = rail.scrollLeft + rail.clientWidth >= rail.scrollWidth - 4;
+    }
+    prev.addEventListener('click', function () { rail.scrollBy({ left: -step(), behavior: 'smooth' }); });
+    next.addEventListener('click', function () { rail.scrollBy({ left:  step(), behavior: 'smooth' }); });
+    rail.addEventListener('scroll', sync, { passive: true });
+    window.addEventListener('resize', sync);
+    sync();
+})();
+</script>
+<?php endif; ?>
+
+<!-- ══════════════════════════════════
      BOOK OF THE WEEK
 ══════════════════════════════════ -->
 <?php
