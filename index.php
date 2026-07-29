@@ -168,16 +168,26 @@ if ( $featured_q->have_posts() ) {
 <?php
 /* En çok okunanlar: post_views_count'a göre sıralanır. Sayaç yeni devrede
    olduğu için henüz yeterli veri yoksa raf, son eklenenlerle tamamlanır —
-   böylece bölüm hiçbir zaman boş/eksik görünmez. */
+   böylece bölüm hiçbir zaman boş/eksik görünmez.
+   Her iki sorguda da SADECE gerçek kapağı olan kitaplar alınır; tipografik
+   yedek kapak vitrindeki görsel bütünlüğü bozuyordu. Yukarıdaki bölümlerde
+   gösterilen kitaplar ($seen_ids) tekrar edilmez. */
+$mr_has_cover = [ [ 'key' => '_thumbnail_id', 'compare' => 'EXISTS' ] ];
+
 $mr_ids = get_posts( [
     'post_type'        => 'post',
     'post_status'      => 'publish',
     'posts_per_page'   => 12,
     'fields'           => 'ids',
+    'post__not_in'     => $seen_ids ?: [ 0 ],
     'meta_key'         => 'post_views_count',
     'orderby'          => 'meta_value_num',
     'order'            => 'DESC',
-    'meta_query'       => [ [ 'key' => 'post_views_count', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ] ],
+    'meta_query'       => array_merge(
+        [ 'relation' => 'AND',
+          [ 'key' => 'post_views_count', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ] ],
+        $mr_has_cover
+    ),
     'no_found_rows'    => true,
     'suppress_filters' => true,
 ] );
@@ -187,12 +197,16 @@ if ( count( $mr_ids ) < 12 ) {
         'post_status'    => 'publish',
         'posts_per_page' => 12 - count( $mr_ids ),
         'fields'         => 'ids',
-        'post__not_in'   => $mr_ids ?: [ 0 ],
+        'post__not_in'   => array_merge( $seen_ids, $mr_ids ) ?: [ 0 ],
+        'meta_query'     => $mr_has_cover,
         'orderby'        => 'date',
         'order'          => 'DESC',
+        // En yeni 12 kayıt aşağıdaki "Latest Additions" bölümüne kalsın diye atlanır.
+        'offset'         => 12,
         'no_found_rows'  => true,
     ] ) );
 }
+foreach ( $mr_ids as $mr_id ) { tls_push( $seen_ids, $mr_id ); }
 if ( $mr_ids ) :
 ?>
 <style>
@@ -235,7 +249,7 @@ if ( $mr_ids ) :
     <div class="container">
         <p class="tls-section-label">Most Read</p>
         <div class="tls-section-header">
-            <h2 class="tls-section-title">What Readers Return To</h2>
+            <h2 class="tls-section-title">Most Read Summaries</h2>
             <a class="tls-view-all" href="<?php echo esc_url( home_url( '/' ) ); ?>">
                 View entire archive
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
