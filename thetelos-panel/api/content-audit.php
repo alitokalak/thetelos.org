@@ -21,6 +21,11 @@ header('Content-Type: application/json');
 header('Cache-Control: no-cache, no-store, must-revalidate');
 header('X-LiteSpeed-Cache-Control: no-cache');
 @set_time_limit(300);
+@ini_set('memory_limit', '512M');
+// Uzun metinlerde geri izleme sınırına takılan bir kalıp isteği öldürmesin:
+// preg_* false döner, tarama o kontrolü atlar ama devam eder.
+@ini_set('pcre.backtrack_limit', '2000000');
+ignore_user_abort(true);
 
 ob_start();
 require_once '/home/thetelos/public_html/wp-load.php';
@@ -30,45 +35,97 @@ ob_end_clean();
    Her kontrol: kod, önem (3=ağır, 2=orta, 1=hafif), açıklama, bulunan örnek.
    Ağır bulgular okuyucunun doğrudan göreceği kazalardır.                    */
 
-/** Parça üretiminin teknik işaretleri metne sızmış mı? */
-function ca_check_part_markers($text) {
-    $pat = '/%%\s*PART|PART_END|\bPart\s+\d+\s+of\s+\d+\b|\bPART\s+\d+\/\d+|=== MULTI-PART/i';
-    return preg_match($pat, $text, $m) ? $m[0] : '';
+/**
+ * Metni bloklara ayırır (paragraf, başlık, madde, alıntı) — düz metin olarak.
+ *
+ * NEDEN BLOK: "the end of the work" ya da "here the work ends: not with a
+ * solution, but with a question" gibi ifadeler NORMAL metinde geçer. Bunları
+ * gövdenin herhangi bir yerinde aramak yüzlerce yanlış alarm üretiyordu.
+ * Sızıntı, cümlenin içinde değil, KENDİ BAŞINA duran bir satır olarak görünür.
+ */
+function ca_blocks($html) {
+    $h = preg_replace('/<br\s*\/?>/i', "\n", (string) $html);
+    $out = [];
+    if (preg_match_all('/<(p|h[1-6]|li|blockquote)\b[^>]*>(.*?)<\/\1>/is', $h, $m)) {
+        foreach ($m[2] as $b) {
+            $t = trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags($b)));
+            if ($t !== '') $out[] = $t;
+        }
+    }
+    if (!$out) {
+        foreach (preg_split('/\n+/', wp_strip_all_tags($h)) as $l) {
+            $l = trim($l);
+            if ($l !== '') $out[] = $l;
+        }
+    }
+    return $out;
 }
 
-/** Model kendi süreci hakkında konuşmuş mu? ("işte devamı", "şimdi yazacağım") */
-function ca_check_meta_talk($text) {
-    $pats = [
-        '/\bas an? (ai|language model|assistant)\b/i',
-        '/\bi (?:will|shall|can) now (?:continue|proceed|begin|write|cover)\b/i',
-        '/\blet me (?:continue|proceed|know if|explain that)\b/i',
-        '/\bcontinuing (?:from|where) (?:the|we|it)\b/i',
-        '/\bhere(?:\'s| is) (?:the|a|your) (?:summary|continuation|next part|final part)\b/i',
-        '/\b(?:in|for) this part,? i\b/i',
-        '/\bthe (?:next|remaining|final) part will\b/i',
-        '/\b(?:word count|target length|approximately \d{3,5} words)\b/i',
+/**
+ * Prompt / süreç cümleleri.
+ *
+ * Yalnızca NORMAL METİNDE GEÇMESİ MÜMKÜN OLMAYAN kalıplar. "the work ends"
+ * gibi edebî ifadeler bilerek listede yok — onlar gerçek cümlelerdi.
+ */
+function ca_meta_patterns() {
+    return [
+        '/no summary,?\s*no closing paragraph/i',
+        '/\bas an? (?:ai|language model|assistant)\b/i',
+        '/\b(?:apply|per) the closing rule\b/i',
+        '/\bdo not write a conclusion\b/i',
+        '/\bword count\s*[:=]/i',
+        '/\btarget length\b/i',
+        '/\bapproximately \d{3,5} words\b/i',
         '/\bi hope this (?:helps|summary)\b/i',
         '/\blet me know if you\b/i',
         '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
-        '/\[(?:note|continued|already|to be continued)\b/i',
         '/\bper your (?:request|instructions)\b/i',
-        '/\bas (?:requested|instructed)\b/i',
+        '/\b(?:i|we) (?:will|shall) now (?:continue|proceed|begin)\b/i',
+        '/\bhere(?:\'s| is) the (?:continuation|next part|final part)\b/i',
+        '/\bthe (?:next|remaining|final) part will (?:cover|continue)\b/i',
+        '/\b(?:in|for) this part,? i (?:will|have)\b/i',
     ];
-    foreach ($pats as $p) if (preg_match($p, $text, $m)) return trim($m[0]);
+}
+
+/** Parça üretiminin teknik işaretleri metne sızmış mı? */
+function ca_check_part_markers($text) {
+    $pat = '/%%\s*PART|PART_END|\bPart\s+\d+\s+of\s+\d+\b|=== MULTI-PART/i';
+    return preg_match($pat, $text, $m) ? $m[0] : '';
+}
+
+/**
+ * Bir blok BAŞTAN SONA süreç cümlesi mi? (silinebilir olan tek durum)
+ * Uzun bloklar elenir: gerçek paragrafın içine karışmış bir eşleşme,
+ * paragrafın tamamını silmeyi haklı çıkarmaz.
+ */
+function ca_is_meta_block($block) {
+    $b = trim($block, "*_ \t");
+    if ($b === '' || mb_strlen($b, 'UTF-8') > 220) return false;
+    foreach (ca_meta_patterns() as $p) if (preg_match($p, $b)) return true;
+    if (preg_match('/^%%\s*PART/i', $b)) return true;
+    return false;
+}
+
+/** Prompt'un kuralı metne yazılmış mı? — sadece kendi başına duran bloklarda. */
+function ca_check_prompt_leak($html) {
+    foreach (ca_blocks($html) as $b) {
+        if (ca_is_meta_block($b)) return mb_substr(trim($b, "*_ \t"), 0, 110, 'UTF-8');
+    }
     return '';
 }
 
-/** Prompt'un kapanış KURALI metne yazılmış mı? ("Here the work ends…") */
-function ca_check_prompt_leak($html) {
-    $t = wp_strip_all_tags($html);
-    $pats = [
-        '/here (?:the|this) (?:work|piece|summary) ends[^\n.]*/i',
-        '/no summary,? no closing paragraph/i',
-        '/end of (?:part|the work|summary)\s*\d*/i',
-        '/apply the closing rule/i',
-        '/do not write a conclusion/i',
+/** Model kendi süreciyle konuşmuş mu? — cümle içinde bile kabul edilemez olanlar. */
+function ca_check_meta_talk($text) {
+    $hard = [
+        '/\bas an? (?:ai|language model|assistant)\b/i',
+        '/\bi hope this (?:helps|summary)\b/i',
+        '/\blet me know if you\b/i',
+        '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
+        '/\bper your (?:request|instructions)\b/i',
+        '/\bword count\s*[:=]/i',
+        '/\[(?:note|continued|to be continued)\b/i',
     ];
-    foreach ($pats as $p) if (preg_match($p, $t, $m)) return trim($m[0]);
+    foreach ($hard as $p) if (preg_match($p, $text, $m)) return trim($m[0]);
     return '';
 }
 
@@ -76,8 +133,12 @@ function ca_check_prompt_leak($html) {
 function ca_check_truncated($html) {
     $t = trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags($html)));
     if ($t === '') return 'içerik boş';
-    // Son blok başlıksa: başlık atılmış ama altı yazılmamış
-    if (preg_match('/<h[1-6][^>]*>.*?<\/h[1-6]>\s*$/is', trim($html))) return 'son blok başlık — altı boş';
+    // Son blok başlıksa: başlık atılmış ama altı yazılmamış.
+    // Tüm gövdeye "$" çapalı .*? uygulanmaz — 60 KB'lık metinlerde PCRE geri
+    // izlemesi isteği dakikalarca oyalıyor ve tarama yarıda kopuyordu. Son
+    // 300 karaktere bakmak yeterli.
+    $tail_html = mb_substr(rtrim($html), -300, 300, 'UTF-8');
+    if (preg_match('/<\/h[1-6]>\s*$/i', $tail_html)) return 'son blok başlık — altı boş';
     // Sondaki markdown vurgu işaretleri (*, _) noktalamayı gizleyebiliyor
     $t    = rtrim($t, "*_ \t");
     $last = mb_substr($t, -1, 1, 'UTF-8');
@@ -211,17 +272,11 @@ if ($action === 'scan') {
 
    Kural: bir <p> bloğunun TAMAMI kalıntıysa dönüştürülür; içine karışmışsa
    elleme. Tahminle metin bölmek, bozuk bırakmaktan daha kötü.               */
+/* Silinecek satır ölçütü, tespitle AYNI kuraldır (ca_is_meta_block):
+   blok baştan sona süreç cümlesi olmalı ve kısa olmalı. İki yerde iki farklı
+   ölçüt olsaydı, ekranın "sorun" dediğiyle onarımın sildiği şey ayrışırdı. */
 function ca_leak_line($t) {
-    $pats = [
-        '/^(?:here (?:the|this) (?:work|piece|summary) ends|no summary,? no closing)/i',
-        '/^end of (?:part|the work|summary)\b/i',
-        '/^(?:as (?:requested|instructed)|per your (?:request|instructions))\b/i',
-        '/^(?:let me know if you|i hope this (?:helps|summary))/i',
-        '/^word count\s*:?/i',
-        '/^%%\s*PART/i',
-    ];
-    foreach ($pats as $p) if (preg_match($p, $t)) return true;
-    return false;
+    return ca_is_meta_block($t);
 }
 
 function ca_repair($html) {
@@ -250,6 +305,45 @@ function ca_repair($html) {
     }, $html);
 
     return trim($out);
+}
+
+/* Tüm siteyi gezip onarır: önce tarama yapılmasını beklemez, dilim dilim
+   ilerler. İstemci next<0 gelene kadar çağırır. */
+if ($action === 'autofix') {
+    global $wpdb;
+    $offset = max(0, (int)($_POST['offset'] ?? 0));
+    $limit  = max(10, min(100, (int)($_POST['limit'] ?? 40)));
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->posts}
+          WHERE post_type IN ('post','analysis') AND post_status = 'publish'"
+    );
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT ID, post_content FROM {$wpdb->posts}
+          WHERE post_type IN ('post','analysis') AND post_status = 'publish'
+       ORDER BY post_date DESC LIMIT %d OFFSET %d", $limit, $offset
+    ) );
+
+    $fixed = 0; $samples = [];
+    foreach ($rows as $r) {
+        $old = (string) $r->post_content;
+        $new = ca_repair($old);
+        if ($new === '' || $new === $old) continue;
+        if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($old)) * 0.9) continue;
+        wp_update_post(['ID' => (int)$r->ID, 'post_content' => $new]);
+        $fixed++;
+        if (count($samples) < 3) $samples[] = get_the_title($r->ID);
+    }
+
+    echo json_encode([
+        'ok'      => true,
+        'total'   => $total,
+        'seen'    => count($rows),
+        'fixed'   => $fixed,
+        'samples' => $samples,
+        'next'    => (count($rows) < $limit) ? -1 : $offset + count($rows),
+    ]);
+    exit;
 }
 
 if ($action === 'fix') {

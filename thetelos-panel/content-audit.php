@@ -79,7 +79,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
                style="width:82px;padding:4px 6px;margin-left:4px">
         kelime
       </label>
-      <button class="btn" id="btn-fix" style="display:none">🔧 Onarılabilirleri Onar</button>
+      <button class="btn" id="btn-autofix">🔧 Otomatik Onar (tüm site)</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
     </div>
@@ -174,7 +174,7 @@ async function scan(){
   $('prog').style.display = 'block'; $('filters').style.display = 'flex';
   $('btn-csv').style.display = 'none'; $('btn-fix').style.display = 'none';
   const minw = parseInt($('min-words').value) || 0;
-  let offset = 0, total = 0, scanned = 0;
+  let offset = 0, total = 0, scanned = 0, skipped = 0;
 
   while(!stop){
     // Dilim küçük tutulur ve geçici hatada beklenip tekrar denenir: 7500 yazılık
@@ -189,9 +189,15 @@ async function scan(){
       $('ca-status').textContent = 'Bağlantı takıldı, yeniden deneniyor ('+attempt+'/4)… ' + scanned + '/' + total;
       await new Promise(r => setTimeout(r, attempt * 2000));
     }
+    // Bir dilim ısrarla düşüyorsa (ör. içindeki dev bir metin isteği zorluyorsa)
+    // tüm taramayı bırakma: o dilimi atla, kalan 7000 yazı taransın.
     if(!d){
-      $('ca-status').textContent = '⚠ ' + scanned + ' yazıda durdu (bağlantı). "Taramayı Başlat" ile tekrar dene.';
-      break;
+      skipped++;
+      offset  += 50;
+      scanned += 50;
+      $('ca-status').textContent = '⚠ Bir dilim atlandı, devam ediliyor… ' + scanned + '/' + (total || '?');
+      if(total && offset >= total) break;
+      continue;
     }
 
     total   = d.total || total;
@@ -206,7 +212,7 @@ async function scan(){
     $('ca-status').textContent = 'Taranıyor… ' + scanned + '/' + total;
     render();
 
-    if(d.next < 0) { $('ca-status').textContent = '✓ Tarama bitti — ' + scanned + ' yazı, ' + all.length + ' bulgu.'; break; }
+    if(d.next < 0) { $('ca-status').textContent = '✓ Tarama bitti — ' + scanned + ' yazı, ' + all.length + ' bulgu' + (skipped ? ', ' + skipped + ' dilim atlandı' : '') + '.'; break; }
     offset = d.next;
   }
   if(stop) $('ca-status').textContent = 'Durduruldu — ' + scanned + ' yazı tarandı.';
@@ -215,38 +221,54 @@ async function scan(){
   $('btn-fix').style.display = all.length ? '' : 'none';
 }
 
-/* Yeniden üretmeden düzeltilebilen bulgular. Yarım biten / kısa içerik
-   listede yok — onlar ancak yeniden üretimle düzelir. */
-const FIXABLE = ['prompt_leak','md_leak','part_marker','meta_talk'];
+/* Otomatik onarım: tarama beklemeden tüm siteyi gezer. Süreç satırlarını
+   siler, markdown kalıntısını HTML'e çevirir. Yarım biten / kısa içeriğe
+   dokunmaz — onlar yeniden üretim ister. */
+async function autofix(){
+  if(!confirm('Tüm yayındaki yazılar taranıp onarılacak:\n\n'+
+              '• prompt/süreç satırları silinir\n'+
+              '• "#### Başlık" ve "---" gerçek HTML\'e çevrilir\n'+
+              '• parça işaretleri temizlenir\n\n'+
+              'Yarım biten ve kısa içeriğe dokunulmaz. Devam?')) return;
 
-function fixableIds(){
-  const sel = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
-  const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
-  return pool.filter(p => p.flags.some(f => FIXABLE.includes(f.code))).map(p => p.id);
-}
+  stop = false;
+  $('btn-autofix').disabled = true;
+  $('btn-stop').style.display = '';
+  $('prog').style.display = 'block';
 
-async function fixAll(){
-  const ids = fixableIds();
-  if(!ids.length){ $('ca-status').textContent = 'Onarılabilir bulgu yok (yarım/kısa içerik yeniden üretim ister).'; return; }
-  if(!confirm(ids.length + ' yazı onarılacak: süreç satırları silinecek, markdown kalıntısı HTML’e çevrilecek. Devam?')) return;
+  let offset = 0, seen = 0, fixed = 0, total = 0, skips = 0;
 
-  $('btn-fix').disabled = true;
-  let done = 0, skipped = 0;
-  for (let i = 0; i < ids.length && !stop; i += 25) {
-    const chunk = ids.slice(i, i + 25);
-    try {
-      const d = await post('action=fix&ids=' + chunk.join(','));
-      if (d && d.ok) { done += d.fixed; skipped += d.skipped; }
-    } catch(e) { /* sonraki dilime geç */ }
-    $('ca-status').textContent = 'Onarılıyor… ' + done + '/' + ids.length;
+  while(!stop){
+    let d = null;
+    for (let attempt = 1; attempt <= 3 && !stop; attempt++) {
+      try {
+        d = await post('action=autofix&offset='+offset+'&limit=40');
+        if (d && d.ok) break;
+        d = null;
+      } catch(e) { d = null; }
+      $('ca-status').textContent = 'Takıldı, yeniden deneniyor ('+attempt+'/3)… ' + seen + '/' + total;
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+    // Bir dilim ısrarla düşerse tüm işi bırakma: atla ve devam et.
+    if(!d){ skips++; offset += 40; seen += 40; if(total && offset >= total) break; continue; }
+
+    total  = d.total || total;
+    seen  += d.seen || 0;
+    fixed += d.fixed || 0;
+    $('prog').firstElementChild.style.width = total ? Math.round(Math.min(seen,total)/total*100)+'%' : '0';
+    $('ca-status').textContent = 'Onarılıyor… ' + seen + '/' + total + ' — ' + fixed + ' yazı düzeltildi';
+    if(d.next < 0) break;
+    offset = d.next;
   }
-  $('btn-fix').disabled = false;
-  $('ca-status').textContent = '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
-                              '. Doğrulamak için taramayı tekrar çalıştır.';
+
+  $('btn-autofix').disabled = false;
+  $('btn-stop').style.display = 'none';
+  $('ca-status').textContent = (stop ? '■ Durduruldu — ' : '✓ Bitti — ') + fixed + ' yazı onarıldı (' +
+    seen + ' yazı gezildi' + (skips ? ', ' + skips + ' dilim atlandı' : '') + ').';
 }
 
 $('btn-scan').addEventListener('click', scan);
-$('btn-fix').addEventListener('click', fixAll);
+$('btn-autofix').addEventListener('click', autofix);
 $('btn-stop').addEventListener('click', ()=>{ stop = true; });
 $('btn-csv').addEventListener('click', csv);
 $('filters').addEventListener('click', e=>{
