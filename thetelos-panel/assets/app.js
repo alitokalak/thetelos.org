@@ -369,7 +369,13 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   state = { content:'', categories:[], selectedCover:'', quotes:[] };
 
   const isDeepSeek = activeProvider === 'deepseek';
-  const parts = isDeepSeek ? (parseInt(document.getElementById('parts-select')?.value) || 2) : 1;
+  // Parça sayısı hedef kelimeye göre yükseltilir: model tek istekte ~1800
+  // kelimeden sonra kendini toparlayıp bitiriyor, dolayısıyla "8000 kelime /
+  // 2 parça" seçilirse yazı hedefin yarısı uzunlukta çıkar. Seçilen değer taban.
+  const parts = isDeepSeek
+    ? Math.max(parseInt(document.getElementById('parts-select')?.value) || 2,
+               Math.min(6, Math.ceil(Math.max(500, Math.min(8000, parseInt(tokens) || 3000)) / 1800)))
+    : 1;
   const preview = document.getElementById('preview-content');
 
   document.getElementById('single-result').style.display = '';

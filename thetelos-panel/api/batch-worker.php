@@ -453,7 +453,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $target_words = max(500, min(8000, (int)$batch['max_tokens']));
     $post_status  = $batch['post_status'];
     $api_provider = $batch['api_provider'] ?? 'deepseek';
-    $parts        = max(1, min(4, (int)($batch['parts'] ?? 2)));
+    $parts        = bw_effective_parts($batch);
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
 
     // ── Prompt ────────────────────────────────────────────────────
@@ -909,6 +909,22 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
    Panelden kapatılabilir: jobs/.peak-skip = "0". Dosya yoksa koruma AÇIK.
    NOT: Bu kontrol cron-tick'te de var; ama worker kendini zincirlediği için
    (bw_spawn_successor) cron'u baypas ediyordu → koruma burada da şart. */
+/**
+ * Bir batch'in GERÇEK parça sayısı.
+ *
+ * Model, tek bir istekte ne istenirse istensin ~1800 kelimeden sonra kendini
+ * toparlayıp bitiriyor. "8000 kelime / 2 parça" seçildiğinde her parçadan 4000
+ * kelime isteniyor, gelen ~2000 oluyordu; yani kelime kaydırağı en üstteyken
+ * bile yazılar hedefin yarısı uzunlukta çıkıyordu. Bu yüzden parça sayısı
+ * hedefe göre otomatik yükseltilir — kullanıcının seçtiği değer taban sayılır,
+ * parça başına istenen kelime hiçbir zaman ~1800'ü geçmez.
+ */
+function bw_effective_parts($batch) {
+    $target = max(500, min(8000, (int)($batch['max_tokens'] ?? 3000)));
+    $picked = max(1, min(6, (int)($batch['parts'] ?? 2)));
+    return max($picked, min(6, (int)ceil($target / 1800)));
+}
+
 function bw_peak_now() {
     if (defined('TLS_DEEPSEEK_SKIP_PEAK') && !TLS_DEEPSEEK_SKIP_PEAK) return false;
     $flag = dirname(__DIR__) . '/jobs/.peak-skip';
@@ -934,7 +950,7 @@ while (true) {
     // her parça için DeepSeek timeout'u 280sn olabilir; 660sn sabiti 3-4 parçalı
     // kitaplarda yetmiyor ve PHP süreci kitabı ortada öldürüyordu → kitap
     // "processing"de asılı kalıyordu. parts*300 + 240sn (meta/bio/kapak/WP payı).
-    $bk_parts = max(1, min(4, (int)($batch['parts'] ?? 2)));
+    $bk_parts = bw_effective_parts($batch);
     set_time_limit($bk_parts * 300 + 240);
     bw_process_book($batch_file, $idx, $batch, $auth, $wp_api);
     $processed++;

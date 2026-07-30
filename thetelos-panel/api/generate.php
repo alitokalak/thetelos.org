@@ -34,10 +34,10 @@ if (!$template) {
 
 // ── Çok parçalı üretim parametreleri ─────────────────────────────
 // part  = kaçıncı parça (1-based). 0/boş = tek seferde
-// parts = toplam parça sayısı (1-4)
+// parts = toplam parça sayısı (1-6; uzun hedeflerde panel otomatik yükseltir)
 // prev_content = önceki parçaların birleştirilmiş içeriği (bağlam için)
 $part  = (int)($_POST['part']  ?? 0);
-$parts = max(1, min(4, (int)($_POST['parts'] ?? 1)));
+$parts = max(1, min(6, (int)($_POST['parts'] ?? 1)));
 $prev_content = trim($_POST['prev_content'] ?? '');
 // Geriye dönük uyumluluk: eski çağrılar part='1'/'2' ve part1_content gönderiyordu
 if ($prev_content === '' && !empty($_POST['part1_content'])) {

@@ -260,6 +260,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <option value="3">3 parça (daha uzun)</option>
               <option value="4">4 parça (en uzun)</option>
             </select>
+            <span style="display:block;margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5">
+              Bu bir <b>alt sınır</b>: model tek istekte ~1800 kelimeden fazlasını yazmadığı için
+              parça sayısı hedef kelimeye göre otomatik yükseltilir (ör. 8.000 kelime → 5 parça).
+            </span>
           </div>
         </div>
 
@@ -646,8 +650,14 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             'pending'    => ['#333',    '…'],
           ];
           // Stale eşiği parça sayısına göre (heartbeat yok; klaym anından ölçülür)
-          $bparts = max(1, min(4, (int)($b['parts'] ?? 2)));
-          $stale_secs = $bparts * 300 + 300; // parts=2 → 15dk
+          // Parça sayısı hedef kelimeye göre otomatik yükseliyor (bkz.
+          // bw_effective_parts); eşik seçilen değere göre hesaplanırsa uzun
+          // kitaplar boş yere "takıldı" görünür.
+          $bparts = max(
+              max(1, min(6, (int)($b['parts'] ?? 2))),
+              min(6, (int)ceil(max(500, min(8000, (int)($b['max_tokens'] ?? 3000))) / 1800))
+          );
+          $stale_secs = $bparts * 300 + 300;
           $now_ts = time();
           ?>
           <details style="margin-top:8px" open>
@@ -759,7 +769,10 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             var b = j.batch, st = b.status || '', books = b.books || [];
             var pending = 0, processing = 0, done = 0, errs = 0;
             var nowSec = Math.floor(Date.now() / 1000);
-            var _STALE_SECS = (Math.max(1, Math.min(4, b.parts || 2)) * 300) + 300; // parts=2 → 15dk
+            var _EFF_PARTS = Math.max(
+                  Math.max(1, Math.min(6, b.parts || 2)),
+                  Math.min(6, Math.ceil(Math.max(500, Math.min(8000, b.max_tokens || 3000)) / 1800)));
+            var _STALE_SECS = (_EFF_PARTS * 300) + 300;
             var hasStale = false;
 
             for (var i = 0; i < books.length; i++) {
