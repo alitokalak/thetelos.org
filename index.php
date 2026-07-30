@@ -167,11 +167,16 @@ if ( $featured_q->have_posts() ) {
 ══════════════════════════════════ -->
 <?php
 /* En çok okunanlar: post_views_count'a göre sıralanır. Sayaç yeni devrede
-   olduğu için henüz yeterli veri yoksa raf, son eklenenlerle tamamlanır —
-   böylece bölüm hiçbir zaman boş/eksik görünmez.
-   Her iki sorguda da SADECE gerçek kapağı olan kitaplar alınır; tipografik
-   yedek kapak vitrindeki görsel bütünlüğü bozuyordu. Yukarıdaki bölümlerde
-   gösterilen kitaplar ($seen_ids) tekrar edilmez. */
+   olduğu için henüz yeterli veri yoksa raf, arşivden tamamlanır — böylece
+   bölüm hiçbir zaman boş/eksik görünmez. Yukarıdaki bölümlerde gösterilen
+   kitaplar ($seen_ids) tekrar edilmez.
+
+   Kapak kuralı iki sorguda bilerek farklı:
+   - Gerçek listede kapak şartı YOK; bir kitap gerçekten en çok okunansa
+     kapağı olmadığı için gizlenmesi listeyi yalan söyler hale getirir.
+     Kapaksız kitaplar tipografik yedek kapakla gösterilir.
+   - Yedek listede kapak şartı VAR; orada seçim zaten keyfi olduğu için
+     gerçek kapaklı olanları tercih etmek bedava kazanç. */
 $mr_has_cover = [ [ 'key' => '_thumbnail_id', 'compare' => 'EXISTS' ] ];
 
 /* Okunma rozeti eşiği: sayaç yeni çalışmaya başladığı için "2 reads" gibi
@@ -187,11 +192,7 @@ $mr_ids = get_posts( [
     'meta_key'         => 'post_views_count',
     'orderby'          => 'meta_value_num',
     'order'            => 'DESC',
-    'meta_query'       => array_merge(
-        [ 'relation' => 'AND',
-          [ 'key' => 'post_views_count', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ] ],
-        $mr_has_cover
-    ),
+    'meta_query'       => [ [ 'key' => 'post_views_count', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ] ],
     'no_found_rows'    => true,
     'suppress_filters' => true,
 ] );
@@ -226,6 +227,10 @@ if ( $mr_ids ) :
     text-transform:uppercase;color:var(--tls-muted);margin-bottom:16px}
 .tls-rail-cover{display:flex;align-items:flex-end;justify-content:center;height:170px;margin-bottom:18px}
 .tls-rail-cover img{max-width:112px;max-height:170px;border-radius:2px;box-shadow:0 8px 26px rgba(0,0,0,.24)}
+/* Tipografik yedek kapak 160×220 sabit üretiliyor; rafın kapak kutusuna
+   oranı bozmadan ölçeklenir, böylece gerçek kapaklarla aynı hizada durur. */
+.tls-rail-cover .thetelos-book-cover{transform:scale(.773);transform-origin:bottom center;
+    box-shadow:0 8px 26px rgba(0,0,0,.24)}
 .tls-rail-divider{width:34px;height:2px;background:var(--tls-gold);margin-bottom:14px}
 .tls-rail-title{font-family:var(--tls-serif);font-size:17px;line-height:1.32;color:var(--tls-bg-dark);
     display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -246,6 +251,7 @@ if ( $mr_ids ) :
   .tls-rail-card{flex-basis:210px;padding:18px 16px 20px}
   .tls-rail-cover{height:140px}
   .tls-rail-cover img{max-width:92px;max-height:140px}
+  .tls-rail-cover .thetelos-book-cover{transform:scale(.636)}
   .tls-rail-nav{display:none}
 }
 </style>
