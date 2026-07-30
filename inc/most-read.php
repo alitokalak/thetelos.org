@@ -24,19 +24,20 @@ if ( ! defined( 'TLS_MR_VIEW_MIN' ) ) define( 'TLS_MR_VIEW_MIN', 250 );
  * Yeterli okunma verisi yoksa liste arşivden tamamlanır; oradaki seçim zaten
  * keyfi olduğu için gerçek kapağı olanlar tercih edilir.
  *
- * @param int   $cat_id  Kategori terim ID'si; 0 = tüm arşiv.
+ * @param int[] $cat_ids Kategori terim ID'leri; boş = tüm arşiv.
  * @param int   $limit   Kart sayısı.
  * @param int[] $exclude Sayfanın üst bölümlerinde zaten gösterilen ID'ler.
  */
-function tls_most_read_ids( $cat_id = 0, $limit = 12, $exclude = [] ) {
-    $base = [
+function tls_most_read_ids( $cat_ids = [], $limit = 12, $exclude = [] ) {
+    $cat_ids = array_values( array_filter( array_map( 'intval', (array) $cat_ids ) ) );
+    $base    = [
         'post_type'        => 'post',
         'post_status'      => 'publish',
         'fields'           => 'ids',
         'no_found_rows'    => true,
         'suppress_filters' => true,
     ];
-    if ( $cat_id ) $base['cat'] = (int) $cat_id;
+    if ( $cat_ids ) $base['category__in'] = $cat_ids;
 
     $ids = get_posts( array_merge( $base, [
         'posts_per_page' => $limit,
@@ -55,8 +56,8 @@ function tls_most_read_ids( $cat_id = 0, $limit = 12, $exclude = [] ) {
             'orderby'        => 'date',
             'order'          => 'DESC',
             // Tüm arşiv sekmesinde en yeni 12 kayıt aşağıdaki "Latest Additions"
-            // bölümüne bırakılır; kategori sekmelerinde havuz zaten dar.
-            'offset'         => $cat_id ? 0 : 12,
+            // bölümüne bırakılır; alan sekmelerinde havuz zaten dar.
+            'offset'         => $cat_ids ? 0 : 12,
         ] ) ) );
     }
     return $ids;
@@ -107,42 +108,82 @@ function tls_rail_cards_html( $ids ) {
 }
 
 /**
- * Sekmelerde gösterilecek ana kategoriler — kitap sayısına göre ilk N tanesi.
- * "General" gibi toplama kategoriler dışarıda bırakılır.
+ * Sekmelerde gösterilecek ANA ALANLAR.
+ *
+ * Sekmeler tek tek kategori değildir: kategori listesi dağınık ve ince taneli
+ * olduğu için ("Philosophy", "History of Philosophy", "Political Philosophy"…)
+ * şerit gereksiz kalabalık görünüyordu. Bunun yerine üyelik ilgi alanlarında
+ * kullandığımız küratörlü ana alan listesi (inc/interests.php) tek kaynak
+ * olarak kullanılır; her alan, adı o alanın anahtar kelimelerine uyan tüm
+ * kategorileri kapsar. Böylece felsefe dalları tek "Philosophy" sekmesinde
+ * toplanır ve kategori temizliğinden sonra da şerit bozulmaz.
+ *
+ * Bir kategori birden fazla alana uyabilir (ör. "Political Philosophy"); ilk
+ * eşleşen alan sahiplenir, sıra interests.php'deki tanım sırasıdır. Bu yüzden
+ * felsefe listenin başında durur ve dallarını kendine çeker.
+ *
+ * @return array[] [ ['key'=>slug, 'name'=>etiket, 'ids'=>terim ID'leri], … ]
  */
 function tls_most_read_tabs( $count = 10 ) {
+    // Transient TÜM alanları tutar; kırpma dönüşte yapılır, böylece farklı
+    // $count değerleriyle çağrılınca yanlış kısa liste cache'lenmiş olmaz.
     $cached = get_transient( 'tls_mr_tabs' );
-    if ( is_array( $cached ) ) return $cached;
+    if ( is_array( $cached ) ) return array_slice( $cached, 0, $count );
 
-    $terms = get_terms( [
-        'taxonomy'   => 'category',
-        'orderby'    => 'count',
-        'order'      => 'DESC',
-        'hide_empty' => true,
-        'number'     => $count + 6,
-    ] );
-    $skip = [ 'general', 'uncategorized', 'genel' ];
-    $tabs = [];
-    if ( ! is_wp_error( $terms ) ) {
-        foreach ( $terms as $t ) {
-            if ( in_array( $t->slug, $skip, true ) ) continue;
-            $tabs[] = [ 'id' => (int) $t->term_id, 'name' => $t->name ];
-            if ( count( $tabs ) >= $count ) break;
+    if ( ! function_exists( 'tls_interest_areas' ) ) return [];
+
+    $terms = get_terms( [ 'taxonomy' => 'category', 'hide_empty' => true ] );
+    if ( is_wp_error( $terms ) || ! $terms ) return [];
+
+    $skip  = [ 'general', 'uncategorized', 'genel' ];
+    $areas = tls_interest_areas();
+    $buck  = [];   // alan slug => ['name'=>…, 'ids'=>[], 'posts'=>n]
+
+    foreach ( $terms as $t ) {
+        if ( in_array( $t->slug, $skip, true ) ) continue;
+        $name = mb_strtolower( $t->name, 'UTF-8' );
+
+        foreach ( $areas as $slug => $area ) {
+            $hit = false;
+            foreach ( $area['match'] as $kw ) {
+                if ( strpos( $name, $kw ) !== false ) { $hit = true; break; }
+            }
+            if ( ! $hit ) continue;
+
+            if ( ! isset( $buck[ $slug ] ) ) $buck[ $slug ] = [ 'key' => $slug, 'name' => $area['label'], 'ids' => [], 'posts' => 0 ];
+            $buck[ $slug ]['ids'][]  = (int) $t->term_id;
+            $buck[ $slug ]['posts'] += (int) $t->count;
+            break;   // ilk eşleşen alan sahiplenir
         }
     }
-    set_transient( 'tls_mr_tabs', $tabs, 12 * HOUR_IN_SECONDS );
-    return $tabs;
+
+    // En çok kitap barındıran alanlar önce
+    uasort( $buck, function ( $a, $b ) { return $b['posts'] <=> $a['posts']; } );
+    $all = array_values( $buck );
+
+    set_transient( 'tls_mr_tabs', $all, 12 * HOUR_IN_SECONDS );
+    return array_slice( $all, 0, $count );
+}
+
+/** Bir alan slug'ının kapsadığı kategori ID'leri. */
+function tls_most_read_group_ids( $key ) {
+    foreach ( tls_most_read_tabs( 100 ) as $tab ) {
+        if ( $tab['key'] === $key ) return $tab['ids'];
+    }
+    return [];
 }
 
 /* ── Sekme tıklamasında kartları döndüren AJAX ucu ── */
 function tls_handle_most_read() {
-    $cat = isset( $_REQUEST['cat'] ) ? (int) $_REQUEST['cat'] : 0;
-    if ( $cat && ! term_exists( $cat, 'category' ) ) wp_send_json_error();
+    // İstemci sadece alan slug'ı gönderir; kategori ID'leri sunucuda çözülür.
+    $group = isset( $_REQUEST['group'] ) ? sanitize_key( $_REQUEST['group'] ) : '';
+    $ids   = $group ? tls_most_read_group_ids( $group ) : [];
+    if ( $group && ! $ids ) wp_send_json_error();
 
-    $key  = 'tls_mr_html_' . $cat;
+    $key  = 'tls_mr_html_' . ( $group ?: 'all' );
     $html = get_transient( $key );
     if ( ! is_string( $html ) || $html === '' ) {
-        $html = tls_rail_cards_html( tls_most_read_ids( $cat, 12 ) );
+        $html = tls_rail_cards_html( tls_most_read_ids( $ids, 12 ) );
         set_transient( $key, $html, 6 * HOUR_IN_SECONDS );
     }
     wp_send_json_success( [ 'html' => $html ] );
@@ -157,3 +198,7 @@ function tls_flush_most_read_cache() {
 }
 add_action( 'save_post_post', 'tls_flush_most_read_cache' );
 add_action( 'deleted_post',   'tls_flush_most_read_cache' );
+// Kategori birleştirme/silme sonrası sekme şeridi de tazelensin
+add_action( 'created_category', 'tls_flush_most_read_cache' );
+add_action( 'edited_category',  'tls_flush_most_read_cache' );
+add_action( 'delete_category',  'tls_flush_most_read_cache' );

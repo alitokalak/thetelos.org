@@ -170,7 +170,7 @@ if ( $featured_q->have_posts() ) {
    inc/most-read.php içinde; aynı fonksiyonlar bir sekmeye tıklandığında
    AJAX tarafında da kullanılır, böylece kart markup'ı tek yerde durur.
    Yukarıdaki bölümlerde gösterilen kitaplar ($seen_ids) tekrar edilmez. */
-$mr_ids  = function_exists( 'tls_most_read_ids' ) ? tls_most_read_ids( 0, 12, $seen_ids ) : [];
+$mr_ids  = function_exists( 'tls_most_read_ids' ) ? tls_most_read_ids( [], 12, $seen_ids ) : [];
 $mr_tabs = function_exists( 'tls_most_read_tabs' ) ? tls_most_read_tabs( 10 ) : [];
 foreach ( $mr_ids as $mr_id ) { tls_push( $seen_ids, $mr_id ); }
 if ( $mr_ids ) :
@@ -238,10 +238,10 @@ if ( $mr_ids ) :
 
         <?php if ( $mr_tabs ) : ?>
         <div class="tls-rail-tabs" role="tablist" aria-label="Most read by field">
-            <button class="tls-rail-tab is-active" type="button" data-cat="0" role="tab" aria-selected="true">All fields</button>
+            <button class="tls-rail-tab is-active" type="button" data-group="" role="tab" aria-selected="true">All fields</button>
             <?php foreach ( $mr_tabs as $tab ) : ?>
             <button class="tls-rail-tab" type="button" role="tab" aria-selected="false"
-                    data-cat="<?php echo (int) $tab['id']; ?>"><?php echo esc_html( $tab['name'] ); ?></button>
+                    data-group="<?php echo esc_attr( $tab['key'] ); ?>"><?php echo esc_html( $tab['name'] ); ?></button>
             <?php endforeach; ?>
         </div>
         <?php endif; ?>
@@ -291,8 +291,8 @@ if ( $mr_ids ) :
     if (!tabsBox) return;
 
     var AJAX  = <?php echo json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
-        cache = { '0': rail.innerHTML },   // açılıştaki liste "All fields" sekmesidir
-        current = '0';
+        cache = { '': rail.innerHTML },   // açılıştaki liste "All fields" sekmesidir
+        current = '';
 
     function show(html) {
         rail.innerHTML = html;
@@ -305,9 +305,9 @@ if ( $mr_ids ) :
     tabsBox.addEventListener('click', function (e) {
         var btn = e.target.closest('.tls-rail-tab');
         if (!btn) return;
-        var cat = btn.dataset.cat;
-        if (cat === current) return;
-        current = cat;
+        var grp = btn.dataset.group || '';
+        if (grp === current) return;
+        current = grp;
 
         tabsBox.querySelectorAll('.tls-rail-tab').forEach(function (b) {
             var on = b === btn;
@@ -315,28 +315,28 @@ if ( $mr_ids ) :
             b.setAttribute('aria-selected', on ? 'true' : 'false');
         });
 
-        if (cache[cat]) { show(cache[cat]); return; }
+        if (cache[grp]) { show(cache[grp]); return; }
 
         rail.classList.add('is-loading');
         tabsBox.classList.add('is-busy');
-        fetch(AJAX + '?action=tls_most_read&cat=' + encodeURIComponent(cat), { credentials: 'same-origin' })
+        fetch(AJAX + '?action=tls_most_read&group=' + encodeURIComponent(grp), { credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (j) {
                 var html = (j && j.success && j.data && j.data.html) ? j.data.html : '';
                 if (!html) throw new Error('empty');
-                cache[cat] = html;
-                if (current === cat) show(html);
+                cache[grp] = html;
+                if (current === grp) show(html);
             })
             .catch(function () {
                 // İstek başarısızsa sekmeyi zorlamayız; kullanıcı listesiz kalmasın diye
                 // önceki içerik geri gelir ve "All fields" tekrar seçili olur.
-                current = '0';
+                current = '';
                 tabsBox.querySelectorAll('.tls-rail-tab').forEach(function (b) {
-                    var on = b.dataset.cat === '0';
+                    var on = !b.dataset.group;
                     b.classList.toggle('is-active', on);
                     b.setAttribute('aria-selected', on ? 'true' : 'false');
                 });
-                show(cache['0']);
+                show(cache['']);
             });
     });
 })();
