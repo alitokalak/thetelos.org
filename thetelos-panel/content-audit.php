@@ -98,6 +98,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <button data-f="3">Sadece ağır</button>
       <button data-f="part_marker">Parça işareti</button>
       <button data-f="meta_talk">Model konuşması</button>
+      <button data-f="prompt_leak">Prompt sızması</button>
       <button data-f="truncated">Yarım bitmiş</button>
       <button data-f="dup_para">Tekrar</button>
       <button data-f="md_leak">Markdown</button>
@@ -175,14 +176,22 @@ async function scan(){
   let offset = 0, total = 0, scanned = 0;
 
   while(!stop){
-    let d;
-    try {
-      d = await post('action=scan&offset='+offset+'&limit=100&min_words='+minw);
-    } catch(e) {
-      $('ca-status').textContent = 'Bağlantı hatası — ' + scanned + ' yazıda durdu.';
+    // Dilim küçük tutulur ve geçici hatada beklenip tekrar denenir: 7500 yazılık
+    // taramada tek bir zaman aşımı bütün işi çöpe atmamalı.
+    let d = null;
+    for (let attempt = 1; attempt <= 4 && !stop; attempt++) {
+      try {
+        d = await post('action=scan&offset='+offset+'&limit=50&min_words='+minw);
+        if (d && d.ok) break;
+        d = null;
+      } catch(e) { d = null; }
+      $('ca-status').textContent = 'Bağlantı takıldı, yeniden deneniyor ('+attempt+'/4)… ' + scanned + '/' + total;
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+    if(!d){
+      $('ca-status').textContent = '⚠ ' + scanned + ' yazıda durdu (bağlantı). "Taramayı Başlat" ile tekrar dene.';
       break;
     }
-    if(!d || !d.ok){ $('ca-status').textContent = 'Hata.'; break; }
 
     total   = d.total || total;
     scanned += d.scanned || 0;

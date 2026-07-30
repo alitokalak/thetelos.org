@@ -48,23 +48,34 @@ function md2html($text){
         return $m[1];
     }, $text);
     $text=preg_replace(['/^#{1} \*\*(.+?)\*\*/m','/^#{2} \*\*(.+?)\*\*/m','/^#{3} \*\*(.+?)\*\*/m','/^#{4} \*\*(.+?)\*\*/m',
-        '/^# (.+)/m','/^## (.+)/m','/^### (.+)/m','/^#### (.+)/m'],
+        '/^# (.+)/m','/^## (.+)/m','/^### (.+)/m','/^#### (.+)/m',
+        '/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/m'],
         ['<h1><strong>$1</strong></h1>','<h2><strong>$1</strong></h2>','<h3><strong>$1</strong></h3>','<h3><strong>$1</strong></h3>',
-         '<h1>$1</h1>','<h2>$1</h2>','<h3>$1</h3>','<h3>$1</h3>'],$text);
-    $lines=explode("\n",$text);$html='';$buf=[];$bqbuf=[];
+         '<h1>$1</h1>','<h2>$1</h2>','<h3>$1</h3>','<h3>$1</h3>',
+         '<hr>'],$text);
+    $lines=explode("\n",$text);$html='';$buf=[];$bqbuf=[];$list=[];$list_tag='ul';
     $fl=function()use(&$buf,&$html){if($buf){$html.='<p>'.implode(' ',$buf)."</p>\n";$buf=[];}};
     $fbq=function()use(&$bqbuf,&$html){if($bqbuf){$html.='<blockquote>'.implode(' ',$bqbuf)."</blockquote>\n";$bqbuf=[];}};
+    $fls=function()use(&$list,&$list_tag,&$html){
+        if(!$list)return;
+        $html.="<{$list_tag}>\n";
+        foreach($list as $li)$html.='<li>'.$li."</li>\n";
+        $html.="</{$list_tag}>\n";$list=[];
+    };
     foreach($lines as $l){
         $l=trim($l);
-        if(!$l){$fl();$fbq();continue;}
+        if(!$l){$fl();$fbq();$fls();continue;}
         // Blockquote satırı: > ile başlıyor
         if(preg_match('/^&gt;\s*(.*)$/',$l,$m)||preg_match('/^>\s*(.*)$/',$l,$m)){
-            $fl();$bqbuf[]=$m[1];continue;
+            $fl();$fls();$bqbuf[]=$m[1];continue;
         }
-        if(preg_match('/^<(h[1-6]|hr)/',$l)){$fl();$fbq();$html.=$l."\n";continue;}
-        $fbq();$buf[]=$l;
+        if(preg_match('/^<(h[1-6]|hr)/',$l)){$fl();$fbq();$fls();$html.=$l."\n";continue;}
+        // Madde işaretli / numaralı liste
+        if(preg_match('/^[-*•]\s+(.+)$/u',$l,$m)){$fl();$fbq();if($list&&$list_tag!=='ul')$fls();$list_tag='ul';$list[]=$m[1];continue;}
+        if(preg_match('/^\d+[.)]\s+(.+)$/u',$l,$m)){$fl();$fbq();if($list&&$list_tag!=='ol')$fls();$list_tag='ol';$list[]=$m[1];continue;}
+        $fbq();$fls();$buf[]=$l;
     }
-    $fl();$fbq();return $html;
+    $fl();$fbq();$fls();return $html;
 }
 
 // ── Kategorileri bul/oluştur ──────────────────────────────
@@ -116,6 +127,18 @@ $clean_content = ltrim($clean_content);
 // PART işaretlerini temizle
 $clean_content = preg_replace('/%%PART[12]_END%%/i', '', $clean_content);
 $clean_content = preg_replace('/%%PART[12]_START%%/i', '', $clean_content);
+$clean_content = preg_replace('/%%PART_END%%/i', '', $clean_content);
+
+// Model bazen prompt'taki kapanış kuralını metnin sonuna yazıyor
+// ("*Here the work ends. No summary, no closing paragraph.*") — okuyucuya görünmesin.
+$clean_content = preg_replace(
+    '/^\s*[*_]{0,2}\s*(?:here (?:the|this) (?:work|piece|summary) ends|no summary,? no closing|'
+    . 'end of (?:part|the work|summary))[^\n]*$/im',
+    '', $clean_content);
+$clean_content = preg_replace(
+    '/^\s*[*_(\[]{0,2}\s*(?:as (?:requested|instructed)|per your (?:request|instructions)|'
+    . 'let me know if you|i hope this (?:helps|summary)|word count:?)[^\n]*$/im',
+    '', $clean_content);
 
 // DeepSeek'in bıraktığı meta notları temizle
 // [Note: ...], [Already covered...], [This was already...] gibi köşeli parantez notları

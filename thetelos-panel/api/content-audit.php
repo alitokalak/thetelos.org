@@ -58,12 +58,28 @@ function ca_check_meta_talk($text) {
     return '';
 }
 
+/** Prompt'un kapanış KURALI metne yazılmış mı? ("Here the work ends…") */
+function ca_check_prompt_leak($html) {
+    $t = wp_strip_all_tags($html);
+    $pats = [
+        '/here (?:the|this) (?:work|piece|summary) ends[^\n.]*/i',
+        '/no summary,? no closing paragraph/i',
+        '/end of (?:part|the work|summary)\s*\d*/i',
+        '/apply the closing rule/i',
+        '/do not write a conclusion/i',
+    ];
+    foreach ($pats as $p) if (preg_match($p, $t, $m)) return trim($m[0]);
+    return '';
+}
+
 /** Metin yarım mı bitmiş? (cümle ortasında ya da başlıkla) */
 function ca_check_truncated($html) {
     $t = trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags($html)));
     if ($t === '') return 'içerik boş';
     // Son blok başlıksa: başlık atılmış ama altı yazılmamış
     if (preg_match('/<h[1-6][^>]*>.*?<\/h[1-6]>\s*$/is', trim($html))) return 'son blok başlık — altı boş';
+    // Sondaki markdown vurgu işaretleri (*, _) noktalamayı gizleyebiliyor
+    $t    = rtrim($t, "*_ \t");
     $last = mb_substr($t, -1, 1, 'UTF-8');
     if (mb_strpos('.!?"\'»)”’…', $last, 0, 'UTF-8') === false) {
         return '…' . mb_substr($t, -60, 60, 'UTF-8');
@@ -151,6 +167,7 @@ if ($action === 'scan') {
 
         if ($s = ca_check_part_markers($html)) $flags[] = ['code'=>'part_marker', 'sev'=>3, 'label'=>'Parça işareti sızmış',        'sample'=>$s];
         if ($s = ca_check_meta_talk($html))    $flags[] = ['code'=>'meta_talk',   'sev'=>3, 'label'=>'Model kendi süreciyle konuşmuş','sample'=>$s];
+        if ($s = ca_check_prompt_leak($html))  $flags[] = ['code'=>'prompt_leak', 'sev'=>3, 'label'=>'Prompt talimatı metne yazılmış','sample'=>$s];
         if ($s = ca_check_truncated($html))    $flags[] = ['code'=>'truncated',   'sev'=>3, 'label'=>'Yarım bitmiş',                 'sample'=>$s];
         if ($s = ca_check_dup_para($html))     $flags[] = ['code'=>'dup_para',    'sev'=>2, 'label'=>'Paragraf tekrarı',             'sample'=>$s];
         if ($s = ca_check_dup_heading($html))  $flags[] = ['code'=>'dup_heading', 'sev'=>2, 'label'=>'Başlık tekrarı',               'sample'=>$s];
