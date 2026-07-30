@@ -166,55 +166,25 @@ if ( $featured_q->have_posts() ) {
      MOST READ — yatay kaydırmalı raf
 ══════════════════════════════════ -->
 <?php
-/* En çok okunanlar: post_views_count'a göre sıralanır. Sayaç yeni devrede
-   olduğu için henüz yeterli veri yoksa raf, arşivden tamamlanır — böylece
-   bölüm hiçbir zaman boş/eksik görünmez. Yukarıdaki bölümlerde gösterilen
-   kitaplar ($seen_ids) tekrar edilmez.
-
-   Kapak kuralı iki sorguda bilerek farklı:
-   - Gerçek listede kapak şartı YOK; bir kitap gerçekten en çok okunansa
-     kapağı olmadığı için gizlenmesi listeyi yalan söyler hale getirir.
-     Kapaksız kitaplar tipografik yedek kapakla gösterilir.
-   - Yedek listede kapak şartı VAR; orada seçim zaten keyfi olduğu için
-     gerçek kapaklı olanları tercih etmek bedava kazanç. */
-$mr_has_cover = [ [ 'key' => '_thumbnail_id', 'compare' => 'EXISTS' ] ];
-
-/* Okunma rozeti eşiği: sayaç yeni çalışmaya başladığı için "2 reads" gibi
-   anlamsız küçük sayılar gösterilmez. Sayı bu eşiği geçince rozet görünür. */
-$mr_view_min = 250;
-
-$mr_ids = get_posts( [
-    'post_type'        => 'post',
-    'post_status'      => 'publish',
-    'posts_per_page'   => 12,
-    'fields'           => 'ids',
-    'post__not_in'     => $seen_ids ?: [ 0 ],
-    'meta_key'         => 'post_views_count',
-    'orderby'          => 'meta_value_num',
-    'order'            => 'DESC',
-    'meta_query'       => [ [ 'key' => 'post_views_count', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC' ] ],
-    'no_found_rows'    => true,
-    'suppress_filters' => true,
-] );
-if ( count( $mr_ids ) < 12 ) {
-    $mr_ids = array_merge( $mr_ids, get_posts( [
-        'post_type'      => 'post',
-        'post_status'    => 'publish',
-        'posts_per_page' => 12 - count( $mr_ids ),
-        'fields'         => 'ids',
-        'post__not_in'   => array_merge( $seen_ids, $mr_ids ) ?: [ 0 ],
-        'meta_query'     => $mr_has_cover,
-        'orderby'        => 'date',
-        'order'          => 'DESC',
-        // En yeni 12 kayıt aşağıdaki "Latest Additions" bölümüne kalsın diye atlanır.
-        'offset'         => 12,
-        'no_found_rows'  => true,
-    ] ) );
-}
+/* En çok okunanlar. Sorgu, kart üretimi ve kategori sekmeleri
+   inc/most-read.php içinde; aynı fonksiyonlar bir sekmeye tıklandığında
+   AJAX tarafında da kullanılır, böylece kart markup'ı tek yerde durur.
+   Yukarıdaki bölümlerde gösterilen kitaplar ($seen_ids) tekrar edilmez. */
+$mr_ids  = function_exists( 'tls_most_read_ids' ) ? tls_most_read_ids( 0, 12, $seen_ids ) : [];
+$mr_tabs = function_exists( 'tls_most_read_tabs' ) ? tls_most_read_tabs( 10 ) : [];
 foreach ( $mr_ids as $mr_id ) { tls_push( $seen_ids, $mr_id ); }
 if ( $mr_ids ) :
 ?>
 <style>
+/* Kategori sekmeleri — hero'daki etiket hapları ile aynı dil, ama sabit ve tıklanır */
+.tls-rail-tabs{display:flex;flex-wrap:wrap;gap:8px;margin:-8px 0 26px}
+.tls-rail-tab{font-family:var(--tls-sans);font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--tls-muted);background:transparent;padding:6px 15px;border:1px solid var(--tls-border);
+    border-radius:20px;cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.tls-rail-tab:hover{border-color:var(--tls-bg-dark);color:var(--tls-bg-dark)}
+.tls-rail-tab.is-active{background:var(--tls-bg-dark);border-color:var(--tls-bg-dark);color:#fff}
+.tls-rail-tabs.is-busy{opacity:.5;pointer-events:none}
+.tls-rail.is-loading{opacity:.35;transition:opacity .15s}
 .tls-rail-wrap{position:relative}
 .tls-rail{display:flex;gap:22px;overflow-x:auto;scroll-behavior:smooth;scroll-snap-type:x mandatory;
     padding:4px 2px 18px;margin:0 -2px;-ms-overflow-style:none;scrollbar-width:none}
@@ -266,44 +236,23 @@ if ( $mr_ids ) :
             </a>
         </div>
 
+        <?php if ( $mr_tabs ) : ?>
+        <div class="tls-rail-tabs" role="tablist" aria-label="Most read by field">
+            <button class="tls-rail-tab is-active" type="button" data-cat="0" role="tab" aria-selected="true">All fields</button>
+            <?php foreach ( $mr_tabs as $tab ) : ?>
+            <button class="tls-rail-tab" type="button" role="tab" aria-selected="false"
+                    data-cat="<?php echo (int) $tab['id']; ?>"><?php echo esc_html( $tab['name'] ); ?></button>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
         <div class="tls-rail-wrap">
             <button class="tls-rail-nav tls-rail-prev" type="button" aria-label="Önceki" hidden>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>
             </button>
 
             <div class="tls-rail" id="tls-most-read">
-                <?php
-                $mi = 1;
-                foreach ( $mr_ids as $mid ) :
-                    $m_authors = get_the_terms( $mid, 'authors' );
-                    $m_auth    = ( ! empty( $m_authors ) && ! is_wp_error( $m_authors ) ) ? $m_authors[0]->name : '';
-                    $m_cats    = get_the_category( $mid );
-                    $m_cat     = ! empty( $m_cats ) ? $m_cats[0]->name : '';
-                    $m_views   = function_exists( 'tls_get_views' ) ? tls_get_views( $mid ) : 0;
-                ?>
-                <a class="tls-rail-card" href="<?php echo esc_url( get_permalink( $mid ) ); ?>">
-                    <div class="tls-rail-num">
-                        <?php printf( '%02d', $mi ); ?>
-                        <?php if ( $m_cat ) echo ' &mdash; <span style="color:var(--tls-gold)">' . esc_html( strtoupper( $m_cat ) ) . '</span>'; ?>
-                    </div>
-                    <div class="tls-rail-cover">
-                        <?php if ( has_post_thumbnail( $mid ) ) :
-                            echo get_the_post_thumbnail( $mid, 'medium', [ 'alt' => esc_attr( get_the_title( $mid ) ), 'loading' => 'lazy' ] );
-                        else :
-                            echo thetelos_render_book_cover( $mid );
-                        endif; ?>
-                    </div>
-                    <div class="tls-rail-divider"></div>
-                    <div class="tls-rail-title"><?php echo esc_html( get_the_title( $mid ) ); ?></div>
-                    <?php if ( $m_auth ) : ?><div class="tls-rail-author"><?php echo esc_html( $m_auth ); ?></div><?php endif; ?>
-                    <?php if ( $m_views >= $mr_view_min ) : ?>
-                    <div class="tls-rail-views">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        <?php echo esc_html( number_format_i18n( $m_views ) ); ?> reads
-                    </div>
-                    <?php endif; ?>
-                </a>
-                <?php $mi++; endforeach; ?>
+                <?php echo tls_rail_cards_html( $mr_ids ); ?>
             </div>
 
             <button class="tls-rail-nav tls-rail-next" type="button" aria-label="Sonraki">
@@ -334,6 +283,62 @@ if ( $mr_ids ) :
     rail.addEventListener('scroll', sync, { passive: true });
     window.addEventListener('resize', sync);
     sync();
+
+    /* ── Kategori sekmeleri ──
+       Kartlar AJAX ile gelir; bir kez getirilen sekme bellekte tutulur, aynı
+       sekmeye dönüldüğünde tekrar istek atılmaz. */
+    var tabsBox = document.querySelector('.tls-rail-tabs');
+    if (!tabsBox) return;
+
+    var AJAX  = <?php echo json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
+        cache = { '0': rail.innerHTML },   // açılıştaki liste "All fields" sekmesidir
+        current = '0';
+
+    function show(html) {
+        rail.innerHTML = html;
+        rail.scrollLeft = 0;
+        rail.classList.remove('is-loading');
+        tabsBox.classList.remove('is-busy');
+        sync();
+    }
+
+    tabsBox.addEventListener('click', function (e) {
+        var btn = e.target.closest('.tls-rail-tab');
+        if (!btn) return;
+        var cat = btn.dataset.cat;
+        if (cat === current) return;
+        current = cat;
+
+        tabsBox.querySelectorAll('.tls-rail-tab').forEach(function (b) {
+            var on = b === btn;
+            b.classList.toggle('is-active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+
+        if (cache[cat]) { show(cache[cat]); return; }
+
+        rail.classList.add('is-loading');
+        tabsBox.classList.add('is-busy');
+        fetch(AJAX + '?action=tls_most_read&cat=' + encodeURIComponent(cat), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                var html = (j && j.success && j.data && j.data.html) ? j.data.html : '';
+                if (!html) throw new Error('empty');
+                cache[cat] = html;
+                if (current === cat) show(html);
+            })
+            .catch(function () {
+                // İstek başarısızsa sekmeyi zorlamayız; kullanıcı listesiz kalmasın diye
+                // önceki içerik geri gelir ve "All fields" tekrar seçili olur.
+                current = '0';
+                tabsBox.querySelectorAll('.tls-rail-tab').forEach(function (b) {
+                    var on = b.dataset.cat === '0';
+                    b.classList.toggle('is-active', on);
+                    b.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                show(cache['0']);
+            });
+    });
 })();
 </script>
 <?php endif; ?>
