@@ -127,7 +127,10 @@ function tls_rail_cards_html( $ids ) {
 function tls_most_read_tabs( $count = 10 ) {
     // Transient TÜM alanları tutar; kırpma dönüşte yapılır, böylece farklı
     // $count değerleriyle çağrılınca yanlış kısa liste cache'lenmiş olmaz.
-    $cached = get_transient( 'tls_mr_tabs' );
+    // Anahtar sürümlü: yapı değiştiğinde eski biçimdeki cache okunmaz. Sürümsüz
+    // bir anahtar kullanılsaydı önceki sürümün kaydı yeni koda düşer ve eksik
+    // alanlar PHP uyarısı olarak sayfaya basılırdı.
+    $cached = get_transient( 'tls_mr_tabs_v2' );
     if ( is_array( $cached ) ) return array_slice( $cached, 0, $count );
 
     if ( ! function_exists( 'tls_interest_areas' ) ) return [];
@@ -161,7 +164,7 @@ function tls_most_read_tabs( $count = 10 ) {
     uasort( $buck, function ( $a, $b ) { return $b['posts'] <=> $a['posts']; } );
     $all = array_values( $buck );
 
-    set_transient( 'tls_mr_tabs', $all, 12 * HOUR_IN_SECONDS );
+    set_transient( 'tls_mr_tabs_v2', $all, 12 * HOUR_IN_SECONDS );
     return array_slice( $all, 0, $count );
 }
 

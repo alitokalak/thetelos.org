@@ -239,7 +239,8 @@ if ( $mr_ids ) :
         <?php if ( $mr_tabs ) : ?>
         <div class="tls-rail-tabs" role="tablist" aria-label="Most read by field">
             <button class="tls-rail-tab is-active" type="button" data-group="" role="tab" aria-selected="true">All fields</button>
-            <?php foreach ( $mr_tabs as $tab ) : ?>
+            <?php foreach ( $mr_tabs as $tab ) :
+                if ( empty( $tab['key'] ) || empty( $tab['name'] ) ) continue; ?>
             <button class="tls-rail-tab" type="button" role="tab" aria-selected="false"
                     data-group="<?php echo esc_attr( $tab['key'] ); ?>"><?php echo esc_html( $tab['name'] ); ?></button>
             <?php endforeach; ?>
