@@ -112,10 +112,25 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
 
 <script>
 const $ = id => document.getElementById(id);
-function post(body){
+/* Zaman sınırlı istek: sunucu yanıt vermezse ekran sonsuza kadar beklemesin,
+   istek iptal edilip yeniden denensin. */
+function post(body, ms){
+  const ctl = new AbortController();
+  const t   = setTimeout(()=>ctl.abort(), ms || 90000);
   return fetch('api/content-audit.php', {method:'POST', credentials:'same-origin',
-    headers:{'Content-Type':'application/x-www-form-urlencoded'}, body}).then(r=>r.json());
+    headers:{'Content-Type':'application/x-www-form-urlencoded'}, body, signal: ctl.signal})
+    .then(r=>r.json()).finally(()=>clearTimeout(t));
 }
+
+/* Bekleme sırasında saniye sayan durum yazısı — "donmuş mu?" sorusunu bitirir. */
+let tick = null;
+function waiting(label){
+  clearInterval(tick);
+  const t0 = Date.now();
+  const paint = ()=>{ $('ca-status').textContent = label + ' (' + Math.round((Date.now()-t0)/1000) + ' sn)'; };
+  paint(); tick = setInterval(paint, 1000);
+}
+function waitingDone(){ clearInterval(tick); tick = null; }
 function escH(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 let all = [], stop = false, filter = 'all';
@@ -172,7 +187,7 @@ async function scan(){
   all = []; stop = false; filter = 'all';
   $('btn-scan').disabled = true; $('btn-stop').style.display = '';
   $('prog').style.display = 'block'; $('filters').style.display = 'flex';
-  $('btn-csv').style.display = 'none'; $('btn-fix').style.display = 'none';
+  $('btn-csv').style.display = 'none';
   const minw = parseInt($('min-words').value) || 0;
   let offset = 0, total = 0, scanned = 0, skipped = 0;
 
@@ -181,14 +196,19 @@ async function scan(){
     // taramada tek bir zaman aşımı bütün işi çöpe atmamalı.
     let d = null;
     for (let attempt = 1; attempt <= 4 && !stop; attempt++) {
+      // Dilim her denemede küçülür: yavaş bir dilim en azından parça parça geçsin.
+      const lim = [50, 25, 10, 5][attempt - 1];
+      waiting('Taranıyor: ' + scanned + '/' + (total || '?') + (attempt > 1 ? ' — yeniden deneme ' + attempt + '/4' : ''));
       try {
-        d = await post('action=scan&offset='+offset+'&limit=50&min_words='+minw);
+        d = await post('action=scan&offset='+offset+'&limit='+lim+'&min_words='+minw, 90000);
         if (d && d.ok) break;
         d = null;
       } catch(e) { d = null; }
-      $('ca-status').textContent = 'Bağlantı takıldı, yeniden deneniyor ('+attempt+'/4)… ' + scanned + '/' + total;
+      waitingDone();
+      $('ca-status').textContent = 'Yanıt gelmedi, yeniden deneniyor ('+attempt+'/4)… ' + scanned + '/' + total;
       await new Promise(r => setTimeout(r, attempt * 2000));
     }
+    waitingDone();
     // Bir dilim ısrarla düşüyorsa (ör. içindeki dev bir metin isteği zorluyorsa)
     // tüm taramayı bırakma: o dilimi atla, kalan 7000 yazı taransın.
     if(!d){
@@ -218,7 +238,6 @@ async function scan(){
   if(stop) $('ca-status').textContent = 'Durduruldu — ' + scanned + ' yazı tarandı.';
   $('btn-scan').disabled = false; $('btn-stop').style.display = 'none';
   $('btn-csv').style.display = all.length ? '' : 'none';
-  $('btn-fix').style.display = all.length ? '' : 'none';
 }
 
 /* Otomatik onarım: tarama beklemeden tüm siteyi gezer. Süreç satırlarını
@@ -241,14 +260,18 @@ async function autofix(){
   while(!stop){
     let d = null;
     for (let attempt = 1; attempt <= 3 && !stop; attempt++) {
+      const lim = [40, 15, 5][attempt - 1];
+      waiting('Onarılıyor: ' + seen + '/' + (total || '?') + ' — ' + fixed + ' düzeltildi');
       try {
-        d = await post('action=autofix&offset='+offset+'&limit=40');
+        d = await post('action=autofix&offset='+offset+'&limit='+lim, 90000);
         if (d && d.ok) break;
         d = null;
       } catch(e) { d = null; }
-      $('ca-status').textContent = 'Takıldı, yeniden deneniyor ('+attempt+'/3)… ' + seen + '/' + total;
+      waitingDone();
+      $('ca-status').textContent = 'Yanıt gelmedi, yeniden deneniyor ('+attempt+'/3)… ' + seen + '/' + total;
       await new Promise(r => setTimeout(r, attempt * 2000));
     }
+    waitingDone();
     // Bir dilim ısrarla düşerse tüm işi bırakma: atla ve devam et.
     if(!d){ skips++; offset += 40; seen += 40; if(total && offset >= total) break; continue; }
 
