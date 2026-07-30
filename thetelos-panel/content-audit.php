@@ -79,6 +79,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
                style="width:82px;padding:4px 6px;margin-left:4px">
         kelime
       </label>
+      <button class="btn" id="btn-fix" style="display:none">🔧 Onarılabilirleri Onar</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
     </div>
@@ -171,7 +172,7 @@ async function scan(){
   all = []; stop = false; filter = 'all';
   $('btn-scan').disabled = true; $('btn-stop').style.display = '';
   $('prog').style.display = 'block'; $('filters').style.display = 'flex';
-  $('btn-csv').style.display = 'none';
+  $('btn-csv').style.display = 'none'; $('btn-fix').style.display = 'none';
   const minw = parseInt($('min-words').value) || 0;
   let offset = 0, total = 0, scanned = 0;
 
@@ -211,9 +212,41 @@ async function scan(){
   if(stop) $('ca-status').textContent = 'Durduruldu — ' + scanned + ' yazı tarandı.';
   $('btn-scan').disabled = false; $('btn-stop').style.display = 'none';
   $('btn-csv').style.display = all.length ? '' : 'none';
+  $('btn-fix').style.display = all.length ? '' : 'none';
+}
+
+/* Yeniden üretmeden düzeltilebilen bulgular. Yarım biten / kısa içerik
+   listede yok — onlar ancak yeniden üretimle düzelir. */
+const FIXABLE = ['prompt_leak','md_leak','part_marker','meta_talk'];
+
+function fixableIds(){
+  const sel = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
+  const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
+  return pool.filter(p => p.flags.some(f => FIXABLE.includes(f.code))).map(p => p.id);
+}
+
+async function fixAll(){
+  const ids = fixableIds();
+  if(!ids.length){ $('ca-status').textContent = 'Onarılabilir bulgu yok (yarım/kısa içerik yeniden üretim ister).'; return; }
+  if(!confirm(ids.length + ' yazı onarılacak: süreç satırları silinecek, markdown kalıntısı HTML’e çevrilecek. Devam?')) return;
+
+  $('btn-fix').disabled = true;
+  let done = 0, skipped = 0;
+  for (let i = 0; i < ids.length && !stop; i += 25) {
+    const chunk = ids.slice(i, i + 25);
+    try {
+      const d = await post('action=fix&ids=' + chunk.join(','));
+      if (d && d.ok) { done += d.fixed; skipped += d.skipped; }
+    } catch(e) { /* sonraki dilime geç */ }
+    $('ca-status').textContent = 'Onarılıyor… ' + done + '/' + ids.length;
+  }
+  $('btn-fix').disabled = false;
+  $('ca-status').textContent = '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
+                              '. Doğrulamak için taramayı tekrar çalıştır.';
 }
 
 $('btn-scan').addEventListener('click', scan);
+$('btn-fix').addEventListener('click', fixAll);
 $('btn-stop').addEventListener('click', ()=>{ stop = true; });
 $('btn-csv').addEventListener('click', csv);
 $('filters').addEventListener('click', e=>{

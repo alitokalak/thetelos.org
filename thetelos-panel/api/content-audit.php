@@ -203,6 +203,74 @@ if ($action === 'scan') {
     exit;
 }
 
+/* ── Onarım ──────────────────────────────────────────────────────────────
+   Yeniden üretmeden düzeltilebilen kusurlar: prompt/süreç satırlarının
+   silinmesi, HTML'e çevrilmemiş markdown kalıntısının çevrilmesi, parça
+   işaretlerinin temizlenmesi. Yarım biten ya da kısa içerik BURADA
+   düzeltilemez — o ancak yeniden üretimle olur, dokunulmaz.
+
+   Kural: bir <p> bloğunun TAMAMI kalıntıysa dönüştürülür; içine karışmışsa
+   elleme. Tahminle metin bölmek, bozuk bırakmaktan daha kötü.               */
+function ca_leak_line($t) {
+    $pats = [
+        '/^(?:here (?:the|this) (?:work|piece|summary) ends|no summary,? no closing)/i',
+        '/^end of (?:part|the work|summary)\b/i',
+        '/^(?:as (?:requested|instructed)|per your (?:request|instructions))\b/i',
+        '/^(?:let me know if you|i hope this (?:helps|summary))/i',
+        '/^word count\s*:?/i',
+        '/^%%\s*PART/i',
+    ];
+    foreach ($pats as $p) if (preg_match($p, $t)) return true;
+    return false;
+}
+
+function ca_repair($html) {
+    $out = preg_replace_callback('/<p[^>]*>(.*?)<\/p>\s*/is', function ($m) {
+        $inner = trim($m[1]);
+        $text  = trim(wp_strip_all_tags($inner));
+        // Vurgu yıldızlarını sıyırıp bak: "*Here the work ends…*" da yakalansın
+        $bare  = trim($text, "*_ \t");
+
+        if ($bare === '' ) return '';
+        if (ca_leak_line($bare)) return '';                       // süreç satırı → sil
+
+        if (preg_match('/^(#{1,6})\s+(.+)$/u', $bare, $h)) {      // başlık kalıntısı
+            $lvl = min(6, max(2, strlen($h[1])));                 // h1 tema başlığı, kullanma
+            $t   = trim($h[2], "* \t");
+            return "<h{$lvl}>{$t}</h{$lvl}>\n";
+        }
+        if (preg_match('/^(?:-{3,}|\*{3,}|_{3,})$/', $bare)) return "<hr>\n";   // yatay çizgi
+
+        // Blok içindeki tekil parça işaretleri
+        $clean = preg_replace('/%%\s*PART[^%]*%%/i', '', $inner);
+        // Eşleşen **kalın** kalıntısı
+        $clean = preg_replace('/\*\*([^*\n]{1,200}?)\*\*/', '<strong>$1</strong>', $clean);
+        $clean = trim($clean);
+        return $clean === '' ? '' : "<p>{$clean}</p>\n";
+    }, $html);
+
+    return trim($out);
+}
+
+if ($action === 'fix') {
+    $ids   = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
+    $fixed = 0; $skipped = 0;
+    foreach ($ids as $id) {
+        $p = get_post($id);
+        if (!$p || $p->post_type === 'revision') { $skipped++; continue; }
+        $new = ca_repair((string)$p->post_content);
+        if ($new === '' || $new === $p->post_content) { $skipped++; continue; }
+        // Güvenlik: onarım metnin belirgin bir kısmını yutuyorsa uygulama.
+        if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($p->post_content)) * 0.9) {
+            $skipped++; continue;
+        }
+        wp_update_post(['ID' => $id, 'post_content' => $new]);
+        $fixed++;
+    }
+    echo json_encode(['ok' => true, 'fixed' => $fixed, 'skipped' => $skipped]);
+    exit;
+}
+
 /* ── Seçilenleri yayından kaldır ── */
 if ($action === 'draft') {
     $ids  = array_filter(array_map('intval', (array)($_POST['ids'] ?? [])));
