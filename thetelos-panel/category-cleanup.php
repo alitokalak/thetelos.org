@@ -37,6 +37,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <a href="panel.php"><span class="ico">✍</span> İçerik Üret</a>
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
+      <a href="content-audit.php"><span class="ico">🩺</span> İçerik Denetimi</a>
       <a href="content-guard.php"><span class="ico">🛡️</span> İçerik Koruma</a>
       <a href="recategorize.php"><span class="ico">🗂️</span> Kategori Düzelt</a>
       <a href="category-cleanup.php" class="active"><span class="ico">🧹</span> Kategori Temizle</a>
