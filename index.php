@@ -218,6 +218,16 @@ if ( $mr_ids ) :
 .tls-rail-next{right:-18px}
 .tls-rail-nav svg{width:17px;height:17px}
 @media(max-width:640px){
+  /* Dar ekranda 11 hap alt alta sarınca kartları ekrandan aşağı itiyordu:
+     şerit tek satıra alınıp rafla aynı şekilde yatay kaydırılır. Sağ kenardaki
+     silinme, devamı olduğunu gösterir. */
+  .tls-rail-tabs{flex-wrap:nowrap;overflow-x:auto;-ms-overflow-style:none;scrollbar-width:none;
+      padding-bottom:2px;margin-bottom:22px;
+      -webkit-mask-image:linear-gradient(to right,#000 calc(100% - 34px),transparent);
+      mask-image:linear-gradient(to right,#000 calc(100% - 34px),transparent)}
+  .tls-rail-tabs::-webkit-scrollbar{display:none}
+  .tls-rail-tabs.is-end{-webkit-mask-image:none;mask-image:none}
+  .tls-rail-tab{flex:0 0 auto}
   .tls-rail-card{flex-basis:210px;padding:18px 16px 20px}
   .tls-rail-cover{height:140px}
   .tls-rail-cover img{max-width:92px;max-height:140px}
@@ -291,6 +301,15 @@ if ( $mr_ids ) :
     var tabsBox = document.querySelector('.tls-rail-tabs');
     if (!tabsBox) return;
 
+    // Mobilde şerit yatay kaydığı için: sona gelindiğinde kenar silinmesi kalkar
+    function syncTabs() {
+        tabsBox.classList.toggle('is-end',
+            tabsBox.scrollLeft + tabsBox.clientWidth >= tabsBox.scrollWidth - 4);
+    }
+    tabsBox.addEventListener('scroll', syncTabs, { passive: true });
+    window.addEventListener('resize', syncTabs);
+    syncTabs();
+
     var AJAX  = <?php echo json_encode( admin_url( 'admin-ajax.php' ) ); ?>,
         cache = { '': rail.innerHTML },   // açılıştaki liste "All fields" sekmesidir
         current = '';
@@ -315,6 +334,8 @@ if ( $mr_ids ) :
             b.classList.toggle('is-active', on);
             b.setAttribute('aria-selected', on ? 'true' : 'false');
         });
+        // Mobilde yarım görünen bir hapa basıldıysa şerit onu ortalasın
+        if (btn.scrollIntoView) btn.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
 
         if (cache[grp]) { show(cache[grp]); return; }
 
