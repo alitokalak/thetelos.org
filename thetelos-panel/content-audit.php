@@ -171,11 +171,13 @@ function render(){
     '<th>Kitap</th><th style="width:420px">Bulgular</th>'+
     '<th style="width:70px">Kelime</th><th style="width:120px"></th></tr></thead><tbody>';
   rows.forEach(p=>{
-    // Her satırın bir çözümü vardır: onar → tamamla → yeniden üret.
-    // "Elle bakılmalı" diye bir sonuç yok; 7500 yazıda elle düzeltme çözüm değil.
+    // Eylem sırası: onar → tamamla → yeniden üret. Ama HAFİF bir not, koca bir
+    // yazıyı yeniden yazdırmak için gerekçe değildir: sadece sev1 bulgusu olan
+    // yazılar "eylem gerekmiyor" sayılır.
     const act = p.fixable ? '<span class="badge" style="background:rgba(40,160,90,.18);color:#3ec27a">🔧 onarılabilir</span>'
               : p.compl  ? '<span class="badge" style="background:rgba(80,120,220,.18);color:#7aa2f7">🩹 tamamlanabilir</span>'
-                         : '<span class="badge" style="background:rgba(190,120,220,.18);color:#c58af0">♻️ yeniden üretilecek</span>';
+              : p.sev>=2 ? '<span class="badge" style="background:rgba(190,120,220,.18);color:#c58af0">♻️ yeniden üretilecek</span>'
+                         : '<span class="badge sev1">eylem gerekmiyor</span>';
     h += '<tr data-id="'+p.id+'"><td><input type="checkbox" class="ca-cb"></td>'+
       '<td><b>'+escH(p.title)+'</b><br><small style="color:var(--muted)">'+escH(p.date)+'</small>'+
       '<br>'+act+'</td><td>';
@@ -441,7 +443,8 @@ async function complete(){
 async function regen(){
   const sel  = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
   const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
-  const ids  = pool.filter(p => !p.fixable && !p.compl).map(p => p.id);
+  // sev1 (üslup notu) tek başına yeniden üretim gerekçesi değil.
+  const ids  = pool.filter(p => !p.fixable && !p.compl && p.sev >= 2).map(p => p.id);
 
   if(!ids.length){ $('ca-status').textContent = 'Yeniden üretilecek yazı yok.'; return; }
   if(!confirm(ids.length + ' yazı SIFIRDAN yeniden yazılacak.\n\n'+

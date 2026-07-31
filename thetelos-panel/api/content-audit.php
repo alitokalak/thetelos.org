@@ -239,7 +239,10 @@ function ca_check_dup_heading($html) {
     $seen = [];
     foreach ($m[2] as $h) {
         $k = mb_strtolower(trim(wp_strip_all_tags($h)), 'UTF-8');
-        if ($k === '') continue;
+        // Kısa/genel başlıklar ("Conclusion", "Introduction") bir metinde
+        // doğal olarak tekrarlanabilir; kusur sayılan şey uzun ve birebir
+        // aynı olan başlıktır — o parça sınırında yeniden yazılmış demektir.
+        if (mb_strlen($k, 'UTF-8') < 20) continue;
         if (isset($seen[$k])) return wp_strip_all_tags($h);
         $seen[$k] = 1;
     }
@@ -271,9 +274,14 @@ function ca_check_md_leak($html) {
 
 /** Yasak kapanış: prompt "özet paragrafıyla bitirme" diyor. */
 function ca_check_wrapup($html) {
-    $t = trim(wp_strip_all_tags(ca_strip_quotes($html)));
-    $tail = mb_substr($t, -400, 400, 'UTF-8');
-    if (preg_match('/\b(in conclusion|to conclude|in summary|to sum up|overall,? this book)\b/i', $tail, $m)) {
+    // Aranan şey, metnin SON PARAGRAFININ bir özet paragrafı olarak BAŞLAMASI.
+    // İfadeyi metnin herhangi bir yerinde aramak yanlış alarm üretiyordu:
+    // "The diary's power lies in its refusal TO CONCLUDE: it ends not with a
+    // verdict…" cümlesi kusur değil, iyi bir cümledir.
+    $blocks = ca_blocks($html);
+    if (!$blocks) return '';
+    $last = trim(end($blocks), "*_ \t");
+    if (preg_match('/^(in conclusion|to conclude|in summary|to sum up|in closing|overall,? this book)\b[^.]{0,60}/i', $last, $m)) {
         return trim($m[0]);
     }
     return '';
@@ -336,8 +344,12 @@ if ($action === 'scan') {
         if ($min_words && $words < $min_words) $flags[] = ['code'=>'short',       'sev'=>2, 'label'=>'Hedeften kısa',                'sample'=>$words . ' kelime'];
         if ($s = ca_check_wrapup($html))       $flags[] = ['code'=>'wrapup',      'sev'=>1, 'label'=>'Özet paragrafıyla bitmiş',     'sample'=>$s];
 
-        $h3 = preg_match_all('/<h3[^>]*>/i', $html);
-        if ($h3 < 3) $flags[] = ['code'=>'few_sections', 'sev'=>1, 'label'=>'Bölüm sayısı az', 'sample'=>$h3 . ' bölüm'];
+        // Bölüm başlıkları h2/h3/h4 olabiliyor; yalnız h3 sayınca 5000 kelimelik
+        // düzgün yapılandırılmış yazılar "0 bölüm" görünüyordu.
+        $hn = preg_match_all('/<h[234][^>]*>/i', $html);
+        if ($hn < 3 && $words > 1200) {
+            $flags[] = ['code'=>'few_sections', 'sev'=>1, 'label'=>'Bölüm sayısı az', 'sample'=>$hn . ' bölüm'];
+        }
 
         if (!$flags) continue;
 

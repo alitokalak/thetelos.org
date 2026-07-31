@@ -17,7 +17,7 @@ $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
           'ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
-          'ca_repair_too_lossy','ca_repair'] as $fn) {
+          'ca_check_wrapup','ca_check_dup_heading','ca_repair_too_lossy','ca_repair'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
 }
 
@@ -98,6 +98,35 @@ g('7000 karakterden 20 gitmiş',   7000, 6980, false);   // normal onarım
 g('300 karakterden 40 gitmiş',     300,  260, false);   // kısa yazı, küçük artık
 g('7000 karakterden 5000 gitmiş', 7000, 2000, true);    // felaket → durdur
 g('1000 karakterden 900 gitmiş',  1000,  100, true);    // felaket → durdur
+
+/* Kapanış ve başlık kontrolleri: kusur sayılan şey ifadenin metinde GEÇMESİ
+   değil, son paragrafın bir ÖZET PARAGRAFI olarak başlamasıdır. */
+function w($label, $html, $expect) {
+    global $ok, $bad;
+    $got  = (ca_check_wrapup($html) !== '');
+    $pass = ($got === $expect);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $got ? '→ işaretlendi' : '→ temiz');
+}
+echo "\n── KAPANIŞ KONTROLÜ ──\n";
+w('"refusal to conclude" (gerçek cümle)',
+  '<p>The diary’s power lies in its refusal to conclude: it ends not with a verdict, but with a burned library.</p>', false);
+w('"in summary" cümle içinde',
+  '<p>What he offers in summary form here is expanded in the later chapters of the work.</p>', false);
+w('Gerçek özet paragrafı',
+  '<p>In conclusion, this book shows that the argument holds across every domain.</p>', true);
+
+function d($label, $html, $expect) {
+    global $ok, $bad;
+    $got  = (ca_check_dup_heading($html) !== '');
+    $pass = ($got === $expect);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $got ? '→ işaretlendi' : '→ temiz');
+}
+echo "\n── BAŞLIK TEKRARI ──\n";
+d('Kısa genel başlık iki kez', '<h3>Conclusion</h3><p>x</p><h3>Conclusion</h3>', false);
+d('Uzun başlık birebir iki kez',
+  '<h3>Hypothesis V: If the One Is Not (The Knowable Non-Being)</h3><p>x</p><h3>Hypothesis V: If the One Is Not (The Knowable Non-Being)</h3>', true);
 
 echo "\nSonuç: {$ok} geçti, {$bad} hata\n";
 exit($bad ? 1 : 0);
