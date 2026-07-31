@@ -865,6 +865,74 @@ if ($action === 'regen') {
     exit;
 }
 
+/**
+ * TEK YAZI, TAM ÇÖZÜM.
+ *
+ * Kullanıcının kusur türlerini öğrenip doğru butonu seçmesi gerekmez; sıra
+ * belli ve her zaman aynıdır:
+ *   1. ONAR   — artıkları sil, biçimi düzelt, prompt dökümünü kes (bedava)
+ *   2. KARAR  — geriye kalan metin bir üretim reddiyse kitap yok/yanlış
+ *               demektir: yayından kaldır, API'yi boşa harcama
+ *   3. TAMAMLA— metin eksikse kaldığı yerden sürdür
+ *   4. YENİDEN— hiçbiri tutmuyorsa sıfırdan yaz
+ *
+ * Onarımın metni yarım bırakması bu yüzden sorun değil: aynı geçişte
+ * tamamlanır. Kullanıcı tek düğmeye basar, gerisini sistem sıralar.
+ */
+function ca_fix_everything($id) {
+    $p = get_post($id);
+    if (!$p) return ['ok' => false, 'error' => 'yazı yok'];
+
+    $steps = [];
+
+    // 1. Onarım
+    $old = (string) $p->post_content;
+    $new = ca_repair($old, 'all');
+    if ($new !== '' && $new !== $old && !ca_repair_too_lossy($old, $new)) {
+        ca_backup_before($id, $old);
+        wp_update_post(['ID' => $id, 'post_content' => $new]);
+        do_action('litespeed_purge_post', $id);
+        $steps[] = 'onarıldı';
+    } else {
+        $new = $old;
+    }
+
+    // 2. Üretim reddi → yayından kaldır (API'ye gitmenin anlamı yok)
+    if (ca_check_refusal($new) !== '') {
+        if (get_post_status($id) === 'publish') {
+            wp_update_post(['ID' => $id, 'post_status' => 'draft']);
+            do_action('litespeed_purge_post', $id);
+        }
+        return ['ok' => true, 'steps' => array_merge($steps, ['yayından kaldırıldı']), 'words' => 0];
+    }
+
+    // 3. Eksikse tamamla
+    $words = str_word_count(wp_strip_all_tags($new));
+    if (ca_check_truncated($new) !== '' || $words < 1500) {
+        $c = ca_complete_post($id);
+        if (!empty($c['ok'])) {
+            return ['ok' => true, 'steps' => array_merge($steps, ['tamamlandı']), 'words' => (int) $c['added']];
+        }
+        // 4. Tamamlanamadıysa son çare: sıfırdan yaz
+        $g = ca_regenerate_post($id);
+        if (!empty($g['ok'])) {
+            return ['ok' => true, 'steps' => array_merge($steps, ['yeniden üretildi']), 'words' => (int) $g['words']];
+        }
+        if (($g['code'] ?? '') === 'refused_again') {
+            if (get_post_status($id) === 'publish') {
+                wp_update_post(['ID' => $id, 'post_status' => 'draft']);
+                do_action('litespeed_purge_post', $id);
+            }
+            return ['ok' => true, 'steps' => array_merge($steps, ['kitap tanınmadı → yayından kaldırıldı']), 'words' => 0];
+        }
+        if (!$steps) return ['ok' => false, 'error' => $g['error'] ?? ($c['error'] ?? 'düzeltilemedi')];
+    }
+
+    return $steps
+        ? ['ok' => true, 'steps' => $steps, 'words' => 0]
+        : ['ok' => true, 'steps' => ['zaten iyiydi'], 'words' => 0];
+}
+
 /* ── ARKA PLAN İŞİ ────────────────────────────────────────────────────────
    NEDEN: Cloudflare 100 saniyeden uzun süren isteği keser (HTTP 524). Bir
    kitabın üretimi 1-3 dakika sürdüğü için "bekle ve sonucu al" modeli burada
@@ -917,7 +985,8 @@ function ca_job_spawn() {
 /* İşi kur ve worker'ı ateşle — anında döner. */
 if ($action === 'job_start') {
     $ids  = array_values(array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? '')))));
-    $kind = ($_POST['kind'] ?? 'complete') === 'regen' ? 'regen' : 'complete';
+    $kind = $_POST['kind'] ?? 'complete';
+    if (!in_array($kind, ['auto', 'regen', 'complete'], true)) $kind = 'complete';
     if (!$ids) { echo json_encode(['ok' => false, 'error' => 'liste boş']); exit; }
 
     ca_job_write([
@@ -974,7 +1043,9 @@ if ($action === 'job_run') {
         $job['beat']    = time();
         ca_job_write($job);
 
-        $r = ($job['kind'] === 'regen') ? ca_regenerate_post($id) : ca_complete_post($id);
+        if ($job['kind'] === 'auto')       $r = ca_fix_everything($id);
+        elseif ($job['kind'] === 'regen')  $r = ca_regenerate_post($id);
+        else                               $r = ca_complete_post($id);
 
         // Dosyayı yeniden oku: kullanıcı bu arada "durdur" demiş olabilir.
         $job = ca_job_read();

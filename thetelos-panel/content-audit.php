@@ -79,6 +79,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
                style="width:82px;padding:4px 6px;margin-left:4px">
         kelime
       </label>
+      <button class="btn btn-primary" id="btn-auto">✨ Hepsini Düzelt</button>
       <button class="btn" id="btn-undo" style="color:#e05252">↩ Onarımı Geri Al</button>
       <button class="btn" id="btn-autofix">🔧 Onarılabilirleri Düzelt</button>
       <button class="btn" id="btn-complete">🩹 Yarım Kalanları Tamamla</button>
@@ -91,8 +92,10 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <div class="prog" id="prog"><i></i></div>
 
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:900px;line-height:1.7">
-      Tarama hiçbir şeyi değiştirmez. Her satırda <b>ne ile düzeleceği</b> rozetle yazar ve
-      <b>her buton yalnızca kendi rozetine dokunur</b> — satır seçersen sadece seçtiklerin işlenir.
+      <b style="color:var(--text)">Kolay yol:</b> tarama bitince <b>✨ Hepsini Düzelt</b>'e bas ve sekmeyi kapat.
+      Her yazı için doğru işlem sırayla uygulanır: artıkları temizle → eksikse tamamla →
+      kitap tanınmıyorsa yayından kaldır. Aşağıdaki diğer butonlar tek tür işi ayrı ayrı
+      yapmak istersen diye duruyor; satır seçersen yalnız seçtiklerin işlenir.
       <div style="margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
         <span style="color:#3ec27a;white-space:nowrap">🔧 onarılabilir</span>
         <span>artık satır / biçim / tekrar temizliği — <b>bedava ve hızlı</b>, önce bunu çalıştır</span>
@@ -542,6 +545,20 @@ async function draftPosts(){
   $('ca-status').textContent = '✓ ' + done + ' yazı yayından kaldırıldı (taslak). Listeden çıkarmak için taramayı tekrar çalıştır.';
 }
 
+/* TEK DÜĞME. Kusur türünü bilmene, hangi butona basacağını seçmene gerek yok:
+   her yazı için sıra sabittir — onar → (reddiyeyse) yayından kaldır →
+   tamamla → gerekiyorsa sıfırdan yaz. Arka planda çalışır, sekme kapanabilir. */
+function autoAll(){
+  const ids = selectedPool().map(p => p.id);
+  startJob('auto', ids,
+    ids.length + ' yazı otomatik düzeltilecek.\n\n' +
+    'Her yazı için sırayla: artıkları temizle → eksikse tamamla → ' +
+    'kitap tanınmıyorsa yayından kaldır.\n\n' +
+    'Arka planda çalışır, SEKMEYİ KAPATABİLİRSİN. API kullanır (ücretli).\n' +
+    'Eski metinler yedeklenir, "Onarımı Geri Al" ile dönülebilir.\n\nBaşlasın mı?');
+}
+
+$('btn-auto').addEventListener('click', autoAll);
 $('btn-draft').addEventListener('click', draftPosts);
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);
