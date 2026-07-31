@@ -705,12 +705,12 @@ function ca_complete_post($id) {
     $model = in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true) ? 'deepseek-v4-flash' : DEEPSEEK_MODEL;
 
     $out = ''; $err = '';
-    for ($try = 1; $try <= 3; $try++) {
+    for ($try = 1; $try <= 2; $try++) {
         $ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 240,
+            CURLOPT_TIMEOUT        => 180,
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
             CURLOPT_POSTFIELDS     => json_encode([
                 'model' => $model, 'max_tokens' => 8000,
@@ -724,7 +724,7 @@ function ca_complete_post($id) {
             if ($out !== '') break;
             $err = $j['error']['message'] ?? 'boş yanıt';
         }
-        if ($try < 3) sleep(3);
+        if ($try < 2) sleep(3);
     }
     if ($out === '') return ['ok' => false, 'error' => 'API: ' . ($err ?: 'boş yanıt')];
 
@@ -789,10 +789,10 @@ function ca_regenerate_post($id, $target_words = 6000) {
                 . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
 
         $piece = ''; $err = '';
-        for ($try = 1; $try <= 3; $try++) {
+        for ($try = 1; $try <= 2; $try++) {
             $ch = curl_init(DEEPSEEK_API_URL);
             curl_setopt_array($ch, [
-                CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 240,
+                CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 180,
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
                 CURLOPT_POSTFIELDS => json_encode([
                     'model' => $model, 'max_tokens' => 8000,
@@ -806,7 +806,7 @@ function ca_regenerate_post($id, $target_words = 6000) {
                 if ($piece !== '') break;
                 $err = $j['error']['message'] ?? 'boş yanıt';
             }
-            if ($try < 3) sleep(3);
+            if ($try < 2) sleep(3);
         }
         // İlk parça gelmezse yeni metin yok: eski gövdeye dokunmadan çık.
         if ($piece === '') {
@@ -832,10 +832,14 @@ function ca_regenerate_post($id, $target_words = 6000) {
 }
 
 if ($action === 'regen') {
+    // Uzun API üretimi: 300 sn'lik varsayılan sınır süreci ORTADA öldürüyordu.
+    @set_time_limit(0);
     $ids  = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
     $tw   = max(1500, min(8000, (int)($_POST['words'] ?? 6000)));
     $done = 0; $fail = 0; $words = 0; $errors = [];
-    foreach (array_slice($ids, 0, 2) as $id) {          // API ağır: istek başına 2 kitap
+    // İstek başına TEK kitap: birden çok kitap tek isteğe sığdırılınca toplam
+    // süre tarayıcının zaman aşımını geçiyor ve hepsi birden başarısız sayılıyordu.
+    foreach (array_slice($ids, 0, 1) as $id) {
         $r = ca_regenerate_post($id, $tw);
         if (!empty($r['ok'])) { $done++; $words += (int)$r['words']; }
         else { $fail++; if (count($errors) < 3) $errors[] = get_the_title($id) . ': ' . $r['error']; }
@@ -845,9 +849,10 @@ if ($action === 'regen') {
 }
 
 if ($action === 'complete') {
+    @set_time_limit(0);
     $ids  = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
     $done = 0; $fail = 0; $words = 0; $errors = [];
-    foreach (array_slice($ids, 0, 5) as $id) {          // istek başına en fazla 5 kitap
+    foreach (array_slice($ids, 0, 1) as $id) {          // istek başına TEK kitap
         $r = ca_complete_post($id);
         if (!empty($r['ok'])) { $done++; $words += (int)$r['added']; }
         else { $fail++; if (count($errors) < 3) $errors[] = get_the_title($id) . ': ' . $r['error']; }

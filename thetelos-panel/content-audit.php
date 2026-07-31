@@ -423,11 +423,13 @@ async function complete(){
   $('prog').style.display = 'block';
 
   let done = 0, fail = 0, words = 0;
-  for (let i = 0; i < ids.length && !stop; i += 5) {     // API ağır: 5'erli
-    const chunk = ids.slice(i, i + 5);
-    waiting('Tamamlanıyor: ' + done + '/' + ids.length + ' — ' + words.toLocaleString('tr') + ' kelime eklendi');
+  // Kitap kitap: her istek tek üretim, ilerleme her kitapta görünür.
+  for (let i = 0; i < ids.length && !stop; i++) {
+    const chunk = [ids[i]];
+    const bk = (all.find(x => x.id === ids[i]) || {}).title || '';
+    waiting('Tamamlanıyor ' + (i+1) + '/' + ids.length + ' — ' + bk.slice(0, 45));
     try {
-      const d = await post('action=complete&ids=' + chunk.join(','), 300000);
+      const d = await post('action=complete&ids=' + chunk.join(','), 600000);
       if (d && d.ok) { done += d.completed; fail += d.failed; words += d.words || 0;
                        if (d.errors && d.errors.length) console.log('tamamlanamayanlar:', d.errors); }
       else fail += chunk.length;
@@ -460,11 +462,12 @@ async function regen(){
   $('prog').style.display = 'block';
 
   let done = 0, fail = 0, words = 0, lastErr = '';
-  for (let i = 0; i < ids.length && !stop; i += 2) {      // API ağır: 2'şerli
-    const chunk = ids.slice(i, i + 2);
-    waiting('Yeniden üretiliyor: ' + done + '/' + ids.length + ' — ' + words.toLocaleString('tr') + ' kelime');
+  for (let i = 0; i < ids.length && !stop; i++) {
+    const chunk = [ids[i]];
+    const bk = (all.find(x => x.id === ids[i]) || {}).title || '';
+    waiting('Yeniden üretiliyor ' + (i+1) + '/' + ids.length + ' — ' + bk.slice(0, 45));
     try {
-      const d = await post('action=regen&words=6000&ids=' + chunk.join(','), 600000);
+      const d = await post('action=regen&words=6000&ids=' + chunk.join(','), 900000);
       if (d && d.ok) { done += d.regenerated; fail += d.failed; words += d.words || 0;
                        if (d.errors && d.errors.length) { lastErr = lastErr || d.errors[0]; console.log(d.errors); } }
       else { fail += chunk.length; lastErr = lastErr || 'bilinmeyen yanıt'; }
