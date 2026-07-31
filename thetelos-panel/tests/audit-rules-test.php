@@ -58,7 +58,7 @@ t('Parça numarası',                  '<p>This is Part 2 of 4 of the analysis.<
    değiştirmeli. Bu iki liste bir zamanlar ayrışmıştı ve buton hiçbir şey
    yapmadan "onardım" diyordu.                                              */
 function repairs($html) {
-    $new = ca_repair($html, 'severe');
+    $new = ca_repair($html, 'all');
     return ($new !== $html) && !ca_repair_too_lossy($html, $new);
 }
 function r($label, $html, $expect) {
@@ -78,7 +78,14 @@ r('Devam cümlesi silinir',  "$body\n<p>Here is the continuation of the summary.
 r('Öksüz başlık silinir',   "$body\n<h2>A Compendium in Thirteen Propositions</h2>", true);
 r('Kelime notu silinir',    "$body\n<p>Word count: approximately 2000 words</p>", true);
 
+echo "\n── BİÇİM ARTIĞI: ONARILIR (yeniden üretim DEĞİL) ──\n";
+r('Yatay çizgi --- düzeltilir', "$body\n<p>---</p>", true);
+r('#### başlık düzeltilir',     "$body\n<p>#### The Islamic Declaration</p>", true);
+r('**kalın** düzeltilir',       "$body\n<p>**A Note on Method** follows here.</p>", true);
+
 echo "\n── ONARIM DOKUNMAMALI ──\n";
+r('Temiz yazı birebir korunur',
+  '<p>A genuine paragraph.</p><p>Another one, with <strong>bold</strong> and a <em>quote</em>.</p><h3>Section</h3><p>More.</p>', false);
 r('Alıntı korunur',        '<blockquote>“We will now proceed to refute these heretics.”</blockquote>', false);
 r('"Part 1 of 4" cümlesi', '<p>The full text (or the relevant chapters for Part 1 of 4) is discussed here.</p>', false);
 r('Normal kapanış',        '<p>The argument closes on this note, complete and whole.</p>', false);

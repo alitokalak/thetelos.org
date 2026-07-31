@@ -80,7 +80,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
         kelime
       </label>
       <button class="btn" id="btn-undo" style="color:#e05252">↩ Onarımı Geri Al</button>
-      <button class="btn" id="btn-autofix">🔧 Ağır Hataları Onar</button>
+      <button class="btn" id="btn-autofix">🔧 Onarılabilirleri Düzelt</button>
       <button class="btn" id="btn-complete">🩹 Yarım Kalanları Tamamla</button>
       <button class="btn" id="btn-regen">♻️ Kalanları Yeniden Üret</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
@@ -283,10 +283,11 @@ async function autofix(){
   }
 
   if (targets.length) {
-    if(!confirm(targets.length + ' yazıda ağır kusur onarılacak:\n\n'+
+    if(!confirm(targets.length + ' yazı onarılacak:\n\n'+
                 '• prompt/süreç satırları silinir\n'+
-                '• parça işaretleri temizlenir\n\n'+
-                'Markdown kalıntısına, yarım biten ve kısa içeriğe DOKUNULMAZ. Devam?')) return;
+                '• parça işaretleri temizlenir\n'+
+                '• "#### Başlık", "---" ve "**kalın**" gerçek HTML\'e çevrilir\n\n'+
+                'Yarım biten ve kısa içeriğe DOKUNULMAZ. Eski metin yedeklenir. Devam?')) return;
 
     stop = false;
     $('btn-autofix').disabled = true;
@@ -298,7 +299,7 @@ async function autofix(){
       const chunk = targets.slice(i, i + 5);
       waiting('Onarılıyor: ' + done + '/' + targets.length);
       try {
-        const d = await post('action=fix&mode=severe&ids=' + chunk.join(','), 300000);
+        const d = await post('action=fix&mode=all&ids=' + chunk.join(','), 300000);
         if (d && d.ok) { done += d.fixed; skipped += d.skipped; }
         else { failed += chunk.length; lastErr = lastErr || (d && d.error) || 'bilinmeyen yanıt'; }
       } catch(e) { failed += chunk.length; lastErr = lastErr || e.message; }
@@ -334,7 +335,7 @@ async function autofix(){
       const lim = [40, 15, 5][attempt - 1];
       waiting('Onarılıyor: ' + seen + '/' + (total || '?') + ' — ' + fixed + ' düzeltildi');
       try {
-        d = await post('action=autofix&mode=severe&offset='+offset+'&limit='+lim, 90000);
+        d = await post('action=autofix&mode=all&offset='+offset+'&limit='+lim, 90000);
         if (d && d.ok) break;
         d = null;
       } catch(e) { d = null; }

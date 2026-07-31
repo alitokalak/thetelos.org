@@ -359,7 +359,10 @@ if ($action === 'scan') {
         // Bulgu türüne bakıp "bu onarılır" varsaymak yanılıyordu: tespit
         // listesi silme listesinden geniş olduğu için ekran "onar" diyor,
         // onarıcı hiçbir şey değiştirmiyordu. Artık ölçülen şey söyleniyor.
-        $fixable  = (ca_repair($html, 'severe') !== $html);
+        // Onarım 'all' modunda ölçülür: markdown kalıntısını (####, ---, **)
+        // HTML'e çevirmek bir BİÇİM işidir, mekanik ve geri alınabilir.
+        // Yatay çizgi yüzünden 6000 kelimelik yazıyı yeniden yazdırmak saçmadır.
+        $fixable  = (ca_repair($html, 'all') !== $html);
         $can_comp = false;
         foreach ($flags as $f) if ($f['code'] === 'truncated') $can_comp = true;
 
@@ -506,7 +509,15 @@ function ca_repair($html, $mode = 'severe') {
             $clean = preg_replace('/\*\*([^*\n]{1,200}?)\*\*/', '<strong>$1</strong>', $clean);
         }
         $clean = trim($clean);
-        return $clean === '' ? '' : "<p>{$clean}</p>\n";
+        if ($clean === '') return '';
+
+        // DEĞİŞMEDİYSE OLDUĞU GİBİ BIRAK. Paragrafı yeniden inşa etmek (boşluk,
+        // satır sonu) içerik aynı kalsa bile metni farklılaştırıyordu; bu yüzden
+        // sağlam yazılar da "onarılabilir" görünüyor ve gereksiz yere yeniden
+        // kaydediliyordu. Karşılaştırmanın anlamlı olması için dokunulmayan blok
+        // birebir korunur.
+        if ($clean === $inner) return $m[0];
+        return "<p>{$clean}</p>\n";
     }, $html);
 
     // Blok dışında kalmış çıplak parça işaretleri
