@@ -982,7 +982,60 @@ function ca_job_spawn() {
     curl_close($ch);
 }
 
-/* İşi kur ve worker'ı ateşle — anında döner. */
+/**
+ * Sıradaki kitabı ATOMİK olarak sahiplen.
+ *
+ * Birden fazla worker aynı anda çalıştığı için "oku → artır → yaz" yetmez:
+ * iki worker aynı kitabı kapıp aynı yazıyı iki kez üretebilirdi. Kilit
+ * içinde sahiplenip pos'u orada artırıyoruz.
+ */
+function ca_job_claim() {
+    $lk = @fopen(ca_job_path() . '.lock', 'c');
+    if (!$lk) return null;
+    flock($lk, LOCK_EX);
+
+    $job = ca_job_read();
+    $id  = null;
+    if ($job && $job['status'] === 'running' && $job['pos'] < count($job['ids'])) {
+        $id = (int) $job['ids'][ $job['pos'] ];
+        $job['pos']++;
+        $job['current'] = get_the_title($id) ?: ('#' . $id);
+        $job['beat']    = time();
+        ca_job_write($job);
+    } elseif ($job && $job['status'] === 'running' && $job['pos'] >= count($job['ids'])) {
+        // Sıra bitti; son worker bitişi işaretler (aktif sayacı sıfırsa)
+        $job['beat'] = time();
+        ca_job_write($job);
+    }
+    flock($lk, LOCK_UN); fclose($lk);
+    return $id;
+}
+
+/** Sonucu kilit içinde işle — sayaçlar yarışmasın. */
+function ca_job_finish($id, $r) {
+    $lk = @fopen(ca_job_path() . '.lock', 'c');
+    if (!$lk) return;
+    flock($lk, LOCK_EX);
+
+    $job = ca_job_read();
+    if ($job) {
+        if (!empty($r['ok'])) {
+            $job['done']++;
+            $job['words'] += (int) ($r['words'] ?? $r['added'] ?? 0);
+        } else {
+            $job['failed']++;
+            if (count($job['errors']) < 10) {
+                $job['errors'][] = (get_the_title($id) ?: $id) . ': ' . ($r['error'] ?? 'bilinmeyen');
+            }
+        }
+        $job['beat'] = time();
+        if (($job['done'] + $job['failed']) >= count($job['ids'])) $job['status'] = 'done';
+        ca_job_write($job);
+    }
+    flock($lk, LOCK_UN); fclose($lk);
+}
+
+/* İşi kur ve worker'ları ateşle — anında döner. */
 if ($action === 'job_start') {
     $ids  = array_values(array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? '')))));
     $kind = $_POST['kind'] ?? 'complete';
@@ -1002,8 +1055,11 @@ if ($action === 'job_start') {
         'started' => time(),
         'beat'    => time(),
     ]);
-    ca_job_spawn();
-    echo json_encode(['ok' => true, 'total' => count($ids), 'kind' => $kind]);
+    // Paralel worker: iş API hızıyla sınırlı, tek tek yapmak gereksiz yavaş.
+    // 3 worker ile 88 kitap ~2,5 saat yerine ~50 dakikada biter.
+    $workers = max(1, min(4, (int) ceil(count($ids) / 10)));
+    for ($w = 0; $w < $workers; $w++) { ca_job_spawn(); usleep(300000); }
+    echo json_encode(['ok' => true, 'total' => count($ids), 'kind' => $kind, 'workers' => $workers]);
     exit;
 }
 
@@ -1034,37 +1090,17 @@ if ($action === 'job_run') {
     $budget  = 240;   // sn — bu süre dolunca halef ateşlenir
 
     while (true) {
-        $job = ca_job_read();
-        if (!$job || $job['status'] !== 'running') break;
-        if ($job['pos'] >= count($job['ids'])) { $job['status'] = 'done'; ca_job_write($job); break; }
+        $id = ca_job_claim();
+        if ($id === null) break;             // sıra bitti ya da iş durduruldu
 
-        $id  = (int) $job['ids'][ $job['pos'] ];
-        $job['current'] = get_the_title($id) ?: ('#' . $id);
-        $job['beat']    = time();
-        ca_job_write($job);
+        if (($j = ca_job_read()) && $j['kind'] === 'auto')      $r = ca_fix_everything($id);
+        elseif ($j && $j['kind'] === 'regen')                   $r = ca_regenerate_post($id);
+        else                                                    $r = ca_complete_post($id);
 
-        if ($job['kind'] === 'auto')       $r = ca_fix_everything($id);
-        elseif ($job['kind'] === 'regen')  $r = ca_regenerate_post($id);
-        else                               $r = ca_complete_post($id);
+        ca_job_finish($id, $r);
 
-        // Dosyayı yeniden oku: kullanıcı bu arada "durdur" demiş olabilir.
-        $job = ca_job_read();
-        if (!$job) break;
-        $job['pos']++;
-        $job['beat'] = time();
-        if (!empty($r['ok'])) {
-            $job['done']++;
-            $job['words'] += (int) ($r['words'] ?? $r['added'] ?? 0);
-        } else {
-            $job['failed']++;
-            if (count($job['errors']) < 10) {
-                $job['errors'][] = (get_the_title($id) ?: $id) . ': ' . ($r['error'] ?? 'bilinmeyen');
-            }
-        }
-        if ($job['pos'] >= count($job['ids'])) $job['status'] = 'done';
-        ca_job_write($job);
-
-        if ($job['status'] !== 'running') break;
+        $j = ca_job_read();
+        if (!$j || $j['status'] !== 'running') break;
         if (time() - $started >= $budget) { ca_job_spawn(); break; }   // halefe devret
     }
     echo json_encode(['ok' => true]);

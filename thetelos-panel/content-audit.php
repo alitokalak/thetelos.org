@@ -433,11 +433,12 @@ let poller = null;
 
 function jobLabel(j) {
   const total = (j.ids || []).length;
-  const kind  = j.kind === 'regen' ? 'Yeniden üretiliyor' : 'Tamamlanıyor';
+  const kind  = j.kind === 'regen' ? 'Yeniden üretiliyor'
+              : j.kind === 'auto'  ? 'Düzeltiliyor' : 'Tamamlanıyor';
   if (j.status === 'done')    return '✓ Bitti — ' + j.done + ' yazı, ' + (j.words||0).toLocaleString('tr') +
                                      ' kelime' + (j.failed ? ', ' + j.failed + ' başarısız' : '') + '.';
   if (j.status === 'stopped') return '■ Durduruldu — ' + j.done + '/' + total + ' işlendi.';
-  return kind + ' ' + (j.pos + 1) + '/' + total + ' — ' + String(j.current || '').slice(0, 45) +
+  return kind + ' ' + (j.done + j.failed) + '/' + total + ' — ' + String(j.current || '').slice(0, 45) +
          (j.failed ? '  (' + j.failed + ' başarısız)' : '');
 }
 
@@ -450,7 +451,7 @@ function jobPoll() {
 
     $('prog').style.display = 'block';
     const total = (j.ids || []).length || 1;
-    $('prog').firstElementChild.style.width = Math.round(j.pos / total * 100) + '%';
+    $('prog').firstElementChild.style.width = Math.round((j.done + j.failed) / total * 100) + '%';
     $('ca-status').textContent = jobLabel(j);
     if (j.errors && j.errors.length) console.log('hatalar:', j.errors);
 
