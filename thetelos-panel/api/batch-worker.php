@@ -332,47 +332,6 @@ function bw_norm_sentence($text, $max = 155) {
 
 
 
-function bw_fraction($n) {
-    switch ($n) { case 2: return 'half'; case 3: return 'third'; case 4: return 'quarter'; default: return "1/{$n}"; }
-}
-function bw_part_instruction($k, $n, $headings, $tail, $part_words) {
-    if ($n <= 1) {
-        return "\nTarget length: approximately {$part_words} words.";
-    }
-    $frac = bw_fraction($n);
-    $covered = '';
-    foreach ($headings as $h) $covered .= "   ✗ {$h}\n";
-
-    if ($k === 1) {
-        return "\n\n=== MULTI-PART GENERATION (PART 1 of {$n}) ===\n"
-             . "You are writing PART 1 of {$n} of a single continuous piece.\n"
-             . "• Begin with the H1 (# **Title — Author**) then the H2 (## **Subtitle**), then the first ### sections in order.\n"
-             . "• Cover approximately the first {$frac} of the complete work (~{$part_words} words for this part).\n"
-             . "• Develop every section fully per the format rules. Do NOT write any conclusion — more parts follow.\n"
-             . "• End naturally at a ### section boundary. Your ABSOLUTE FINAL LINE must be exactly:\n%%PART_END%%";
-    }
-    if ($k < $n) {
-        return "\n\n=== MULTI-PART GENERATION (PART {$k} of {$n}) ===\n"
-             . "You are writing PART {$k} of {$n} — a direct, seamless continuation of the text already written.\n"
-             . "STRICT RULES:\n"
-             . "1. DO NOT rewrite the H1 or H2 heading.\n"
-             . "2. The following sections are FULLY COMPLETE — do NOT revisit, repeat, summarize, or expand them:\n{$covered}"
-             . "3. Continue with the NEXT new ### sections not listed above. Cover roughly the next {$frac} of the work (~{$part_words} words).\n"
-             . "4. Do NOT write a conclusion — there are still more parts after this one.\n"
-             . "5. Maintain the exact same voice, depth, and format as before.\n"
-             . "6. End at a ### section boundary. Your ABSOLUTE FINAL LINE must be exactly:\n%%PART_END%%\n"
-             . "\nThe text so far ended here (continue seamlessly from this exact point — do NOT repeat it):\n...{$tail}";
-    }
-    return "\n\n=== MULTI-PART GENERATION (FINAL PART {$n} of {$n}) ===\n"
-         . "You are writing the FINAL PART ({$n} of {$n}) — a direct, seamless continuation.\n"
-         . "STRICT RULES:\n"
-         . "1. DO NOT rewrite the H1 or H2 heading.\n"
-         . "2. The following sections are FULLY COMPLETE — do NOT revisit, repeat, or expand them:\n{$covered}"
-         . "3. Continue with ALL remaining ### sections and COMPLETE the work fully.\n"
-         . "4. Maintain the exact same voice, depth, and format as before.\n"
-         . "5. Apply the closing rule: end with the final substantive point — no summary paragraph, no closing sentence.\n"
-         . "\nThe text so far ended here (continue seamlessly from this exact point — do NOT repeat it):\n...{$tail}";
-}
 
 /* ════════════════ Bir kitabı baştan sona işle ════════════════ */
 /* ── YETİŞKİN İÇERİK ENGELİ ────────────────────────────────────────

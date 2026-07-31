@@ -82,6 +82,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <button class="btn" id="btn-undo" style="color:#e05252">↩ Onarımı Geri Al</button>
       <button class="btn" id="btn-autofix">🔧 Ağır Hataları Onar</button>
       <button class="btn" id="btn-complete">🩹 Yarım Kalanları Tamamla</button>
+      <button class="btn" id="btn-regen">♻️ Kalanları Yeniden Üret</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
     </div>
@@ -123,7 +124,18 @@ function post(body, ms){
   const t   = setTimeout(()=>ctl.abort(), ms || 90000);
   return fetch('api/content-audit.php', {method:'POST', credentials:'same-origin',
     headers:{'Content-Type':'application/x-www-form-urlencoded'}, body, signal: ctl.signal})
-    .then(r=>r.json()).finally(()=>clearTimeout(t));
+    .then(async r => {
+      // Yanıt JSON değilse (PHP hatası, zaman aşımı sayfası, oturum bitmesi)
+      // gövdeyi hata mesajına koy. Eskiden bu durum sessizce "atlandı" diye
+      // sayılıyordu ve ekran "bu bulgular onarılamıyor" diye YANLIŞ bilgi
+      // veriyordu — oysa istek hiç çalışmamıştı.
+      const txt = await r.text();
+      try { return JSON.parse(txt); }
+      catch (e) {
+        throw new Error('HTTP ' + r.status + ' — ' + txt.replace(/<[^>]*>/g,' ').trim().slice(0, 220));
+      }
+    })
+    .finally(()=>clearTimeout(t));
 }
 
 /* Bekleme sırasında saniye sayan durum yazısı — "donmuş mu?" sorusunu bitirir. */
@@ -159,9 +171,11 @@ function render(){
     '<th>Kitap</th><th style="width:420px">Bulgular</th>'+
     '<th style="width:70px">Kelime</th><th style="width:120px"></th></tr></thead><tbody>';
   rows.forEach(p=>{
+    // Her satırın bir çözümü vardır: onar → tamamla → yeniden üret.
+    // "Elle bakılmalı" diye bir sonuç yok; 7500 yazıda elle düzeltme çözüm değil.
     const act = p.fixable ? '<span class="badge" style="background:rgba(40,160,90,.18);color:#3ec27a">🔧 onarılabilir</span>'
               : p.compl  ? '<span class="badge" style="background:rgba(80,120,220,.18);color:#7aa2f7">🩹 tamamlanabilir</span>'
-                         : '<span class="badge sev1">elle bakılmalı</span>';
+                         : '<span class="badge" style="background:rgba(190,120,220,.18);color:#c58af0">♻️ yeniden üretilecek</span>';
     h += '<tr data-id="'+p.id+'"><td><input type="checkbox" class="ca-cb"></td>'+
       '<td><b>'+escH(p.title)+'</b><br><small style="color:var(--muted)">'+escH(p.date)+'</small>'+
       '<br>'+act+'</td><td>';
@@ -275,23 +289,28 @@ async function autofix(){
     stop = false;
     $('btn-autofix').disabled = true;
     $('btn-stop').style.display = '';
-    let done = 0, skipped = 0;
-    for (let i = 0; i < targets.length && !stop; i += 20) {
-      const chunk = targets.slice(i, i + 20);
+    let done = 0, skipped = 0, failed = 0, lastErr = '';
+    // Dilim küçük: her yazı için WordPress kaydı + revizyon yazılıyor, 20'lik
+    // dilimler zaman aşımına düşüyordu ve hepsi "atlandı" sayılıyordu.
+    for (let i = 0; i < targets.length && !stop; i += 5) {
+      const chunk = targets.slice(i, i + 5);
       waiting('Onarılıyor: ' + done + '/' + targets.length);
       try {
-        const d = await post('action=fix&mode=severe&ids=' + chunk.join(','), 90000);
+        const d = await post('action=fix&mode=severe&ids=' + chunk.join(','), 300000);
         if (d && d.ok) { done += d.fixed; skipped += d.skipped; }
-      } catch(e) { skipped += chunk.length; }
+        else { failed += chunk.length; lastErr = lastErr || (d && d.error) || 'bilinmeyen yanıt'; }
+      } catch(e) { failed += chunk.length; lastErr = lastErr || e.message; }
       waitingDone();
+      $('prog').style.display = 'block';
+      $('prog').firstElementChild.style.width = Math.round((i+chunk.length)/targets.length*100)+'%';
     }
     $('btn-autofix').disabled = false;
     $('btn-stop').style.display = 'none';
-    $('ca-status').textContent = done
-      ? '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
-        '. Doğrulamak için taramayı tekrar çalıştır.'
-      : '⚠ Hiçbiri değişmedi (' + skipped + ' atlandı). Bu bulgular silinerek düzelmiyor — ' +
-        'yarım kalanlar için "Tamamla", diğerleri için yeniden üretim gerekir.';
+    $('ca-status').textContent =
+      failed ? '✗ ' + failed + ' yazıda istek başarısız: ' + lastErr
+      : done  ? '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
+                '. Doğrulamak için taramayı tekrar çalıştır.'
+              : '⚠ ' + skipped + ' yazıda silinecek bir şey çıkmadı — bunlar yeniden üretim ister.';
     return;
   }
 
@@ -416,10 +435,47 @@ async function complete(){
     ' kelime eklendi' + (fail ? ', ' + fail + ' başarısız (ayrıntı için konsol)' : '') + '.';
 }
 
+/* Onarımla ve tamamlamayla düzelmeyen yazıları sıfırdan yazdırır — üretimdeki
+   prompt ve parça düzeneğinin aynısıyla. Eski gövde yedeklenir; yeni metin
+   gelmezse eskisine dokunulmaz. */
+async function regen(){
+  const sel  = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
+  const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
+  const ids  = pool.filter(p => !p.fixable && !p.compl).map(p => p.id);
+
+  if(!ids.length){ $('ca-status').textContent = 'Yeniden üretilecek yazı yok.'; return; }
+  if(!confirm(ids.length + ' yazı SIFIRDAN yeniden yazılacak.\n\n'+
+              'Her biri için birden çok API çağrısı yapılır — bu ücretli ve uzun sürer.\n'+
+              'Eski metin yedeklenir, "Onarımı Geri Al" ile dönülebilir.\n\n'+
+              'Devam edilsin mi?')) return;
+
+  stop = false;
+  $('btn-regen').disabled = true; $('btn-stop').style.display = '';
+  $('prog').style.display = 'block';
+
+  let done = 0, fail = 0, words = 0, lastErr = '';
+  for (let i = 0; i < ids.length && !stop; i += 2) {      // API ağır: 2'şerli
+    const chunk = ids.slice(i, i + 2);
+    waiting('Yeniden üretiliyor: ' + done + '/' + ids.length + ' — ' + words.toLocaleString('tr') + ' kelime');
+    try {
+      const d = await post('action=regen&words=6000&ids=' + chunk.join(','), 600000);
+      if (d && d.ok) { done += d.regenerated; fail += d.failed; words += d.words || 0;
+                       if (d.errors && d.errors.length) { lastErr = lastErr || d.errors[0]; console.log(d.errors); } }
+      else { fail += chunk.length; lastErr = lastErr || 'bilinmeyen yanıt'; }
+    } catch(e) { fail += chunk.length; lastErr = lastErr || e.message; }
+    waitingDone();
+    $('prog').firstElementChild.style.width = Math.round((i+chunk.length)/ids.length*100)+'%';
+  }
+  $('btn-regen').disabled = false; $('btn-stop').style.display = 'none';
+  $('ca-status').textContent = '✓ ' + done + ' yazı yeniden üretildi, ' + words.toLocaleString('tr') +
+    ' kelime' + (fail ? ' — ' + fail + ' başarısız: ' + lastErr : '') + '.';
+}
+
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);
 $('btn-undo').addEventListener('click', undo);
 $('btn-complete').addEventListener('click', complete);
+$('btn-regen').addEventListener('click', regen);
 $('btn-stop').addEventListener('click', ()=>{ stop = true; });
 $('btn-csv').addEventListener('click', csv);
 $('filters').addEventListener('click', e=>{

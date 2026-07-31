@@ -600,6 +600,97 @@ function ca_complete_post($id) {
     return ['ok' => true, 'added' => str_word_count(wp_strip_all_tags($add))];
 }
 
+/**
+ * YENİDEN ÜRET: yazıyı sıfırdan, üretimdeki prompt ve parça düzeneğiyle yazar.
+ *
+ * "Elle bakılmalı" bir çözüm değil — 7500 yazılık arşivde kimse tek tek elle
+ * düzeltemez. Silinerek düzelmeyen ve tamamlanamayan her kusur (üretim reddi,
+ * paragraf tekrarı, markdown kalıntısı, hedeften kısa metin) burada tek yoldan
+ * çözülür: metin yeniden yazılır. Eski gövde önce yedeklenir.
+ */
+function ca_regenerate_post($id, $target_words = 6000) {
+    $p = get_post($id);
+    if (!$p) return ['ok' => false, 'error' => 'yazı yok'];
+
+    $prompts  = defined('PROMPTS_FILE') && file_exists(PROMPTS_FILE)
+              ? json_decode((string)file_get_contents(PROMPTS_FILE), true) : [];
+    $template = trim($prompts[$p->post_type === 'analysis' ? 'analysis' : 'summary'] ?? '');
+    if ($template === '') return ['ok' => false, 'error' => 'prompt şablonu bulunamadı'];
+
+    $authors = get_the_terms($id, 'authors');
+    $author  = (!empty($authors) && !is_wp_error($authors)) ? $authors[0]->name : '';
+    $book    = trim(preg_replace('/\s*[-–—]\s*' . preg_quote($author, '/') . '\s*$/u', '', get_the_title($id)));
+    if ($book === '') return ['ok' => false, 'error' => 'kitap adı çözülemedi'];
+
+    // Parça sayısı üretimdeki kuralla aynı: parça başına ~1800 kelimeden fazlası istenmez
+    $parts      = max(2, min(6, (int)ceil($target_words / 1800)));
+    $part_words = (int)ceil($target_words / $parts);
+    $model      = in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true) ? 'deepseek-v4-flash' : DEEPSEEK_MODEL;
+
+    $acc = '';
+    for ($k = 1; $k <= $parts; $k++) {
+        $headings = [];
+        if ($acc !== '') { preg_match_all('/^### (.+)$/m', $acc, $mh); $headings = $mh[1] ?? []; }
+        $tail   = $acc !== '' ? mb_substr($acc, -700, 700, 'UTF-8') : '';
+        $prompt = $template . "\n\nBook: {$book}\nAuthor: {$author}"
+                . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
+
+        $piece = ''; $err = '';
+        for ($try = 1; $try <= 3; $try++) {
+            $ch = curl_init(DEEPSEEK_API_URL);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 240,
+                CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+                CURLOPT_POSTFIELDS => json_encode([
+                    'model' => $model, 'max_tokens' => 8000,
+                    'messages' => [['role' => 'user', 'content' => $prompt]],
+                ]),
+            ]);
+            $res = curl_exec($ch); $err = curl_error($ch); curl_close($ch);
+            if (!$err && $res) {
+                $j = json_decode($res, true);
+                $piece = trim(str_replace('%%PART_END%%', '', (string)($j['choices'][0]['message']['content'] ?? '')));
+                if ($piece !== '') break;
+                $err = $j['error']['message'] ?? 'boş yanıt';
+            }
+            if ($try < 3) sleep(3);
+        }
+        // İlk parça gelmezse yeni metin yok: eski gövdeye dokunmadan çık.
+        if ($piece === '') {
+            if ($k === 1) return ['ok' => false, 'error' => 'API: ' . ($err ?: 'boş yanıt')];
+            break;
+        }
+        if ($k > 1) {
+            $piece = preg_replace('/^# [^\n]+\n+/m',  '', $piece, 1);
+            $piece = preg_replace('/^## [^\n]+\n+/m', '', $piece, 1);
+            $piece = ltrim($piece);
+        }
+        $acc = $acc === '' ? $piece : ($acc . "\n\n" . $piece);
+    }
+
+    $html = bw_md2html(bw_clean_content($acc));
+    $words = str_word_count(wp_strip_all_tags($html));
+    // Yeni metin eskisinden belirgin kısaysa değiştirme — iyileştirme değil kayıp olur.
+    if ($words < 400) return ['ok' => false, 'error' => "üretilen metin çok kısa ({$words} kelime)"];
+
+    ca_backup_before($id, $p->post_content);
+    wp_update_post(['ID' => $id, 'post_content' => $html]);
+    return ['ok' => true, 'words' => $words];
+}
+
+if ($action === 'regen') {
+    $ids  = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
+    $tw   = max(1500, min(8000, (int)($_POST['words'] ?? 6000)));
+    $done = 0; $fail = 0; $words = 0; $errors = [];
+    foreach (array_slice($ids, 0, 2) as $id) {          // API ağır: istek başına 2 kitap
+        $r = ca_regenerate_post($id, $tw);
+        if (!empty($r['ok'])) { $done++; $words += (int)$r['words']; }
+        else { $fail++; if (count($errors) < 3) $errors[] = get_the_title($id) . ': ' . $r['error']; }
+    }
+    echo json_encode(['ok' => true, 'regenerated' => $done, 'failed' => $fail, 'words' => $words, 'errors' => $errors]);
+    exit;
+}
+
 if ($action === 'complete') {
     $ids  = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
     $done = 0; $fail = 0; $words = 0; $errors = [];
