@@ -100,6 +100,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <div class="filters" id="filters" style="display:none">
       <button data-f="all" class="on">Tümü</button>
       <button data-f="3">Sadece ağır</button>
+      <button data-f="prompt_dump">Prompt şablonu</button>
       <button data-f="refusal">Üretim reddi</button>
       <button data-f="part_marker">Parça işareti</button>
       <button data-f="meta_talk">Model konuşması</button>

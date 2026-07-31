@@ -146,6 +146,66 @@ function ca_check_refusal($html) {
 }
 
 /**
+ * PROMPT DÖKÜMÜ: şablonun kendisi yazının içine basılmış.
+ *
+ * En ağır kaza türü — okuyucu kitap özeti yerine sistemin talimatlarını
+ * okuyor ("You are producing a GUIDED WALKTHROUGH…", "{book_title}",
+ * "CORE TASK"). Metin genelde düzgün başlar, bir yerden sonra şablona döner;
+ * yani kusur bir satır değil, o noktadan SONRASININ tamamıdır.
+ *
+ * Kalıplar bilerek tartışmasız: şablon değişkenleri ve talimat cümleleri
+ * hiçbir kitap metninde bulunamaz.
+ */
+function ca_prompt_dump_patterns() {
+    return [
+        '/\{(?:book_title|author_name|book|author)\}/i',
+        '/\byou are producing a\b/i',
+        '/\bIMPORTANT:\s*Write the ENTIRE text in English\b/i',
+        '/\bdo not use turkish\b/i',
+        '/^CORE TASK$/im',
+        '/\bfor thetelos\.org\b/i',
+        '/\bwalk the reader through the actual content of this work\b/i',
+        '/\byour primary job is to\b/i',
+    ];
+}
+
+function ca_check_prompt_dump($html) {
+    foreach (ca_blocks($html, false) as $b) {
+        foreach (ca_prompt_dump_patterns() as $p) {
+            if (preg_match($p, $b, $m)) return mb_substr(trim($b), 0, 110, 'UTF-8');
+        }
+    }
+    return '';
+}
+
+/**
+ * Şablonun başladığı bloktan itibaren HER ŞEYİ atar.
+ *
+ * Model bir kez şablona döndükten sonra geri dönmüyor; o noktadan sonrası
+ * bütünüyle çöp. Kalan metin cümle ortasında biterse "tamamlanabilir" olur
+ * ve API ile sürdürülür — yani yazı kurtarılır, sıfırdan yazılmaz.
+ */
+function ca_cut_prompt_dump($html) {
+    if (!preg_match_all('/<(p|h[1-6]|li|blockquote|hr)\b[^>]*>(?:.*?<\/\1>)?/is', $html, $m, PREG_OFFSET_CAPTURE)) {
+        return $html;
+    }
+    foreach ($m[0] as $i => $blk) {
+        $txt = trim(wp_strip_all_tags($blk[0]));
+        if ($txt === '') continue;
+        foreach (ca_prompt_dump_patterns() as $p) {
+            if (preg_match($p, $txt)) {
+                $kept = rtrim(substr($html, 0, $blk[1]));
+                // Kesince geriye yayınlanabilir bir metin kalmıyorsa dokunma:
+                // o yazı baştan geçersizdir, onarılmaz — yeniden üretilir.
+                if (mb_strlen(wp_strip_all_tags($kept), 'UTF-8') < 400) return $html;
+                return $kept;
+            }
+        }
+    }
+    return $html;
+}
+
+/**
  * Üretim düzeneğinin teknik işareti.
  *
  * TEK KAYNAK: hem tespit hem silme bu kalıbı kullanır. Ayrı yazıldıklarında
@@ -347,6 +407,7 @@ if ($action === 'scan') {
             continue;
         }
 
+        if ($s = ca_check_prompt_dump($html)) $flags[] = ['code'=>'prompt_dump', 'sev'=>3, 'label'=>'PROMPT ŞABLONU yazıya basılmış', 'sample'=>$s];
         if ($s = ca_check_part_markers($html)) $flags[] = ['code'=>'part_marker', 'sev'=>3, 'label'=>'Parça işareti sızmış',        'sample'=>$s];
         if ($s = ca_check_meta_talk($html))    $flags[] = ['code'=>'meta_talk',   'sev'=>3, 'label'=>'Model kendi süreciyle konuşmuş','sample'=>$s];
         if ($s = ca_check_prompt_leak($html))  $flags[] = ['code'=>'prompt_leak', 'sev'=>3, 'label'=>'Prompt talimatı metne yazılmış','sample'=>$s];
@@ -380,7 +441,12 @@ if ($action === 'scan') {
         // Kesilmiş VE hedeften kısa metinlerin ikisi de "eksik metin"tir:
         // ikisi de kaldığı yerden sürdürülerek düzelir, yeniden yazılmaz.
         $can_comp = false;
-        foreach ($flags as $f) if ($f['code'] === 'truncated' || $f['code'] === 'short') $can_comp = true;
+        foreach ($flags as $f) {
+            if ($f['code'] === 'truncated' || $f['code'] === 'short') $can_comp = true;
+            // Şablon dökümü kesildikten sonra metin eksik kalır; onarımın
+            // ardından tamamlanması gerekir.
+            if ($f['code'] === 'prompt_dump') $can_comp = true;
+        }
 
         $findings[] = [
             'id'      => (int) $r->ID,
@@ -489,6 +555,9 @@ function ca_backup_before($id, $old) {
  * olarak çok metin gitmiş olmalı hem de oransal olarak büyük bir pay.
  */
 function ca_repair_too_lossy($old, $new) {
+    // Prompt dökümünün kesilmesi KASITLI ve büyük bir silmedir; eşik burada
+    // devreye girerse en ağır kaza onarılamaz hale gelir.
+    if (ca_check_prompt_dump($old) !== '' && ca_check_prompt_dump($new) === '') return false;
     $o = mb_strlen(wp_strip_all_tags($old));
     $n = mb_strlen(wp_strip_all_tags($new));
     return (($o - $n) > 600) && ($n < $o * 0.9);
@@ -531,6 +600,10 @@ function ca_repair($html, $mode = 'severe') {
     // Yazının tamamı üretim reddiyse satır silmek işe yaramaz, zarar verir:
     // saçmalığın bir kısmı temizlenip kalanı yayında kalır. Dokunma.
     if (ca_check_refusal($html) !== '') return $html;
+
+    // Şablon dökümü varsa önce o noktadan sonrası atılır: kalanı onarmak
+    // anlamsız, çünkü sonrası bütünüyle talimat metni.
+    $html = ca_cut_prompt_dump($html);
 
     $all = ($mode === 'all');
 

@@ -15,7 +15,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }   // web'den erişile
 function wp_strip_all_tags($s){ return trim(strip_tags($s)); }
 $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
-          'ca_marker_regex','ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
+          'ca_prompt_dump_patterns','ca_check_prompt_dump','ca_cut_prompt_dump','ca_marker_regex','ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
           'ca_check_wrapup','ca_check_dup_heading','ca_drop_duplicates','ca_repair_too_lossy','ca_repair'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
@@ -70,7 +70,7 @@ function r($label, $html, $expect) {
 }
 
 echo "\n── ONARIM ÇALIŞIYOR MU (değişmeli) ──\n";
-$body = str_repeat('<p>Real body text that must stay in place and be long enough.</p>', 6);
+$body = str_repeat('<p>Real body text that must stay in place and be long enough to count as a publishable article.</p>', 8);
 r('Parça işareti silinir',  "$body\n<p>%%PART_END%%</p>", true);
 r('Prompt kuralı silinir',  "$body\n<p>*Here the work ends. No summary, no closing paragraph.*</p>", true);
 r('Sohbet artığı silinir',  "$body\n<p>I hope this helps! Let me know if you need anything else.</p>", true);
@@ -115,7 +115,29 @@ mk('PART1_END',         "$body<p>PART1_END</p>");
 mk('satır içinde iz',   "$body<p>The argument concludes here. PART_END</p>");
 mk('=== MULTI-PART',    "$body<p>=== MULTI-PART GENERATION (PART 2 of 4) ===</p>");
 
+/* EN AĞIR KAZA: prompt şablonunun kendisi yazıya basılmış. Kusur bir satır
+   değil, şablonun başladığı noktadan SONRASININ tamamı. Onarım o noktadan
+   keser; kalan metin cümle ortasında biterse "tamamlanabilir" olur. */
+echo "\n── PROMPT ŞABLONU DÖKÜMÜ ──\n";
+$dump = "<p>You are producing a GUIDED WALKTHROUGH of the following work for Thetelos.org. "
+      . "IMPORTANT: Write the ENTIRE text in English. Do not use Turkish under any circumstances.</p>"
+      . "<p>{book_title} — {author_name}</p><p>CORE TASK</p>"
+      . "<p>Walk the reader through the actual content of this work, part by part.</p>";
+r('Şablon dökümü kesilir', "$body$dump", true);
+
+function pd($label, $html, $expect_clean) {
+    global $ok, $bad;
+    $after = (ca_check_prompt_dump(ca_repair($html, 'all')) === '');
+    $pass  = ($after === $expect_clean);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $after ? '→ şablon temizlendi' : '→ ŞABLON KALDI');
+}
+pd('Kesildikten sonra iz kalmaz', "$body$dump", true);
+pd('Gövde yoksa dokunulmaz (yeniden üretilir)', "<p>Short.</p>$dump", false);
+
 echo "\n── ONARIM DOKUNMAMALI ──\n";
+r('Şablon öncesi gerçek metin korunur',
+  "$body<p>The listener is left with an invitation to join the song.</p>", false);
 r('"last part and start" cümlesi',
   "$body<p>He devoted the last part and start of the next to this question of method.</p>", false);
 r('Farklı başlıklar korunur',
