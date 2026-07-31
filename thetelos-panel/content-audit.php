@@ -81,6 +81,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       </label>
       <button class="btn" id="btn-undo" style="color:#e05252">↩ Onarımı Geri Al</button>
       <button class="btn" id="btn-autofix">🔧 Ağır Hataları Onar</button>
+      <button class="btn" id="btn-complete">🩹 Yarım Kalanları Tamamla</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
     </div>
@@ -102,7 +103,8 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <button data-f="part_marker">Parça işareti</button>
       <button data-f="meta_talk">Model konuşması</button>
       <button data-f="prompt_leak">Prompt sızması</button>
-      <button data-f="truncated">Yarım bitmiş</button>
+      <button data-f="orphan_heading">Boş başlık</button>
+      <button data-f="truncated">Cümle kesilmiş</button>
       <button data-f="dup_para">Tekrar</button>
       <button data-f="md_leak">Markdown</button>
       <button data-f="short">Kısa</button>
@@ -247,7 +249,7 @@ async function scan(){
    dokunmaz — onlar yeniden üretim ister. */
 /* Ağır bulgulardan SADECE onarılabilir olanlar. "Yarım bitmiş" ağır ama
    onarılamaz — eksik metni uydurmak onarım değil, tahrifat olur. */
-const FIXABLE = ['prompt_leak','meta_talk','part_marker'];
+const FIXABLE = ['prompt_leak','meta_talk','part_marker','orphan_heading'];
 
 async function autofix(){
   // Tarama yapıldıysa doğrudan o kayıtlara git: 7500 yazıyı baştan gezmek
@@ -373,9 +375,45 @@ async function undo(){
   $('ca-status').textContent = '✓ Geri alma bitti — ' + restored + ' yazı eski haline döndü.';
 }
 
+/* Cümle ortasında kesilmiş yazıları API ile kaldığı yerden sürdürür.
+   Silmek yerine GERÇEKTEN tamamlar; ücretli üretim olduğu için seçilenle
+   sınırlı çalışır ve kaç kitaba dokunacağını önden söyler. */
+async function complete(){
+  const sel = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
+  const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
+  const ids = pool.filter(p => p.flags.some(f => f.code === 'truncated')).map(p => p.id);
+
+  if(!ids.length){ $('ca-status').textContent = 'Tamamlanacak yarım yazı yok. (Satır seçersen sadece onlar işlenir.)'; return; }
+  if(!confirm(ids.length + ' yazı kaldığı yerden TAMAMLANACAK.\n\n'+
+              'Her biri için API çağrısı yapılır — bu ücretli bir işlemdir.\n'+
+              'Metin silinmez, üstüne eksik kısım yazılır. Devam?')) return;
+
+  stop = false;
+  $('btn-complete').disabled = true; $('btn-stop').style.display = '';
+  $('prog').style.display = 'block';
+
+  let done = 0, fail = 0, words = 0;
+  for (let i = 0; i < ids.length && !stop; i += 5) {     // API ağır: 5'erli
+    const chunk = ids.slice(i, i + 5);
+    waiting('Tamamlanıyor: ' + done + '/' + ids.length + ' — ' + words.toLocaleString('tr') + ' kelime eklendi');
+    try {
+      const d = await post('action=complete&ids=' + chunk.join(','), 300000);
+      if (d && d.ok) { done += d.completed; fail += d.failed; words += d.words || 0;
+                       if (d.errors && d.errors.length) console.log('tamamlanamayanlar:', d.errors); }
+      else fail += chunk.length;
+    } catch(e) { fail += chunk.length; }
+    waitingDone();
+    $('prog').firstElementChild.style.width = Math.round((i + chunk.length)/ids.length*100)+'%';
+  }
+  $('btn-complete').disabled = false; $('btn-stop').style.display = 'none';
+  $('ca-status').textContent = '✓ ' + done + ' yazı tamamlandı, ' + words.toLocaleString('tr') +
+    ' kelime eklendi' + (fail ? ', ' + fail + ' başarısız (ayrıntı için konsol)' : '') + '.';
+}
+
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);
 $('btn-undo').addEventListener('click', undo);
+$('btn-complete').addEventListener('click', complete);
 $('btn-stop').addEventListener('click', ()=>{ stop = true; });
 $('btn-csv').addEventListener('click', csv);
 $('filters').addEventListener('click', e=>{

@@ -15,6 +15,7 @@
  */
 session_start();
 require_once dirname(__DIR__) . '/config.php';
+require_once __DIR__ . '/_content-format.php';   // bw_clean_content / bw_md2html
 if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
 session_write_close();
 header('Content-Type: application/json');
@@ -195,16 +196,32 @@ function ca_check_meta_talk($html) {
     return '';
 }
 
-/** Metin yarım mı bitmiş? (cümle ortasında ya da başlıkla) */
+/**
+ * ÖKSÜZ BAŞLIK: yazı bir başlıkla bitiyor, altında metin yok.
+ *
+ * Son parça alt başlığı atıp içeriğini yazmadan bitirdiğinde oluşur. Yarım
+ * biten cümleden AYRI bir kusurdur: burada eksik olan bir cümle değil, boş
+ * duran bir başlıktır — ve başlığı silmek metne hiçbir şey kaybettirmez,
+ * dolayısıyla otomatik onarılabilir. Cümle ortasında kesilen metin ise
+ * onarılamaz, oraya cümle uydurulamaz.
+ *
+ * Tüm gövdeye "$" çapalı .*? uygulanmaz — 60 KB'lık metinlerde PCRE geri
+ * izlemesi isteği dakikalarca oyalıyordu. Son 300 karakter yeterli.
+ */
+function ca_check_orphan_heading($html) {
+    $tail = mb_substr(rtrim((string) $html), -300, 300, 'UTF-8');
+    if (preg_match('/<h([1-6])[^>]*>(.*?)<\/h\1>\s*$/is', $tail, $m)) {
+        return mb_substr(trim(wp_strip_all_tags($m[2])), 0, 80, 'UTF-8');
+    }
+    return '';
+}
+
+/** Metin cümle ortasında mı kesilmiş? (onarılamaz — yeniden üretim ister) */
 function ca_check_truncated($html) {
     $t = trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags($html)));
     if ($t === '') return 'içerik boş';
-    // Son blok başlıksa: başlık atılmış ama altı yazılmamış.
-    // Tüm gövdeye "$" çapalı .*? uygulanmaz — 60 KB'lık metinlerde PCRE geri
-    // izlemesi isteği dakikalarca oyalıyor ve tarama yarıda kopuyordu. Son
-    // 300 karaktere bakmak yeterli.
-    $tail_html = mb_substr(rtrim($html), -300, 300, 'UTF-8');
-    if (preg_match('/<\/h[1-6]>\s*$/i', $tail_html)) return 'son blok başlık — altı boş';
+    // Öksüz başlık ayrı bulgu; burada tekrar raporlanmaz.
+    if (ca_check_orphan_heading($html) !== '') return '';
     // Sondaki markdown vurgu işaretleri (*, _) noktalamayı gizleyebiliyor
     $t    = rtrim($t, "*_ \t");
     $last = mb_substr($t, -1, 1, 'UTF-8');
@@ -311,7 +328,8 @@ if ($action === 'scan') {
         if ($s = ca_check_part_markers($html)) $flags[] = ['code'=>'part_marker', 'sev'=>3, 'label'=>'Parça işareti sızmış',        'sample'=>$s];
         if ($s = ca_check_meta_talk($html))    $flags[] = ['code'=>'meta_talk',   'sev'=>3, 'label'=>'Model kendi süreciyle konuşmuş','sample'=>$s];
         if ($s = ca_check_prompt_leak($html))  $flags[] = ['code'=>'prompt_leak', 'sev'=>3, 'label'=>'Prompt talimatı metne yazılmış','sample'=>$s];
-        if ($s = ca_check_truncated($html))    $flags[] = ['code'=>'truncated',   'sev'=>3, 'label'=>'Yarım bitmiş',                 'sample'=>$s];
+        if ($s = ca_check_orphan_heading($html)) $flags[] = ['code'=>'orphan_heading','sev'=>3, 'label'=>'Boş başlıkla bitmiş (onarılabilir)','sample'=>$s];
+        if ($s = ca_check_truncated($html))    $flags[] = ['code'=>'truncated',   'sev'=>3, 'label'=>'Cümle ortasında kesilmiş',    'sample'=>$s];
         if ($s = ca_check_dup_para($html))     $flags[] = ['code'=>'dup_para',    'sev'=>2, 'label'=>'Paragraf tekrarı',             'sample'=>$s];
         if ($s = ca_check_dup_heading($html))  $flags[] = ['code'=>'dup_heading', 'sev'=>2, 'label'=>'Başlık tekrarı',               'sample'=>$s];
         if ($s = ca_check_md_leak($html))      $flags[] = ['code'=>'md_leak',     'sev'=>2, 'label'=>'Markdown kalıntısı',           'sample'=>$s];
@@ -444,7 +462,116 @@ function ca_repair($html, $mode = 'severe') {
     // Blok dışında kalmış çıplak parça işaretleri
     $out = preg_replace('/%%\s*PART[^%]*%%/i', '', $out);
 
+    // Sonda öksüz kalmış başlık(lar): altında metin olmadığı için okuyucuya
+    // hiçbir şey söylemiyorlar, silinince de metinden bir şey eksilmiyor.
+    // Üst üste birkaç tane olabilir (başlık + boş alt başlık), döngüyle temizlenir.
+    $guard = 0;
+    while ($guard++ < 5 && preg_match('/<h([1-6])[^>]*>.*?<\/h\1>\s*$/is', rtrim($out))) {
+        $out = preg_replace('/<h([1-6])[^>]*>.*?<\/h\1>\s*$/is', '', rtrim($out));
+    }
+
     return trim($out);
+}
+
+/* ── TAMAMLA ──────────────────────────────────────────────────────────────
+   Cümle ortasında kesilmiş yazıyı KALDIĞI YERDEN sürdürür.
+
+   Silmek onarım değildir: eksik metnin yerine boşluk koymak, yazıyı bozuk
+   bırakmanın başka bir biçimi. Burada metin, üretimdeki çok parçalı devam
+   mantığının aynısıyla API'ye sürdürülür — modele mevcut başlıklar ve son
+   paragraflar verilir, o da kesildiği noktadan devam eder.                   */
+function ca_complete_post($id) {
+    $p = get_post($id);
+    if (!$p) return ['ok' => false, 'error' => 'yazı yok'];
+
+    $html = (string) $p->post_content;
+    if (ca_check_refusal($html) !== '') return ['ok' => false, 'error' => 'üretim reddi — tamamlanamaz, yeniden üretilmeli'];
+
+    $authors = get_the_terms($id, 'authors');
+    $author  = (!empty($authors) && !is_wp_error($authors)) ? $authors[0]->name : '';
+    $book    = trim(preg_replace('/\s*[-–—]\s*' . preg_quote($author, '/') . '\s*$/u', '', get_the_title($id)));
+
+    // Yazılmış bölümler (tekrar yazmasın) + son paragraflar (dikişi görsün)
+    preg_match_all('/<h[23][^>]*>(.*?)<\/h[23]>/is', $html, $hm);
+    $headings = array_map(function ($h) { return trim(wp_strip_all_tags($h)); }, $hm[1] ?? []);
+    $tail     = mb_substr(trim(wp_strip_all_tags($html)), -900, 900, 'UTF-8');
+
+    $covered = '';
+    foreach (array_slice($headings, -25) as $h) $covered .= "   ✗ {$h}\n";
+
+    $prompt = "You are completing an unfinished book summary. The text below was cut off mid-sentence.\n\n"
+        . "Book: {$book}\nAuthor: {$author}\n\n"
+        . "STRICT RULES:\n"
+        . "1. Continue from EXACTLY where the text stops — your first characters must complete the broken sentence.\n"
+        . "2. Do NOT repeat the title, headings, or any text already written.\n"
+        . "3. These sections are already complete — do not revisit them:\n{$covered}"
+        . "4. Continue with the remaining sections and COMPLETE the work.\n"
+        . "5. Same voice, depth and format: '### Heading' for sections, '> quote' for quotations.\n"
+        . "6. End with the final substantive point — no summary paragraph, no closing sentence.\n"
+        . "7. Output ONLY the continuation text. No preamble, no commentary about what you are doing.\n\n"
+        . "The text so far ends here (continue seamlessly from this exact point):\n...{$tail}";
+
+    $model = in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true) ? 'deepseek-v4-flash' : DEEPSEEK_MODEL;
+
+    $out = ''; $err = '';
+    for ($try = 1; $try <= 3; $try++) {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 240,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS     => json_encode([
+                'model' => $model, 'max_tokens' => 8000,
+                'messages' => [['role' => 'user', 'content' => $prompt]],
+            ]),
+        ]);
+        $res = curl_exec($ch); $err = curl_error($ch); curl_close($ch);
+        if (!$err && $res) {
+            $j = json_decode($res, true);
+            $out = trim((string)($j['choices'][0]['message']['content'] ?? ''));
+            if ($out !== '') break;
+            $err = $j['error']['message'] ?? 'boş yanıt';
+        }
+        if ($try < 3) sleep(3);
+    }
+    if ($out === '') return ['ok' => false, 'error' => 'API: ' . ($err ?: 'boş yanıt')];
+
+    // Devam metni yine yarım geldiyse yarım cümleyi kırp — bozuğun üstüne bozuk ekleme.
+    $out = bw_clean_content($out);
+    $out = preg_replace('/^#{1,2} [^\n]+\n+/m', '', $out, 1);      // başlığı tekrar yazdıysa at
+    $last = mb_substr(rtrim($out), -1, 1, 'UTF-8');
+    if (mb_strpos('.!?"\'»)]}”’…', $last, 0, 'UTF-8') === false) {
+        $out = preg_replace('/(?<=[.!?"\'”’)])[^.!?]*$/u', '', $out);
+    }
+    if (trim($out) === '') return ['ok' => false, 'error' => 'devam metni kullanılabilir değil'];
+
+    $add = bw_md2html($out);
+    if (trim(wp_strip_all_tags($add)) === '') return ['ok' => false, 'error' => 'devam metni boş'];
+
+    ca_backup_before($id, $html);
+    // Kesik cümlenin ardına doğrudan eklenir: son <p> kapatılmadan sürdürülür.
+    $merged = rtrim($html);
+    if (preg_match('/<\/p>\s*$/i', $merged) && preg_match('/^<p>(.*)$/is', $add, $am)) {
+        $merged = preg_replace('/<\/p>\s*$/i', ' ' . $am[1], $merged);
+    } else {
+        $merged .= "\n" . $add;
+    }
+    wp_update_post(['ID' => $id, 'post_content' => $merged]);
+
+    return ['ok' => true, 'added' => str_word_count(wp_strip_all_tags($add))];
+}
+
+if ($action === 'complete') {
+    $ids  = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
+    $done = 0; $fail = 0; $words = 0; $errors = [];
+    foreach (array_slice($ids, 0, 5) as $id) {          // istek başına en fazla 5 kitap
+        $r = ca_complete_post($id);
+        if (!empty($r['ok'])) { $done++; $words += (int)$r['added']; }
+        else { $fail++; if (count($errors) < 3) $errors[] = get_the_title($id) . ': ' . $r['error']; }
+    }
+    echo json_encode(['ok' => true, 'completed' => $done, 'failed' => $fail, 'words' => $words, 'errors' => $errors]);
+    exit;
 }
 
 /* ── GERİ AL ──────────────────────────────────────────────────────────────
