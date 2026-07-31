@@ -43,8 +43,28 @@ ob_end_clean();
  * gövdenin herhangi bir yerinde aramak yüzlerce yanlış alarm üretiyordu.
  * Sızıntı, cümlenin içinde değil, KENDİ BAŞINA duran bir satır olarak görünür.
  */
-function ca_blocks($html) {
+/**
+ * Kitabın kendi sesi: alıntılar.
+ *
+ * TEMEL AYRIM: Bir metinde iki ses vardır — kitabın/yazarın sesi (alıntılar)
+ * ve özeti yazan sistemin sesi. Süreç kalıntısı ancak İKİNCİSİNDE olabilir.
+ * Irenaeus'un "We will now proceed to refute these heretics…" cümlesi kitabın
+ * sesidir; kalıp benzese de sızıntı değildir. Bu yüzden alıntılar taramanın
+ * dışında bırakılır — kalıp kalıp yama yapmak yerine kaynağı ayırıyoruz.
+ */
+function ca_strip_quotes($html) {
+    return preg_replace('/<blockquote\b[^>]*>.*?<\/blockquote>/is', ' ', (string) $html);
+}
+
+/** Blok baştan sona tırnak içindeyse alıntıdır — sistemin sesi olamaz. */
+function ca_is_quotation($t) {
+    $t = trim($t, "*_ \t");
+    return (bool) preg_match('/^["“«‘\'].{10,}["”»’\']\s*[.,;:]?$/us', $t);
+}
+
+function ca_blocks($html, $skip_quotes = true) {
     $h = preg_replace('/<br\s*\/?>/i', "\n", (string) $html);
+    if ($skip_quotes) $h = ca_strip_quotes($h);
     $out = [];
     if (preg_match_all('/<(p|h[1-6]|li|blockquote)\b[^>]*>(.*?)<\/\1>/is', $h, $m)) {
         foreach ($m[2] as $b) {
@@ -62,35 +82,51 @@ function ca_blocks($html) {
 }
 
 /**
- * Prompt / süreç cümleleri.
+ * Süreç cümleleri.
  *
- * Yalnızca NORMAL METİNDE GEÇMESİ MÜMKÜN OLMAYAN kalıplar. "the work ends"
- * gibi edebî ifadeler bilerek listede yok — onlar gerçek cümlelerdi.
+ * ÖLÇÜT: cümle, KİTABIN KONUSU hakkında değil, METNİN ÜRETİLMESİ hakkında
+ * olmalı. Bu ayrımı yapmayan kalıplar yanlış alarm üretiyor —
+ * "We will now proceed to refute these heretics" (Irenaeus) ile
+ * "I will now continue with Part 3" arasındaki fark, fiilin değil NESNENİN
+ * ne olduğudur. Bu yüzden her kalıp, üretim sözlüğünden bir kelimeyi
+ * (part, word count, summary, prompt, AI) zorunlu tutar; salt birinci tekil
+ * gelecek zaman kalıpları listede YOKTUR — felsefe metinlerinin doğal dilidir.
  */
 function ca_meta_patterns() {
     return [
+        // Üretim düzeneğinin kendi kelimeleri
         '/no summary,?\s*no closing paragraph/i',
         '/\bas an? (?:ai|language model|assistant)\b/i',
         '/\b(?:apply|per) the closing rule\b/i',
-        '/\bdo not write a conclusion\b/i',
+        '/\bdo not write a (?:conclusion|summary)\b/i',
         '/\bword count\s*[:=]/i',
         '/\btarget length\b/i',
         '/\bapproximately \d{3,5} words\b/i',
+        '/\bper your (?:request|instructions)\b/i',
+        '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
+
+        // Sohbet artığı — kitap metninde karşılığı yok
         '/\bi hope this (?:helps|summary)\b/i',
         '/\blet me know if you\b/i',
-        '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
-        '/\bper your (?:request|instructions)\b/i',
-        '/\b(?:i|we) (?:will|shall) now (?:continue|proceed|begin)\b/i',
+
+        // Parça düzeneğine açık gönderme (nesne: part/section)
+        '/\b(?:part|section)\s+\d+\s+of\s+\d+\b/i',
+        '/\b(?:i|we) (?:will|shall) now (?:continue|proceed|begin)\b[^.]{0,40}\b(?:part|section)\s*\d/i',
         '/\bhere(?:\'s| is) the (?:continuation|next part|final part)\b/i',
         '/\bthe (?:next|remaining|final) part will (?:cover|continue)\b/i',
         '/\b(?:in|for) this part,? i (?:will|have)\b/i',
+        '/\bcontinu(?:ing|ed) from (?:the )?(?:previous|last) (?:part|section)\b/i',
     ];
 }
 
 /** Parça üretiminin teknik işaretleri metne sızmış mı? */
-function ca_check_part_markers($text) {
-    $pat = '/%%\s*PART|PART_END|\bPart\s+\d+\s+of\s+\d+\b|=== MULTI-PART/i';
-    return preg_match($pat, $text, $m) ? $m[0] : '';
+function ca_check_part_markers($html) {
+    // Teknik işaretler her yerde geçersiz — alıntı içinde bile bulunamaz.
+    if (preg_match('/%%\s*PART|PART_END|=== MULTI-PART/i', $html, $m)) return $m[0];
+    // "Part 2 of 4" ifadesi kitabın kendi metninde geçebilir (alıntı, künye);
+    // bu yüzden alıntılar dışarıda bırakılarak aranır.
+    $text = wp_strip_all_tags(ca_strip_quotes($html));
+    return preg_match('/\bPart\s+\d+\s+of\s+\d+\b/i', $text, $m) ? $m[0] : '';
 }
 
 /**
@@ -101,8 +137,9 @@ function ca_check_part_markers($text) {
 function ca_is_meta_block($block) {
     $b = trim($block, "*_ \t");
     if ($b === '' || mb_strlen($b, 'UTF-8') > 220) return false;
+    if (preg_match('/^%%\s*PART/i', $b)) return true;   // teknik işaret: her koşulda
+    if (ca_is_quotation($b)) return false;              // tırnak içindeyse kitabın sesi
     foreach (ca_meta_patterns() as $p) if (preg_match($p, $b)) return true;
-    if (preg_match('/^%%\s*PART/i', $b)) return true;
     return false;
 }
 
@@ -114,14 +151,18 @@ function ca_check_prompt_leak($html) {
     return '';
 }
 
-/** Model kendi süreciyle konuşmuş mu? — cümle içinde bile kabul edilemez olanlar. */
-function ca_check_meta_talk($text) {
+/**
+ * Model kendi süreciyle konuşmuş mu? — cümlenin içinde bile kabul edilemez
+ * olanlar. Alıntılar hariç tutulur: bir mektup ya da diyalog alıntısında
+ * "per your request" geçebilir, bu kitabın sesidir.
+ */
+function ca_check_meta_talk($html) {
+    $text = wp_strip_all_tags(ca_strip_quotes($html));
     $hard = [
         '/\bas an? (?:ai|language model|assistant)\b/i',
         '/\bi hope this (?:helps|summary)\b/i',
         '/\blet me know if you\b/i',
         '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
-        '/\bper your (?:request|instructions)\b/i',
         '/\bword count\s*[:=]/i',
         '/\[(?:note|continued|to be continued)\b/i',
     ];
@@ -188,7 +229,7 @@ function ca_check_md_leak($html) {
 
 /** Yasak kapanış: prompt "özet paragrafıyla bitirme" diyor. */
 function ca_check_wrapup($html) {
-    $t = trim(wp_strip_all_tags($html));
+    $t = trim(wp_strip_all_tags(ca_strip_quotes($html)));
     $tail = mb_substr($t, -400, 400, 'UTF-8');
     if (preg_match('/\b(in conclusion|to conclude|in summary|to sum up|overall,? this book)\b/i', $tail, $m)) {
         return trim($m[0]);
