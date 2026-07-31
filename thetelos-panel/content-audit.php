@@ -60,7 +60,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <div class="tls-header">
       <div>
         <h2>İçerik Denetimi</h2>
-        <p>Yayındaki yazılarda yapay zekâ artığı, yarım metin ve tekrar arar</p>
+        <p>Yayındaki yazılarda yapay zekâ artığı, yarım metin ve tekrar arar <span style="opacity:.5;font-size:11px">· sürüm 2026-08-01 · arka plan işi</span></p>
       </div>
     </div>
 
@@ -90,6 +90,11 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     </div>
 
     <div class="prog" id="prog"><i></i></div>
+    <div id="ca-errors" style="display:none;margin:0 0 14px;padding:10px 12px;border:1px solid rgba(204,24,24,.35);
+         border-radius:8px;background:rgba(204,24,24,.07);font-size:12px;line-height:1.6;max-width:900px">
+      <b style="color:#e05252">Başarısız olanlar</b>
+      <div id="ca-errors-list" style="margin-top:6px;color:var(--muted);font-family:ui-monospace,monospace;font-size:11px"></div>
+    </div>
 
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:900px;line-height:1.7">
       <b style="color:var(--text)">Kolay yol:</b> tarama bitince <b>✨ Hepsini Düzelt</b>'e bas ve sekmeyi kapat.
@@ -453,7 +458,12 @@ function jobPoll() {
     const total = (j.ids || []).length || 1;
     $('prog').firstElementChild.style.width = Math.round((j.done + j.failed) / total * 100) + '%';
     $('ca-status').textContent = jobLabel(j);
-    if (j.errors && j.errors.length) console.log('hatalar:', j.errors);
+    // Hata konsola gömülmez: ekranda görünür, yoksa "neden olmadı" bilinmiyor.
+    if (j.errors && j.errors.length) {
+      $('ca-errors').style.display = '';
+      $('ca-errors-list').innerHTML = j.errors.map(e => escH(e)).join('<br>') +
+        ((j.failed > j.errors.length) ? '<br>… ve ' + (j.failed - j.errors.length) + ' tane daha' : '');
+    }
 
     if (j.status !== 'running') {
       clearInterval(poller);
