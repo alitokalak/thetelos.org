@@ -675,6 +675,20 @@ function ca_repair($html, $mode = 'severe') {
    bırakmanın başka bir biçimi. Burada metin, üretimdeki çok parçalı devam
    mantığının aynısıyla API'ye sürdürülür — modele mevcut başlıklar ve son
    paragraflar verilir, o da kesildiği noktadan devam eder.                   */
+/**
+ * API hatasını okunabilir hale getirir.
+ *
+ * "boş yanıt" demek teşhis için yetersizdi: istek gitti mi, kota mı doldu,
+ * model mi reddetti, bilinmiyordu. HTTP kodu ve gövdenin başı gösterilir.
+ */
+function ca_api_error($code, $raw, $json) {
+    if (!empty($json['error']['message'])) return 'HTTP ' . $code . ' — ' . $json['error']['message'];
+    $reason = $json['choices'][0]['finish_reason'] ?? '';
+    if ($reason) return 'HTTP ' . $code . ' — içerik boş (finish_reason: ' . $reason . ')';
+    $snip = trim(preg_replace('/\s+/', ' ', mb_substr((string) $raw, 0, 160, 'UTF-8')));
+    return 'HTTP ' . $code . ($snip !== '' ? ' — ' . $snip : ' — yanıt gövdesi boş');
+}
+
 function ca_complete_post($id) {
     $p = get_post($id);
     if (!$p) return ['ok' => false, 'error' => 'yazı yok'];
@@ -709,7 +723,7 @@ function ca_complete_post($id) {
     $model = in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true) ? 'deepseek-v4-flash' : DEEPSEEK_MODEL;
 
     $out = ''; $err = '';
-    for ($try = 1; $try <= 2; $try++) {
+    for ($try = 1; $try <= 3; $try++) {
         $ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($ch, [
             CURLOPT_POST           => true,
@@ -721,14 +735,23 @@ function ca_complete_post($id) {
                 'messages' => [['role' => 'user', 'content' => $prompt]],
             ]),
         ]);
-        $res = curl_exec($ch); $err = curl_error($ch); curl_close($ch);
-        if (!$err && $res) {
-            $j = json_decode($res, true);
+        $res  = curl_exec($ch);
+        $err  = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if (!$err) {
+            $j = json_decode((string) $res, true);
             $out = trim((string)($j['choices'][0]['message']['content'] ?? ''));
+            // Bazı modeller metni reasoning_content alanında döndürüyor
+            if ($out === '') $out = trim((string)($j['choices'][0]['message']['reasoning_content'] ?? ''));
             if ($out !== '') break;
-            $err = $j['error']['message'] ?? 'boş yanıt';
+            // "boş yanıt" demek yetmez: HTTP kodunu ve gövdenin başını göster,
+            // yoksa neden başarısız olduğu bilinemiyor.
+            $err = ca_api_error($code, $res, $j);
         }
-        if ($try < 2) sleep(3);
+        // Kota (429) ya da sunucu hatasında daha uzun bekle: dört worker
+        // paralel çalıştığı için anlık sınırlara takılmak olağan.
+        if ($try < 3) sleep(($code === 429 || $code >= 500) ? 15 : 4);
     }
     if ($out === '') return ['ok' => false, 'error' => 'API: ' . ($err ?: 'boş yanıt')];
 
@@ -794,7 +817,7 @@ function ca_regenerate_post($id, $target_words = 6000) {
                 . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
 
         $piece = ''; $err = '';
-        for ($try = 1; $try <= 2; $try++) {
+        for ($try = 1; $try <= 3; $try++) {
             $ch = curl_init(DEEPSEEK_API_URL);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 180,
@@ -804,14 +827,19 @@ function ca_regenerate_post($id, $target_words = 6000) {
                     'messages' => [['role' => 'user', 'content' => $prompt]],
                 ]),
             ]);
-            $res = curl_exec($ch); $err = curl_error($ch); curl_close($ch);
-            if (!$err && $res) {
-                $j = json_decode($res, true);
-                $piece = trim(str_replace('%%PART_END%%', '', (string)($j['choices'][0]['message']['content'] ?? '')));
+            $res  = curl_exec($ch);
+            $err  = curl_error($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            if (!$err) {
+                $j = json_decode((string) $res, true);
+                $body = (string)($j['choices'][0]['message']['content'] ?? '');
+                if ($body === '') $body = (string)($j['choices'][0]['message']['reasoning_content'] ?? '');
+                $piece = trim(str_replace('%%PART_END%%', '', $body));
                 if ($piece !== '') break;
-                $err = $j['error']['message'] ?? 'boş yanıt';
+                $err = ca_api_error($code, $res, $j);
             }
-            if ($try < 2) sleep(3);
+            if ($try < 3) sleep(($code === 429 || $code >= 500) ? 15 : 4);
         }
         // İlk parça gelmezse yeni metin yok: eski gövdeye dokunmadan çık.
         if ($piece === '') {
