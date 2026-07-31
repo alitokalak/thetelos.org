@@ -145,10 +145,24 @@ function ca_check_refusal($html) {
     return '';
 }
 
+/**
+ * Üretim düzeneğinin teknik işareti.
+ *
+ * TEK KAYNAK: hem tespit hem silme bu kalıbı kullanır. Ayrı yazıldıklarında
+ * ayrışıyorlar — nitekim yayına "%%PART_END%%" değil, yüzde işaretleri
+ * düşmüş ÇIPLAK "PART_END" sızmıştı: tespit yakalıyor, silme yakalamıyordu
+ * ve yazı gereksiz yere "yeniden üretilecek" görünüyordu.
+ *
+ * Bu diziler hiçbir kitap metninde bulunamaz, bu yüzden her yerde silinir.
+ */
+function ca_marker_regex() {
+    return '/(?:%%\s*)?\bPART[_ ]?\d*[_ ]?(?:END|START)\b(?:\s*%%)?|%%\s*PART[^%]*%%|===\s*MULTI-PART[^\n]*/i';
+}
+
 /** Parça üretiminin teknik işaretleri metne sızmış mı? */
 function ca_check_part_markers($html) {
     // Teknik işaretler her yerde geçersiz — alıntı içinde bile bulunamaz.
-    if (preg_match('/%%\s*PART|PART_END|=== MULTI-PART/i', $html, $m)) return $m[0];
+    if (preg_match(ca_marker_regex(), $html, $m)) return trim($m[0]);
     // "Part 2 of 4" ifadesi kitabın kendi metninde geçebilir (alıntı, künye);
     // bu yüzden alıntılar dışarıda bırakılarak aranır.
     $text = wp_strip_all_tags(ca_strip_quotes($html));
@@ -163,7 +177,7 @@ function ca_check_part_markers($html) {
 function ca_is_meta_block($block) {
     $b = trim($block, "*_ \t");
     if ($b === '' || mb_strlen($b, 'UTF-8') > 220) return false;
-    if (preg_match('/^%%\s*PART/i', $b)) return true;   // teknik işaret: her koşulda
+    if (preg_match(ca_marker_regex(), $b)) return true;   // teknik işaret: her koşulda
     if (ca_is_quotation($b)) return false;              // tırnak içindeyse kitabın sesi
     foreach (ca_meta_patterns() as $p) if (preg_match($p, $b)) return true;
     return false;
@@ -412,7 +426,7 @@ if ($action === 'scan') {
  */
 function ca_delete_patterns() {
     return [
-        '/^%%\s*PART/i',                                   // teknik işaret
+        ca_marker_regex(),                                 // teknik işaret (çıplak PART_END dahil)
         '/no summary,?\s*no closing paragraph/i',          // prompt kuralının aynısı
         '/\bas an? (?:ai|language model|assistant)\b/i',
         '/\b(?:apply|per) the closing rule\b/i',
@@ -539,7 +553,7 @@ function ca_repair($html, $mode = 'severe') {
         }
 
         // Parça işaretleri her modda temizlenir (okuyucuya görünen teknik artık)
-        $clean = preg_replace('/%%\s*PART[^%]*%%/i', '', $inner);
+        $clean = preg_replace(ca_marker_regex(), '', $inner);
         if ($all) {
             $clean = preg_replace('/\*\*([^*\n]{1,200}?)\*\*/', '<strong>$1</strong>', $clean);
         }
@@ -556,7 +570,7 @@ function ca_repair($html, $mode = 'severe') {
     }, $html);
 
     // Blok dışında kalmış çıplak parça işaretleri
-    $out = preg_replace('/%%\s*PART[^%]*%%/i', '', $out);
+    $out = preg_replace(ca_marker_regex(), '', $out);
 
     // Parça sınırında tekrarlanan başlık/paragraf fazlalıkları
     if ($all) $out = ca_drop_duplicates($out);

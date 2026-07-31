@@ -15,7 +15,7 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }   // web'den erişile
 function wp_strip_all_tags($s){ return trim(strip_tags($s)); }
 $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
-          'ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
+          'ca_marker_regex','ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
           'ca_check_wrapup','ca_check_dup_heading','ca_drop_duplicates','ca_repair_too_lossy','ca_repair'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
@@ -95,7 +95,29 @@ r('Aynı paragraf ikinci kez silinir', "$body{$dup}{$dup}", true);
 r('Sondaki özet paragrafı silinir',
   "$body<p>In conclusion, this book shows that the argument holds throughout.</p>", true);
 
+/* DEĞİŞMEZ KURAL: tespit edilen her TEKNİK İŞARET, onarımdan sonra metinde
+   kalmamalı. Bu iki taraf ayrı yazıldığında sürekli ayrışıyordu — yayına
+   "%%PART_END%%" değil yüzdeleri düşmüş "PART_END" sızınca tespit yakalıyor,
+   silme yakalamıyor, yazı boşuna "yeniden üretilecek" görünüyordu. */
+echo "\n── TEKNİK İŞARET: TESPİT EDİLEN SİLİNMELİ ──\n";
+function mk($label, $html) {
+    global $ok, $bad;
+    $detected = (ca_check_part_markers($html) !== '');
+    $after    = ca_check_part_markers(ca_repair($html, 'all')) !== '';
+    $pass     = $detected && !$after;
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label,
+        !$detected ? '→ tespit edilmedi' : ($after ? '→ SİLİNMEDİ' : '→ tespit + silindi'));
+}
+mk('çıplak PART_END',   "$body<p>PART_END</p>");
+mk('%%PART_END%%',      "$body<p>%%PART_END%%</p>");
+mk('PART1_END',         "$body<p>PART1_END</p>");
+mk('satır içinde iz',   "$body<p>The argument concludes here. PART_END</p>");
+mk('=== MULTI-PART',    "$body<p>=== MULTI-PART GENERATION (PART 2 of 4) ===</p>");
+
 echo "\n── ONARIM DOKUNMAMALI ──\n";
+r('"last part and start" cümlesi',
+  "$body<p>He devoted the last part and start of the next to this question of method.</p>", false);
 r('Farklı başlıklar korunur',
   "$body<h3>The Stages of the Image</h3><p>Body under it.</p><h3>The Orders of Simulacra</h3><p>Body under that one too.</p>", false);
 r('Temiz yazı birebir korunur',
