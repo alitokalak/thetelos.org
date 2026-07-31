@@ -342,12 +342,23 @@ if ($action === 'scan') {
         if (!$flags) continue;
 
         usort($flags, function($a, $b) { return $b['sev'] <=> $a['sev']; });
+
+        // ONARILABİLİR Mİ: tahmin etmek yerine onarımı burada DENERİZ.
+        // Bulgu türüne bakıp "bu onarılır" varsaymak yanılıyordu: tespit
+        // listesi silme listesinden geniş olduğu için ekran "onar" diyor,
+        // onarıcı hiçbir şey değiştirmiyordu. Artık ölçülen şey söyleniyor.
+        $fixable  = (ca_repair($html, 'severe') !== $html);
+        $can_comp = false;
+        foreach ($flags as $f) if ($f['code'] === 'truncated') $can_comp = true;
+
         $findings[] = [
-            'id'    => (int) $r->ID,
-            'title' => $r->post_title,
-            'date'  => substr((string)$r->post_date, 0, 10),
-            'words' => $words,
-            'sev'   => $flags[0]['sev'],
+            'id'      => (int) $r->ID,
+            'title'   => $r->post_title,
+            'date'    => substr((string)$r->post_date, 0, 10),
+            'words'   => $words,
+            'fixable' => $fixable,
+            'compl'   => $can_comp,
+            'sev'     => $flags[0]['sev'],
             'link'  => get_permalink($r->ID),
             'edit'  => admin_url('post.php?post=' . (int)$r->ID . '&action=edit'),
             'flags' => $flags,
@@ -391,9 +402,22 @@ function ca_delete_patterns() {
         '/\bdo not write a (?:conclusion|summary)\b/i',
         '/\bword count\s*[:=]/i',
         '/\btarget length\b/i',
+        '/\bapproximately \d{3,5} words\b/i',
         '/\bi hope this (?:helps|summary)\b/i',
         '/\blet me know if you\b/i',
         '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
+        '/\bper your (?:request|instructions)\b/i',
+        // Kitap metninde karşılığı olmayan sohbet/süreç cümleleri
+        '/\bhere(?:\'s| is) the (?:continuation|next part|final part)\b/i',
+        '/\bcontinu(?:ing|ed) from (?:the )?(?:previous|last) (?:part|section)\b/i',
+        '/\b(?:in|for) this part,? i (?:will|have)\b/i',
+
+        /* BİLEREK LİSTEDE OLMAYANLAR — tespit eder ama SİLMEYİZ:
+           '/part \d+ of \d+/'            → "(chapters for Part 1 of 4)" gibi
+                                            sağlam cümlelerde geçebiliyor
+           '/the next part will cover/'   → kitabın kendi bölüm yapısını
+                                            anlatan bir cümle olabilir
+           Bunlar ekranda gösterilir, kararı insan verir. */
     ];
 }
 
@@ -423,6 +447,20 @@ function ca_backup_before($id, $old) {
         update_post_meta($id, '_tls_audit_backup', $old);
         update_post_meta($id, '_tls_audit_backup_at', time());
     }
+}
+
+/**
+ * Onarım metni fazla yutuyor mu?
+ *
+ * Eşik SALT ORANSAL olamaz: 300 kelimelik bir yazıdan 20 kelimelik artığı
+ * silmek %10'u aşar ve onarım hiç uygulanmazdı — buton "onardım" der, hiçbir
+ * şey değişmezdi. Doğru ölçüt ikisinin BİRLİKTE sağlanmasıdır: hem mutlak
+ * olarak çok metin gitmiş olmalı hem de oransal olarak büyük bir pay.
+ */
+function ca_repair_too_lossy($old, $new) {
+    $o = mb_strlen(wp_strip_all_tags($old));
+    $n = mb_strlen(wp_strip_all_tags($new));
+    return (($o - $n) > 600) && ($n < $o * 0.9);
 }
 
 function ca_repair($html, $mode = 'severe') {
@@ -674,7 +712,7 @@ if ($action === 'autofix') {
         $old = (string) $r->post_content;
         $new = ca_repair($old, $mode);
         if ($new === '' || $new === $old) continue;
-        if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($old)) * 0.9) continue;
+        if (ca_repair_too_lossy($old, $new)) continue;
         ca_backup_before((int)$r->ID, $old);
         wp_update_post(['ID' => (int)$r->ID, 'post_content' => $new]);
         $fixed++;
@@ -701,10 +739,7 @@ if ($action === 'fix') {
         if (!$p || $p->post_type === 'revision') { $skipped++; continue; }
         $new = ca_repair((string)$p->post_content, $mode);
         if ($new === '' || $new === $p->post_content) { $skipped++; continue; }
-        // Güvenlik: onarım metnin belirgin bir kısmını yutuyorsa uygulama.
-        if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($p->post_content)) * 0.9) {
-            $skipped++; continue;
-        }
+        if (ca_repair_too_lossy($p->post_content, $new)) { $skipped++; continue; }
         ca_backup_before($id, $p->post_content);
         wp_update_post(['ID' => $id, 'post_content' => $new]);
         $fixed++;

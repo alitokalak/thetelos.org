@@ -14,8 +14,10 @@ if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }   // web'den erişile
 
 function wp_strip_all_tags($s){ return trim(strip_tags($s)); }
 $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
-foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_part_markers',
-          'ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk'] as $fn) {
+foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
+          'ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
+          'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
+          'ca_repair_too_lossy','ca_repair'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
 }
 
@@ -49,6 +51,53 @@ t('Kelime sayısı notu',              '<p>Word count: approximately 2000 words<
 t('Sohbet artığı',                   '<p>I hope this helps! Let me know if you need anything else.</p>', true);
 t('Parça devamı',                    '<p>I will now continue with Part 3 of the summary.</p>', true);
 t('Parça numarası',                  '<p>This is Part 2 of 4 of the analysis.</p>', true);
+
+
+/* ── ONARIM YOLU ──────────────────────────────────────────────────────────
+   Tespit etmek yetmez: ekran "onarılabilir" diyorsa onarım GERÇEKTEN
+   değiştirmeli. Bu iki liste bir zamanlar ayrışmıştı ve buton hiçbir şey
+   yapmadan "onardım" diyordu.                                              */
+function repairs($html) {
+    $new = ca_repair($html, 'severe');
+    return ($new !== $html) && !ca_repair_too_lossy($html, $new);
+}
+function r($label, $html, $expect) {
+    global $ok, $bad;
+    $got = repairs($html);
+    $pass = ($got === $expect);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $got ? '→ onarıldı' : '→ dokunulmadı');
+}
+
+echo "\n── ONARIM ÇALIŞIYOR MU (değişmeli) ──\n";
+$body = '<p>Real body text that must stay in place.</p>';
+r('Parça işareti silinir',  "$body\n<p>%%PART_END%%</p>", true);
+r('Prompt kuralı silinir',  "$body\n<p>*Here the work ends. No summary, no closing paragraph.*</p>", true);
+r('Sohbet artığı silinir',  "$body\n<p>I hope this helps! Let me know if you need anything else.</p>", true);
+r('Devam cümlesi silinir',  "$body\n<p>Here is the continuation of the summary.</p>", true);
+r('Öksüz başlık silinir',   "$body\n<h2>A Compendium in Thirteen Propositions</h2>", true);
+r('Kelime notu silinir',    "$body\n<p>Word count: approximately 2000 words</p>", true);
+
+echo "\n── ONARIM DOKUNMAMALI ──\n";
+r('Alıntı korunur',        '<blockquote>“We will now proceed to refute these heretics.”</blockquote>', false);
+r('"Part 1 of 4" cümlesi', '<p>The full text (or the relevant chapters for Part 1 of 4) is discussed here.</p>', false);
+r('Normal kapanış',        '<p>The argument closes on this note, complete and whole.</p>', false);
+r('Üretim reddi (elleme)', '<p>I cannot produce this summary because I do not have access to the actual text.</p><p>Word count: 0</p>', false);
+/* Güvenlik eşiği doğrudan sınanır: içeriğe bakmaksızın, "ne kadar metin
+   gitmiş" sorusuna doğru cevabı vermeli. İleride bir kalıp yanlışlıkla
+   genişlerse yayındaki metnin toplu silinmesini bu eşik durdurur. */
+function g($label, $old_len, $new_len, $expect) {
+    global $ok, $bad;
+    $got  = ca_repair_too_lossy(str_repeat('a', $old_len), str_repeat('a', $new_len));
+    $pass = ($got === $expect);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $got ? '→ engellendi' : '→ izin verildi');
+}
+echo "\n── GÜVENLİK EŞİĞİ ──\n";
+g('7000 karakterden 20 gitmiş',   7000, 6980, false);   // normal onarım
+g('300 karakterden 40 gitmiş',     300,  260, false);   // kısa yazı, küçük artık
+g('7000 karakterden 5000 gitmiş', 7000, 2000, true);    // felaket → durdur
+g('1000 karakterden 900 gitmiş',  1000,  100, true);    // felaket → durdur
 
 echo "\nSonuç: {$ok} geçti, {$bad} hata\n";
 exit($bad ? 1 : 0);

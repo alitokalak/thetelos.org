@@ -159,8 +159,12 @@ function render(){
     '<th>Kitap</th><th style="width:420px">Bulgular</th>'+
     '<th style="width:70px">Kelime</th><th style="width:120px"></th></tr></thead><tbody>';
   rows.forEach(p=>{
+    const act = p.fixable ? '<span class="badge" style="background:rgba(40,160,90,.18);color:#3ec27a">🔧 onarılabilir</span>'
+              : p.compl  ? '<span class="badge" style="background:rgba(80,120,220,.18);color:#7aa2f7">🩹 tamamlanabilir</span>'
+                         : '<span class="badge sev1">elle bakılmalı</span>';
     h += '<tr data-id="'+p.id+'"><td><input type="checkbox" class="ca-cb"></td>'+
-      '<td><b>'+escH(p.title)+'</b><br><small style="color:var(--muted)">'+escH(p.date)+'</small></td><td>';
+      '<td><b>'+escH(p.title)+'</b><br><small style="color:var(--muted)">'+escH(p.date)+'</small>'+
+      '<br>'+act+'</td><td>';
     p.flags.forEach(f=>{
       h += '<div><span class="badge sev'+f.sev+'">'+escH(f.label)+'</span>'+
            '<span class="sample">'+escH(f.sample)+'</span></div>';
@@ -247,19 +251,18 @@ async function scan(){
 /* Otomatik onarım: tarama beklemeden tüm siteyi gezer. Süreç satırlarını
    siler, markdown kalıntısını HTML'e çevirir. Yarım biten / kısa içeriğe
    dokunmaz — onlar yeniden üretim ister. */
-/* Ağır bulgulardan SADECE onarılabilir olanlar. "Yarım bitmiş" ağır ama
-   onarılamaz — eksik metni uydurmak onarım değil, tahrifat olur. */
-const FIXABLE = ['prompt_leak','meta_talk','part_marker','orphan_heading'];
-
 async function autofix(){
-  // Tarama yapıldıysa doğrudan o kayıtlara git: 7500 yazıyı baştan gezmek
-  // yerine ~50 yazıya dokunulur, işlem saniyeler sürer.
-  const targets = all
-    .filter(p => p.sev === 3 && p.flags.some(f => FIXABLE.includes(f.code)))
-    .map(p => p.id);
+  // Hedefler bulgu TÜRÜNE göre tahmin edilmez: tarama her yazıda onarımı
+  // deneyip 'fixable' bilgisini döndürüyor. Eskiden tür listesine bakılıyordu
+  // ve tespit listesi silme listesinden geniş olduğu için buton "onar" deyip
+  // hiçbir şey değiştirmiyordu.
+  const targets = all.filter(p => p.fixable).map(p => p.id);
 
   if (all.length && !targets.length) {
-    $('ca-status').textContent = '✓ Onarılabilir ağır bulgu yok. (Yarım biten yazılar yeniden üretim ister.)';
+    const trunc = all.filter(p => p.compl).length;
+    $('ca-status').textContent = 'Silinerek onarılabilecek bulgu yok.' +
+      (trunc ? ' ' + trunc + ' yazı yarım kalmış — "Yarım Kalanları Tamamla" ile düzelir.'
+             : ' Kalanlar yeniden üretim ister.');
     return;
   }
 
@@ -284,8 +287,11 @@ async function autofix(){
     }
     $('btn-autofix').disabled = false;
     $('btn-stop').style.display = 'none';
-    $('ca-status').textContent = '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
-                                 '. Doğrulamak için taramayı tekrar çalıştır.';
+    $('ca-status').textContent = done
+      ? '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
+        '. Doğrulamak için taramayı tekrar çalıştır.'
+      : '⚠ Hiçbiri değişmedi (' + skipped + ' atlandı). Bu bulgular silinerek düzelmiyor — ' +
+        'yarım kalanlar için "Tamamla", diğerleri için yeniden üretim gerekir.';
     return;
   }
 
