@@ -79,6 +79,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
                style="width:82px;padding:4px 6px;margin-left:4px">
         kelime
       </label>
+      <button class="btn" id="btn-undo" style="color:#e05252">↩ Onarımı Geri Al</button>
       <button class="btn" id="btn-autofix">🔧 Ağır Hataları Onar</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
@@ -97,6 +98,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <div class="filters" id="filters" style="display:none">
       <button data-f="all" class="on">Tümü</button>
       <button data-f="3">Sadece ağır</button>
+      <button data-f="refusal">Üretim reddi</button>
       <button data-f="part_marker">Parça işareti</button>
       <button data-f="meta_talk">Model konuşması</button>
       <button data-f="prompt_leak">Prompt sızması</button>
@@ -330,8 +332,50 @@ async function autofix(){
     seen + ' yazı gezildi' + (skips ? ', ' + skips + ' dilim atlandı' : '') + ').';
 }
 
+/* Onarımın sildiği metni geri getirir. Meta yedeği yoksa WordPress
+   revizyonundan kurtarır; yalnız SİLME geri alınır, elle yapılmış
+   düzenlemeler korunur. */
+async function undo(){
+  if(!confirm('Onarımın sildiği paragraflar geri getirilecek.\n\n'+
+              'Son 24 saatte yapılan silmeler, WordPress revizyonlarından geri yüklenir. '+
+              'Elle yaptığın düzenlemelere dokunulmaz. Devam?')) return;
+
+  stop = false;
+  $('btn-undo').disabled = true; $('btn-stop').style.display = '';
+  $('prog').style.display = 'block';
+
+  let offset = 0, seen = 0, restored = 0, total = 0;
+  while(!stop){
+    let d = null;
+    for (let attempt = 1; attempt <= 3 && !stop; attempt++) {
+      const lim = [40, 15, 5][attempt - 1];
+      waiting('Geri alınıyor: ' + seen + '/' + (total || '?') + ' — ' + restored + ' yazı kurtarıldı');
+      try {
+        d = await post('action=undo&offset='+offset+'&limit='+lim+'&hours=24', 90000);
+        if (d && d.ok) break;
+        d = null;
+      } catch(e) { d = null; }
+      waitingDone();
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+    waitingDone();
+    if(!d){ offset += 40; seen += 40; if(total && offset >= total) break; continue; }
+
+    total = d.total || total;
+    seen += d.seen || 0;
+    restored += d.restored || 0;
+    $('prog').firstElementChild.style.width = total ? Math.round(Math.min(seen,total)/total*100)+'%' : '0';
+    $('ca-status').textContent = 'Geri alınıyor… ' + seen + '/' + total + ' — ' + restored + ' kurtarıldı';
+    if(d.next < 0) break;
+    offset = d.next;
+  }
+  $('btn-undo').disabled = false; $('btn-stop').style.display = 'none';
+  $('ca-status').textContent = '✓ Geri alma bitti — ' + restored + ' yazı eski haline döndü.';
+}
+
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);
+$('btn-undo').addEventListener('click', undo);
 $('btn-stop').addEventListener('click', ()=>{ stop = true; });
 $('btn-csv').addEventListener('click', csv);
 $('filters').addEventListener('click', e=>{

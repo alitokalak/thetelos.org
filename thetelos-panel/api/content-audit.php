@@ -119,6 +119,31 @@ function ca_meta_patterns() {
     ];
 }
 
+/**
+ * ÜRETİM REDDİ: yazının tamamı, modelin "bunu yazamam" açıklaması.
+ *
+ * Bu bir satır kusuru değil, yazının tamamının geçersiz olmasıdır. Böyle bir
+ * yazıda satır silmek onarım değil — çöpün bir kısmını temizleyip kalanını
+ * yayında bırakmaktır. Bu yüzden ayrı bir bulgu türü: eylemi yayından
+ * kaldırmak ve yeniden üretmektir.
+ */
+function ca_check_refusal($html) {
+    $blocks = ca_blocks($html, false);
+    $head   = implode(' ', array_slice($blocks, 0, 3));   // reddin yeri hep baştır
+    $pats = [
+        '/\bi cannot (?:produce|write|provide|generate|create)\b/i',
+        '/\bi(?:\'m| am) (?:unable|not able) to (?:produce|write|provide|access)\b/i',
+        '/\bi do not have access to the (?:actual|full) text\b/i',
+        '/\bwithout the source material\b/i',
+        '/\bi need one of the following\b/i',
+        '/\bplease provide the (?:necessary|full) (?:material|text)\b/i',
+        '/\bif you (?:can )?(?:provide|share) the (?:text|book|material)\b/i',
+        '/\bi (?:don\'t|do not) have (?:the )?(?:book|text|access)\b/i',
+    ];
+    foreach ($pats as $p) if (preg_match($p, $head, $m)) return trim($m[0]);
+    return '';
+}
+
 /** Parça üretiminin teknik işaretleri metne sızmış mı? */
 function ca_check_part_markers($html) {
     // Teknik işaretler her yerde geçersiz — alıntı içinde bile bulunamaz.
@@ -269,6 +294,20 @@ if ($action === 'scan') {
         $words = ca_word_count($html);
         $flags = [];
 
+        // Üretim reddi yazının TAMAMINI geçersiz kılar; diğer kusurlar anlamsız
+        // kalır, o yüzden tek başına raporlanır ve onarım denenmez.
+        if ($s = ca_check_refusal($html)) {
+            $findings[] = [
+                'id' => (int) $r->ID, 'title' => $r->post_title,
+                'date' => substr((string)$r->post_date, 0, 10), 'words' => $words, 'sev' => 3,
+                'link' => get_permalink($r->ID),
+                'edit' => admin_url('post.php?post=' . (int)$r->ID . '&action=edit'),
+                'flags' => [[ 'code'=>'refusal', 'sev'=>3,
+                              'label'=>'ÜRETİM REDDİ — yazı geçersiz, yeniden üretilmeli', 'sample'=>$s ]],
+            ];
+            continue;
+        }
+
         if ($s = ca_check_part_markers($html)) $flags[] = ['code'=>'part_marker', 'sev'=>3, 'label'=>'Parça işareti sızmış',        'sample'=>$s];
         if ($s = ca_check_meta_talk($html))    $flags[] = ['code'=>'meta_talk',   'sev'=>3, 'label'=>'Model kendi süreciyle konuşmuş','sample'=>$s];
         if ($s = ca_check_prompt_leak($html))  $flags[] = ['code'=>'prompt_leak', 'sev'=>3, 'label'=>'Prompt talimatı metne yazılmış','sample'=>$s];
@@ -315,11 +354,37 @@ if ($action === 'scan') {
 
    Kural: bir <p> bloğunun TAMAMI kalıntıysa dönüştürülür; içine karışmışsa
    elleme. Tahminle metin bölmek, bozuk bırakmaktan daha kötü.               */
-/* Silinecek satır ölçütü, tespitle AYNI kuraldır (ca_is_meta_block):
-   blok baştan sona süreç cümlesi olmalı ve kısa olmalı. İki yerde iki farklı
-   ölçüt olsaydı, ekranın "sorun" dediğiyle onarımın sildiği şey ayrışırdı. */
+/**
+ * SİLME ölçütü, TESPİT ölçütünden dar olmak zorundadır.
+ *
+ * Tespit "burada bir tuhaflık var" diyebilir; silme ise geri dönüşsüzdür ve
+ * yanılma payı taşımamalıdır. Somut kaza: "(or the relevant chapters for
+ * Part 1 of 4)" ifadesi geçtiği için sağlam bir paragraf silinmişti — oysa
+ * bir cümlede "Part 1 of 4" geçmesi, o cümlenin makine artığı olduğunu
+ * KANITLAMAZ. Silme yalnızca hiçbir kitapta bulunamayacak kadar kesin
+ * işaretlerde yapılır; şüpheli olan ekranda gösterilir, insan karar verir.
+ */
+function ca_delete_patterns() {
+    return [
+        '/^%%\s*PART/i',                                   // teknik işaret
+        '/no summary,?\s*no closing paragraph/i',          // prompt kuralının aynısı
+        '/\bas an? (?:ai|language model|assistant)\b/i',
+        '/\b(?:apply|per) the closing rule\b/i',
+        '/\bdo not write a (?:conclusion|summary)\b/i',
+        '/\bword count\s*[:=]/i',
+        '/\btarget length\b/i',
+        '/\bi hope this (?:helps|summary)\b/i',
+        '/\blet me know if you\b/i',
+        '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
+    ];
+}
+
 function ca_leak_line($t) {
-    return ca_is_meta_block($t);
+    $b = trim($t, "*_ \t");
+    if ($b === '' || mb_strlen($b, 'UTF-8') > 200) return false;
+    if (ca_is_quotation($b)) return false;                 // kitabın sesi
+    foreach (ca_delete_patterns() as $p) if (preg_match($p, $b)) return true;
+    return false;
 }
 
 /**
@@ -329,7 +394,24 @@ function ca_leak_line($t) {
  *                     sağlam metni bozma riski taşıyor.
  *                     'all' = markdown dönüşümü de yapılır.
  */
+/**
+ * Onarımdan ÖNCE eski gövdeyi saklar.
+ *
+ * Yayındaki metni değiştiren her işlemin geri alınabilir olması gerekir;
+ * yoksa tek bir hatalı kural, düzeltilemez bir kayba dönüşür.
+ */
+function ca_backup_before($id, $old) {
+    if (get_post_meta($id, '_tls_audit_backup', true) === '') {
+        update_post_meta($id, '_tls_audit_backup', $old);
+        update_post_meta($id, '_tls_audit_backup_at', time());
+    }
+}
+
 function ca_repair($html, $mode = 'severe') {
+    // Yazının tamamı üretim reddiyse satır silmek işe yaramaz, zarar verir:
+    // saçmalığın bir kısmı temizlenip kalanı yayında kalır. Dokunma.
+    if (ca_check_refusal($html) !== '') return $html;
+
     $all = ($mode === 'all');
 
     $out = preg_replace_callback('/<p[^>]*>(.*?)<\/p>\s*/is', function ($m) use ($all) {
@@ -365,6 +447,83 @@ function ca_repair($html, $mode = 'severe') {
     return trim($out);
 }
 
+/* ── GERİ AL ──────────────────────────────────────────────────────────────
+   Onarımın sildiği metni geri getirir. İki kaynak:
+   1. _tls_audit_backup meta'sı (bundan sonraki onarımlar için)
+   2. WordPress revizyonu — meta yedeği yokken yapılmış onarımlar için tek
+      kurtarma yolu. Yalnız SİLME'yi geri alır: içeriği mevcuttan uzun olan
+      ve mevcut metnin tamamını kapsayan en yeni revizyon geri yüklenir.
+      Böylece elle yapılmış düzenlemeler yanlışlıkla geri alınmaz.            */
+if ($action === 'undo') {
+    global $wpdb;
+    $offset = max(0, (int)($_POST['offset'] ?? 0));
+    $limit  = max(10, min(100, (int)($_POST['limit'] ?? 40)));
+    $window = max(0, (int)($_POST['hours'] ?? 24)) * 3600;
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->posts}
+          WHERE post_type IN ('post','analysis') AND post_status IN ('publish','draft')"
+    );
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT ID, post_content FROM {$wpdb->posts}
+          WHERE post_type IN ('post','analysis') AND post_status IN ('publish','draft')
+       ORDER BY post_date DESC LIMIT %d OFFSET %d", $limit, $offset
+    ) );
+
+    $restored = 0; $samples = [];
+    foreach ($rows as $r) {
+        $id  = (int) $r->ID;
+        $cur = (string) $r->post_content;
+
+        // 1) Meta yedeği
+        $bak = get_post_meta($id, '_tls_audit_backup', true);
+        if (is_string($bak) && $bak !== '' && $bak !== $cur) {
+            wp_update_post(['ID' => $id, 'post_content' => $bak]);
+            delete_post_meta($id, '_tls_audit_backup');
+            delete_post_meta($id, '_tls_audit_backup_at');
+            $restored++;
+            if (count($samples) < 3) $samples[] = get_the_title($id);
+            continue;
+        }
+
+        // 2) Revizyon
+        $revs = wp_get_post_revisions($id, ['numberposts' => 6]);
+        if (!$revs) continue;
+        $cur_len  = mb_strlen(wp_strip_all_tags($cur));
+        $cur_norm = preg_replace('/\s+/u', ' ', wp_strip_all_tags($cur));
+
+        foreach ($revs as $rev) {
+            if ($window && (time() - strtotime($rev->post_date_gmt . ' UTC')) > $window) continue;
+            $rc = (string) $rev->post_content;
+            if ($rc === '' || $rc === $cur) continue;
+            if (mb_strlen(wp_strip_all_tags($rc)) <= $cur_len) continue;  // sadece silmeyi geri al
+
+            // Mevcut metnin her paragrafı revizyonda da var mı? (yalnız silinmiş mi)
+            $ok = true;
+            foreach (ca_blocks($cur, false) as $b) {
+                if (mb_strlen($b) < 40) continue;
+                if (strpos(preg_replace('/\s+/u', ' ', wp_strip_all_tags($rc)), mb_substr($b, 0, 60)) === false) { $ok = false; break; }
+            }
+            if (!$ok) continue;
+
+            wp_update_post(['ID' => $id, 'post_content' => $rc]);
+            $restored++;
+            if (count($samples) < 3) $samples[] = get_the_title($id);
+            break;
+        }
+    }
+
+    echo json_encode([
+        'ok'       => true,
+        'total'    => $total,
+        'seen'     => count($rows),
+        'restored' => $restored,
+        'samples'  => $samples,
+        'next'     => (count($rows) < $limit) ? -1 : $offset + count($rows),
+    ]);
+    exit;
+}
+
 /* Tüm siteyi gezip onarır: önce tarama yapılmasını beklemez, dilim dilim
    ilerler. İstemci next<0 gelene kadar çağırır. */
 if ($action === 'autofix') {
@@ -389,6 +548,7 @@ if ($action === 'autofix') {
         $new = ca_repair($old, $mode);
         if ($new === '' || $new === $old) continue;
         if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($old)) * 0.9) continue;
+        ca_backup_before((int)$r->ID, $old);
         wp_update_post(['ID' => (int)$r->ID, 'post_content' => $new]);
         $fixed++;
         if (count($samples) < 3) $samples[] = get_the_title($r->ID);
@@ -418,6 +578,7 @@ if ($action === 'fix') {
         if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($p->post_content)) * 0.9) {
             $skipped++; continue;
         }
+        ca_backup_before($id, $p->post_content);
         wp_update_post(['ID' => $id, 'post_content' => $new]);
         $fixed++;
     }
