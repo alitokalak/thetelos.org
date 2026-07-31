@@ -409,7 +409,8 @@ async function undo(){
 async function complete(){
   const sel = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
   const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
-  const ids = pool.filter(p => p.flags.some(f => f.code === 'truncated')).map(p => p.id);
+  // Kesilmiş ve kısa metinlerin ikisi de sürdürülerek düzelir.
+  const ids = pool.filter(p => p.compl).map(p => p.id);
 
   if(!ids.length){ $('ca-status').textContent = 'Tamamlanacak yarım yazı yok. (Satır seçersen sadece onlar işlenir.)'; return; }
   if(!confirm(ids.length + ' yazı kaldığı yerden TAMAMLANACAK.\n\n'+

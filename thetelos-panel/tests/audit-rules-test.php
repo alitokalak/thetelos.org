@@ -17,7 +17,7 @@ $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
           'ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
-          'ca_check_wrapup','ca_check_dup_heading','ca_repair_too_lossy','ca_repair'] as $fn) {
+          'ca_check_wrapup','ca_check_dup_heading','ca_drop_duplicates','ca_repair_too_lossy','ca_repair'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
 }
 
@@ -70,7 +70,7 @@ function r($label, $html, $expect) {
 }
 
 echo "\n── ONARIM ÇALIŞIYOR MU (değişmeli) ──\n";
-$body = '<p>Real body text that must stay in place.</p>';
+$body = str_repeat('<p>Real body text that must stay in place and be long enough.</p>', 6);
 r('Parça işareti silinir',  "$body\n<p>%%PART_END%%</p>", true);
 r('Prompt kuralı silinir',  "$body\n<p>*Here the work ends. No summary, no closing paragraph.*</p>", true);
 r('Sohbet artığı silinir',  "$body\n<p>I hope this helps! Let me know if you need anything else.</p>", true);
@@ -83,7 +83,21 @@ r('Yatay çizgi --- düzeltilir', "$body\n<p>---</p>", true);
 r('#### başlık düzeltilir',     "$body\n<p>#### The Islamic Declaration</p>", true);
 r('**kalın** düzeltilir',       "$body\n<p>**A Note on Method** follows here.</p>", true);
 
+/* EYLEM, KUSURLA ORANTILI OLMALI. Parça sınırında tekrarlanmış bir başlık ya
+   da paragraf mekanik bir fazlalıktır: ikinci kopya silinir, metinden bilgi
+   eksilmez. Yeniden üretim yalnızca metnin kendisi geçersizse (üretim reddi)
+   devreye girer. */
+echo "\n── TEKRARLAR: ONARILIR (yeniden üretim DEĞİL) ──\n";
+r('Aynı başlık ikinci kez silinir',
+  "$body<h3>The Stages of the Image</h3><p>x</p><h3>The Stages of the Image</h3>", true);
+$dup = '<p>' . str_repeat('A distinctive repeated paragraph about simulation and the hyperreal. ', 4) . '</p>';
+r('Aynı paragraf ikinci kez silinir', "$body{$dup}{$dup}", true);
+r('Sondaki özet paragrafı silinir',
+  "$body<p>In conclusion, this book shows that the argument holds throughout.</p>", true);
+
 echo "\n── ONARIM DOKUNMAMALI ──\n";
+r('Farklı başlıklar korunur',
+  "$body<h3>The Stages of the Image</h3><p>Body under it.</p><h3>The Orders of Simulacra</h3><p>Body under that one too.</p>", false);
 r('Temiz yazı birebir korunur',
   '<p>A genuine paragraph.</p><p>Another one, with <strong>bold</strong> and a <em>quote</em>.</p><h3>Section</h3><p>More.</p>', false);
 r('Alıntı korunur',        '<blockquote>“We will now proceed to refute these heretics.”</blockquote>', false);

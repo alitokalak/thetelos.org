@@ -363,8 +363,10 @@ if ($action === 'scan') {
         // HTML'e çevirmek bir BİÇİM işidir, mekanik ve geri alınabilir.
         // Yatay çizgi yüzünden 6000 kelimelik yazıyı yeniden yazdırmak saçmadır.
         $fixable  = (ca_repair($html, 'all') !== $html);
+        // Kesilmiş VE hedeften kısa metinlerin ikisi de "eksik metin"tir:
+        // ikisi de kaldığı yerden sürdürülerek düzelir, yeniden yazılmaz.
         $can_comp = false;
-        foreach ($flags as $f) if ($f['code'] === 'truncated') $can_comp = true;
+        foreach ($flags as $f) if ($f['code'] === 'truncated' || $f['code'] === 'short') $can_comp = true;
 
         $findings[] = [
             'id'      => (int) $r->ID,
@@ -478,6 +480,39 @@ function ca_repair_too_lossy($old, $new) {
     return (($o - $n) > 600) && ($n < $o * 0.9);
 }
 
+/**
+ * Parça sınırında tekrarlanmış blokları atar.
+ *
+ * İki parça birleşirken model bazen bir önceki bölümün başlığını ya da son
+ * paragrafını yeniden yazıyor. Bu MEKANİK bir fazlalıktır: ikinci kopya
+ * silinince metinden hiçbir bilgi eksilmez. Yazının tamamını yeniden
+ * yazdırmak için gerekçe değildir — eylem kusurla orantılı olmalıdır.
+ *
+ * Kısa başlıklar ("Conclusion") ve kısa paragraflar doğal olarak
+ * benzeşebileceği için eşik altındakilere dokunulmaz.
+ */
+function ca_drop_duplicates($html) {
+    $seen_h = []; $seen_p = [];
+    return preg_replace_callback('/<(h[1-6]|p)\b[^>]*>(.*?)<\/\1>\s*/is',
+        function ($m) use (&$seen_h, &$seen_p) {
+            $tag = strtolower($m[1]);
+            $txt = mb_strtolower(trim(preg_replace('/\s+/u', ' ', wp_strip_all_tags($m[2]))), 'UTF-8');
+            if ($txt === '') return $m[0];
+
+            if ($tag[0] === 'h') {
+                if (mb_strlen($txt, 'UTF-8') < 20) return $m[0];
+                if (isset($seen_h[$txt])) return '';        // aynı başlık ikinci kez
+                $seen_h[$txt] = 1;
+            } else {
+                if (mb_strlen($txt, 'UTF-8') < 160) return $m[0];
+                $k = mb_substr($txt, 0, 160, 'UTF-8');
+                if (isset($seen_p[$k])) return '';          // aynı paragraf ikinci kez
+                $seen_p[$k] = 1;
+            }
+            return $m[0];
+        }, $html);
+}
+
 function ca_repair($html, $mode = 'severe') {
     // Yazının tamamı üretim reddiyse satır silmek işe yaramaz, zarar verir:
     // saçmalığın bir kısmı temizlenip kalanı yayında kalır. Dokunma.
@@ -522,6 +557,14 @@ function ca_repair($html, $mode = 'severe') {
 
     // Blok dışında kalmış çıplak parça işaretleri
     $out = preg_replace('/%%\s*PART[^%]*%%/i', '', $out);
+
+    // Parça sınırında tekrarlanan başlık/paragraf fazlalıkları
+    if ($all) $out = ca_drop_duplicates($out);
+
+    // Sondaki özet paragrafı: prompt bunu yasaklıyor, silinince metin bitmiş olur
+    if ($all && ca_check_wrapup($out) !== '') {
+        $out = preg_replace('/<p[^>]*>(?:(?!<\/p>).)*<\/p>\s*$/is', '', rtrim($out));
+    }
 
     // Sonda öksüz kalmış başlık(lar): altında metin olmadığı için okuyucuya
     // hiçbir şey söylemiyorlar, silinince de metinden bir şey eksilmiyor.
