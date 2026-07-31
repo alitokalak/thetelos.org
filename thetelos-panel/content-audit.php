@@ -89,13 +89,25 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
 
     <div class="prog" id="prog"><i></i></div>
 
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:860px">
-      Bu ekran <b>hiçbir şeyi değiştirmez</b> — sadece bulur ve gösterir.
-      <b style="color:#e05252">Ağır</b> bulgular okuyucunun doğrudan göreceği kazalardır
-      (parça işareti sızması, modelin kendi süreciyle konuşması, yarım biten metin) —
-      bunlar öncelikli. <b style="color:#ff8c00">Orta</b> genelde yeniden üretimle düzelir.
-      <b>Hafif</b> olanlar üslup notu, acil değil.
-    </p>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:900px;line-height:1.7">
+      Tarama hiçbir şeyi değiştirmez. Her satırda <b>ne ile düzeleceği</b> rozetle yazar ve
+      <b>her buton yalnızca kendi rozetine dokunur</b> — satır seçersen sadece seçtiklerin işlenir.
+      <div style="margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
+        <span style="color:#3ec27a;white-space:nowrap">🔧 onarılabilir</span>
+        <span>artık satır / biçim / tekrar temizliği — <b>bedava ve hızlı</b>, önce bunu çalıştır</span>
+        <span style="color:#7aa2f7;white-space:nowrap">🩹 tamamlanabilir</span>
+        <span>metin eksik; kaldığı yerden sürdürülür — <b>API, ücretli</b>, kitap başına ~1 dk</span>
+        <span style="color:#c58af0;white-space:nowrap">♻️ yeniden üretilecek</span>
+        <span>metin baştan geçersiz (üretim reddi) — <b>API, ücretli</b>, en yavaşı</span>
+        <span style="color:var(--muted);white-space:nowrap">eylem gerekmiyor</span>
+        <span>yalnızca üslup notu var, dokunmaya değmez</span>
+      </div>
+      <div style="margin-top:8px">
+        Önem: <b style="color:#e05252">Ağır</b> okuyucunun gördüğü kaza (üretim reddi, prompt şablonu,
+        parça işareti, yarım metin) · <b style="color:#ff8c00">Orta</b> biçim/tekrar ·
+        <b>Hafif</b> üslup.
+      </div>
+    </div>
 
     <div class="filters" id="filters" style="display:none">
       <button data-f="all" class="on">Tümü</button>
@@ -273,7 +285,10 @@ async function autofix(){
   // deneyip 'fixable' bilgisini döndürüyor. Eskiden tür listesine bakılıyordu
   // ve tespit listesi silme listesinden geniş olduğu için buton "onar" deyip
   // hiçbir şey değiştirmiyordu.
-  const targets = all.filter(p => p.fixable).map(p => p.id);
+  // Satır seçiliyse yalnız onlar işlenir — diğer iki buton da böyle davranıyor.
+  const sel  = [...document.querySelectorAll('.ca-cb:checked')].map(cb => cb.closest('tr').dataset.id);
+  const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
+  const targets = pool.filter(p => p.fixable).map(p => p.id);
 
   if (all.length && !targets.length) {
     const trunc = all.filter(p => p.compl).length;
