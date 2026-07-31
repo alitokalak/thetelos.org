@@ -83,6 +83,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <button class="btn" id="btn-autofix">🔧 Onarılabilirleri Düzelt</button>
       <button class="btn" id="btn-complete">🩹 Yarım Kalanları Tamamla</button>
       <button class="btn" id="btn-regen">♻️ Kalanları Yeniden Üret</button>
+      <button class="btn" id="btn-draft" style="color:#e05252">⛔ Yayından Kaldır</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
     </div>
@@ -516,6 +517,32 @@ function regen() {
   } catch (e) {}
 })();
 
+/* Modelin tanımadığı kitaplar (üretim reddi) yeniden üretilemez: kitap ya
+   yoktur ya da yazar yanlıştır. Bunlar liste hatasıdır; tek doğru eylem
+   yazıyı yayından kaldırmaktır — silinmez, taslağa alınır. */
+async function draftPosts(){
+  const ids = selectedPool().filter(p => p.flags.some(f => f.code === 'refusal')).map(p => p.id);
+  if(!ids.length){ $('ca-status').textContent = 'Yayından kaldırılacak yazı yok (üretim reddi bulunamadı).'; return; }
+  if(!confirm(ids.length + ' yazı YAYINDAN KALDIRILACAK (taslağa alınır, silinmez).\n\n'+
+              'Bunlar modelin tanımadığı kitaplar — büyük ihtimalle listede olmaması gereken '+
+              'ya da yazarı yanlış kayıtlar. Devam?')) return;
+
+  $('btn-draft').disabled = true;
+  let done = 0;
+  for (let i = 0; i < ids.length; i += 20) {
+    const chunk = ids.slice(i, i + 20);
+    waiting('Yayından kaldırılıyor: ' + done + '/' + ids.length);
+    try {
+      const d = await post('action=draft&ids=' + chunk.join(','), 120000);
+      if (d && d.ok) done += (d.drafted || d.done || 0);
+    } catch(e) {}
+    waitingDone();
+  }
+  $('btn-draft').disabled = false;
+  $('ca-status').textContent = '✓ ' + done + ' yazı yayından kaldırıldı (taslak). Listeden çıkarmak için taramayı tekrar çalıştır.';
+}
+
+$('btn-draft').addEventListener('click', draftPosts);
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);
 $('btn-undo').addEventListener('click', undo);

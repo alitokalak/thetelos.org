@@ -753,6 +753,7 @@ function ca_complete_post($id) {
         $merged .= "\n" . $add;
     }
     wp_update_post(['ID' => $id, 'post_content' => $merged]);
+    do_action('litespeed_purge_post', $id);   // yoksa okuyucu eski metni görmeye devam eder
 
     return ['ok' => true, 'added' => str_word_count(wp_strip_all_tags($add))];
 }
@@ -826,12 +827,24 @@ function ca_regenerate_post($id, $target_words = 6000) {
     }
 
     $html = bw_md2html(bw_clean_content($acc));
+
+    // Model YİNE reddettiyse yeniden üretmenin faydası yok: kitap ya yok ya da
+    // yanlış atfedilmiş (ör. "Georgia O'Keeffe – Julia Kristeva" diye bir eser
+    // yoktur). Bu bir üretim sorunu değil LİSTE sorunudur; doğru eylem yazıyı
+    // yayından kaldırmaktır. Durumu ayrı bir kodla bildiriyoruz ki panel
+    // kullanıcıya bunu söyleyebilsin.
+    if (ca_check_refusal($html) !== '') {
+        return ['ok' => false, 'code' => 'refused_again',
+                'error' => 'model kitabı tanımıyor — kitap yok ya da yazar yanlış; yayından kaldırılmalı'];
+    }
+
     $words = str_word_count(wp_strip_all_tags($html));
     // Yeni metin eskisinden belirgin kısaysa değiştirme — iyileştirme değil kayıp olur.
     if ($words < 400) return ['ok' => false, 'error' => "üretilen metin çok kısa ({$words} kelime)"];
 
     ca_backup_before($id, $p->post_content);
     wp_update_post(['ID' => $id, 'post_content' => $html]);
+    do_action('litespeed_purge_post', $id);   // yoksa okuyucu eski metni görmeye devam eder
     return ['ok' => true, 'words' => $words];
 }
 
@@ -1137,6 +1150,7 @@ if ($action === 'fix') {
         if (ca_repair_too_lossy($p->post_content, $new)) { $skipped++; continue; }
         ca_backup_before($id, $p->post_content);
         wp_update_post(['ID' => $id, 'post_content' => $new]);
+        do_action('litespeed_purge_post', $id);
         $fixed++;
     }
     echo json_encode(['ok' => true, 'fixed' => $fixed, 'skipped' => $skipped]);
@@ -1150,6 +1164,7 @@ if ($action === 'draft') {
     foreach ($ids as $id) {
         if (get_post_status($id) !== 'publish') continue;
         wp_update_post(['ID' => $id, 'post_status' => 'draft']);
+        do_action('litespeed_purge_post', $id);
         $done++;
     }
     echo json_encode(['ok' => true, 'drafted' => $done]);
