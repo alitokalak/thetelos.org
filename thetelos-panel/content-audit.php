@@ -419,88 +419,109 @@ async function undo(){
   $('ca-status').textContent = '✓ Geri alma bitti — ' + restored + ' yazı eski haline döndü.';
 }
 
-/* Cümle ortasında kesilmiş yazıları API ile kaldığı yerden sürdürür.
-   Silmek yerine GERÇEKTEN tamamlar; ücretli üretim olduğu için seçilenle
-   sınırlı çalışır ve kaç kitaba dokunacağını önden söyler. */
-async function complete(){
-  const sel = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
-  const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
-  // Kesilmiş ve kısa metinlerin ikisi de sürdürülerek düzelir.
-  const ids = pool.filter(p => p.compl).map(p => p.id);
+/* ── ARKA PLAN İŞİ ────────────────────────────────────────────────────────
+   Cloudflare 100 saniyeden uzun isteği keser (HTTP 524) ve bir kitabın
+   üretimi bundan uzun sürer. Bu yüzden burada "bekle ve sonucu al" YOK:
+   iş sunucuda başlatılır, arka planda ilerler, ekran yalnızca durumu sorar.
+   Sorgular milisaniyeler sürdüğü için 524 imkânsızdır; sekmeyi kapatsan bile
+   iş sunucuda devam eder.                                                   */
+let poller = null;
 
-  if(!ids.length){ $('ca-status').textContent = 'Tamamlanacak yarım yazı yok. (Satır seçersen sadece onlar işlenir.)'; return; }
-  if(!confirm(ids.length + ' yazı kaldığı yerden TAMAMLANACAK.\n\n'+
-              'Her biri için API çağrısı yapılır — bu ücretli bir işlemdir.\n'+
-              'Metin silinmez, üstüne eksik kısım yazılır. Devam?')) return;
-
-  stop = false;
-  $('btn-complete').disabled = true; $('btn-stop').style.display = '';
-  $('prog').style.display = 'block';
-
-  let done = 0, fail = 0, words = 0;
-  // Kitap kitap: her istek tek üretim, ilerleme her kitapta görünür.
-  for (let i = 0; i < ids.length && !stop; i++) {
-    const chunk = [ids[i]];
-    const bk = (all.find(x => x.id === ids[i]) || {}).title || '';
-    waiting('Tamamlanıyor ' + (i+1) + '/' + ids.length + ' — ' + bk.slice(0, 45));
-    try {
-      const d = await post('action=complete&ids=' + chunk.join(','), 600000);
-      if (d && d.ok) { done += d.completed; fail += d.failed; words += d.words || 0;
-                       if (d.errors && d.errors.length) console.log('tamamlanamayanlar:', d.errors); }
-      else fail += chunk.length;
-    } catch(e) { fail += chunk.length; }
-    waitingDone();
-    $('prog').firstElementChild.style.width = Math.round((i + chunk.length)/ids.length*100)+'%';
-  }
-  $('btn-complete').disabled = false; $('btn-stop').style.display = 'none';
-  $('ca-status').textContent = '✓ ' + done + ' yazı tamamlandı, ' + words.toLocaleString('tr') +
-    ' kelime eklendi' + (fail ? ', ' + fail + ' başarısız (ayrıntı için konsol)' : '') + '.';
+function jobLabel(j) {
+  const total = (j.ids || []).length;
+  const kind  = j.kind === 'regen' ? 'Yeniden üretiliyor' : 'Tamamlanıyor';
+  if (j.status === 'done')    return '✓ Bitti — ' + j.done + ' yazı, ' + (j.words||0).toLocaleString('tr') +
+                                     ' kelime' + (j.failed ? ', ' + j.failed + ' başarısız' : '') + '.';
+  if (j.status === 'stopped') return '■ Durduruldu — ' + j.done + '/' + total + ' işlendi.';
+  return kind + ' ' + (j.pos + 1) + '/' + total + ' — ' + String(j.current || '').slice(0, 45) +
+         (j.failed ? '  (' + j.failed + ' başarısız)' : '');
 }
 
-/* Onarımla ve tamamlamayla düzelmeyen yazıları sıfırdan yazdırır — üretimdeki
-   prompt ve parça düzeneğinin aynısıyla. Eski gövde yedeklenir; yeni metin
-   gelmezse eskisine dokunulmaz. */
-async function regen(){
-  const sel  = [...document.querySelectorAll('.ca-cb:checked')].map(cb=>cb.closest('tr').dataset.id);
-  const pool = sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
-  // sev1 (üslup notu) tek başına yeniden üretim gerekçesi değil.
-  const ids  = pool.filter(p => !p.fixable && !p.compl && p.sev >= 2).map(p => p.id);
+function jobPoll() {
+  clearInterval(poller);
+  poller = setInterval(async () => {
+    let j;
+    try { j = await post('action=job_status', 20000); } catch (e) { return; }
+    if (!j || !j.ok || j.none) return;
 
-  if(!ids.length){ $('ca-status').textContent = 'Yeniden üretilecek yazı yok.'; return; }
-  if(!confirm(ids.length + ' yazı SIFIRDAN yeniden yazılacak.\n\n'+
-              'Her biri için birden çok API çağrısı yapılır — bu ücretli ve uzun sürer.\n'+
-              'Eski metin yedeklenir, "Onarımı Geri Al" ile dönülebilir.\n\n'+
-              'Devam edilsin mi?')) return;
+    $('prog').style.display = 'block';
+    const total = (j.ids || []).length || 1;
+    $('prog').firstElementChild.style.width = Math.round(j.pos / total * 100) + '%';
+    $('ca-status').textContent = jobLabel(j);
+    if (j.errors && j.errors.length) console.log('hatalar:', j.errors);
 
-  stop = false;
-  $('btn-regen').disabled = true; $('btn-stop').style.display = '';
-  $('prog').style.display = 'block';
-
-  let done = 0, fail = 0, words = 0, lastErr = '';
-  for (let i = 0; i < ids.length && !stop; i++) {
-    const chunk = [ids[i]];
-    const bk = (all.find(x => x.id === ids[i]) || {}).title || '';
-    waiting('Yeniden üretiliyor ' + (i+1) + '/' + ids.length + ' — ' + bk.slice(0, 45));
-    try {
-      const d = await post('action=regen&words=6000&ids=' + chunk.join(','), 900000);
-      if (d && d.ok) { done += d.regenerated; fail += d.failed; words += d.words || 0;
-                       if (d.errors && d.errors.length) { lastErr = lastErr || d.errors[0]; console.log(d.errors); } }
-      else { fail += chunk.length; lastErr = lastErr || 'bilinmeyen yanıt'; }
-    } catch(e) { fail += chunk.length; lastErr = lastErr || e.message; }
-    waitingDone();
-    $('prog').firstElementChild.style.width = Math.round((i+chunk.length)/ids.length*100)+'%';
-  }
-  $('btn-regen').disabled = false; $('btn-stop').style.display = 'none';
-  $('ca-status').textContent = '✓ ' + done + ' yazı yeniden üretildi, ' + words.toLocaleString('tr') +
-    ' kelime' + (fail ? ' — ' + fail + ' başarısız: ' + lastErr : '') + '.';
+    if (j.status !== 'running') {
+      clearInterval(poller);
+      $('btn-complete').disabled = false;
+      $('btn-regen').disabled    = false;
+      $('btn-stop').style.display = 'none';
+    }
+  }, 4000);
 }
+
+async function startJob(kind, ids, onay) {
+  if (!ids.length) { $('ca-status').textContent = 'İşlenecek yazı yok.'; return; }
+  if (!confirm(onay)) return;
+
+  $('btn-complete').disabled = true;
+  $('btn-regen').disabled    = true;
+  $('btn-stop').style.display = '';
+  $('ca-status').textContent  = 'İş başlatılıyor…';
+
+  try {
+    const d = await post('action=job_start&kind=' + kind + '&ids=' + ids.join(','), 30000);
+    if (!d || !d.ok) throw new Error((d && d.error) || 'başlatılamadı');
+    $('ca-status').textContent = 'Arka planda başladı — ' + d.total + ' yazı. Sekmeyi kapatabilirsin.';
+    jobPoll();
+  } catch (e) {
+    $('btn-complete').disabled = false;
+    $('btn-regen').disabled    = false;
+    $('btn-stop').style.display = 'none';
+    $('ca-status').textContent = '✗ Başlatılamadı: ' + e.message;
+  }
+}
+
+function selectedPool() {
+  const sel = [...document.querySelectorAll('.ca-cb:checked')].map(cb => cb.closest('tr').dataset.id);
+  return sel.length ? all.filter(p => sel.includes(String(p.id))) : all;
+}
+
+function complete() {
+  const ids = selectedPool().filter(p => p.compl).map(p => p.id);
+  startJob('complete', ids,
+    ids.length + ' yazı kaldığı yerden TAMAMLANACAK.\n\n' +
+    'Arka planda çalışır, sekmeyi kapatabilirsin. API kullanır (ücretli).\n' +
+    'Eski metin yedeklenir, "Onarımı Geri Al" ile dönülebilir.\n\nDevam?');
+}
+
+function regen() {
+  const ids = selectedPool().filter(p => !p.fixable && !p.compl && p.sev >= 2).map(p => p.id);
+  startJob('regen', ids,
+    ids.length + ' yazı SIFIRDAN yeniden yazılacak.\n\n' +
+    'Arka planda çalışır, sekmeyi kapatabilirsin. API kullanır (ücretli, yavaş).\n' +
+    'Eski metin yedeklenir.\n\nDevam?');
+}
+
+/* Sayfa açılışında süren bir iş varsa kendiliğinden takibe başla. */
+(async () => {
+  try {
+    const j = await post('action=job_status', 15000);
+    if (j && j.ok && !j.none && j.status === 'running') {
+      $('btn-complete').disabled = true;
+      $('btn-regen').disabled    = true;
+      $('btn-stop').style.display = '';
+      $('ca-status').textContent = jobLabel(j);
+      jobPoll();
+    }
+  } catch (e) {}
+})();
 
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);
 $('btn-undo').addEventListener('click', undo);
 $('btn-complete').addEventListener('click', complete);
 $('btn-regen').addEventListener('click', regen);
-$('btn-stop').addEventListener('click', ()=>{ stop = true; });
+$('btn-stop').addEventListener('click', ()=>{ stop = true; post('action=job_stop').catch(()=>{}); });
 $('btn-csv').addEventListener('click', csv);
 $('filters').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;

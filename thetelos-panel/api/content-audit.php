@@ -16,8 +16,12 @@
 session_start();
 require_once dirname(__DIR__) . '/config.php';
 require_once __DIR__ . '/_content-format.php';   // bw_clean_content / bw_md2html
-if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
-session_write_close();
+/* Yetki: ya panel oturumu ya da worker'ın kendini ateşlerken kullandığı dahili
+   token. Arka plan worker'ı tarayıcıdan gelmediği için çerezi yoktur. */
+$ca_itok = hash('sha256', WP_APP_PASS . '|tls-audit-job');
+$ca_internal = isset($_POST['_itok']) && hash_equals($ca_itok, (string) $_POST['_itok']);
+if (empty($_SESSION['tls_auth']) && !$ca_internal) { http_response_code(401); exit; }
+session_write_close();   // uzun süren worker, panelin diğer isteklerini kilitlemesin
 header('Content-Type: application/json');
 header('Cache-Control: no-cache, no-store, must-revalidate');
 header('X-LiteSpeed-Cache-Control: no-cache');
@@ -845,6 +849,148 @@ if ($action === 'regen') {
         else { $fail++; if (count($errors) < 3) $errors[] = get_the_title($id) . ': ' . $r['error']; }
     }
     echo json_encode(['ok' => true, 'regenerated' => $done, 'failed' => $fail, 'words' => $words, 'errors' => $errors]);
+    exit;
+}
+
+/* ── ARKA PLAN İŞİ ────────────────────────────────────────────────────────
+   NEDEN: Cloudflare 100 saniyeden uzun süren isteği keser (HTTP 524). Bir
+   kitabın üretimi 1-3 dakika sürdüğü için "bekle ve sonucu al" modeli burada
+   ÇALIŞAMAZ — tarayıcı ya da PHP zaman aşımını uzatmak bir şey değiştirmez,
+   kesen Cloudflare'dir.
+
+   Çözüm, toplu üretimde zaten kullanılan desen: istek ATEŞLENİR, beklenmez.
+   İş bir dosyaya yazılır, worker arka planda (ignore_user_abort ile) kitapları
+   tek tek işler, tarayıcı yalnızca ilerlemeyi sorar. Sorgu istekleri
+   milisaniyeler sürdüğü için 524 imkânsız hale gelir.                        */
+
+function ca_job_path() { return dirname(__DIR__) . '/jobs/.audit-job.json'; }
+
+function ca_job_read() {
+    $j = @file_get_contents(ca_job_path());
+    $d = $j ? json_decode($j, true) : null;
+    return is_array($d) ? $d : null;
+}
+
+/** Atomik yaz: yarıda kesilse bile dosya bozulmaz (geçici dosya + rename). */
+function ca_job_write($job) {
+    $p   = ca_job_path();
+    @mkdir(dirname($p), 0775, true);
+    $tmp = $p . '.tmp.' . getmypid();
+    if (@file_put_contents($tmp, json_encode($job, JSON_UNESCAPED_UNICODE)) === false) return false;
+    return @rename($tmp, $p);
+}
+
+/** Worker'ı ateşle ve BEKLEME — asıl iş arka planda sürer. */
+function ca_job_spawn() {
+    $token  = hash('sha256', WP_APP_PASS . '|tls-audit-job');
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $path   = strtok($_SERVER['REQUEST_URI'] ?? '/thetelos-panel/api/content-audit.php', '?');
+    $ch = curl_init($scheme . '://' . $host . $path);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => http_build_query(['action' => 'job_run', '_itok' => $token]),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT        => 2,     // yalnız tetikle; worker arka planda devam eder
+        CURLOPT_NOSIGNAL       => 1,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => 0,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
+}
+
+/* İşi kur ve worker'ı ateşle — anında döner. */
+if ($action === 'job_start') {
+    $ids  = array_values(array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? '')))));
+    $kind = ($_POST['kind'] ?? 'complete') === 'regen' ? 'regen' : 'complete';
+    if (!$ids) { echo json_encode(['ok' => false, 'error' => 'liste boş']); exit; }
+
+    ca_job_write([
+        'kind'    => $kind,
+        'ids'     => $ids,
+        'pos'     => 0,
+        'done'    => 0,
+        'failed'  => 0,
+        'words'   => 0,
+        'current' => '',
+        'errors'  => [],
+        'status'  => 'running',
+        'started' => time(),
+        'beat'    => time(),
+    ]);
+    ca_job_spawn();
+    echo json_encode(['ok' => true, 'total' => count($ids), 'kind' => $kind]);
+    exit;
+}
+
+/* İlerleme sorgusu — hızlı, 524 riski yok. */
+if ($action === 'job_status') {
+    $job = ca_job_read();
+    if (!$job) { echo json_encode(['ok' => true, 'none' => true]); exit; }
+
+    // Worker öldüyse (90 sn'dir nabız yok) kendiliğinden yeniden ateşle.
+    if ($job['status'] === 'running' && (time() - (int)$job['beat']) > 90) {
+        ca_job_spawn();
+    }
+    echo json_encode(['ok' => true] + $job);
+    exit;
+}
+
+/* ── WORKER ──
+   Tarayıcı bu isteği ateşler ve beklemez. Cloudflare bağlantıyı 100 sn'de
+   kesse bile ignore_user_abort sayesinde süreç devam eder. Süre bütçesi
+   dolunca kendi halefini ateşleyip çıkar; böylece sunucu tarafındaki hiçbir
+   sınır (max_execution_time, LiteSpeed) işi yarıda bırakmaz.               */
+if ($action === 'job_run') {
+    if (!$ca_internal) { http_response_code(403); exit; }
+    @set_time_limit(0);
+    @ini_set('max_execution_time', '0');
+
+    $started = time();
+    $budget  = 240;   // sn — bu süre dolunca halef ateşlenir
+
+    while (true) {
+        $job = ca_job_read();
+        if (!$job || $job['status'] !== 'running') break;
+        if ($job['pos'] >= count($job['ids'])) { $job['status'] = 'done'; ca_job_write($job); break; }
+
+        $id  = (int) $job['ids'][ $job['pos'] ];
+        $job['current'] = get_the_title($id) ?: ('#' . $id);
+        $job['beat']    = time();
+        ca_job_write($job);
+
+        $r = ($job['kind'] === 'regen') ? ca_regenerate_post($id) : ca_complete_post($id);
+
+        // Dosyayı yeniden oku: kullanıcı bu arada "durdur" demiş olabilir.
+        $job = ca_job_read();
+        if (!$job) break;
+        $job['pos']++;
+        $job['beat'] = time();
+        if (!empty($r['ok'])) {
+            $job['done']++;
+            $job['words'] += (int) ($r['words'] ?? $r['added'] ?? 0);
+        } else {
+            $job['failed']++;
+            if (count($job['errors']) < 10) {
+                $job['errors'][] = (get_the_title($id) ?: $id) . ': ' . ($r['error'] ?? 'bilinmeyen');
+            }
+        }
+        if ($job['pos'] >= count($job['ids'])) $job['status'] = 'done';
+        ca_job_write($job);
+
+        if ($job['status'] !== 'running') break;
+        if (time() - $started >= $budget) { ca_job_spawn(); break; }   // halefe devret
+    }
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+if ($action === 'job_stop') {
+    $job = ca_job_read();
+    if ($job) { $job['status'] = 'stopped'; ca_job_write($job); }
+    echo json_encode(['ok' => true]);
     exit;
 }
 
