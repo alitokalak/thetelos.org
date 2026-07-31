@@ -142,7 +142,9 @@ function ca_check_truncated($html) {
     // Sondaki markdown vurgu işaretleri (*, _) noktalamayı gizleyebiliyor
     $t    = rtrim($t, "*_ \t");
     $last = mb_substr($t, -1, 1, 'UTF-8');
-    if (mb_strpos('.!?"\'»)”’…', $last, 0, 'UTF-8') === false) {
+    // Kapanış parantezi/köşeli parantez de geçerli bir bitiş: alıntı ya da
+    // künye ile biten metinler ("…Soviet Union.]") yarım sanılıyordu.
+    if (mb_strpos('.!?"\'»)]}”’…', $last, 0, 'UTF-8') === false) {
         return '…' . mb_substr($t, -60, 60, 'UTF-8');
     }
     return '';
@@ -279,8 +281,17 @@ function ca_leak_line($t) {
     return ca_is_meta_block($t);
 }
 
-function ca_repair($html) {
-    $out = preg_replace_callback('/<p[^>]*>(.*?)<\/p>\s*/is', function ($m) {
+/**
+ * @param string $mode 'severe' = yalnız AĞIR kusurlar (süreç satırı, parça
+ *                     işareti). Markdown kalıntısına dokunulmaz: onlar okuma
+ *                     akışını bozmuyor, sayıları binlerce ve her dokunuş
+ *                     sağlam metni bozma riski taşıyor.
+ *                     'all' = markdown dönüşümü de yapılır.
+ */
+function ca_repair($html, $mode = 'severe') {
+    $all = ($mode === 'all');
+
+    $out = preg_replace_callback('/<p[^>]*>(.*?)<\/p>\s*/is', function ($m) use ($all) {
         $inner = trim($m[1]);
         $text  = trim(wp_strip_all_tags($inner));
         // Vurgu yıldızlarını sıyırıp bak: "*Here the work ends…*" da yakalansın
@@ -289,20 +300,26 @@ function ca_repair($html) {
         if ($bare === '' ) return '';
         if (ca_leak_line($bare)) return '';                       // süreç satırı → sil
 
-        if (preg_match('/^(#{1,6})\s+(.+)$/u', $bare, $h)) {      // başlık kalıntısı
-            $lvl = min(6, max(2, strlen($h[1])));                 // h1 tema başlığı, kullanma
-            $t   = trim($h[2], "* \t");
-            return "<h{$lvl}>{$t}</h{$lvl}>\n";
+        if ($all) {
+            if (preg_match('/^(#{1,6})\s+(.+)$/u', $bare, $h)) {  // başlık kalıntısı
+                $lvl = min(6, max(2, strlen($h[1])));             // h1 tema başlığı, kullanma
+                $t   = trim($h[2], "* \t");
+                return "<h{$lvl}>{$t}</h{$lvl}>\n";
+            }
+            if (preg_match('/^(?:-{3,}|\*{3,}|_{3,})$/', $bare)) return "<hr>\n";
         }
-        if (preg_match('/^(?:-{3,}|\*{3,}|_{3,})$/', $bare)) return "<hr>\n";   // yatay çizgi
 
-        // Blok içindeki tekil parça işaretleri
+        // Parça işaretleri her modda temizlenir (okuyucuya görünen teknik artık)
         $clean = preg_replace('/%%\s*PART[^%]*%%/i', '', $inner);
-        // Eşleşen **kalın** kalıntısı
-        $clean = preg_replace('/\*\*([^*\n]{1,200}?)\*\*/', '<strong>$1</strong>', $clean);
+        if ($all) {
+            $clean = preg_replace('/\*\*([^*\n]{1,200}?)\*\*/', '<strong>$1</strong>', $clean);
+        }
         $clean = trim($clean);
         return $clean === '' ? '' : "<p>{$clean}</p>\n";
     }, $html);
+
+    // Blok dışında kalmış çıplak parça işaretleri
+    $out = preg_replace('/%%\s*PART[^%]*%%/i', '', $out);
 
     return trim($out);
 }
@@ -313,6 +330,7 @@ if ($action === 'autofix') {
     global $wpdb;
     $offset = max(0, (int)($_POST['offset'] ?? 0));
     $limit  = max(10, min(100, (int)($_POST['limit'] ?? 40)));
+    $mode   = ($_POST['mode'] ?? 'severe') === 'all' ? 'all' : 'severe';
 
     $total = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$wpdb->posts}
@@ -327,7 +345,7 @@ if ($action === 'autofix') {
     $fixed = 0; $samples = [];
     foreach ($rows as $r) {
         $old = (string) $r->post_content;
-        $new = ca_repair($old);
+        $new = ca_repair($old, $mode);
         if ($new === '' || $new === $old) continue;
         if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($old)) * 0.9) continue;
         wp_update_post(['ID' => (int)$r->ID, 'post_content' => $new]);
@@ -348,11 +366,12 @@ if ($action === 'autofix') {
 
 if ($action === 'fix') {
     $ids   = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
+    $mode  = ($_POST['mode'] ?? 'severe') === 'all' ? 'all' : 'severe';
     $fixed = 0; $skipped = 0;
     foreach ($ids as $id) {
         $p = get_post($id);
         if (!$p || $p->post_type === 'revision') { $skipped++; continue; }
-        $new = ca_repair((string)$p->post_content);
+        $new = ca_repair((string)$p->post_content, $mode);
         if ($new === '' || $new === $p->post_content) { $skipped++; continue; }
         // Güvenlik: onarım metnin belirgin bir kısmını yutuyorsa uygulama.
         if (mb_strlen(wp_strip_all_tags($new)) < mb_strlen(wp_strip_all_tags($p->post_content)) * 0.9) {

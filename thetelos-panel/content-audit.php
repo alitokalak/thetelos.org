@@ -79,7 +79,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
                style="width:82px;padding:4px 6px;margin-left:4px">
         kelime
       </label>
-      <button class="btn" id="btn-autofix">🔧 Otomatik Onar (tüm site)</button>
+      <button class="btn" id="btn-autofix">🔧 Ağır Hataları Onar</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
     </div>
@@ -243,12 +243,52 @@ async function scan(){
 /* Otomatik onarım: tarama beklemeden tüm siteyi gezer. Süreç satırlarını
    siler, markdown kalıntısını HTML'e çevirir. Yarım biten / kısa içeriğe
    dokunmaz — onlar yeniden üretim ister. */
+/* Ağır bulgulardan SADECE onarılabilir olanlar. "Yarım bitmiş" ağır ama
+   onarılamaz — eksik metni uydurmak onarım değil, tahrifat olur. */
+const FIXABLE = ['prompt_leak','meta_talk','part_marker'];
+
 async function autofix(){
-  if(!confirm('Tüm yayındaki yazılar taranıp onarılacak:\n\n'+
-              '• prompt/süreç satırları silinir\n'+
-              '• "#### Başlık" ve "---" gerçek HTML\'e çevrilir\n'+
-              '• parça işaretleri temizlenir\n\n'+
-              'Yarım biten ve kısa içeriğe dokunulmaz. Devam?')) return;
+  // Tarama yapıldıysa doğrudan o kayıtlara git: 7500 yazıyı baştan gezmek
+  // yerine ~50 yazıya dokunulur, işlem saniyeler sürer.
+  const targets = all
+    .filter(p => p.sev === 3 && p.flags.some(f => FIXABLE.includes(f.code)))
+    .map(p => p.id);
+
+  if (all.length && !targets.length) {
+    $('ca-status').textContent = '✓ Onarılabilir ağır bulgu yok. (Yarım biten yazılar yeniden üretim ister.)';
+    return;
+  }
+
+  if (targets.length) {
+    if(!confirm(targets.length + ' yazıda ağır kusur onarılacak:\n\n'+
+                '• prompt/süreç satırları silinir\n'+
+                '• parça işaretleri temizlenir\n\n'+
+                'Markdown kalıntısına, yarım biten ve kısa içeriğe DOKUNULMAZ. Devam?')) return;
+
+    stop = false;
+    $('btn-autofix').disabled = true;
+    $('btn-stop').style.display = '';
+    let done = 0, skipped = 0;
+    for (let i = 0; i < targets.length && !stop; i += 20) {
+      const chunk = targets.slice(i, i + 20);
+      waiting('Onarılıyor: ' + done + '/' + targets.length);
+      try {
+        const d = await post('action=fix&mode=severe&ids=' + chunk.join(','), 90000);
+        if (d && d.ok) { done += d.fixed; skipped += d.skipped; }
+      } catch(e) { skipped += chunk.length; }
+      waitingDone();
+    }
+    $('btn-autofix').disabled = false;
+    $('btn-stop').style.display = 'none';
+    $('ca-status').textContent = '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
+                                 '. Doğrulamak için taramayı tekrar çalıştır.';
+    return;
+  }
+
+  // Tarama yapılmadıysa: tüm siteyi gez, yine yalnız ağır kusurları onar.
+  if(!confirm('Henüz tarama yapılmadı. Tüm site gezilip SADECE ağır kusurlar onarılacak '+
+              '(prompt/süreç satırları, parça işaretleri). Markdown kalıntısına ve yarım '+
+              'biten içeriğe dokunulmaz. Devam?')) return;
 
   stop = false;
   $('btn-autofix').disabled = true;
@@ -263,7 +303,7 @@ async function autofix(){
       const lim = [40, 15, 5][attempt - 1];
       waiting('Onarılıyor: ' + seen + '/' + (total || '?') + ' — ' + fixed + ' düzeltildi');
       try {
-        d = await post('action=autofix&offset='+offset+'&limit='+lim, 90000);
+        d = await post('action=autofix&mode=severe&offset='+offset+'&limit='+lim, 90000);
         if (d && d.ok) break;
         d = null;
       } catch(e) { d = null; }
