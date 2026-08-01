@@ -17,7 +17,7 @@ $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
           'ca_prompt_dump_patterns','ca_check_prompt_dump','ca_cut_prompt_dump','ca_marker_regex','ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
-          'ca_check_wrapup','ca_check_dup_heading','ca_drop_duplicates','ca_repair_too_lossy','ca_repair'] as $fn) {
+          'ca_check_wrapup','ca_check_dup_heading','ca_drop_duplicates','ca_strip_meta_sentences','ca_repair_too_lossy','ca_repair'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
 }
 
@@ -134,6 +134,24 @@ function pd($label, $html, $expect_clean) {
 }
 pd('Kesildikten sonra iz kalmaz', "$body$dump", true);
 pd('Gövde yoksa dokunulmaz (yeniden üretilir)', "<p>Short.</p>$dump", false);
+
+/* Paragraf İÇİNDEKİ sohbet artığı: paragrafı silmek yanlış, cümleyi
+   bırakmak da. Yalnız o cümle atılır, komşu cümleler korunur. */
+echo "\n── PARAGRAF İÇİ SOHBET ARTIĞI ──\n";
+function ms($label, $html, $mustGo, $mustStay) {
+    global $ok, $bad;
+    $out  = ca_repair($html, 'all');
+    $pass = (strpos($out, $mustGo) === false) && (strpos($out, $mustStay) !== false);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label,
+        $pass ? '→ cümle atıldı, gerisi duruyor' : '→ YANLIŞ');
+}
+ms('Cümle atılır, paragraf kalır',
+   "$body<p>The argument closes on this note. I hope this helps! The final section returns to the theme.</p>",
+   'I hope this helps', 'The final section returns');
+ms('"let me know" cümlesi atılır',
+   "$body<p>Kristeva ends with a question. Let me know if you need anything else. The reader is left alone.</p>",
+   'Let me know if you', 'The reader is left alone');
 
 echo "\n── ONARIM DOKUNMAMALI ──\n";
 r('Şablon öncesi gerçek metin korunur',

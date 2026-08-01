@@ -600,6 +600,38 @@ function ca_drop_duplicates($html) {
         }, $html);
 }
 
+/**
+ * Paragrafın İÇİNDEKİ süreç cümlesini çıkarır.
+ *
+ * "I hope this helps" ya da "let me know if you need anything" gibi cümleler
+ * sağlam bir paragrafın ortasında duruyorsa paragrafı silmek yanlış olur —
+ * ama cümleyi bırakmak da olmaz. Bu yüzden yalnız O CÜMLE atılır.
+ *
+ * Liste bilerek dar: bunlar hiçbir kitap özetinde bulunamayacak, sohbet
+ * artığı cümlelerdir. Şüpheli olan hiçbir kalıp buraya girmez.
+ */
+function ca_strip_meta_sentences($inner) {
+    $hard = [
+        '/\bas an? (?:ai|language model|assistant)\b/i',
+        '/\bi hope this (?:helps|summary)\b/i',
+        '/\blet me know if you\b/i',
+        '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
+        '/\bword count\s*[:=]/i',
+        '/\bper your (?:request|instructions)\b/i',
+    ];
+    $parts = preg_split('/(?<=[.!?])\s+/u', (string) $inner, -1, PREG_SPLIT_NO_EMPTY);
+    if (!$parts) return $inner;
+
+    $kept = []; $drop = false;
+    foreach ($parts as $sent) {
+        $hit = false;
+        foreach ($hard as $p2) if (preg_match($p2, wp_strip_all_tags($sent))) { $hit = true; break; }
+        if ($hit) { $drop = true; continue; }
+        $kept[] = $sent;
+    }
+    return $drop ? trim(implode(' ', $kept)) : $inner;
+}
+
 function ca_repair($html, $mode = 'severe') {
     // Yazının tamamı üretim reddiyse satır silmek işe yaramaz, zarar verir:
     // saçmalığın bir kısmı temizlenip kalanı yayında kalır. Dokunma.
@@ -613,11 +645,25 @@ function ca_repair($html, $mode = 'severe') {
 
     $out = preg_replace_callback('/<p[^>]*>(.*?)<\/p>\s*/is', function ($m) use ($all) {
         $inner = trim($m[1]);
+        $orig  = $inner;                 // karşılaştırma HEP orijinale göre yapılır
         $text  = trim(wp_strip_all_tags($inner));
         // Vurgu yıldızlarını sıyırıp bak: "*Here the work ends…*" da yakalansın
         $bare  = trim($text, "*_ \t");
 
         if ($bare === '' ) return '';
+
+        /* ÖNCE cümle düzeyinde temizlik, SONRA blok kuralı.
+           Tersi sırada, sağlam bir paragrafın ortasındaki tek bir sohbet
+           cümlesi ("I hope this helps") paragrafın TAMAMINI sildiriyordu. */
+        if ($all) {
+            $s2 = ca_strip_meta_sentences($inner);
+            if ($s2 !== $inner) {
+                $inner = $s2;
+                $bare  = trim(trim(wp_strip_all_tags($inner)), "*_ \t");
+                if ($bare === '') return '';                      // blok baştan sona artıkmış
+            }
+        }
+
         if (ca_leak_line($bare)) return '';                       // süreç satırı → sil
 
         if ($all) {
@@ -639,10 +685,9 @@ function ca_repair($html, $mode = 'severe') {
 
         // DEĞİŞMEDİYSE OLDUĞU GİBİ BIRAK. Paragrafı yeniden inşa etmek (boşluk,
         // satır sonu) içerik aynı kalsa bile metni farklılaştırıyordu; bu yüzden
-        // sağlam yazılar da "onarılabilir" görünüyor ve gereksiz yere yeniden
-        // kaydediliyordu. Karşılaştırmanın anlamlı olması için dokunulmayan blok
-        // birebir korunur.
-        if ($clean === $inner) return $m[0];
+        // sağlam yazılar da "onarılabilir" görünüyordu. Karşılaştırma ORİJİNALE
+        // göre yapılır: aradaki cümle temizliği de bir değişikliktir.
+        if ($clean === $orig) return $m[0];
         return "<p>{$clean}</p>\n";
     }, $html);
 
@@ -891,8 +936,19 @@ function ca_regenerate_post($id, $target_words = 6000) {
     }
 
     $words = str_word_count(wp_strip_all_tags($html));
-    // Yeni metin eskisinden belirgin kısaysa değiştirme — iyileştirme değil kayıp olur.
     if ($words < 400) return ['ok' => false, 'error' => "üretilen metin çok kısa ({$words} kelime)"];
+
+    /* YENİ METİN ESKİSİNDEN KISA OLAMAZ.
+       Somut kayıp: 12.591 kelimelik "Autobiography of a Yogi" yerine 643
+       kelimelik bir metin yazılıp üstüne kaydedildi. "En az 400 kelime"
+       ölçütü tek başına yetmiyor — ölçüt ESKİ METNE GÖRE olmalı. Eski metin
+       zaten geçersizse (üretim reddi) bu kural aranmaz, çünkü orada
+       korunacak bir şey yoktur. */
+    $old_words = str_word_count(wp_strip_all_tags((string) $p->post_content));
+    if (ca_check_refusal((string) $p->post_content) === '' && $words < $old_words * 0.7) {
+        return ['ok' => false,
+                'error' => "yeni metin eskisinden kısa ({$words} < {$old_words} kelime) — değiştirilmedi"];
+    }
 
     ca_backup_before($id, $p->post_content);
     wp_update_post(['ID' => $id, 'post_content' => $html]);
