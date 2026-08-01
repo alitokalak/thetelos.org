@@ -284,10 +284,33 @@ $write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_
     return strlen($chunk);
 };
 
+/**
+ * Bağlantıyı canlı tutan nabız.
+ *
+ * NEDEN AYRI: yukarıdaki ping yalnızca $write_fn içinde atılıyordu, o da
+ * ancak VERİ GELDİĞİNDE çalışır. Model ilk kelimeyi yazana kadar düşünüyorsa
+ * (uzun promptlarda 1-2 dakika sürebiliyor) tarayıcıya tek bayt gitmez ve
+ * Cloudflare 100 saniyede bağlantıyı keser — akış hiçbir hata olayı
+ * gönderemeden kapanır, ekranda sebepsiz "İçerik üretilemedi." belirir.
+ *
+ * XFERINFOFUNCTION veri aksa da akmasa da libcurl tarafından düzenli çağrılır;
+ * nabız artık isteğin yavaşlığından etkilenmiyor.
+ */
+$beat = function () use (&$last_ping) {
+    if (time() - $last_ping >= 10) {
+        echo ": ping\n\n";
+        flush();
+        $last_ping = time();
+    }
+    return 0;
+};
+
 $ch = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch, [
     CURLOPT_POST          => true,
     CURLOPT_TIMEOUT       => 280,
+    CURLOPT_NOPROGRESS       => false,
+    CURLOPT_XFERINFOFUNCTION => $beat,
     CURLOPT_HTTPHEADER    => [
         'Content-Type: application/json',
         'Authorization: Bearer ' . DEEPSEEK_KEY,
