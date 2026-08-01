@@ -1295,6 +1295,33 @@ if ($action === 'undo') {
     $limit  = max(10, min(100, (int)($_POST['limit'] ?? 40)));
     $window = max(0, (int)($_POST['hours'] ?? 24)) * 3600;
 
+    /* SEÇİMLİ GERİ ALMA: ids verilirse yalnız o yazılar geri alınır.
+       Toplu geri alma, iyi giden onarımları da geri aldığı için tek bir
+       bozuk yazı yüzünden her şeyi kaybettirmemeli. */
+    $only = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
+    if ($only) {
+        $ph   = implode(',', array_fill(0, count($only), '%d'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT ID, post_content FROM {$wpdb->posts} WHERE ID IN ($ph)", ...$only));
+        $total = count($rows);
+        $restored = 0; $samples = [];
+        foreach ($rows as $r) {
+            $id  = (int) $r->ID;
+            $bak = get_post_meta($id, '_tls_audit_backup', true);
+            if (is_string($bak) && $bak !== '' && $bak !== (string) $r->post_content) {
+                wp_update_post(['ID' => $id, 'post_content' => $bak]);
+                do_action('litespeed_purge_post', $id);
+                delete_post_meta($id, '_tls_audit_backup');
+                delete_post_meta($id, '_tls_audit_backup_at');
+                $restored++;
+                $samples[] = get_the_title($id);
+            }
+        }
+        echo json_encode(['ok'=>true,'total'=>$total,'seen'=>count($rows),
+                          'restored'=>$restored,'samples'=>$samples,'next'=>-1]);
+        exit;
+    }
+
     $total = (int) $wpdb->get_var(
         "SELECT COUNT(*) FROM {$wpdb->posts}
           WHERE post_type IN ('post','analysis') AND post_status IN ('publish','draft')"

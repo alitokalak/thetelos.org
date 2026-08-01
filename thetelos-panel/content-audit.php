@@ -392,9 +392,28 @@ async function autofix(){
    revizyonundan kurtarır; yalnız SİLME geri alınır, elle yapılmış
    düzenlemeler korunur. */
 async function undo(){
-  if(!confirm('Onarımın sildiği paragraflar geri getirilecek.\n\n'+
-              'Son 24 saatte yapılan silmeler, WordPress revizyonlarından geri yüklenir. '+
-              'Elle yaptığın düzenlemelere dokunulmaz. Devam?')) return;
+  /* Satır seçiliyse YALNIZ onlar geri alınır — tek bozuk yazı için tüm
+     onarımları geri almak gerekmez. */
+  const sel = [...document.querySelectorAll('.ca-cb:checked')].map(cb => cb.closest('tr').dataset.id);
+  if (sel.length) {
+    if(!confirm(sel.length + ' seçili yazı eski haline döndürülecek. Devam?')) return;
+    $('btn-undo').disabled = true;
+    waiting('Geri alınıyor: ' + sel.length + ' yazı');
+    try {
+      const d = await post('action=undo&ids=' + sel.join(','), 120000);
+      $('ca-status').textContent = (d && d.ok)
+        ? '✓ ' + d.restored + ' yazı eski haline döndü' +
+          (d.samples && d.samples.length ? ': ' + d.samples.join(', ') : '') + '.'
+        : '✗ Geri alınamadı.';
+    } catch(e) { $('ca-status').textContent = '✗ ' + e.message; }
+    waitingDone();
+    $('btn-undo').disabled = false;
+    return;
+  }
+
+  if(!confirm('DİKKAT: Hiç satır seçmedin — TÜM onarımlar geri alınacak.\n\n'+
+              'Tek bir yazıyı geri almak için önce tabloda o satırı işaretle.\n\n'+
+              'Gerçekten HEPSİNİ geri almak istiyor musun?')) return;
 
   stop = false;
   $('btn-undo').disabled = true; $('btn-stop').style.display = '';
