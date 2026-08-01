@@ -633,12 +633,19 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <?php if ($pending > 0): ?>
             <button class="btn btn-primary btn-sm" onclick="tlsResumeBatch('<?= $bid ?>',this)">&#9654; Kaldigi Yerden Devam Et (<?= $pending ?>)</button>
             <?php endif; ?>
+            <?php $bstat = $b['status'] ?? ''; ?>
+            <?php if ($pending > 0 && $bstat !== 'paused' && $bstat !== 'cancelled'): ?>
+            <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="tlsPauseBatch('<?= $bid ?>',this)">&#9208; Duraklat</button>
+            <?php endif; ?>
             <?php if ($errs > 0): ?>
             <button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="tlsRetryErrors('<?= $bid ?>',this)">&#8634; <?= $errs ?> hatayi tekrar dene</button>
             <a class="btn btn-ghost btn-sm" style="color:var(--green);text-decoration:none" href="api/export-errors.php?batch_id=<?= urlencode($bid) ?>">&#8595; Hataları CSV indir</a>
             <a class="btn btn-ghost btn-sm" style="color:var(--red);text-decoration:none" href="api/error-reasons.php?batch_id=<?= urlencode($bid) ?>" target="_blank">&#9888; Hata sebepleri</a>
             <?php endif; ?>
             <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-left:auto" onclick="tlsDeleteBatch('<?= $bid ?>',this)">&#10005; Sil</button>
+          </div>
+          <div data-bc-hint style="font-size:12px;color:var(--muted);margin-top:8px;<?= ($bstat ?? '') === 'paused' ? '' : 'display:none' ?>">
+            ⏸ Duraklatıldı — yeni kitap alınmıyor. Devam ettirdiğinde kaldığı yerden sürer.
           </div>
 
           <?php
@@ -862,6 +869,34 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         _tlsFireWorkers(id, w);
         _tlsWatch(id);
         btn.textContent='✓ '+w+' worker basladi! (arka planda devam ediyor)'; btn.style.background='var(--green)';
+      }
+      /* Duraklat: batch'i "paused" yapar. Worker'lar SIRADAKİ kitabı almadan
+         önce bu durumu görüp temiz çıkar; şu an işlenmekte olan kitap yarıda
+         kesilmez. Küresel nöbetçi (app.js) duraklatılmış batch'i atlar, yani
+         kendiliğinden yeniden başlamaz. Devam Et, yarım kalan "processing"
+         kitapları pending'e çevirdiği için hiçbir kitap kaybolmaz. */
+      async function tlsPauseBatch(id,btn) {
+        var old = btn.innerHTML;
+        btn.disabled = true; btn.textContent = 'Duraklatiliyor...';
+        var ok = false;
+        try {
+          var r = await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=pause'});
+          var j = await r.json();
+          ok = !!j.ok;
+        } catch(e) {}
+        if (!ok) {
+          btn.disabled = false; btn.innerHTML = old;
+          alert('Duraklatilamadi — tekrar dene. (Oturum dusmus olabilir, sayfayi yenile.)');
+          return;
+        }
+        btn.innerHTML = '⏸ Duraklatildi'; btn.style.color = 'var(--green)';
+        if (_tlsWatchTimers[id]) { clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id]; }
+        var card = document.querySelector('[data-batch-card="'+id+'"]');
+        var hint = card && card.querySelector('[data-bc-hint]');
+        if (hint) {
+          hint.style.display = '';
+          hint.textContent = '⏸ Duraklatildi — su an isteme alinmis kitap bitince (birkac dakika) tamamen duracak. Devam ettirdiginde kaldigi yerden surer, hicbir kitap kaybolmaz.';
+        }
       }
       async function tlsRetryErrors(id,btn) {
         btn.disabled=true; btn.textContent='Kuyruğa aliniyor...';
