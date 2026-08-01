@@ -513,7 +513,9 @@ async function startJob(kind, ids, onay) {
     $('btn-complete').disabled = false;
     $('btn-regen').disabled    = false;
     $('btn-stop').style.display = 'none';
-    $('ca-status').textContent = '✗ Başlatılamadı: ' + e.message;
+    $('ca-status').textContent = e.message.startsWith('HTTP 401')
+      ? '✗ Oturum düşmüş — sayfayı yenileyip tekrar giriş yap, sonra yeniden dene.'
+      : '✗ Başlatılamadı: ' + e.message;
   }
 }
 
