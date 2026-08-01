@@ -218,6 +218,37 @@ function render(){
   if(a) a.addEventListener('change', ()=>document.querySelectorAll('.ca-cb').forEach(cb=>cb.checked=a.checked));
 }
 
+/* ── Düzeltme sonrası yeniden denetim ─────────────────────────────────────
+   Bir iş bittiğinde tablo eski tarama sonucunu göstermeye devam ediyordu:
+   düzelen yazı da düzelmeyen de aynı rozetle duruyordu. Sonuç, haklı olarak,
+   "hiçbir şey olmadı" izlenimi. Artık işlenen yazılar sunucuya yeniden
+   okutulur; düzelenler listeden düşer, düzelmeyenler GÜNCEL bulgusuyla kalır. */
+async function recheckIds(ids){
+  if(!ids || !ids.length) return null;
+  const minw = parseInt($('min-words').value) || 0;
+  let fixed = 0, left = 0, drafted = 0;
+  for (let i = 0; i < ids.length; i += 25) {
+    const chunk = ids.slice(i, i + 25);
+    let d = null;
+    try { d = await post('action=recheck&min_words='+minw+'&ids='+chunk.join(','), 120000); }
+    catch(e){ return null; }                       // sessizce vazgeç: tablo eski kalsın
+    if(!d || !d.ok) return null;
+    (d.rows || []).forEach(r => {
+      const ix = all.findIndex(p => p.id === r.id);
+      if (r.clean || r.gone) { fixed++;   if (ix >= 0) all.splice(ix, 1); return; }
+      if (r.drafted)         { drafted++; if (ix >= 0) all.splice(ix, 1); return; }
+      left++;
+      if (ix >= 0) all[ix] = r; else all.push(r);
+    });
+  }
+  all.sort((a,b)=> b.sev - a.sev);
+  const c = counts();
+  $('st-3').textContent = c[0]; $('st-2').textContent = c[1]; $('st-1').textContent = c[2];
+  render();
+  $('btn-csv').style.display = all.length ? '' : 'none';
+  return { fixed, left, drafted };
+}
+
 function csv(){
   const head = 'id,tarih,baslik,kelime,onem,bulgular,link\n';
   const body = all.map(p =>
@@ -335,11 +366,16 @@ async function autofix(){
     }
     $('btn-autofix').disabled = false;
     $('btn-stop').style.display = 'none';
-    $('ca-status').textContent =
+    const ozet =
       failed ? '✗ ' + failed + ' yazıda istek başarısız: ' + lastErr
-      : done  ? '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') +
-                '. Doğrulamak için taramayı tekrar çalıştır.'
+      : done  ? '✓ ' + done + ' yazı onarıldı' + (skipped ? ', ' + skipped + ' atlandı' : '') + '.'
               : '⚠ ' + skipped + ' yazıda silinecek bir şey çıkmadı — bunlar yeniden üretim ister.';
+    // Tabloyu tahminle değil, sunucuya yeniden okutarak güncelle.
+    $('ca-status').textContent = ozet + ' Yeniden denetleniyor…';
+    const res = await recheckIds(targets.map(Number));
+    $('ca-status').textContent = res
+      ? ozet + ' → ' + res.fixed + ' bulgu kapandı' + (res.left ? ', ' + res.left + ' hâlâ duruyor' : '') + '.'
+      : ozet + ' (yeniden denetim yapılamadı — tekrar tara)';
     return;
   }
 
@@ -491,6 +527,18 @@ function jobPoll() {
       $('btn-complete').disabled = false;
       $('btn-regen').disabled    = false;
       $('btn-stop').style.display = 'none';
+      // İş bitti: işlenen yazıları YENİDEN OKU. "✓ Bitti" yazıp tabloyu eski
+      // haliyle bırakmak, düzelenle düzelmeyeni ayırt edilemez kılıyordu.
+      const done = jobLabel(j);
+      const ids  = (j.ids || []).map(Number);
+      $('ca-status').textContent = done + ' Yeniden denetleniyor…';
+      recheckIds(ids).then(res => {
+        if (!res) { $('ca-status').textContent = done + ' (yeniden denetim yapılamadı — tekrar tara)'; return; }
+        $('ca-status').textContent = done +
+          ' → ' + res.fixed + ' bulgu kapandı' +
+          (res.drafted ? ', ' + res.drafted + ' yayından kaldırıldı' : '') +
+          (res.left ? ', ' + res.left + ' hâlâ duruyor' : '') + '.';
+      });
     }
   }, 4000);
 }

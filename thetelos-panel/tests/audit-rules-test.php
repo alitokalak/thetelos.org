@@ -17,7 +17,7 @@ $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
           'ca_prompt_dump_patterns','ca_check_prompt_dump','ca_cut_prompt_dump','ca_marker_regex','ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
-          'ca_check_wrapup','ca_check_dup_heading','ca_clean_headings','ca_drop_duplicates','ca_strip_meta_sentences','ca_repair_too_lossy','ca_repair'] as $fn) {
+          'ca_check_wrapup','ca_check_dup_heading','ca_clean_headings','ca_drop_duplicates','ca_strip_meta_sentences','ca_repair_too_lossy','ca_repair','ca_strip_orphan_headings','ca_repair_safe','ca_repair_apply'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
 }
 
@@ -229,6 +229,64 @@ echo "\n── BAŞLIK TEKRARI ──\n";
 d('Kısa genel başlık iki kez', '<h3>Conclusion</h3><p>x</p><h3>Conclusion</h3>', false);
 d('Uzun başlık birebir iki kez',
   '<h3>Hypothesis V: If the One Is Not (The Knowable Non-Being)</h3><p>x</p><h3>Hypothesis V: If the One Is Not (The Knowable Non-Being)</h3>', true);
+
+/* ── TESPİT = EYLEM ───────────────────────────────────────────────────────
+   En sinsi kusur buydu: ekran "onarılabilir" der, düğme hiçbir şey yapmaz.
+   Nedeni, tam onarımın eşiği aşması durumunda onarımın TAMAMININ çöpe
+   gitmesiydi — ilgisiz bir adım (paragraf tekrarı temizliği) yüzünden
+   okuyucunun gördüğü boş başlık yerinde kalıyordu.
+
+   Kural: ca_repair_apply metni değiştirdiyse kusur GERÇEKTEN gitmiş olmalı;
+   değiştirmediyse tarama da "onarılabilir" dememeli. */
+function a($label, $html, $check) {
+    global $ok, $bad;
+    $new   = ca_repair_apply($html);
+    $vardı = $check($html) !== '';
+    $kaldı = $check($new)  !== '';
+    // Kusur vardıysa: ya gitmiş olmalı, ya da metin hiç değişmemiş olmalı
+    // (o zaman ekran da "onarılabilir" demez — tespit ile eylem aynı kaynakta).
+    $pass  = !$vardı || !$kaldı || ($new === $html);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label,
+        !$vardı ? '→ kusur yok' : ($kaldı ? ($new === $html ? '→ dokunulmadı (tutarlı)' : '→ DEĞİŞTİ AMA KUSUR DURUYOR') : '→ onarıldı'));
+}
+echo "\n── TESPİT = EYLEM ──\n";
+$orphan = function ($h) { return ca_check_orphan_heading($h); };
+
+// Sonda öksüz başlık, tek başına
+a('Öksüz başlık — sade metin',
+  '<h2>Chapter One: The Opening Argument</h2><p>' . str_repeat('Aristotle distinguishes form from matter. ', 20) .
+  '</p><h3>Book IV, Chapter 3: The Problem of Creation</h3>', $orphan);
+
+// Öksüz başlık + AYNI yazıda büyük bir paragraf tekrarı. Tekrar temizliği
+// eşiği aşıyor; eskiden bu, öksüz başlığın da onarılmamasına yol açıyordu.
+$uzun = '<p>' . str_repeat('The same long passage repeated verbatim at the seam between two parts of the generated text. ', 12) . '</p>';
+a('Öksüz başlık + eşiği aşan tekrar',
+  '<h2>Chapter One: The Opening Argument</h2>' . $uzun . $uzun .
+  '<h3>Book IV, Chapter 3: The Problem of Creation</h3>', $orphan);
+
+// Üst üste iki öksüz başlık
+a('Arka arkaya iki öksüz başlık',
+  '<p>' . str_repeat('Real content here. ', 30) . '</p><h2>Part Three</h2><h3>The Final Question</h3>', $orphan);
+
+// Parça işareti, eşiği aşan bir yazıda
+a('Parça işareti + eşiği aşan tekrar',
+  '<h2>Opening</h2>' . $uzun . $uzun . '<p>%%PART_END%%</p><p>' . str_repeat('Closing content. ', 20) . '</p>',
+  function ($h) { return ca_check_part_markers($h); });
+
+/* Sağlam metne dokunulmamalı: kayıpsız onarım "her ihtimale karşı" devreye
+   girip metni değiştirmeye kalkmamalı. */
+function n($label, $html) {
+    global $ok, $bad;
+    $pass = (ca_repair_apply($html) === $html);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $pass ? '→ dokunulmadı' : '→ DEĞİŞTİRİLDİ');
+}
+echo "\n── SAĞLAM METNE DOKUNMA ──\n";
+n('Düzgün yazı', '<h2>The Argument</h2><p>Aristotle distinguishes form from matter, and the analysis follows.</p>' .
+                 '<h2>The Consequence</h2><p>The consequence is that substance is prior in every sense.</p>');
+n('Alıntıyla biten yazı', '<h2>On Heresy</h2><p>The point stands.</p>' .
+                 '<blockquote>“We will now proceed to refute these heretics.”</blockquote>');
 
 echo "\nSonuç: {$ok} geçti, {$bad} hata\n";
 exit($bad ? 1 : 0);

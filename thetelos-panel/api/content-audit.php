@@ -369,8 +369,108 @@ function ca_word_count($html) {
     return str_word_count(wp_strip_all_tags($html), 0);
 }
 
+/**
+ * Tek yazının bulgu satırı — bulgusu yoksa null.
+ *
+ * Tarama ve düzeltme sonrası yeniden denetim (recheck) AYNI işlevi kullanır;
+ * yoksa "düzeldi mi" sorusunun cevabı iki ayrı kural kümesinden çıkar ve
+ * ekran gerçeği göstermez.
+ */
+function ca_finding_for($id, $title, $html, $date, $min_words) {
+    $html  = (string) $html;
+    $words = ca_word_count($html);
+
+    // Üretim reddi yazının TAMAMINI geçersiz kılar; diğer kusurlar anlamsız
+    // kalır, o yüzden tek başına raporlanır ve onarım denenmez.
+    if ($s = ca_check_refusal($html)) {
+        return [
+            'id' => (int) $id, 'title' => $title, 'date' => $date, 'words' => $words,
+            'sev' => 3, 'fixable' => false, 'compl' => false,
+            'link' => get_permalink($id),
+            'edit' => admin_url('post.php?post=' . (int) $id . '&action=edit'),
+            'flags' => [[ 'code'=>'refusal', 'sev'=>3,
+                          'label'=>'ÜRETİM REDDİ — yazı geçersiz, yeniden üretilmeli', 'sample'=>$s ]],
+        ];
+    }
+
+    $flags = [];
+    if ($s = ca_check_prompt_dump($html))    $flags[] = ['code'=>'prompt_dump',   'sev'=>3, 'label'=>'PROMPT ŞABLONU yazıya basılmış','sample'=>$s];
+    if ($s = ca_check_part_markers($html))   $flags[] = ['code'=>'part_marker',   'sev'=>3, 'label'=>'Parça işareti sızmış',           'sample'=>$s];
+    if ($s = ca_check_meta_talk($html))      $flags[] = ['code'=>'meta_talk',     'sev'=>3, 'label'=>'Model kendi süreciyle konuşmuş', 'sample'=>$s];
+    if ($s = ca_check_prompt_leak($html))    $flags[] = ['code'=>'prompt_leak',   'sev'=>3, 'label'=>'Prompt talimatı metne yazılmış', 'sample'=>$s];
+    if ($s = ca_check_orphan_heading($html)) $flags[] = ['code'=>'orphan_heading','sev'=>3, 'label'=>'Boş başlıkla bitmiş (onarılabilir)','sample'=>$s];
+    if ($s = ca_check_truncated($html))      $flags[] = ['code'=>'truncated',     'sev'=>3, 'label'=>'Cümle ortasında kesilmiş',       'sample'=>$s];
+    if ($s = ca_check_dup_para($html))       $flags[] = ['code'=>'dup_para',      'sev'=>2, 'label'=>'Paragraf tekrarı',                'sample'=>$s];
+    if ($s = ca_check_dup_heading($html))    $flags[] = ['code'=>'dup_heading',   'sev'=>2, 'label'=>'Başlık tekrarı',                  'sample'=>$s];
+    if ($s = ca_check_md_leak($html))        $flags[] = ['code'=>'md_leak',       'sev'=>2, 'label'=>'Markdown kalıntısı',              'sample'=>$s];
+    if ($min_words && $words < $min_words)   $flags[] = ['code'=>'short',         'sev'=>2, 'label'=>'Hedeften kısa',                   'sample'=>$words . ' kelime'];
+    if ($s = ca_check_wrapup($html))         $flags[] = ['code'=>'wrapup',        'sev'=>1, 'label'=>'Özet paragrafıyla bitmiş',        'sample'=>$s];
+
+    // Bölüm başlıkları h2/h3/h4 olabiliyor; yalnız h3 sayınca 5000 kelimelik
+    // düzgün yapılandırılmış yazılar "0 bölüm" görünüyordu.
+    $hn = preg_match_all('/<h[234][^>]*>/i', $html);
+    if ($hn < 3 && $words > 1200) {
+        $flags[] = ['code'=>'few_sections', 'sev'=>1, 'label'=>'Bölüm sayısı az', 'sample'=>$hn . ' bölüm'];
+    }
+
+    if (!$flags) return null;
+
+    usort($flags, function ($a, $b) { return $b['sev'] <=> $a['sev']; });
+
+    // ONARILABİLİR Mİ: tahmin etmek yerine onarımı burada DENERİZ — ve
+    // düzeltici düğmenin çağırdığı İŞLEVİN AYNISIYLA (bkz. ca_repair_apply).
+    $fixable = (ca_repair_apply($html) !== $html);
+
+    // Kesilmiş VE hedeften kısa metinlerin ikisi de "eksik metin"tir:
+    // ikisi de kaldığı yerden sürdürülerek düzelir, yeniden yazılmaz.
+    $can_comp = false;
+    foreach ($flags as $f) {
+        if ($f['code'] === 'truncated' || $f['code'] === 'short') $can_comp = true;
+        // Şablon dökümü kesildikten sonra metin eksik kalır; onarımın
+        // ardından tamamlanması gerekir.
+        if ($f['code'] === 'prompt_dump') $can_comp = true;
+    }
+
+    return [
+        'id'      => (int) $id,
+        'title'   => $title,
+        'date'    => $date,
+        'words'   => $words,
+        'fixable' => $fixable,
+        'compl'   => $can_comp,
+        'sev'     => $flags[0]['sev'],
+        'link'    => get_permalink($id),
+        'edit'    => admin_url('post.php?post=' . (int) $id . '&action=edit'),
+        'flags'   => $flags,
+    ];
+}
+
 /* ── Tara ── */
 $action = $_POST['action'] ?? '';
+
+/* ── Seçilen yazıları yeniden denetle ──────────────────────────────────────
+   Düzeltme işi bittiğinde tablo eski tarama sonucunu göstermeye devam
+   ediyordu: düzelen yazı da düzelmeyen de aynı rozetle duruyordu, "hiçbir şey
+   olmadı" izlenimi buradan geliyordu. Bu uç, yalnızca işlenen yazıları
+   yeniden okur ve ekran gerçek durumu gösterir.                             */
+if ($action === 'recheck') {
+    $ids       = array_slice(array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? '')))), 0, 300);
+    $min_words = max(0, (int)($_POST['min_words'] ?? 1500));
+    $rows = [];
+    foreach ($ids as $id) {
+        $p = get_post($id);
+        if (!$p) { $rows[] = ['id' => $id, 'gone' => true]; continue; }
+        if ($p->post_status !== 'publish') {
+            $rows[] = ['id' => $id, 'status' => $p->post_status, 'clean' => false, 'drafted' => true];
+            continue;
+        }
+        $f = ca_finding_for($id, $p->post_title, $p->post_content,
+                            substr((string) $p->post_date, 0, 10), $min_words);
+        $rows[] = $f ? ($f + ['clean' => false]) : ['id' => $id, 'clean' => true];
+    }
+    echo json_encode(['ok' => true, 'rows' => $rows]);
+    exit;
+}
 
 if ($action === 'scan') {
     global $wpdb;
@@ -393,77 +493,9 @@ if ($action === 'scan') {
 
     $findings = [];
     foreach ($rows as $r) {
-        $html  = (string) $r->post_content;
-        $words = ca_word_count($html);
-        $flags = [];
-
-        // Üretim reddi yazının TAMAMINI geçersiz kılar; diğer kusurlar anlamsız
-        // kalır, o yüzden tek başına raporlanır ve onarım denenmez.
-        if ($s = ca_check_refusal($html)) {
-            $findings[] = [
-                'id' => (int) $r->ID, 'title' => $r->post_title,
-                'date' => substr((string)$r->post_date, 0, 10), 'words' => $words, 'sev' => 3,
-                'link' => get_permalink($r->ID),
-                'edit' => admin_url('post.php?post=' . (int)$r->ID . '&action=edit'),
-                'flags' => [[ 'code'=>'refusal', 'sev'=>3,
-                              'label'=>'ÜRETİM REDDİ — yazı geçersiz, yeniden üretilmeli', 'sample'=>$s ]],
-            ];
-            continue;
-        }
-
-        if ($s = ca_check_prompt_dump($html)) $flags[] = ['code'=>'prompt_dump', 'sev'=>3, 'label'=>'PROMPT ŞABLONU yazıya basılmış', 'sample'=>$s];
-        if ($s = ca_check_part_markers($html)) $flags[] = ['code'=>'part_marker', 'sev'=>3, 'label'=>'Parça işareti sızmış',        'sample'=>$s];
-        if ($s = ca_check_meta_talk($html))    $flags[] = ['code'=>'meta_talk',   'sev'=>3, 'label'=>'Model kendi süreciyle konuşmuş','sample'=>$s];
-        if ($s = ca_check_prompt_leak($html))  $flags[] = ['code'=>'prompt_leak', 'sev'=>3, 'label'=>'Prompt talimatı metne yazılmış','sample'=>$s];
-        if ($s = ca_check_orphan_heading($html)) $flags[] = ['code'=>'orphan_heading','sev'=>3, 'label'=>'Boş başlıkla bitmiş (onarılabilir)','sample'=>$s];
-        if ($s = ca_check_truncated($html))    $flags[] = ['code'=>'truncated',   'sev'=>3, 'label'=>'Cümle ortasında kesilmiş',    'sample'=>$s];
-        if ($s = ca_check_dup_para($html))     $flags[] = ['code'=>'dup_para',    'sev'=>2, 'label'=>'Paragraf tekrarı',             'sample'=>$s];
-        if ($s = ca_check_dup_heading($html))  $flags[] = ['code'=>'dup_heading', 'sev'=>2, 'label'=>'Başlık tekrarı',               'sample'=>$s];
-        if ($s = ca_check_md_leak($html))      $flags[] = ['code'=>'md_leak',     'sev'=>2, 'label'=>'Markdown kalıntısı',           'sample'=>$s];
-        if ($min_words && $words < $min_words) $flags[] = ['code'=>'short',       'sev'=>2, 'label'=>'Hedeften kısa',                'sample'=>$words . ' kelime'];
-        if ($s = ca_check_wrapup($html))       $flags[] = ['code'=>'wrapup',      'sev'=>1, 'label'=>'Özet paragrafıyla bitmiş',     'sample'=>$s];
-
-        // Bölüm başlıkları h2/h3/h4 olabiliyor; yalnız h3 sayınca 5000 kelimelik
-        // düzgün yapılandırılmış yazılar "0 bölüm" görünüyordu.
-        $hn = preg_match_all('/<h[234][^>]*>/i', $html);
-        if ($hn < 3 && $words > 1200) {
-            $flags[] = ['code'=>'few_sections', 'sev'=>1, 'label'=>'Bölüm sayısı az', 'sample'=>$hn . ' bölüm'];
-        }
-
-        if (!$flags) continue;
-
-        usort($flags, function($a, $b) { return $b['sev'] <=> $a['sev']; });
-
-        // ONARILABİLİR Mİ: tahmin etmek yerine onarımı burada DENERİZ.
-        // Bulgu türüne bakıp "bu onarılır" varsaymak yanılıyordu: tespit
-        // listesi silme listesinden geniş olduğu için ekran "onar" diyor,
-        // onarıcı hiçbir şey değiştirmiyordu. Artık ölçülen şey söyleniyor.
-        // Onarım 'all' modunda ölçülür: markdown kalıntısını (####, ---, **)
-        // HTML'e çevirmek bir BİÇİM işidir, mekanik ve geri alınabilir.
-        // Yatay çizgi yüzünden 6000 kelimelik yazıyı yeniden yazdırmak saçmadır.
-        $fixable  = (ca_repair($html, 'all') !== $html);
-        // Kesilmiş VE hedeften kısa metinlerin ikisi de "eksik metin"tir:
-        // ikisi de kaldığı yerden sürdürülerek düzelir, yeniden yazılmaz.
-        $can_comp = false;
-        foreach ($flags as $f) {
-            if ($f['code'] === 'truncated' || $f['code'] === 'short') $can_comp = true;
-            // Şablon dökümü kesildikten sonra metin eksik kalır; onarımın
-            // ardından tamamlanması gerekir.
-            if ($f['code'] === 'prompt_dump') $can_comp = true;
-        }
-
-        $findings[] = [
-            'id'      => (int) $r->ID,
-            'title'   => $r->post_title,
-            'date'    => substr((string)$r->post_date, 0, 10),
-            'words'   => $words,
-            'fixable' => $fixable,
-            'compl'   => $can_comp,
-            'sev'     => $flags[0]['sev'],
-            'link'  => get_permalink($r->ID),
-            'edit'  => admin_url('post.php?post=' . (int)$r->ID . '&action=edit'),
-            'flags' => $flags,
-        ];
+        $f = ca_finding_for((int) $r->ID, $r->post_title, $r->post_content,
+                            substr((string) $r->post_date, 0, 10), $min_words);
+        if ($f) $findings[] = $f;
     }
 
     echo json_encode([
@@ -729,15 +761,79 @@ function ca_repair($html, $mode = 'severe') {
         $out = preg_replace('/<p[^>]*>(?:(?!<\/p>).)*<\/p>\s*$/is', '', rtrim($out));
     }
 
-    // Sonda öksüz kalmış başlık(lar): altında metin olmadığı için okuyucuya
-    // hiçbir şey söylemiyorlar, silinince de metinden bir şey eksilmiyor.
-    // Üst üste birkaç tane olabilir (başlık + boş alt başlık), döngüyle temizlenir.
-    $guard = 0;
-    while ($guard++ < 5 && preg_match('/<h([1-6])[^>]*>.*?<\/h\1>\s*$/is', rtrim($out))) {
-        $out = preg_replace('/<h([1-6])[^>]*>.*?<\/h\1>\s*$/is', '', rtrim($out));
-    }
+    $out = ca_strip_orphan_headings($out);
 
     return trim($out);
+}
+
+/**
+ * Sonda öksüz kalmış başlık(lar)ı atar.
+ *
+ * Altında metin olmadığı için okuyucuya hiçbir şey söylemiyorlar; silinince
+ * metinden bilgi eksilmez — bu yüzden KAYIPSIZ onarım sayılır. Üst üste
+ * birkaç tane olabilir (başlık + boş alt başlık), döngüyle temizlenir.
+ *
+ * Arama tüm gövdeye ".*?" ile uygulanmaz: son başlık etiketinin konumu tek
+ * geçişte bulunur, kalıp yalnızca o kısa parçaya bakar. Böylece 60 KB'lık
+ * metinlerde geri izleme patlaması olmaz.
+ */
+function ca_strip_orphan_headings($html) {
+    $out   = (string) $html;
+    $guard = 0;
+    while ($guard++ < 5) {
+        $trim = rtrim($out);
+        if (!preg_match_all('/<h[1-6](?:\s[^>]*)?>/i', $trim, $hm, PREG_OFFSET_CAPTURE)) break;
+        $pos  = $hm[0][count($hm[0]) - 1][1];
+        // Son başlık etiketinden sonrası YALNIZCA başlığın kendisiyse öksüzdür;
+        // altında metin varsa kalıp eşleşmez ve döngü durur.
+        if (!preg_match('/^<h([1-6])[^>]*>.*<\/h\1>\s*$/is', substr($trim, $pos))) break;
+        $out = substr($trim, 0, $pos);
+    }
+    return $out;
+}
+
+/**
+ * KAYIPSIZ onarım: yalnızca metne hiçbir şey kaybettirmeyen adımlar.
+ *
+ * Tam onarım (mode=all) bazen eşiği aşacak kadar metin siler — paragraf
+ * tekrarı ya da kapanış paragrafı temizliği büyük olabilir. Eskiden bu
+ * durumda onarımın TAMAMI çöpe gidiyordu: okuyucunun gördüğü boş başlık ya
+ * da parça işareti, ilgisiz bir adım eşiği aştığı için yerinde kalıyordu.
+ * Buton "✓ bitti" der, hiçbir şey değişmezdi.
+ *
+ * Burada kalan adımlar mekanik ve geri alınabilir: teknik işaret silme,
+ * başlıktaki "[Continued]" notu, sonda öksüz başlık, boşalmış paragraf.
+ * Hiçbiri cümle silmez, dolayısıyla eşiğe takılması da beklenmez.
+ */
+function ca_repair_safe($html) {
+    if (ca_check_refusal($html) !== '') return $html;
+    $out = preg_replace(ca_marker_regex(), '', (string) $html);
+    if ($out === null) return (string) $html;
+    $out = ca_clean_headings($out);
+    $out = ca_strip_orphan_headings($out);
+    $out = preg_replace('/<p[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>\s*/i', '', $out);
+    return trim((string) $out);
+}
+
+/**
+ * UYGULANACAK onarım — tespit ile eylemin TEK kaynağı.
+ *
+ * Ekranın "onarılabilir" demesi ile düğmenin gerçekten bir şey değiştirmesi
+ * defalarca ayrışmıştı: tarama ca_repair()'in çıktısına bakıyor, düzeltici
+ * ise aynı çıktıyı "fazla yutuyor" diye reddediyordu. Sonuç, hiç kapanmayan
+ * bir bulgu. Artık ikisi de bu işlevi çağırır; ayrışma yapısal olarak
+ * imkânsız.
+ *
+ * Sıra: tam onarım → eşiği aşıyorsa kayıpsız onarım → o da olmuyorsa metne
+ * dokunma. Agresif bir adım, güvenli adımı asla veto edemez.
+ */
+function ca_repair_apply($html) {
+    $old  = (string) $html;
+    $full = ca_repair($old, 'all');
+    if ($full !== '' && !ca_repair_too_lossy($old, $full)) return $full;
+    $safe = ca_repair_safe($old);
+    if ($safe !== '' && !ca_repair_too_lossy($old, $safe)) return $safe;
+    return $old;
 }
 
 /* ── TAMAMLA ──────────────────────────────────────────────────────────────
@@ -1020,10 +1116,10 @@ function ca_fix_everything($id) {
 
     $steps = [];
 
-    // 1. Onarım
+    // 1. Onarım (tarama ile aynı işlev — bkz. ca_repair_apply)
     $old = (string) $p->post_content;
-    $new = ca_repair($old, 'all');
-    if ($new !== '' && $new !== $old && !ca_repair_too_lossy($old, $new)) {
+    $new = ca_repair_apply($old);
+    if ($new !== '' && $new !== $old) {
         ca_backup_before($id, $old);
         wp_update_post(['ID' => $id, 'post_content' => $new]);
         do_action('litespeed_purge_post', $id);
@@ -1434,7 +1530,7 @@ if ($action === 'autofix') {
     $fixed = 0; $samples = [];
     foreach ($rows as $r) {
         $old = (string) $r->post_content;
-        $new = ca_repair($old, $mode);
+        $new = ($mode === 'all') ? ca_repair_apply($old) : ca_repair($old, $mode);
         if ($new === '' || $new === $old) continue;
         if (ca_repair_too_lossy($old, $new)) continue;
         ca_backup_before((int)$r->ID, $old);
@@ -1461,7 +1557,8 @@ if ($action === 'fix') {
     foreach ($ids as $id) {
         $p = get_post($id);
         if (!$p || $p->post_type === 'revision') { $skipped++; continue; }
-        $new = ca_repair((string)$p->post_content, $mode);
+        $new = ($mode === 'all') ? ca_repair_apply((string)$p->post_content)
+                                 : ca_repair((string)$p->post_content, $mode);
         if ($new === '' || $new === $p->post_content) { $skipped++; continue; }
         if (ca_repair_too_lossy($p->post_content, $new)) { $skipped++; continue; }
         ca_backup_before($id, $p->post_content);
