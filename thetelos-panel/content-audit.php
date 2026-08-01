@@ -74,6 +74,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <div class="bulk-row">
       <button class="btn btn-primary" id="btn-scan">🩺 Taramayı Başlat</button>
       <button class="btn" id="btn-stop" style="display:none">■ Durdur</button>
+      <button class="btn" id="btn-kick" style="display:none">⟳ Canlandır</button>
       <label style="font-size:12px;color:var(--muted)">Kısa sayılacak sınır:
         <input type="number" id="min-words" value="1500" step="100" min="0"
                style="width:82px;padding:4px 6px;margin-left:4px">
@@ -465,6 +466,7 @@ function jobPoll() {
         ((j.failed > j.errors.length) ? '<br>… ve ' + (j.failed - j.errors.length) + ' tane daha' : '');
     }
 
+    $('btn-kick').style.display = (j.status === 'running') ? '' : 'none';
     if (j.status !== 'running') {
       clearInterval(poller);
       $('btn-complete').disabled = false;
@@ -569,6 +571,10 @@ function autoAll(){
     'Eski metinler yedeklenir, "Onarımı Geri Al" ile dönülebilir.\n\nBaşlasın mı?');
 }
 
+$('btn-kick').addEventListener('click', async () => {
+  $('ca-status').textContent = 'Yeniden ateşleniyor…';
+  try { await post('action=job_kick', 20000); jobPoll(); } catch (e) {}
+});
 $('btn-auto').addEventListener('click', autoAll);
 $('btn-draft').addEventListener('click', draftPosts);
 $('btn-scan').addEventListener('click', scan);

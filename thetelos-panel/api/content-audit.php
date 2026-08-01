@@ -681,6 +681,26 @@ function ca_repair($html, $mode = 'severe') {
  * "boş yanıt" demek teşhis için yetersizdi: istek gitti mi, kota mı doldu,
  * model mi reddetti, bilinmiyordu. HTTP kodu ve gövdenin başı gösterilir.
  */
+/**
+ * Canlılık damgası.
+ *
+ * Worker uzun bir API çağrısındayken dosyaya dokunamıyordu; izleyici 90 sn
+ * nabız görmeyince onu ölü sanıp yeni worker ateşliyordu — üstelik her
+ * yoklamada bir tane. Sonuç: yığılan worker'lar, kotaya takılan istekler ve
+ * "boş yanıt" hataları. Artık indirme sürerken de nabız atılıyor.
+ */
+function ca_beat() {
+    static $last = 0;
+    if (time() - $last < 5) return;      // dosyayı gereksiz yormayalım
+    $last = time();
+    $lk = @fopen(ca_job_path() . '.lock', 'c');
+    if (!$lk) return;
+    flock($lk, LOCK_EX);
+    $job = ca_job_read();
+    if ($job) { $job['beat'] = time(); ca_job_write($job); }
+    flock($lk, LOCK_UN); fclose($lk);
+}
+
 function ca_api_error($code, $raw, $json) {
     if (!empty($json['error']['message'])) return 'HTTP ' . $code . ' — ' . $json['error']['message'];
     $reason = $json['choices'][0]['finish_reason'] ?? '';
@@ -729,6 +749,8 @@ function ca_complete_post($id) {
             CURLOPT_POST           => true,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 180,
+            CURLOPT_NOPROGRESS     => false,
+            CURLOPT_XFERINFOFUNCTION => function () { ca_beat(); return 0; },   // uzun çağrıda da canlıyız
             CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
             CURLOPT_POSTFIELDS     => json_encode([
                 'model' => $model, 'max_tokens' => 8000,
@@ -821,6 +843,8 @@ function ca_regenerate_post($id, $target_words = 6000) {
             $ch = curl_init(DEEPSEEK_API_URL);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 180,
+                CURLOPT_NOPROGRESS => false,
+                CURLOPT_XFERINFOFUNCTION => function () { ca_beat(); return 0; },
                 CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
                 CURLOPT_POSTFIELDS => json_encode([
                     'model' => $model, 'max_tokens' => 8000,
@@ -1082,10 +1106,14 @@ if ($action === 'job_start') {
         'status'  => 'running',
         'started' => time(),
         'beat'    => time(),
+        'active'  => 0,     // o an çalışan worker sayısı
+        'wcap'    => 0,     // izin verilen üst sınır (aşağıda yazılır)
+        'spawned' => 0,     // son ateşleme zamanı — yığılmayı önler
     ]);
     // Paralel worker: iş API hızıyla sınırlı, tek tek yapmak gereksiz yavaş.
     // 3 worker ile 88 kitap ~2,5 saat yerine ~50 dakikada biter.
     $workers = max(1, min(4, (int) ceil(count($ids) / 10)));
+    $j = ca_job_read(); $j['wcap'] = $workers; $j['spawned'] = time(); ca_job_write($j);
     for ($w = 0; $w < $workers; $w++) { ca_job_spawn(); usleep(300000); }
     echo json_encode(['ok' => true, 'total' => count($ids), 'kind' => $kind, 'workers' => $workers]);
     exit;
@@ -1096,8 +1124,19 @@ if ($action === 'job_status') {
     $job = ca_job_read();
     if (!$job) { echo json_encode(['ok' => true, 'none' => true]); exit; }
 
-    // Worker öldüyse (90 sn'dir nabız yok) kendiliğinden yeniden ateşle.
-    if ($job['status'] === 'running' && (time() - (int)$job['beat']) > 90) {
+    /* İzleyici: worker gerçekten ölmüşse yeniden ateşle. Üç koruma var,
+       yoksa her yoklama (4 sn) bir worker doğurup API'yi kotaya sokuyordu:
+       1) nabız eşiği geniş (150 sn) — uzun API çağrısı ölüm sayılmaz
+       2) canlı worker sayısı kapasitenin altında olmalı
+       3) iki ateşleme arasında en az 60 sn olmalı                        */
+    if ($job['status'] === 'running'
+        && (time() - (int) $job['beat'])    > 150
+        && (int) ($job['active'] ?? 0)      < (int) ($job['wcap'] ?? 1)
+        && (time() - (int) ($job['spawned'] ?? 0)) > 60) {
+        $lk = @fopen(ca_job_path() . '.lock', 'c');
+        if ($lk) { flock($lk, LOCK_EX); $j = ca_job_read();
+                   if ($j) { $j['spawned'] = time(); ca_job_write($j); }
+                   flock($lk, LOCK_UN); fclose($lk); }
         ca_job_spawn();
     }
     echo json_encode(['ok' => true] + $job);
@@ -1114,6 +1153,19 @@ if ($action === 'job_run') {
     @set_time_limit(0);
     @ini_set('max_execution_time', '0');
 
+    // Aktif worker sayacı: kaç worker'ın gerçekten çalıştığını bilmeden
+    // "öldü mü" kararı verilemez.
+    $ca_bump = function ($delta) {
+        $lk = @fopen(ca_job_path() . '.lock', 'c');
+        if (!$lk) return;
+        flock($lk, LOCK_EX);
+        $j = ca_job_read();
+        if ($j) { $j['active'] = max(0, (int) ($j['active'] ?? 0) + $delta); $j['beat'] = time(); ca_job_write($j); }
+        flock($lk, LOCK_UN); fclose($lk);
+    };
+    $ca_bump(1);
+    register_shutdown_function(function () use ($ca_bump) { $ca_bump(-1); });
+
     $started = time();
     $budget  = 240;   // sn — bu süre dolunca halef ateşlenir
 
@@ -1129,8 +1181,27 @@ if ($action === 'job_run') {
 
         $j = ca_job_read();
         if (!$j || $j['status'] !== 'running') break;
-        if (time() - $started >= $budget) { ca_job_spawn(); break; }   // halefe devret
+        if (time() - $started >= $budget) {
+            $lk = @fopen(ca_job_path() . '.lock', 'c');
+            if ($lk) { flock($lk, LOCK_EX); $jj = ca_job_read();
+                       if ($jj) { $jj['spawned'] = time(); ca_job_write($jj); }
+                       flock($lk, LOCK_UN); fclose($lk); }
+            ca_job_spawn(); break;   // halefe devret
+        }
     }
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
+/* Takılan işi elle canlandır: worker öldüyse yenisini ateşler. */
+if ($action === 'job_kick') {
+    $job = ca_job_read();
+    if (!$job || $job['status'] !== 'running') { echo json_encode(['ok' => false, 'error' => 'çalışan iş yok']); exit; }
+    $lk = @fopen(ca_job_path() . '.lock', 'c');
+    if ($lk) { flock($lk, LOCK_EX); $j = ca_job_read();
+               if ($j) { $j['spawned'] = time(); $j['beat'] = time(); ca_job_write($j); }
+               flock($lk, LOCK_UN); fclose($lk); }
+    ca_job_spawn();
     echo json_encode(['ok' => true]);
     exit;
 }
