@@ -232,11 +232,16 @@ $output_tokens = 0;
 $stop_reason   = '';
 $stream_buf    = '';
 $raw_buf       = '';
+$err_buf       = '';   // SSE olmayan gövde (hata JSON'u) — teşhis için saklanır
 $last_ping     = time();
 
 // ── DeepSeek SSE ──────────────────────────────────────────
-$write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$last_ping) {
+$write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$err_buf, &$last_ping) {
     $raw_buf .= $chunk;
+    // API 200 dönmediğinde gövde SSE değil, düz JSON hatasıdır ("data: " ile
+    // başlamaz) ve aşağıdaki ayrıştırıcı onu sessizce yutuyordu. Sonuç, sebebi
+    // hiç görünmeyen bir "İçerik üretilemedi." mesajıydı.
+    if (strlen($err_buf) < 2000) $err_buf .= $chunk;
 
     if (time() - $last_ping >= 10) {
         echo ": ping\n\n";
@@ -297,15 +302,39 @@ curl_setopt_array($ch, [
 ]);
 
 curl_exec($ch);
-$curl_err = curl_error($ch);
+$curl_err  = curl_error($ch);
+$http_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
 curl_close($ch);
 
 if ($stream_buf !== '') {
     sse('chunk', ['text' => $stream_buf]);
 }
 
-if ($curl_err) { sse('error', ['error' => 'cURL: ' . $curl_err]); exit; }
-if (!$full_content) { sse('error', ['error' => 'İçerik üretilemedi.']); exit; }
+if ($curl_err) { sse('error', ['error' => 'Bağlantı hatası: ' . $curl_err]); exit; }
+
+/**
+ * Boş yanıtın SEBEBİNİ söyle.
+ *
+ * "İçerik üretilemedi." teşhis için hiçbir işe yaramıyordu: istek gitti mi,
+ * kota mı doldu, model mi reddetti, sunucu mu meşguldü — hiçbiri bilinmiyordu.
+ * Artık HTTP kodu, sağlayıcının kendi mesajı ve gövdenin başı gösterilir.
+ */
+if (!$full_content) {
+    $j   = json_decode($err_buf, true);
+    $msg = $j['error']['message'] ?? ($j['message'] ?? '');
+    $tip = '';
+    if ($http_code === 429)                    $tip = ' — istek sınırı doldu, biraz bekleyip tekrar dene';
+    elseif ($http_code === 402)                $tip = ' — DeepSeek bakiyesi bitmiş';
+    elseif ($http_code === 401)                $tip = ' — API anahtarı geçersiz';
+    elseif ($http_code >= 500)                 $tip = ' — sağlayıcı tarafında geçici arıza';
+    elseif ($http_code === 0)                  $tip = ' — yanıt hiç gelmedi (zaman aşımı ya da ağ)';
+    $snip = trim(preg_replace('/\s+/', ' ', strip_tags($err_buf)));
+    sse('error', ['error' =>
+        'İçerik üretilemedi (HTTP ' . $http_code . ')' . $tip .
+        ($msg ? ' · ' . $msg : ($snip ? ' · ' . mb_substr($snip, 0, 200) : ''))
+    ]);
+    exit;
+}
 
 sse('done',[
     'word_count'    => str_word_count(strip_tags($full_content)),

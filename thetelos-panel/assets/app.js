@@ -310,7 +310,10 @@ function runGenerateStream(params, onLive) {
         function read() {
           reader.read().then(({ done, value }) => {
             if (done) {
-              if (!streamText) reject(new Error('İçerik üretilemedi.'));
+              // Sunucu hata olayı göndermeden akışı kapattıysa (PHP çöktü,
+              // Cloudflare kesti) buraya düşeriz. Sebebi bilmiyoruz; en
+              // azından NEYİN olmadığını söyle.
+              if (!streamText) reject(new Error('Yanıt boş geldi (akış içerik gelmeden kapandı — sunucu meşgul olabilir)'));
               else resolve({ text: streamText, stats });
               return;
             }
@@ -393,25 +396,53 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
     api_model:    activeModel,
   };
 
+  let doneParts = 0, partialErr = '';
+
   try {
     let finalContent = '';
     let finalStats = {};
 
     if (isDeepSeek && parts > 1) {
       // ── Çok parçalı üretim ──────────────────────────────
+      // İKİ KURAL:
+      // 1) Geçici hata üretimi bitirmez — parça 3 kez denenir. Toplu üretim
+      //    çalışırken API sık sık 429/zaman aşımı döndürüyor; tek bir aksaklık
+      //    yüzünden baştan başlamak gerekmemeli.
+      // 2) BİR PARÇA ALINAMAZSA ELDEKİ ÇÖPE GİTMEZ. Eskiden hata fırlatılıyor,
+      //    catch bloğu sonucu tümden gizliyordu: kullanıcı 3 parçanın yazılışını
+      //    izleyip sonunda hepsini kaybediyordu.
       let accumulated = '';
       for (let k = 1; k <= parts; k++) {
-        const st = document.getElementById('stream-status');
-        if (st) st.textContent = `DeepSeek içerik üretiyor (Part ${k}/${parts})...`;
+        const st = () => document.getElementById('stream-status');
+        let text = null;
 
-        const { text } = await runGenerateStream(
-          { ...baseParams, part: k, parts: parts, prev_content: accumulated },
-          (live) => {
-            const merged = accumulated ? (accumulated + '\n\n' + live) : live;
-            preview.innerHTML = md2html(cleanGenerated(merged));
-            preview.scrollTop = 9999;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const s = st();
+          if (s) s.textContent = `DeepSeek içerik üretiyor (Part ${k}/${parts})` +
+                                 (attempt > 1 ? ` — yeniden deneme ${attempt}/3` : '') + '...';
+          try {
+            const r = await runGenerateStream(
+              { ...baseParams, part: k, parts: parts, prev_content: accumulated },
+              (live) => {
+                const merged = accumulated ? (accumulated + '\n\n' + live) : live;
+                preview.innerHTML = md2html(cleanGenerated(merged));
+                preview.scrollTop = 9999;
+              }
+            );
+            if (r && r.text && r.text.trim()) { text = r.text; break; }
+            partialErr = 'boş yanıt';
+          } catch (e) {
+            partialErr = e.message || String(e);
           }
-        );
+          if (attempt < 3) {
+            const s2 = st();
+            if (s2) s2.textContent = `Part ${k}/${parts} alınamadı (${partialErr}) — ` +
+                                     `${attempt * 5} sn sonra tekrar denenecek...`;
+            await new Promise(res => setTimeout(res, attempt * 5000));
+          }
+        }
+
+        if (text === null) break;          // 3 deneme de tutmadı → eldekiyle devam
 
         let piece = cleanGenerated(text);
         if (k > 1) {
@@ -420,26 +451,51 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
         }
         accumulated = accumulated ? (accumulated + '\n\n' + piece) : piece;
         preview.innerHTML = md2html(accumulated);
+        doneParts = k;
       }
       finalContent = accumulated;
+      // Hiç metin yoksa gösterecek bir şey de yok; gerçek sebebi göster.
+      if (!finalContent) throw new Error(`Part 1/${parts} alınamadı — ${partialErr || 'bilinmeyen hata'}`);
 
     } else {
       // ── Tek parça (Anthropic veya DeepSeek 1 parça) ─────
-      const { text, stats } = await runGenerateStream(
-        { ...baseParams },
-        (live) => { preview.innerHTML = md2html(live); preview.scrollTop = 9999; }
-      );
-      finalContent = cleanGenerated(text);
-      finalStats = stats || {};
+      // Burada da geçici hata üretimi bitirmez. Akış yarıda kesilirse
+      // runGenerateStream eldeki metinle çözülür, yani tekrar denemek ancak
+      // HİÇ metin gelmediğinde olur — mükerrer içerik riski yok.
+      let res = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const s = document.getElementById('stream-status');
+        if (s && attempt > 1) s.textContent = `İçerik üretiliyor — yeniden deneme ${attempt}/3...`;
+        try {
+          const r = await runGenerateStream(
+            { ...baseParams },
+            (live) => { preview.innerHTML = md2html(live); preview.scrollTop = 9999; }
+          );
+          if (r && r.text && r.text.trim()) { res = r; break; }
+          partialErr = 'boş yanıt';
+        } catch (e) {
+          partialErr = e.message || String(e);
+        }
+        if (attempt < 3) {
+          const s2 = document.getElementById('stream-status');
+          if (s2) s2.textContent = `Alınamadı (${partialErr}) — ${attempt * 5} sn sonra tekrar denenecek...`;
+          await new Promise(r => setTimeout(r, attempt * 5000));
+        }
+      }
+      if (!res) throw new Error(partialErr || 'İçerik üretilemedi.');
+      finalContent = cleanGenerated(res.text);
+      finalStats   = res.stats || {};
+      doneParts    = 1;
     }
 
     state.content = finalContent;
     preview.innerHTML = md2html(finalContent);
     setLoading(btn, false);
 
+    const eksik      = (isDeepSeek && parts > 1 && doneParts < parts);
     const totalWords = finalStats.word_count || finalContent.split(/\s+/).filter(Boolean).length;
     const partsBadge = (isDeepSeek && parts > 1)
-      ? `<div class="stat"><div class="stat-label">Parça</div><div class="stat-value"><span class="badge badge-green">${parts}/${parts} tamamlandı</span></div></div>`
+      ? `<div class="stat"><div class="stat-label">Parça</div><div class="stat-value"><span class="badge ${eksik ? 'badge-red' : 'badge-green'}">${doneParts}/${parts} ${eksik ? 'alındı' : 'tamamlandı'}</span></div></div>`
       : (finalStats.stop_reason
         ? `<div class="stat"><div class="stat-label">Durum</div><div class="stat-value" style="font-size:13px"><span class="badge ${finalStats.stop_reason==='end_turn'?'badge-green':finalStats.stop_reason==='max_tokens'?'badge-red':'badge-gold'}">${finalStats.stop_reason}</span></div></div>`
         : '');
@@ -451,7 +507,16 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
         ${finalStats.output_tokens ? `<div class="stat"><div class="stat-label">Çıktı Token</div><div class="stat-value">${finalStats.output_tokens.toLocaleString()}</div></div>` : ''}
         ${partsBadge}
       </div>`;
-    notify('gen-notif', `✓ İçerik hazır — ${totalWords.toLocaleString('tr')} kelime. Meta yükleniyor...`, 'ok');
+    // Eksik parça gizlenmez: metin duruyor, ama yarım olduğu açıkça söylenir.
+    // Yayınlamak kullanıcının kararı; "İçerik Denetimi → Yarım Kalanları
+    // Tamamla" bu metni kaldığı yerden sürdürebilir.
+    if (eksik) {
+      notify('gen-notif',
+        `⚠ ${doneParts}/${parts} parça alındı — ${totalWords.toLocaleString('tr')} kelime elde. ` +
+        `Kalan parça alınamadı: ${partialErr}. Metin duruyor; taslak kaydedip sonra tamamlayabilirsin.`, 'err');
+    } else {
+      notify('gen-notif', `✓ İçerik hazır — ${totalWords.toLocaleString('tr')} kelime. Meta yükleniyor...`, 'ok');
+    }
     fetchMeta(book, author, type, state.content);
 
   } catch (err) {
