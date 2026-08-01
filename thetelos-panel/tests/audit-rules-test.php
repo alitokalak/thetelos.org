@@ -17,7 +17,7 @@ $src = file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
           'ca_prompt_dump_patterns','ca_check_prompt_dump','ca_cut_prompt_dump','ca_marker_regex','ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
-          'ca_check_wrapup','ca_check_dup_heading','ca_drop_duplicates','ca_strip_meta_sentences','ca_repair_too_lossy','ca_repair'] as $fn) {
+          'ca_check_wrapup','ca_check_dup_heading','ca_clean_headings','ca_drop_duplicates','ca_strip_meta_sentences','ca_repair_too_lossy','ca_repair'] as $fn) {
     preg_match('/function '.$fn.'\(.*?\n}\n/s', $src, $m); eval($m[0]);
 }
 
@@ -153,7 +153,26 @@ ms('"let me know" cümlesi atılır',
    "$body<p>Kristeva ends with a question. Let me know if you need anything else. The reader is left alone.</p>",
    'Let me know if you', 'The reader is left alone');
 
+/* Başlığa sızmış devam notu: onarım şimdiye dek yalnız <p> bloklarına
+   bakıyordu, başlıktaki artık tespit edilip düzeltilemiyordu. */
+echo "\n── BAŞLIKTAKİ DEVAM NOTU ──\n";
+function hd($label, $html, $mustGo, $mustStay) {
+    global $ok, $bad;
+    $out  = ca_repair($html, 'all');
+    $pass = (strpos($out, $mustGo) === false) && (strpos($out, $mustStay) !== false);
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $pass ? '→ not söküldü, başlık durdu' : '→ YANLIŞ');
+}
+hd('"[Continued, Second Part]" sökülür',
+   "$body<h3>On the Aim and Progress of the Physical Sciences (1869) — [Continued, Second Part]</h3><p>Body follows here.</p>",
+   '[Continued', 'On the Aim and Progress');
+hd('"(continued)" sökülür',
+   "$body<h3>The Doctrine of Energy (continued)</h3><p>Body follows here.</p>",
+   '(continued)', 'The Doctrine of Energy');
+
 echo "\n── ONARIM DOKUNMAMALI ──\n";
+r('Normal başlık korunur',
+  "$body<h3>Book V, Chapter 5: The Resurrection of the Body</h3><p>Body under it.</p>", false);
 r('Şablon öncesi gerçek metin korunur',
   "$body<p>The listener is left with an invitation to join the song.</p>", false);
 r('"last part and start" cümlesi',

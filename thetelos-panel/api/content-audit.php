@@ -578,6 +578,30 @@ function ca_repair_too_lossy($old, $new) {
  * Kısa başlıklar ("Conclusion") ve kısa paragraflar doğal olarak
  * benzeşebileceği için eşik altındakilere dokunulmaz.
  */
+/**
+ * Başlıklardaki parça-sınırı artığını temizler.
+ *
+ * Çok parçalı üretimde model, bölünen bir bölümün başlığına devam notu
+ * ekliyor: "On the Aim and Progress of the Physical Sciences (1869) —
+ * [Continued, Second Part]". Bu okuyucuya ait bir bilgi değil, üretim
+ * düzeneğinin izi.
+ *
+ * ÖNEMLİ: Onarım şimdiye dek yalnız <p> bloklarına bakıyordu; başlıktaki
+ * artık tespit ediliyor ama düzeltilemiyor, yazı boşuna "yeniden üretilecek"
+ * sayılıyordu. Başlığın kendisi korunur, yalnız not sökülür.
+ */
+function ca_clean_headings($html) {
+    return preg_replace_callback('/<h([1-6])([^>]*)>(.*?)<\/h\1>/is', function ($m) {
+        $inner = $m[3];
+        $new   = preg_replace(
+            '/\s*[—–-]*\s*[\[(]\s*(?:continued|cont\.|devam)[^\])]*[\])]?\s*$/iu',
+            '', $inner);
+        $new = trim($new, " \t—–-");
+        if ($new === '' || $new === trim($inner)) return $m[0];
+        return '<h' . $m[1] . $m[2] . '>' . $new . '</h' . $m[1] . '>';
+    }, $html);
+}
+
 function ca_drop_duplicates($html) {
     $seen_h = []; $seen_p = [];
     return preg_replace_callback('/<(h[1-6]|p)\b[^>]*>(.*?)<\/\1>\s*/is',
@@ -693,6 +717,9 @@ function ca_repair($html, $mode = 'severe') {
 
     // Blok dışında kalmış çıplak parça işaretleri
     $out = preg_replace(ca_marker_regex(), '', $out);
+
+    // Başlıklara sızmış "[Continued, Second Part]" gibi devam notları
+    if ($all) $out = ca_clean_headings($out);
 
     // Parça sınırında tekrarlanan başlık/paragraf fazlalıkları
     if ($all) $out = ca_drop_duplicates($out);

@@ -505,7 +505,7 @@ async function startJob(kind, ids, onay) {
   $('ca-status').textContent  = 'İş başlatılıyor…';
 
   try {
-    const d = await post('action=job_start&kind=' + kind + '&ids=' + ids.join(','), 30000);
+    const d = await post('action=job_start&kind=' + kind + '&ids=' + ids.join(','), 180000);
     if (!d || !d.ok) throw new Error((d && d.error) || 'başlatılamadı');
     $('ca-status').textContent = 'Arka planda başladı — ' + d.total + ' yazı. Sekmeyi kapatabilirsin.';
     jobPoll();
@@ -513,9 +513,13 @@ async function startJob(kind, ids, onay) {
     $('btn-complete').disabled = false;
     $('btn-regen').disabled    = false;
     $('btn-stop').style.display = 'none';
-    $('ca-status').textContent = e.message.startsWith('HTTP 401')
-      ? '✗ Oturum düşmüş — sayfayı yenileyip tekrar giriş yap, sonra yeniden dene.'
-      : '✗ Başlatılamadı: ' + e.message;
+    // "signal is aborted" = bizim zaman aşımımız. Sunucu meşgulken (ör. büyük
+    // bir batch çalışıyorken) istek geç dönüyor; bunu hata gibi göstermek
+    // kullanıcıyı yanlış yönlendiriyordu.
+    $('ca-status').textContent =
+        e.message.startsWith('HTTP 401') ? '✗ Oturum düşmüş — sayfayı yenileyip tekrar giriş yap.'
+      : /abort/i.test(e.message)         ? '✗ Sunucu meşgul (büyük bir üretim sürüyor olabilir) — birkaç dakika sonra tekrar dene.'
+      :                                    '✗ Başlatılamadı: ' + e.message;
   }
 }
 
