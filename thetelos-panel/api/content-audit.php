@@ -214,6 +214,15 @@ function ca_delete_patterns() {
         '/\bhere(?:\'s| is) the (?:continuation|next part|final part)\b/i',
         '/\bcontinu(?:ing|ed) from (?:the )?(?:previous|last) (?:part|section)\b/i',
         '/\b(?:in|for) this part,? i (?:will|have)\b/i',
+        /* Sitenin adını anan alt başlık/satır: "A Detailed Summary for
+           Thetelos.org". Model, prompt'un "kısa özgün bir alt başlık yaz"
+           talimatını yerine getirirken eserin değil ÜRÜNÜN tarifini yazıyor.
+           Okuyucuya bir şey söylemeyen tek satırlık artıktır; silinince
+           metinden bilgi eksilmez. Eskiden şablon dökümü sayılıp yazının
+           tamamı kesilmeye çalışılıyor, kayıp eşiği engelliyor ve bulgu hiç
+           kapanmıyordu. */
+        '/\bfor thetelos\.org\b/i',
+        '/\ba (?:detailed|comprehensive|complete) (?:summary|analysis|guide)\s+for\b/i',
 
         /* BİLEREK LİSTEDE OLMAYANLAR — tespit eder ama SİLMEYİZ:
            '/part \d+ of \d+/'            → "(chapters for Part 1 of 4)" gibi
@@ -295,6 +304,14 @@ function ca_repair_too_lossy($old, $new) {
 function ca_clean_headings($html) {
     return preg_replace_callback('/<h([1-6])([^>]*)>(.*?)<\/h\1>/is', function ($m) {
         $inner = $m[3];
+
+        /* Başlığın KENDİSİ bir artıksa tamamen atılır.
+           Model, "kısa özgün bir alt başlık yaz" talimatını yerine getirirken
+           eserin değil ürünün tarifini yazabiliyor: "A Detailed Summary for
+           Thetelos.org". Onarım yalnızca <p> bloklarını geziyordu, bu yüzden
+           başlığa düşen aynı artık hiç temizlenmiyordu. */
+        if (ca_leak_line(wp_strip_all_tags($inner))) return '';
+
         $new   = preg_replace(
             '/\s*[—–-]*\s*[\[(]\s*(?:continued|cont\.|devam)[^\])]*[\])]?\s*$/iu',
             '', $inner);

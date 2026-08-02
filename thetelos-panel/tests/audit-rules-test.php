@@ -225,6 +225,45 @@ function d($label, $html, $expect) {
     $pass ? $ok++ : $bad++;
     printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label, $got ? '→ işaretlendi' : '→ temiz');
 }
+/* EYLEM KUSURLA ORANTILI OLMALI — iki gerçek vaka.
+
+   1. "The Double Garden" (10.036 kelime): içinde "[Continued in Part 2]"
+      parantezi var. Tespit ediliyordu ama silme listesi tanımıyordu, bu yüzden
+      yazı "♻️ yeniden üretilecek" görünüyordu. 20 karakterlik bir dikiş artığı
+      için 10.000 kelimeyi yeniden yazdırmak saçmadır.
+
+   2. Augustine yazıları: H2 alt başlığa "A Detailed Summary for Thetelos.org"
+      yazılmış. Bu, ŞABLON DÖKÜMÜ sayılıp yazının o noktadan sonrası kesilmeye
+      çalışılıyordu — ama satır metnin EN BAŞINDA olduğu için kesmek yazının
+      tamamını silerdi. Kayıp eşiği haklı olarak engelliyor, sonuç bulgunun hiç
+      kapanmaması oluyordu. Doğru eylem: o tek satırı sil. */
+echo "\n── ORANTILI EYLEM: GERÇEK VAKALAR ──\n";
+r('[Continued in Part 2] silinir',
+  "$body<p>The estate might be distributed rather than concentrated. [Continued in Part 2] The Tragedy of the flowers resumes here.</p>", true);
+r('[To be continued] silinir',      "$body<p>[To be continued]</p>", true);
+r('[Note: ...] silinir',            "$body<p>The garden is described at length. [Note: expand this section later]</p>", true);
+r('H2 "…for Thetelos.org" silinir', "<h2>A Detailed Summary for Thetelos.org</h2>$body", true);
+r('Paragrafta aynı artık silinir',  "$body<p>A Detailed Summary for Thetelos.org</p>", true);
+
+/* Buna karşılık ALINTIDAKİ editoryal parantezler kitabın kendi metnidir. */
+r('Alıntıda [sic] korunur',
+  "$body<blockquote>“The soul, being immortal [sic], returns to itself.”</blockquote>", false);
+r('Alıntıda [emphasis added] korunur',
+  "$body<blockquote>“Grace precedes all merit [emphasis added].”</blockquote>", false);
+
+/* Tespit edilen bu artıklar onarımdan SONRA metinde kalmamalı. */
+function mt($label, $html) {
+    global $ok, $bad;
+    $detected = (ca_check_meta_talk($html) !== '');
+    $after    = ca_check_meta_talk(ca_repair($html, 'all')) !== '';
+    $pass     = $detected && !$after;
+    $pass ? $ok++ : $bad++;
+    printf("%s  %-42s %s\n", $pass ? '✓' : '✗ HATA', $label,
+        !$detected ? '→ tespit edilmedi' : ($after ? '→ SİLİNMEDİ' : '→ tespit + silindi'));
+}
+mt('[Continued in Part 2] tespit+silme', "$body<p>Text here. [Continued in Part 2] More text.</p>");
+mt('[Note: ...] tespit+silme',           "$body<p>Text here. [Note: check this]</p>");
+
 echo "\n── BAŞLIK TEKRARI ──\n";
 d('Kısa genel başlık iki kez', '<h3>Conclusion</h3><p>x</p><h3>Conclusion</h3>', false);
 d('Uzun başlık birebir iki kez',

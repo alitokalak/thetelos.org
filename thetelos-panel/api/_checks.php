@@ -211,7 +211,14 @@ function ca_prompt_dump_patterns() {
         '/\bIMPORTANT:\s*Write the ENTIRE text in English\b/i',
         '/\bdo not use turkish\b/i',
         '/^CORE TASK$/im',
-        '/\bfor thetelos\.org\b/i',
+        /* "for thetelos.org" BİLEREK BURADA DEĞİL.
+           Şablon dökümü, prompt'un TAMAMININ metne basılmasıdır ve doğru eylem
+           o noktadan sonrasını KESMEKTİR. Oysa modelin H2 alt başlığa yazdığı
+           "A Detailed Summary for Thetelos.org" tek satırlık bir artıktır ve
+           metnin EN BAŞINDA durur: oradan kesmek yazının tamamını silerdi.
+           Kayıp eşiği bunu haklı olarak engelliyor, ama sonuç bulgunun hiç
+           kapanmaması oluyordu — yazı sonsuza kadar "şablon basılmış" kalıyordu.
+           Artık satır düzeyinde siliniyor (bkz. ca_delete_patterns). */
         '/\bwalk the reader through the actual content of this work\b/i',
         '/\byour primary job is to\b/i',
     ];
@@ -264,7 +271,23 @@ function ca_cut_prompt_dump($html) {
  * Bu diziler hiçbir kitap metninde bulunamaz, bu yüzden her yerde silinir.
  */
 function ca_marker_regex() {
-    return '/(?:%%\s*)?\bPART[_ ]?\d*[_ ]?(?:END|START)\b(?:\s*%%)?|%%\s*PART[^%]*%%|===\s*MULTI-PART[^\n]*/i';
+    /* Köşeli parantezli devam notları da buraya AİT: "[Continued in Part 2]",
+       "[To be continued]", "[Note: ...]" birer dikiş artığıdır — silinince
+       metinden hiçbir bilgi eksilmez.
+
+       Eskiden yalnızca ca_check_meta_talk bunları TESPİT ediyor, silme listesi
+       tanımıyordu. Sonuç orantısız bir eylemdi: 10.000 kelimelik bir yazı,
+       içindeki 20 karakterlik bir parantez yüzünden "yeniden üretilecek"
+       görünüyordu. Eylem kusurla orantılı olmalı.
+
+       Kapsam bilerek dar: yalnızca devam/not bildiren parantezler. Alıntılarda
+       geçen "[sic]", "[emphasis added]" gibi editoryal parantezlere dokunulmaz. */
+    return '/(?:%%\s*)?\bPART[_ ]?\d*[_ ]?(?:END|START)\b(?:\s*%%)?'
+         . '|%%\s*PART[^%]*%%'
+         . '|===\s*MULTI-PART[^\n]*'
+         . '|\[\s*(?:continued|to be continued|cont\'d|continuing)\b[^\]]{0,60}\]'
+         . '|\[\s*note\s*:[^\]]{0,120}\]'
+         . '|\[\s*(?:end of )?part\s*\d+[^\]]{0,40}\]/i';
 }
 
 /** Parça üretiminin teknik işaretleri metne sızmış mı? */
