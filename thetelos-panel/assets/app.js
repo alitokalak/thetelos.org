@@ -368,7 +368,12 @@ function runGenerateStream(params, onLive, label) {
       const el = tickEl();
       if (el) el.textContent = (label || 'İçerik üretiliyor') + ' — ' + sn + ' sn' +
         (streamText ? ' · ' + streamText.split(/\s+/).length.toLocaleString('tr') + ' kelime' : ' · ilk yanıt bekleniyor');
-      if (!streamText && Date.now() - lastData > 90000) { clearInterval(timer); ac.abort('no-first-token'); }
+      // Bu sayaç "hiç BAYT gelmiyor" (ölü bağlantı) durumunu yakalar. Sunucu
+      // ilk kelimeyi beklerken 10 sn'de bir ": ping" gönderir; o pingler bu
+      // sayacı sıfırlar, dolayısıyla yavaş-ama-canlı istek burada kesilmez —
+      // ilk-jeton kararını artık sunucu (240 sn) veriyor. Yalnızca gerçekten
+      // sessiz kalan (nabzı bile gelmeyen) kopuk bağlantı burada kesilir.
+      if (!streamText && Date.now() - lastData > 120000) { clearInterval(timer); ac.abort('no-first-token'); }
     }, 1000);
     const stopTimer = () => clearInterval(timer);
 
@@ -426,7 +431,7 @@ function runGenerateStream(params, onLive, label) {
             stopTimer();
             if (streamText) resolve({ text: streamText, stats });
             else if (ac.signal.reason === 'no-first-token')
-              reject(new Error('90 saniyede tek kelime gelmedi — istek yanıtsız kaldı (sunucu ya da DeepSeek meşgul)'));
+              reject(new Error('Sunucudan uzun süre veri gelmedi — bağlantı düştü (sunucu ya da DeepSeek meşgul olabilir, birkaç dakika sonra dene)'));
             else reject(new Error('Bağlantı kesildi: ' + err.message));
           });
         }
@@ -435,7 +440,7 @@ function runGenerateStream(params, onLive, label) {
       .catch(err => {
         stopTimer();
         if (ac.signal.reason === 'no-first-token')
-          reject(new Error('90 saniyede tek kelime gelmedi — istek yanıtsız kaldı (sunucu ya da DeepSeek meşgul)'));
+          reject(new Error('Sunucudan uzun süre veri gelmedi — bağlantı düştü (sunucu ya da DeepSeek meşgul olabilir, birkaç dakika sonra dene)'));
         else reject(new Error('Hata: ' + err.message));
       });
   });

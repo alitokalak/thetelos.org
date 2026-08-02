@@ -324,7 +324,15 @@ $write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_
  * XFERINFOFUNCTION veri aksa da akmasa da libcurl tarafından düzenli çağrılır;
  * nabız artık isteğin yavaşlığından etkilenmiyor.
  */
-$FIRST_TOKEN_LIMIT = 75;   // sn — bu süre içinde tek kelime gelmezse istek ölüdür
+/* İLK JETON SÜRESİ: batch ile HİZALI (280 sn CURLOPT_TIMEOUT altında pay).
+   Eskiden 75 sn'ydi ve tekli üretim çalışmaz olmuştu: DeepSeek'in yeni API/
+   modeli, büyük prompt + yoğunlukta ilk kelimeyi çoğu zaman 75 sn'den GEÇ
+   döndürüyor. TOPLU üretim ilk-jeton gözcüsü OLMADIĞI (280 sn beklediği) için
+   çalışıyordu; tekli ise 75'te kesip "yanıtsız" diyordu — API aynı, tek fark
+   buydu. Nabız (: ping her 10 sn) bağlantıyı canlı tuttuğundan süreyi uzatmak
+   Cloudflare 524'e yol açmaz. Gerçekten ölü istek yine kesilir, ama artık
+   yavaş-ama-canlı bir istek boşuna öldürülmüyor. */
+$FIRST_TOKEN_LIMIT = 240;   // sn — bu süre içinde tek kelime gelmezse istek ölüdür
 
 $beat = function () use (&$last_ping, &$first_token, $req_start, $FIRST_TOKEN_LIMIT) {
     if (time() - $last_ping >= 10) {
