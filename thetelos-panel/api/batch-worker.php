@@ -780,7 +780,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         require_once __DIR__ . '/_verify.php';
         if (tv_settings()['gate']) {
             bw_touch_hb($batch_file, $idx);   // doğrulama sürerken worker ölü sanılmasın
-            $g = tv_gate($book, $author, $body_html, ['min_words' => 800]);
+            $g = tv_gate($book, $author, $body_html, ['min_words' => 300]);
             $gate_report = $g['report'];
             if (!$g['pass']) $post_status = 'draft';
         }

@@ -375,8 +375,16 @@ function tv_gate($book, $author, $html, $opts = []) {
         if ($s = ca_check_truncated($html))     $reasons[] = 'cümle ortasında kesilmiş';
         if ($s = ca_check_orphan_heading($html))$reasons[] = 'boş başlıkla bitmiş: ' . mb_substr($s, 0, 60);
     }
+    /* UZUNLUK TABANI DÜŞÜK BİLEREK.
+       Prompt artık üç kademeli: eseri iyi bilmiyorsa model 400-800 kelimelik
+       KISA bir olgu notu (MODE B) yazabiliyor — bu meşru içeriktir, yayına
+       çıkmalı. Eskiden taban 800'dü ve bu notları hep taslakta bırakıyordu.
+       Uzunluk zaten kalitenin zayıf bir işareti: gerçek kusurlar (yarım kesik
+       cümle, öksüz başlık, üretim reddi, prompt dökümü, OLGU HATASI) uzunluktan
+       BAĞIMSIZ kontrollerle yakalanıyor. Taban yalnızca neredeyse-boş çıktıyı
+       eler; kaliteyi olgu denetimi ve mekanik kapı sağlar. */
     $words = str_word_count(strip_tags((string) $html));
-    $min   = max(300, (int) ($opts['min_words'] ?? 800));
+    $min   = max(200, (int) ($opts['min_words'] ?? 300));
     if ($words < $min) $reasons[] = "çok kısa ({$words} kelime, en az {$min})";
     $report['mech_words'] = $words;
 

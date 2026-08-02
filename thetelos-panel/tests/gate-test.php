@@ -113,5 +113,33 @@ $g = tv_gate('X', 'Y', $saglam . '<p>%%PART_END%%</p>', ['min_words' => 800, 'sk
 chk('sebep listesi dolu',  count($g['reasons']) > 0, true, $g['reasons'] ? $g['reasons'][0] : '');
 chk('rapor sebebi taşıyor', isset($g['report']['reasons']), true);
 
+/* ── MODE B: KISA OLGU NOTU ────────────────────────────────────────────────
+   Prompt artık üçüncü bir yol sunuyor: model eseri ayrıntılı bilmiyorsa 1-2
+   sayfalık, NÖTR üçüncü şahıs, olgu-yalnızca bir not yazabiliyor. Bu meşru
+   içeriktir ve yayına çıkmalı. İki tehlike:
+     1) Notun kısalığı yüzünden hep taslakta kalması → taban 300'e düştü.
+     2) Notun "bu tam özet değil" cümlesinin ÜRETİM REDDİ sanılması. */
+echo "\n── MODE B: KISA OLGU NOTU ──\n";
+$note = '<h1><strong>Some Minor Treatise — A. N. Author</strong></h1>'
+      . '<h2><strong>A brief factual overview</strong></h2>'
+      . '<p>What follows is a brief factual overview of this work and its author, '
+      . 'rather than a detailed summary of its contents.</p>'
+      . str_repeat(
+          '<p>The author was active in the period and wrote in the language of the region, '
+        . 'and this title belongs to the broader tradition it is usually grouped with. '
+        . 'The work is generally described as belonging to its stated genre and is discussed '
+        . 'for its themes at a general level within the author\'s wider output.</p>', 12);
+
+chk('kısa not GEÇER (taban 300)',
+    tv_gate('Some Minor Treatise', 'A. N. Author', $note, ['min_words' => 300, 'skip_factcheck' => true])['pass'],
+    true);
+chk('aynı not eski 800 tabanında dururdu',
+    tv_gate('Some Minor Treatise', 'A. N. Author', $note, ['min_words' => 800, 'skip_factcheck' => true])['pass'],
+    false);
+chk('nötr "brief overview" cümlesi ret sayılmaz',
+    ca_check_refusal($note) === '', true);
+chk('nötr not yarım sanılmaz',
+    ca_check_truncated($note) === '', true);
+
 echo "\nSonuç: {$ok} geçti, {$bad} hata\n";
 exit($bad ? 1 : 0);

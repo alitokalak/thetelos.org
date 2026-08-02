@@ -175,7 +175,7 @@ if ($post_status === 'publish') {
     require_once __DIR__ . '/_checks.php';
     require_once __DIR__ . '/_verify.php';
     if (tv_settings()['gate']) {
-        $g = tv_gate($book, $author, $body_html, ['min_words' => 800]);
+        $g = tv_gate($book, $author, $body_html, ['min_words' => 300]);
         $gate_report = $g['report'];
         if (!$g['pass']) {
             $post_status = 'draft';   // yayınlama — taslakta beklet
