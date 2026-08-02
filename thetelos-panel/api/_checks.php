@@ -118,6 +118,23 @@ function ca_meta_patterns() {
  * yayında bırakmaktır. Bu yüzden ayrı bir bulgu türü: eylemi yayından
  * kaldırmak ve yeniden üretmektir.
  */
+/**
+ * Bulgunun ÇEVRESİNİ döndürür.
+ *
+ * Örnek olarak yalnızca eşleşen ifadeyi ("cannot verify") göstermek, ekranda
+ * doğrulanamaz bir bulgu üretiyordu: kullanıcı yazıyı açıp o ifadeyi arıyor,
+ * bağlamı göremediği için hatanın gerçek mi yanlış alarm mı olduğunu
+ * anlayamıyordu. Bulgu, tek bakışta doğrulanabilir olmalı.
+ */
+function ca_context($haystack, $needle, $len = 150) {
+    $h = trim(preg_replace('/\s+/u', ' ', (string) $haystack));
+    $p = mb_stripos($h, trim((string) $needle), 0, 'UTF-8');
+    if ($p === false) return mb_substr($h, 0, $len, 'UTF-8');
+    $start = max(0, $p - 45);
+    $out   = mb_substr($h, $start, $len, 'UTF-8');
+    return ($start > 0 ? '…' : '') . trim($out) . (mb_strlen($h, 'UTF-8') > $start + $len ? '…' : '');
+}
+
 function ca_check_refusal($html) {
     $blocks = ca_blocks($html, false);
     $head   = implode(' ', array_slice($blocks, 0, 3));   // reddin olağan yeri baştır
@@ -130,14 +147,32 @@ function ca_check_refusal($html) {
         '/\bplease provide the (?:necessary|full) (?:material|text)\b/i',
         '/\bif you (?:can )?(?:provide|share) the (?:text|book|material)\b/i',
         '/\bi (?:don\'t|do not) have (?:the )?(?:book|text|access)\b/i',
-        // Prompt'un "dürüstlük kapısı"nın ürettiği açık ret. Model bu satırı
-        // yazdığında eseri tanımadığını BİLDİRMİŞ demektir; uydurmadan
-        // kaçınmanın doğru sonucu budur ve yazı asla yayına çıkmamalıdır.
-        '/\bcannot verify\b/i',
-        '/\bi (?:am not|\'m not) familiar with (?:this|that) (?:work|book|text)\b/i',
-        '/\bi (?:do not|don\'t) (?:reliably )?know (?:this|that) (?:exact )?(?:work|book)\b/i',
     ];
-    foreach ($pats as $p) if (preg_match($p, $head, $m)) return trim($m[0]);
+
+    /* PROMPT'UN DÜRÜSTLÜK KAPISININ ÜRETTİĞİ AÇIK RET.
+       Ölçüt ifadenin metinde GEÇMESİ DEĞİL, bloğun onunla BAŞLAMASIDIR.
+
+       İlk halinde kalıp "/\bcannot verify\b/i" idi ve gövdenin herhangi bir
+       yerinde eşleşiyordu. Sonuç, tam da kaçınmak istediğimiz şey oldu:
+       Popper'ın "Bilgi Kuramının İki Temel Sorunu" özeti reddedildi — oysa o
+       kitabın KONUSU doğrulanabilirlik, "cannot verify" onun ana sözcüğü.
+       Clausewitz'in sefer tarihinde de "kaynaklardan doğrulayamıyoruz"
+       cümlesi olağan. Sağlam yazıları uydurma sanmak, uydurmayı kaçırmak
+       kadar zararlı.
+
+       Gerçek ret, modelin metin yerine yazdığı TEK SATIRDIR: bloğun başında
+       durur ve bloğun tamamı kısadır. */
+    $decl = [
+        '/^[\s*_>#\-]*cannot verify\b/i',
+        '/^[\s*_>#\-]*(?:i am|i\'m) not familiar with (?:this|that) (?:work|book|text)\b/i',
+        '/^[\s*_>#\-]*i (?:do not|don\'t) (?:reliably )?know (?:this|that) (?:exact )?(?:work|book)\b/i',
+    ];
+    foreach (ca_blocks($html, true) as $b) {
+        if (mb_strlen($b, 'UTF-8') > 300) continue;   // uzun blok = gerçek metin
+        foreach ($decl as $p) if (preg_match($p, trim($b))) return ca_context($b, trim($b));
+    }
+
+    foreach ($pats as $p) if (preg_match($p, $head, $m)) return ca_context($head, $m[0]);
 
     /* ÇOK PARÇALI ÜRETİMDE RET ORTADA KALIR.
        Parçalar birleştirildiği için 1. parça düzgün yazılıp 3. parça
@@ -153,7 +188,7 @@ function ca_check_refusal($html) {
     foreach (ca_blocks($html, true) as $i => $b) {
         if ($i < 3) continue;                       // baş zaten tarandı
         if (mb_strlen($b, 'UTF-8') > 400) continue; // uzun blok = gerçek metin
-        foreach ($pats as $p) if (preg_match($p, $b, $m)) return trim($m[0]);
+        foreach ($pats as $p) if (preg_match($p, $b, $m)) return ca_context($b, $m[0]);
     }
     return '';
 }
@@ -279,7 +314,7 @@ function ca_check_meta_talk($html) {
         '/\bword count\s*[:=]/i',
         '/\[(?:note|continued|to be continued)\b/i',
     ];
-    foreach ($hard as $p) if (preg_match($p, $text, $m)) return trim($m[0]);
+    foreach ($hard as $p) if (preg_match($p, $text, $m)) return ca_context($text, $m[0]);
     return '';
 }
 

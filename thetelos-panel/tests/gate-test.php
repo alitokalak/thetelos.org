@@ -79,6 +79,32 @@ $edebi = '<p>' . str_repeat('In the final letter the narrator confesses that i c
 chk('uzun edebî paragraf (ret değil)', gated($saglam . $edebi), false);
 chk('alıntıdaki ret ifadesi',          gated($saglam . '<blockquote>“I cannot write this. I do not have the text before me.”</blockquote><p>The refusal is the point of the chapter.</p>'), false);
 
+/* GERÇEK VAKA: "cannot verify" kalıbı gövdenin herhangi bir yerinde eşleşince
+   Popper'ın "Bilgi Kuramının İki Temel Sorunu" özeti ÜRETİM REDDİ sayıldı —
+   oysa o kitabın konusu doğrulanabilirlik, ifade metnin kendi sözcüğü.
+   Clausewitz'in sefer tarihinde de kaynak doğrulaması olağan bir cümledir. */
+echo "\n── YANLIŞ ALARM: GERÇEK VAKALAR ──\n";
+$popper = '<h2>The Problem of Demarcation</h2>' . str_repeat(
+    '<p>Popper argues that a universal statement cannot verify itself through any finite number of observations, ' .
+    'and that this asymmetry between verification and falsification is what separates science from metaphysics.</p>', 30);
+chk('Popper: "cannot verify" konu gereği', gated($popper, 'Die beiden Grundprobleme der Erkenntnistheorie', 'Karl Popper'), false);
+
+$clausewitz = '<h2>The Campaign Opens</h2>' . str_repeat(
+    '<p>The strength of the Mecklenburg corps at this date we cannot verify from the surviving returns, ' .
+    'and Clausewitz himself notes the gap in the records when he reconstructs the march.</p>', 30);
+chk('Clausewitz: kaynak doğrulaması',      gated($clausewitz, 'Feldzug in Mecklenburg und Holstein', 'Carl von Clausewitz'), false);
+
+// Buna karşılık GERÇEK ret hâlâ yakalanmalı: tek satır, blok başında.
+chk('gerçek ret satırı (tek başına)',      gated('<p>CANNOT VERIFY: I do not know this specific work.</p>'), true);
+chk('gerçek ret (vurgulu yazılmış)',       gated('<p>**CANNOT VERIFY:** I know the author but not this title.</p>'), true);
+
+/* Bulgu tek bakışta doğrulanabilir olmalı: örnek yalnız eşleşen ifadeyi değil
+   ÇEVRESİNİ göstermeli, yoksa kullanıcı yazıda neyin sorunlu olduğunu bulamaz. */
+echo "\n── BULGU ÖRNEĞİ BAĞLAM TAŞIMALI ──\n";
+$ornek = ca_check_refusal('<p>' . str_repeat('Filler sentence here. ', 5) .
+                          'I cannot produce this summary because I do not have the text.</p>');
+chk('örnek bağlam içeriyor', mb_strlen($ornek) > 40, true, $ornek);
+
 /* ── Kapı SEBEBİ söylemeli ────────────────────────────────────────────────
    "Yayınlanmadı" demek yetmez: hangi kusur yüzünden durduğu yazılmazsa
    kullanıcı taslaklar arasında kör kalır. */
