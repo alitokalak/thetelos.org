@@ -31,13 +31,16 @@ jobs:
 
       # Hangi sürümün canlıda olduğu PANELDEN görünsün. Bu dosya olmadan
       # "deploy oldu mu, olmadı mı" sorusu ancak tahminle cevaplanıyordu.
+      # Adı bilerek ".version" DEĞİL: noktayla başlayan dosyalar FTP senkron
+      # araçlarında ve exclude kalıplarında sık sık atlanıyor ve ilk denemede
+      # tam bu yüzden panele hiç ulaşmadı.
       - name: Sürüm damgası yaz
         run: |
           printf '%s\n%s\n%s\n' \
             "${GITHUB_SHA::7}" \
             "$(date -u '+%Y-%m-%d %H:%M UTC')" \
-            "$(git log -1 --pretty=%s | head -c 120)" > thetelos-panel/.version
-          cat thetelos-panel/.version
+            "$(git log -1 --pretty=%s | head -c 120)" > thetelos-panel/version.txt
+          cat thetelos-panel/version.txt
 
       # ── Tema ────────────────────────────────────────────────────────
       - name: Deploy theme (1. deneme)
