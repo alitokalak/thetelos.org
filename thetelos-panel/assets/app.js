@@ -108,6 +108,14 @@ function tokenInfo(val) {
   const label = w <= 700 ? 'Çok kısa' : w <= 1500 ? 'Kısa' : w <= 3000 ? 'Orta' : w <= 5000 ? 'Uzun' : 'Çok uzun';
   return `${w.toLocaleString('tr')} kelime · ${label}`;
 }
+// Gerçek parça sayısı: seçilen kelimeye göre YÜKSELTİLEBİLİR (parça başına
+// ~1800 kelimeyi aşmamak için). Dropdown'da "4 parça" yazsa da 8.000 kelime
+// seçilince 5 parçaya çıkar — bu SESSİZCE olunca "neden 1/5 diyor?" diye
+// sorulmasına yol açıyordu. Artık dropdown'un altında açıkça yazıyor.
+function _effectiveParts(tokens) {
+  const picked = parseInt(document.getElementById('parts-select')?.value) || 2;
+  return Math.max(picked, Math.min(6, Math.ceil(Math.max(500, Math.min(8000, parseInt(tokens) || 3000)) / 1800)));
+}
 function updateTokenDisplay(val) {
   const el = document.getElementById('token-display');
   if (!el) return;
@@ -116,6 +124,12 @@ function updateTokenDisplay(val) {
   const pct = ((val - 500) / (8000 - 500)) * 100;
   document.getElementById('token-slider').style.background =
     `linear-gradient(90deg, var(--gold) ${pct}%, var(--border) ${pct}%)`;
+  const picked = parseInt(document.getElementById('parts-select')?.value) || 2;
+  const actual = _effectiveParts(val);
+  const pe = document.getElementById('parts-actual');
+  if (pe) pe.textContent = actual > picked
+    ? `→ bu kelime hedefinde gerçekte ${actual} parçada yazılacak (parça başına ~1.800 kelimeyi aşmamak için)`
+    : '';
 }
 function updateBulkTokenDisplay(val) {
   const el = document.getElementById('bulk-token-display');
@@ -447,10 +461,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   // Parça sayısı hedef kelimeye göre yükseltilir: model tek istekte ~1800
   // kelimeden sonra kendini toparlayıp bitiriyor, dolayısıyla "8000 kelime /
   // 2 parça" seçilirse yazı hedefin yarısı uzunlukta çıkar. Seçilen değer taban.
-  const parts = isDeepSeek
-    ? Math.max(parseInt(document.getElementById('parts-select')?.value) || 2,
-               Math.min(6, Math.ceil(Math.max(500, Math.min(8000, parseInt(tokens) || 3000)) / 1800)))
-    : 1;
+  const parts = isDeepSeek ? _effectiveParts(tokens) : 1;
   const preview = document.getElementById('preview-content');
 
   document.getElementById('single-result').style.display = '';

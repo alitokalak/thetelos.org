@@ -129,12 +129,13 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             </select>
           </div>
           <div>
-            <label for="parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek)</span></label>
-            <select id="parts-select">
+            <label for="parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek — en az)</span></label>
+            <select id="parts-select" onchange="updateTokenDisplay(document.getElementById('token-slider').value)">
               <option value="2" selected>2 parça</option>
               <option value="3">3 parça (daha uzun)</option>
               <option value="4">4 parça (en uzun)</option>
             </select>
+            <span id="parts-actual" style="display:block;margin-top:4px;font-size:11px;color:var(--muted)"></span>
           </div>
         </div>
         <button class="btn btn-primary" id="btn-generate">✦ İçerik Üret</button>
