@@ -95,6 +95,52 @@ if (file_exists(PROMPTS_FILE)) {
       </div>
     </div>
 
+    <!-- Yayın Kapısı -->
+    <div class="card">
+      <div class="card-title">🚦 Yayın Kapısı</div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;max-width:820px">
+        Bir okuyucu, yayındaki bir özette romanda hiç olmayan bir karakterin anlatıldığını bildirdi.
+        Bu kusur biçimsel değil: metin kusursuz görünüyor ama <b>anlattığı kitap o kitap değil</b>.
+        Düzenli ifadeyle yakalanamaz — bu yüzden yayın kararı artık bir kapıdan geçiyor.
+        Kapı kusuru <b>düzeltmez</b>, yalnızca yayına çıkmasını engeller: içerik taslak olarak kaydedilir,
+        sebebi yazılır, kararı sen verirsin.
+      </p>
+      <div style="display:grid;gap:12px;max-width:820px">
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px">
+          <input type="checkbox" id="v-gate" style="margin-top:3px">
+          <span><b>Kapı açık</b> — kusurlu içerik yayınlanmaz, taslakta bekler.
+            <span style="color:var(--muted)">Kapatırsan her şey doğrudan yayına gider.</span></span>
+        </label>
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px">
+          <input type="checkbox" id="v-probe" style="margin-top:3px">
+          <span><b>Üretim öncesi bilgi yoklaması</b> — yazmadan önce kısa bir çağrı: “bu eseri biliyor musun?”.
+            Yanıt Open Library ile çapraz kontrol edilir; tutmazsa kitap hiç yazılmaz.
+            <span style="color:var(--muted)">Ucuz (~1 kısa çağrı) ve uydurmayı kaynağında keser.</span></span>
+        </label>
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px">
+          <input type="checkbox" id="v-fact" style="margin-top:3px">
+          <span><b>Yayın öncesi olgu denetimi</b> — yazılan metin ayrı bir çağrıya düşmanca çerçevede verilir:
+            “bu metinde bu esere ait olmayan ne varsa listele”.
+            <span style="color:var(--muted)">Kitap başına ~1 çağrı. Üretme baskısı olmadığı için model kendi uydurmasını yakalayabiliyor.</span></span>
+        </label>
+        <label style="font-size:13px;display:flex;gap:10px;align-items:center">
+          <span style="min-width:210px">Yoklamada en az güven eşiği</span>
+          <input type="number" id="v-conf" min="0" max="100" step="5" style="width:80px;padding:5px 8px">
+          <span style="color:var(--muted)">altındaysa kitap yazılmaz (varsayılan 55)</span>
+        </label>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center">
+        <button class="btn btn-primary" id="btn-save-verify">💾 Kapı Ayarlarını Kaydet</button>
+        <span id="verify-result" style="font-size:13px"></span>
+      </div>
+      <p style="font-size:12px;color:var(--muted);margin-top:14px;line-height:1.7;max-width:820px">
+        <b>Dürüst sınır:</b> bu sistem uydurmayı azaltır, sıfırlamaz. Model kendi bilgisiyle kendini
+        denetlediği için bir eseri baştan sona yanlış “biliyorsa” iki katman da aynı yanlışı onaylayabilir.
+        Open Library çapraz kontrolü bu yüzden var — eserin varlığı ve yılı bağımsız bir kaynaktan doğrulanır.
+        Tek gerçek güvence, düşük güvenli eserlerin <b>hiç yazılmaması</b>.
+      </p>
+    </div>
+
     <!-- Dosya İzni Durumu -->
     <div class="card">
       <div class="card-title">Sistem Durumu</div>
@@ -194,6 +240,38 @@ document.getElementById('btn-test').addEventListener('click', async () => {
 
   btn.disabled = false;
   btn.innerHTML = '🔌 WP Bağlantısını Test Et';
+});
+
+/* ── Yayın kapısı ayarları ────────────────────────────────────────────────
+   Varsayılan AÇIK: ayar dosyası hiç yoksa da kapı çalışır. Güvenli
+   varsayılan, bir okuyucunun uydurma içerik bildirmesinden sonra budur. */
+(async function loadVerify(){
+  try {
+    const r = await fetch('api/settings.php?action=get_verify').then(x=>x.json());
+    if (!r.ok) return;
+    document.getElementById('v-gate').checked  = !!r.data.gate;
+    document.getElementById('v-probe').checked = !!r.data.probe;
+    document.getElementById('v-fact').checked  = !!r.data.factcheck;
+    document.getElementById('v-conf').value    = r.data.min_conf;
+  } catch(e){}
+})();
+
+document.getElementById('btn-save-verify')?.addEventListener('click', async () => {
+  const btn = document.getElementById('btn-save-verify');
+  const out = document.getElementById('verify-result');
+  btn.disabled = true; out.style.color = 'var(--muted)'; out.textContent = 'Kaydediliyor...';
+  const fd = new FormData();
+  fd.append('action', 'save_verify');
+  if (document.getElementById('v-gate').checked)  fd.append('gate', '1');
+  if (document.getElementById('v-probe').checked) fd.append('probe', '1');
+  if (document.getElementById('v-fact').checked)  fd.append('factcheck', '1');
+  fd.append('min_conf', document.getElementById('v-conf').value || '55');
+  try {
+    const res = await fetch('api/settings.php', {method:'POST', body:fd}).then(r=>r.json());
+    if (res.ok) { out.style.color = 'var(--green)'; out.textContent = '✓ Kaydedildi'; }
+    else        { out.style.color = 'var(--danger)'; out.textContent = '✗ ' + res.error; }
+  } catch(e) { out.style.color = 'var(--danger)'; out.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
 });
 </script>
 

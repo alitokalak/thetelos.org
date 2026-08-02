@@ -158,9 +158,34 @@ $clean_content = preg_replace('/(### [^\n]+\n+)(### )/m', '$2', $clean_content);
 $clean_content = preg_replace('/\n{4,}/', "\n\n\n", $clean_content);
 $clean_content = trim($clean_content);
 
+$body_html = md2html($clean_content);
+
+/* ── YAYIN KAPISI ─────────────────────────────────────────────────────────
+   Bir okuyucu, yayındaki bir özette romanda hiç olmayan bir karakterin
+   anlatıldığını bildirdi. O kusur biçimsel değildi: metin kusursuz görünüyor,
+   düzgün başlıklara sahip, akıcı — ama anlattığı kitap o kitap değil. Hiçbir
+   düzenli ifade bunu yakalayamaz.
+
+   Bu yüzden yayın kararı artık tek bir kapıdan geçiyor. Kapı KUSURU DÜZELTMEZ,
+   yalnızca yayına çıkmasını engeller: yanlış anlatılmış bir kitabı otomatik
+   düzeltmenin güvenli bir yolu yok, doğru davranış onu okuyucudan uzak
+   tutmaktır. İçerik kaybolmaz — taslak olarak kaydedilir, sebebi yazılır. */
+$gate_report = null;
+if ($post_status === 'publish') {
+    require_once __DIR__ . '/_checks.php';
+    require_once __DIR__ . '/_verify.php';
+    if (tv_settings()['gate']) {
+        $g = tv_gate($book, $author, $body_html, ['min_words' => 800]);
+        $gate_report = $g['report'];
+        if (!$g['pass']) {
+            $post_status = 'draft';   // yayınlama — taslakta beklet
+        }
+    }
+}
+
 $pb = [
     'title'   => $post_title,
-    'content' => md2html($clean_content),
+    'content' => $body_html,
     'excerpt' => $excerpt,
     'status'  => $post_status,
 ];
@@ -291,6 +316,12 @@ function sanitize_key($key){
     return preg_replace('/[^a-z0-9_-]/','',strtolower($key));
 }
 
+/* Kapı raporu yazıya iliştirilir: neden taslakta kaldığı sonradan da görünsün.
+   Denetim ekranı ve "Bekleyenler" listesi bu meta'yı okur. */
+if ($gate_report) {
+    wp_req("$wp_api/$ep/$pid", 'POST', ['meta' => ['_tls_gate' => json_encode($gate_report, JSON_UNESCAPED_UNICODE)]], $auth);
+}
+
 echo json_encode([
     'ok'        =>true,
     'post_id'   =>$pid,
@@ -298,4 +329,8 @@ echo json_encode([
     'edit_url'  =>rtrim(WP_URL,'/')."/wp-admin/post.php?post=$pid&action=edit",
     'cover_set' =>$cover_set,
     'categories'=>$cat_ids,
+    'status'    =>$post_status,
+    // Kapı bloklayınca sessizce taslak yapmak, "yayınladım" sanmaya yol açardı.
+    'gated'     =>($gate_report && !empty($gate_report['reasons'])),
+    'gate'      =>$gate_report ? $gate_report['reasons'] : [],
 ]);

@@ -385,6 +385,28 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         return;
     }
 
+    /* ── ÜRETİM ÖNCESİ BİLGİ YOKLAMASI ────────────────────────────
+       Uydurmanın en ucuz durduğu yer burasıdır: metin hiç yazılmaz.
+       Model'e üretim baskısı OLMADAN "bu eseri biliyor musun" sorulur ve
+       yanıtı Open Library kaydıyla çapraz kontrol edilir. Tutmazsa kitap
+       hata olarak işaretlenir — API'ye 4 parça yazdırıp sonra atmaktan
+       hem çok daha ucuz hem de tek güvenilir koruma budur. */
+    require_once __DIR__ . '/_verify.php';
+    if ($post_status === 'publish' && tv_settings()['probe']) {
+        bw_touch_hb($batch_file, $idx);
+        $pr = tv_probe($search_book, $author);
+        // Yoklama ÇALIŞMADIYSA (ağ/kota) kitabı reddetme: doğrulayamamak,
+        // eserin bilinmediğini göstermez. Yalnızca net "bilmiyorum" durdurur.
+        if (!empty($pr['ok']) && empty($pr['known'])) {
+            bw_update_book($batch_file, $idx, [
+                'status' => 'error',
+                'error'  => 'DOĞRULANAMADI: model bu eseri tanımıyor — ' .
+                            mb_substr((string) $pr['reason'], 0, 180),
+            ]);
+            return;
+        }
+    }
+
     // ── İçerik üretimi ────────────────────────────────────────────
     $content   = '';
     $gen_error = '';
@@ -743,9 +765,30 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         return;
     }
 
+    $body_html = bw_md2html($clean);
+
+    /* ── YAYIN KAPISI ─────────────────────────────────────────────────────
+       Hacmin tamamı buradan geçiyor; kapı asıl burada gerekli. Kusurlu ya da
+       eseri yanlış anlatan metin YAYINA ÇIKMAZ, taslak olarak kaydedilir ve
+       sebebi hem batch kaydına hem yazının meta'sına yazılır.
+
+       Kapı yalnızca "publish" isteniyorsa çalışır: zaten taslak kaydedilecek
+       bir metni doğrulamak için API harcamanın anlamı yok. */
+    $gate_report = null;
+    if ($post_status === 'publish') {
+        require_once __DIR__ . '/_checks.php';
+        require_once __DIR__ . '/_verify.php';
+        if (tv_settings()['gate']) {
+            bw_touch_hb($batch_file, $idx);   // doğrulama sürerken worker ölü sanılmasın
+            $g = tv_gate($book, $author, $body_html, ['min_words' => 800]);
+            $gate_report = $g['report'];
+            if (!$g['pass']) $post_status = 'draft';
+        }
+    }
+
     $pb = [
         'title'   => $post_title,
-        'content' => bw_md2html($clean),
+        'content' => $body_html,
         'excerpt' => $meta['excerpt'] ?? '',
         'status'  => $post_status,
     ];
@@ -844,15 +887,29 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
     }
 
+    // Kapı raporu yazıya iliştirilir: neden taslakta kaldığı sonradan görünsün.
+    if ($gate_report) {
+        bw_wp("$wp_api/$ep/$pid", 'POST',
+              ['meta' => ['_tls_gate' => json_encode($gate_report, JSON_UNESCAPED_UNICODE)]], $auth);
+    }
+
+    $gate_reasons = $gate_report['reasons'] ?? [];
+
     bw_update_book($batch_file, $idx, [
         'status'    => 'done',
         'post_id'   => $pid,
         'post_url'  => $post['link'] ?? '',
         'edit_url'  => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
         'cover_set' => $cover_set,
+        // Kapı blokladıysa bu kitap YAYINDA DEĞİL. Sessizce "done" yazmak
+        // "yayınlandı" sanmaya yol açardı; sebep kuyrukta görünür.
+        'gated'     => $gate_reasons ? 1 : 0,
+        'gate'      => $gate_reasons,
         // Parça eksik kaldıysa kayda düş: panelde ⚠ ile görünür, hangi kitapların
         // kısa kaldığı fark edilir ve istenirse yeniden üretilir.
-        'error'     => $part_warn,
+        'error'     => $gate_reasons
+                     ? ('KAPI: ' . implode(' · ', array_slice($gate_reasons, 0, 2)))
+                     : $part_warn,
     ]);
 }
 

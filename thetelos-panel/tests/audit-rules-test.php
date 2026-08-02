@@ -13,7 +13,7 @@
 if (PHP_SAPI !== 'cli') { http_response_code(404); exit; }   // web'den erişilemez
 
 function wp_strip_all_tags($s){ return trim(strip_tags($s)); }
-$src = file_get_contents(__DIR__ . '/../api/content-audit.php');
+$src = file_get_contents(__DIR__ . '/../api/_checks.php') . file_get_contents(__DIR__ . '/../api/content-audit.php');
 foreach (['ca_strip_quotes','ca_is_quotation','ca_blocks','ca_meta_patterns','ca_check_refusal',
           'ca_prompt_dump_patterns','ca_check_prompt_dump','ca_cut_prompt_dump','ca_marker_regex','ca_check_part_markers','ca_is_meta_block','ca_check_prompt_leak','ca_check_meta_talk',
           'ca_delete_patterns','ca_leak_line','ca_check_orphan_heading','ca_check_truncated',
