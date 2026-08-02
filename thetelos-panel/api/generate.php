@@ -408,9 +408,18 @@ if (!$full_content) {
     exit;
 }
 
+/* ÜRETİM REDDİ (MODE C) tekli üretimde de görünür olsun.
+   Prompt'un dürüstlük kapısı eseri doğrulayamadığında tek satır
+   "CANNOT VERIFY: ..." döndürür. Bu bir içerik DEĞİL — panelin onu içerik
+   sanıp yayına aday göstermesi, tam da önlemek istediğimiz durumdur. Bayrağı
+   done olayına koyuyoruz; arayüz bunu net bir uyarıyla gösterip yayın
+   butonunu kilitliyor. */
+$refused = (bool) preg_match('/^\s*[*_>#\-]*\s*cannot verify\b/i', ltrim(strip_tags($full_content)));
+
 sse('done',[
     'word_count'    => str_word_count(strip_tags($full_content)),
     'input_tokens'  => $input_tokens,
     'output_tokens' => $output_tokens,
     'stop_reason'   => $stop_reason,
+    'refused'       => $refused,
 ]);

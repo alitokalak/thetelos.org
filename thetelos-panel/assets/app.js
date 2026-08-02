@@ -574,6 +574,29 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
     }
 
     state.content = finalContent;
+
+    /* ÜRETİM REDDİ (MODE C) — içerik değil, uyarıdır.
+       Model eseri güvenilir tanımadığında tek satır "CANNOT VERIFY: …"
+       döndürür. Bunu içerik gibi gösterip yayına aday yapmak, tam da önlemek
+       istediğimiz uydurma-yayın zinciridir. Net bir uyarı göster, state.content'i
+       boşalt (yayın butonu kilitli kalsın), meta çekme. */
+    const bareText  = finalContent.replace(/<[^>]+>/g, '').trimStart();
+    const isRefusal = finalStats.refused === true || /^[*_>#\-\s]*cannot verify\b/i.test(bareText);
+    if (isRefusal) {
+      const reason = bareText.replace(/^[*_>#\-\s]*cannot verify\s*[:\-–]?\s*/i, '').trim();
+      preview.innerHTML =
+        `<div style="padding:14px 16px;border:1px solid rgba(230,150,60,.5);border-radius:10px;background:rgba(230,150,60,.08)">
+          <div style="color:#e6963c;font-weight:600;font-size:15px;margin-bottom:6px">⚠ Bu eser doğrulanamadı — içerik üretilmedi</div>
+          <div style="font-size:13px;color:var(--muted);line-height:1.5">Model bu kitabı güvenilir biçimde tanımadığını bildirdi${reason ? ':<br><em>' + reason + '</em>' : '.'}<br>Uydurma içerik yayına çıkmasın diye özet/analiz yazılmadı. Kitap ve yazar adını kontrol edip yeniden deneyebilirsiniz.</div>
+        </div>`;
+      document.getElementById('gen-stats').innerHTML = '';
+      document.getElementById('cover-card').style.display = 'none';
+      state.content = '';
+      setLoading(btn, false);
+      notify('gen-notif', '⚠ Eser doğrulanamadı — içerik üretilmedi.', 'err');
+      return;
+    }
+
     preview.innerHTML = md2html(finalContent);
     setLoading(btn, false);
 
@@ -738,20 +761,42 @@ document.getElementById('btn-publish')?.addEventListener('click', async () => {
   });
   setLoading(btn, false);
   if (!res.ok) { notify('gen-notif', res.error, 'err'); return; }
+
+  /* DURUMU DOĞRU GÖSTER.
+     Eskiden her sonuç "✓ Yayınlandı" diyordu — oysa yayın kapısı metni
+     taslağa düşürmüş (res.gated) ya da kullanıcı zaten taslak seçmiş olabilir.
+     "Söylenenle görünen tutmuyor" şikayetinin bir kaynağı buydu: uydurma
+     içeren yazı kapıda taslağa düşerken panel "yayınlandı" diyordu. */
+  const gated  = res.gated === true;
+  const isPub  = res.status === 'publish';
+  let head, headColor;
+  if (gated)      { head = '⚠ Yayınlanmadı — taslakta bekletildi'; headColor = '#e6963c'; }
+  else if (isPub) { head = '✓ Yayınlandı';                          headColor = 'var(--green)'; }
+  else            { head = '✓ Taslak kaydedildi';                   headColor = 'var(--muted)'; }
+
+  const gateReasons = gated && (res.gate || []).length
+    ? `<div style="margin-top:10px;font-size:13px;color:#e6963c;line-height:1.5">
+         <b>Sebep:</b><ul style="margin:6px 0 0;padding-left:18px">${res.gate.map(r => '<li>' + r + '</li>').join('')}</ul>
+         <div style="color:var(--muted);margin-top:6px">İçerik kaybolmadı; WP'de taslak olarak duruyor. Düzeltip elle yayınlayabilir ya da yeniden üretebilirsiniz.</div>
+       </div>`
+    : '';
+
   document.getElementById('publish-result').innerHTML = `
     <div class="card">
-      <div style="color:var(--green);font-size:16px;font-weight:600;margin-bottom:12px">✓ Yayınlandı</div>
+      <div style="color:${headColor};font-size:16px;font-weight:600;margin-bottom:12px">${head}</div>
       <div style="font-size:13px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
         <span>Post <strong style="color:var(--text)">#${res.post_id}</strong></span>
+        <span>Durum: <span class="badge ${isPub && !gated ? 'badge-green' : 'badge-gold'}">${isPub && !gated ? 'yayında' : 'taslak'}</span></span>
         <span>Kapak: <span class="badge ${res.cover_set?'badge-green':'badge-gray'}">${res.cover_set?'✓ Eklendi':'—'}</span></span>
         <span>Kategoriler: <span class="badge badge-gold">${(res.categories||[]).length} adet</span></span>
       </div>
+      ${gateReasons}
       <div style="display:flex;gap:10px;margin-top:14px">
         <a class="btn btn-ghost btn-sm" href="${res.post_url}"  target="_blank">↗ Siteyi Gör</a>
         <a class="btn btn-ghost btn-sm" href="${res.edit_url}" target="_blank">✏ WP'de Düzenle</a>
       </div>
     </div>`;
-  notify('gen-notif', '✓ Post oluşturuldu!', 'ok');
+  notify('gen-notif', gated ? '⚠ Kapı yayına izin vermedi — taslakta bekliyor.' : (isPub ? '✓ Yayınlandı!' : '✓ Taslak kaydedildi.'), gated ? 'err' : 'ok');
 });
 
 document.getElementById('btn-reset')?.addEventListener('click', () => {
