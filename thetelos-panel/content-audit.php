@@ -85,6 +85,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <button class="btn" id="btn-autofix">🔧 Onarılabilirleri Düzelt</button>
       <button class="btn" id="btn-complete">🩹 Yarım Kalanları Tamamla</button>
       <button class="btn" id="btn-regen">♻️ Kalanları Yeniden Üret</button>
+      <button class="btn" id="btn-fact" style="color:#c58af0">🔎 Olgu Denetimi</button>
       <button class="btn" id="btn-draft" style="color:#e05252">⛔ Yayından Kaldır</button>
       <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
       <span id="ca-status"></span>
@@ -95,6 +96,13 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
          border-radius:8px;background:rgba(204,24,24,.07);font-size:12px;line-height:1.6;max-width:900px">
       <b style="color:#e05252">Başarısız olanlar</b>
       <div id="ca-errors-list" style="margin-top:6px;color:var(--muted);font-family:ui-monospace,monospace;font-size:11px"></div>
+    </div>
+
+    <div id="ca-facts" style="display:none;margin:0 0 14px;padding:12px 14px;border:1px solid rgba(190,120,220,.4);
+         border-radius:8px;background:rgba(190,120,220,.07);font-size:12px;line-height:1.7;max-width:960px">
+      <b style="color:#c58af0">🔎 Olgu bulguları</b>
+      <div style="color:var(--muted);margin-top:2px">Metnin anlattığı kitap gerçekten o kitap mı? Kesin yanlış olanlar yayından alınır.</div>
+      <div id="ca-facts-list" style="margin-top:8px"></div>
     </div>
 
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:900px;line-height:1.7">
@@ -109,6 +117,9 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
         <span>metin eksik; kaldığı yerden sürdürülür — <b>API, ücretli</b>, kitap başına ~1 dk</span>
         <span style="color:#c58af0;white-space:nowrap">♻️ yeniden üretilecek</span>
         <span>metin baştan geçersiz (üretim reddi) — <b>API, ücretli</b>, en yavaşı</span>
+        <span style="color:#c58af0;white-space:nowrap">🔎 olgu denetimi</span>
+        <span>metnin anlattığı kitap gerçekten o kitap mı — <b>API, ücretli</b>, kitap başına ~1 çağrı.
+          Biçime değil <b>doğruluğa</b> bakan tek kontrol; diğerlerinin göremediği kusur budur.</span>
         <span style="color:var(--muted);white-space:nowrap">eylem gerekmiyor</span>
         <span>yalnızca üslup notu var, dokunmaya değmez</span>
       </div>
@@ -216,6 +227,39 @@ function render(){
   $('result').innerHTML = h;
   const a = $('ca-all');
   if(a) a.addEventListener('change', ()=>document.querySelectorAll('.ca-cb').forEach(cb=>cb.checked=a.checked));
+}
+
+/* ── Olgu bulguları ───────────────────────────────────────────────────────
+   Biçim kusurları tabloda rozetle gösteriliyordu; olgu kusuru farklı bir şey:
+   "şu cümle bu kitapta yok" demek gerekiyor. Bulgu, yazıya bakmadan
+   anlaşılabilir olmalı — yoksa kullanıcı yine "ne var anlamadım" der. */
+function renderFacts(facts){
+  if(!facts || !facts.length) return;
+  $('ca-facts').style.display = '';
+  $('ca-facts-list').innerHTML = facts.map(f => {
+    const renk = f.verdict === 'wrong' ? '#e05252' : '#ff8c00';
+    const et   = f.verdict === 'wrong' ? 'YANLIŞ ANLATIYOR' : 'ŞÜPHELİ';
+    return '<div style="padding:6px 0;border-top:1px solid rgba(255,255,255,.06)">' +
+      '<span class="badge" style="background:rgba(204,24,24,.16);color:'+renk+'">'+et+'</span> ' +
+      '<b>'+escH(f.title)+'</b>' +
+      (f.pulled ? ' <span style="color:#e05252">· yayından alındı</span>' : '') +
+      '<div style="color:var(--muted);margin-top:2px">'+f.issues+' bulgu' +
+      (f.high ? ', '+f.high+' ağır' : '') +
+      ' · <a class="ca-link" href="<?= rtrim(WP_URL,"/") ?>/wp-admin/post.php?post='+f.id+'&action=edit" target="_blank" rel="noopener">Düzenle ✎</a>' +
+      '</div></div>';
+  }).join('');
+}
+
+/* Olgu denetimi: seçili yazılar (yoksa listedeki tümü) tek tek eseri bilen bir
+   denetçiye sorulur. Ücretli olduğu için seçim yapmak teşvik edilir. */
+function factCheck(){
+  const ids = selectedPool().map(p => p.id);
+  const sec = [...document.querySelectorAll('.ca-cb:checked')].length;
+  startJob('fact', ids,
+    ids.length + ' yazı OLGU açısından denetlenecek' + (sec ? ' (seçtiklerin)' : ' (listedeki tümü)') + '.\n\n' +
+    'Her yazı için ~1 API çağrısı yapılır (ücretli).\n' +
+    'Metinler DEĞİŞTİRİLMEZ. Kesin yanlış olanlar yayından alınır, şüpheliler işaretlenir.\n\n' +
+    'Devam?');
 }
 
 /* ── Düzeltme sonrası yeniden denetim ─────────────────────────────────────
@@ -495,7 +539,14 @@ let poller = null;
 function jobLabel(j) {
   const total = (j.ids || []).length;
   const kind  = j.kind === 'regen' ? 'Yeniden üretiliyor'
-              : j.kind === 'auto'  ? 'Düzeltiliyor' : 'Tamamlanıyor';
+              : j.kind === 'auto'  ? 'Düzeltiliyor'
+              : j.kind === 'fact'  ? 'Olgu denetimi' : 'Tamamlanıyor';
+  if (j.status === 'done' && j.kind === 'fact') {
+    const f = (j.facts || []).length;
+    const p = (j.facts || []).filter(x => x.pulled).length;
+    return '✓ Olgu denetimi bitti — ' + j.done + ' yazı incelendi, ' + f + ' şüpheli' +
+           (p ? ', ' + p + ' yayından alındı' : '') + (j.failed ? ', ' + j.failed + ' başarısız' : '') + '.';
+  }
   if (j.status === 'done')    return '✓ Bitti — ' + j.done + ' yazı, ' + (j.words||0).toLocaleString('tr') +
                                      ' kelime' + (j.failed ? ', ' + j.failed + ' başarısız' : '') + '.';
   if (j.status === 'stopped') return '■ Durduruldu — ' + j.done + '/' + total + ' işlendi.';
@@ -521,11 +572,14 @@ function jobPoll() {
         ((j.failed > j.errors.length) ? '<br>… ve ' + (j.failed - j.errors.length) + ' tane daha' : '');
     }
 
+    if (j.facts && j.facts.length) renderFacts(j.facts);
+
     $('btn-kick').style.display = (j.status === 'running') ? '' : 'none';
     if (j.status !== 'running') {
       clearInterval(poller);
       $('btn-complete').disabled = false;
       $('btn-regen').disabled    = false;
+      $('btn-fact').disabled     = false;
       $('btn-stop').style.display = 'none';
       // İş bitti: işlenen yazıları YENİDEN OKU. "✓ Bitti" yazıp tabloyu eski
       // haliyle bırakmak, düzelenle düzelmeyeni ayırt edilemez kılıyordu.
@@ -549,6 +603,7 @@ async function startJob(kind, ids, onay) {
 
   $('btn-complete').disabled = true;
   $('btn-regen').disabled    = true;
+  $('btn-fact').disabled     = true;
   $('btn-stop').style.display = '';
   $('ca-status').textContent  = 'İş başlatılıyor…';
 
@@ -560,6 +615,7 @@ async function startJob(kind, ids, onay) {
   } catch (e) {
     $('btn-complete').disabled = false;
     $('btn-regen').disabled    = false;
+    $('btn-fact').disabled     = false;
     $('btn-stop').style.display = 'none';
     // "signal is aborted" = bizim zaman aşımımız. Sunucu meşgulken (ör. büyük
     // bir batch çalışıyorken) istek geç dönüyor; bunu hata gibi göstermek
@@ -649,6 +705,7 @@ $('btn-kick').addEventListener('click', async () => {
   try { await post('action=job_kick', 20000); jobPoll(); } catch (e) {}
 });
 $('btn-auto').addEventListener('click', autoAll);
+$('btn-fact').addEventListener('click', factCheck);
 $('btn-draft').addEventListener('click', draftPosts);
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);

@@ -780,6 +780,70 @@ if ($action === 'regen') {
  * Onarımın metni yarım bırakması bu yüzden sorun değil: aynı geçişte
  * tamamlanır. Kullanıcı tek düğmeye basar, gerisini sistem sıralar.
  */
+/**
+ * Yayındaki bir yazıyı OLGU açısından denetler.
+ *
+ * Buraya kadarki bütün denetim metnin BİÇİMİNE bakıyordu. Bir okuyucu ise
+ * bambaşka bir kusur bildirdi: metin kusursuz görünüyor ama anlattığı kitap o
+ * kitap değil — romanda olmayan bir karakter, yanlış ölen kişi. Düzenli
+ * ifadeyle yakalanamaz; ancak eseri bilen bir denetçiye sorularak bulunur.
+ *
+ * Bu işlev metni DEĞİŞTİRMEZ. Bulguları yazının meta'sına yazar ve döner;
+ * yanlış anlatılan bir kitabı otomatik "düzeltmenin" güvenli yolu yok, karar
+ * insana ait. Ağır bulgu varsa yazı yayından alınır — okuyucunun yanlış bilgi
+ * görmesi, bir yazının taslakta beklemesinden ağır basar.
+ */
+function ca_factcheck_post($id) {
+    require_once __DIR__ . '/_verify.php';
+
+    $p = get_post($id);
+    if (!$p) return ['ok' => false, 'error' => 'yazı yok'];
+
+    // Başlık "Kitap Adı - Yazar" biçiminde; doğrulama için ikisi ayrı gerekir.
+    $title  = (string) $p->post_title;
+    $book   = $title;
+    $author = '';
+    if (preg_match('/^(.*?)\s+-\s+([^-]+)$/u', $title, $m)) {
+        $book   = trim($m[1]);
+        $author = trim($m[2]);
+    }
+    // Dış kaynak araması için başlık sonundaki "(Orijinal Ad)" parantezi atılır.
+    $search_book = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book));
+    if ($search_book === '') $search_book = $book;
+
+    ca_beat();
+    $fc = tv_factcheck($search_book, $author, (string) $p->post_content);
+    if (empty($fc['ok'])) return ['ok' => false, 'error' => $fc['error'] ?? 'denetim başarısız'];
+
+    $high = 0;
+    foreach ($fc['issues'] as $i) if ($i['severity'] === 'high') $high++;
+
+    update_post_meta($id, '_tls_factcheck', wp_slash(json_encode([
+        'at'      => time(),
+        'verdict' => $fc['verdict'],
+        'diff'    => $fc['diff'],
+        'issues'  => $fc['issues'],
+    ], JSON_UNESCAPED_UNICODE)));
+
+    // AĞIR bulgu → yayından al. Şüpheli ama kesin değilse yayında bırakılır;
+    // işaretlenmiştir, kararı kullanıcı verir. Kesin yanlış olan beklemez.
+    $pulled = false;
+    if ($fc['verdict'] === 'wrong' && get_post_status($id) === 'publish') {
+        wp_update_post(['ID' => $id, 'post_status' => 'draft']);
+        do_action('litespeed_purge_post', $id);
+        $pulled = true;
+    }
+
+    return [
+        'ok'      => true,
+        'verdict' => $fc['verdict'],
+        'issues'  => count($fc['issues']),
+        'high'    => $high,
+        'pulled'  => $pulled,
+        'words'   => 0,
+    ];
+}
+
 function ca_fix_everything($id) {
     $p = get_post($id);
     if (!$p) return ['ok' => false, 'error' => 'yazı yok'];
@@ -923,6 +987,18 @@ function ca_job_finish($id, $r) {
         if (!empty($r['ok'])) {
             $job['done']++;
             $job['words'] += (int) ($r['words'] ?? $r['added'] ?? 0);
+            // Olgu denetiminin SONUCU işin kendisidir; sayı değil bulgudur.
+            // Kaydedilmezse iş "bitti" der ve ne bulunduğu kaybolur.
+            if (isset($r['verdict']) && $r['verdict'] !== 'ok') {
+                $job['facts'][] = [
+                    'id'      => $id,
+                    'title'   => (string) (get_the_title($id) ?: $id),
+                    'verdict' => $r['verdict'],
+                    'issues'  => (int) ($r['issues'] ?? 0),
+                    'high'    => (int) ($r['high'] ?? 0),
+                    'pulled'  => !empty($r['pulled']),
+                ];
+            }
         } else {
             $job['failed']++;
             if (count($job['errors']) < 10) {
@@ -940,7 +1016,7 @@ function ca_job_finish($id, $r) {
 if ($action === 'job_start') {
     $ids  = array_values(array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? '')))));
     $kind = $_POST['kind'] ?? 'complete';
-    if (!in_array($kind, ['auto', 'regen', 'complete'], true)) $kind = 'complete';
+    if (!in_array($kind, ['auto', 'regen', 'complete', 'fact'], true)) $kind = 'complete';
     if (!$ids) { echo json_encode(['ok' => false, 'error' => 'liste boş']); exit; }
 
     ca_job_write([
@@ -952,6 +1028,7 @@ if ($action === 'job_start') {
         'words'   => 0,
         'current' => '',
         'errors'  => [],
+        'facts'   => [],    // olgu denetimi bulguları (kind=fact)
         'status'  => 'running',
         'started' => time(),
         'beat'    => time(),
@@ -1024,6 +1101,7 @@ if ($action === 'job_run') {
 
         if (($j = ca_job_read()) && $j['kind'] === 'auto')      $r = ca_fix_everything($id);
         elseif ($j && $j['kind'] === 'regen')                   $r = ca_regenerate_post($id);
+        elseif ($j && $j['kind'] === 'fact')                    $r = ca_factcheck_post($id);
         else                                                    $r = ca_complete_post($id);
 
         ca_job_finish($id, $r);
