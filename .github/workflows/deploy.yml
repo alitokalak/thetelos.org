@@ -8,6 +8,20 @@ on:
       - master
       - claude/**
 
+# NEDEN BU KADAR TEKRAR VAR: FTP bağlantısı ara sıra zaman aşımına uğruyor
+# ("Timeout (control socket)"), 30 çalıştırmanın ~3'ü böyle düşüyordu. İki
+# sonucu vardı ve ikisi de sessizdi:
+#
+#   1. Düzeltme sunucuya HİÇ ÇIKMIYORDU. Panelde eski kod çalışmaya devam
+#      ediyor, aynı hata tekrar görülüyor, "düzelttim" denen şey düzelmemiş
+#      görünüyordu. Günlerce süren "hâlâ aynı" hissinin kaynağı buydu.
+#   2. Tema adımı düştüğünde PANEL ADIMI HİÇ ÇALIŞMIYORDU (adımlar sırayla ve
+#      ilk hatada duruyor). Oysa panel bağımsız bir hedef; temanın ağ hatası
+#      onun deploy'unu engellememeli.
+#
+# Çözüm: her hedef iki kez denenir ve hedefler birbirinden bağımsızdır.
+# Geçici bir ağ hatası artık bir sürümü sessizce yutmuyor.
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -15,8 +29,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Tema dosyalarını deploy et ──────────────────────────────────
-      - name: Deploy theme to FTP
+      # Hangi sürümün canlıda olduğu PANELDEN görünsün. Bu dosya olmadan
+      # "deploy oldu mu, olmadı mı" sorusu ancak tahminle cevaplanıyordu.
+      - name: Sürüm damgası yaz
+        run: |
+          printf '%s\n%s\n%s\n' \
+            "${GITHUB_SHA::7}" \
+            "$(date -u '+%Y-%m-%d %H:%M UTC')" \
+            "$(git log -1 --pretty=%s | head -c 120)" > thetelos-panel/.version
+          cat thetelos-panel/.version
+
+      # ── Tema ────────────────────────────────────────────────────────
+      - name: Deploy theme (1. deneme)
+        id: theme1
+        continue-on-error: true
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server:           ${{ secrets.FTP_HOST }}
@@ -27,7 +53,7 @@ jobs:
           timeout:          120000
           local-dir:        ./
           server-dir:       ${{ secrets.FTP_THEME_PATH }}
-          exclude: |
+          exclude: &theme_exclude |
             **/.git*
             **/.git*/**
             **/node_modules/**
@@ -37,8 +63,26 @@ jobs:
             **/*.log
             **/thetelos-panel/config.php
 
-      # ── Panel dosyalarını deploy et ─────────────────────────────────
-      - name: Deploy panel to FTP
+      - name: Deploy theme (2. deneme)
+        if: steps.theme1.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:           ${{ secrets.FTP_HOST }}
+          username:         ${{ secrets.FTP_USER }}
+          password:         ${{ secrets.FTP_PASS }}
+          port:             21
+          protocol:         ftp
+          timeout:          180000
+          local-dir:        ./
+          server-dir:       ${{ secrets.FTP_THEME_PATH }}
+          exclude: *theme_exclude
+
+      # ── Panel ───────────────────────────────────────────────────────
+      # always(): temanın ağ hatası panelin deploy'unu engellemesin.
+      - name: Deploy panel (1. deneme)
+        id: panel1
+        if: always()
+        continue-on-error: true
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server:           ${{ secrets.FTP_HOST }}
@@ -50,7 +94,7 @@ jobs:
           local-dir:        ./thetelos-panel/
           server-dir:       ${{ secrets.FTP_PANEL_PATH }}
           state-name:       .ftp-deploy-sync-state-panel.json
-          exclude: |
+          exclude: &panel_exclude |
             **/.git*
             **/config.php
             **/error_log
@@ -59,3 +103,32 @@ jobs:
             jobs/**
             **/jobs/*.json
             **/jobs/**
+
+      - name: Deploy panel (2. deneme)
+        id: panel2
+        if: always() && steps.panel1.outcome == 'failure'
+        continue-on-error: true
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:           ${{ secrets.FTP_HOST }}
+          username:         ${{ secrets.FTP_USER }}
+          password:         ${{ secrets.FTP_PASS }}
+          port:             21
+          protocol:         ftp
+          timeout:          180000
+          local-dir:        ./thetelos-panel/
+          server-dir:       ${{ secrets.FTP_PANEL_PATH }}
+          state-name:       .ftp-deploy-sync-state-panel.json
+          exclude: *panel_exclude
+
+      # İki deneme de düştüyse çalıştırma BAŞARISIZ görünmeli. continue-on-error
+      # ile sessizce yeşil kalırsa, deploy'un düştüğü yine fark edilmez —
+      # bütün mesele buydu.
+      - name: Panel deploy sonucunu doğrula
+        if: always()
+        run: |
+          if [ "${{ steps.panel1.outcome }}" = "failure" ] && [ "${{ steps.panel2.outcome }}" != "success" ]; then
+            echo "::error::Panel deploy iki denemede de başarısız — sunucuda ESKİ kod çalışıyor."
+            exit 1
+          fi
+          echo "Panel deploy tamam (${{ steps.panel1.outcome }} / ${{ steps.panel2.outcome }})"

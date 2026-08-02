@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/_version.php';
 if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 ?>
 <!DOCTYPE html>
@@ -567,7 +568,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       </div>
       <?php endif; ?>
       <div style="font-size:11px;color:#555;margin-bottom:8px;padding:6px 10px;background:#111;border-radius:4px">
-        panel v6 &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
+        panel v6 &middot; <?= strip_tags(tls_version_badge()) ?> &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
         &middot; tasarruf: <?= $tls_peak_on ? 'açık' : 'kapalı' ?><?= $tls_in_peak ? ' (şu an yoğun saat)' : '' ?>
       </div>
       <?php if ($stuck_batches): ?>

@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/_version.php';
 if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
 $prompts = ['summary'=>'','analysis'=>''];
@@ -49,7 +50,7 @@ if (file_exists(PROMPTS_FILE)) {
 
   <main class="tls-main">
     <div class="tls-header">
-      <div><h2>Ayarlar</h2><p>Prompt şablonları ve bağlantı bilgileri</p></div>
+      <div><h2>Ayarlar</h2><p>Prompt şablonları ve bağlantı bilgileri <?= tls_version_badge() ?></p></div>
     </div>
 
     <div id="s-notif" class="notif"></div>

@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/_version.php';
 if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 ?><!DOCTYPE html>
 <html lang="tr">
@@ -60,7 +61,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <div class="tls-header">
       <div>
         <h2>İçerik Denetimi</h2>
-        <p>Yayındaki yazılarda yapay zekâ artığı, yarım metin ve tekrar arar <span style="opacity:.5;font-size:11px">· sürüm 2026-08-01 · arka plan işi</span></p>
+        <p>Yayındaki yazılarda yapay zekâ artığı, yarım metin ve tekrar arar <?= tls_version_badge() ?></p>
       </div>
     </div>
 
