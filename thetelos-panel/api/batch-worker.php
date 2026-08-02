@@ -539,6 +539,27 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         return;
     }
 
+    /* ── ÜRETİM REDDİ → KİTABI ATLA (post OLUŞTURMA) ──────────────────
+       Model üretim baskısı altında bile eseri güvenilir tanımadığını
+       bildirebiliyor: tek satır "CANNOT VERIFY: …" ya da "I cannot produce
+       this…". Bu bir İÇERİK DEĞİL, reddin kendisidir.
+
+       Eskiden bu tek satır boş sayılmıyor (yukarıdaki !$content tutmuyor),
+       meta/kapak için boşa API harcanıyor ve yayın kapısı onu TASLAK yapıyordu
+       — yani WP'de "CANNOT VERIFY…" gövdeli çöp bir taslak birikiyordu.
+       Kullanıcının istediği açık: bilgi yoksa kitabı SİTEYE HİÇ EKLEME, atla.
+       Reddi burada, meta/kapak/yayından ÖNCE yakalayıp kitabı 'error'
+       (atlandı) işaretliyoruz; hiçbir post oluşmuyor, API da boşa gitmiyor. */
+    require_once __DIR__ . '/_checks.php';
+    if (($refusal = ca_check_refusal($content)) !== '') {
+        bw_update_book($batch_file, $idx, [
+            'status' => 'error',
+            'error'  => 'DOĞRULANAMADI: model eseri güvenilir tanımadı, atlandı — ' .
+                        mb_substr($refusal, 0, 160),
+        ]);
+        return;
+    }
+
     bw_touch_hb($batch_file, $idx);   // yayın aşaması başlıyor — canlılığı tazele
 
     // ── Meta (excerpt, meta_desc, kategoriler, alıntılar) ──────────
