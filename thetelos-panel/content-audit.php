@@ -558,6 +558,9 @@ function jobLabel(j) {
 function jobPoll() {
   clearInterval(poller);
   poller = setInterval(async () => {
+    // Sekme görünmüyorken yoklama yapma: iş sunucuda zaten sürüyor, ekranı
+    // güncellemenin kimseye faydası yok, sunucuya maliyeti var.
+    if (document.hidden) return;
     let j;
     try { j = await post('action=job_status', 20000); } catch (e) { return; }
     if (!j || !j.ok || j.none) return;

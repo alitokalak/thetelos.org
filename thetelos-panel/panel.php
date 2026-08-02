@@ -768,13 +768,24 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         return m > 0 ? m+'dk' : s+'sn';
       }
 
+      /* Kart izleyicisi de sekme görünmüyorken YOKLAMA YAPMAZ ve sunucu
+         cevap vermezse aralığını açar. Beş açık sekme × 8 saniye, hiç kimse
+         hiçbir şey yapmasa bile sunucuyu meşgul ediyordu; sunucu zorlanırken
+         aynı hızda devam etmek durumu ağırlaştırıyordu. */
+      var _tlsWatchFails = {};
       function _tlsWatch(id) {
         if (_tlsWatchTimers[id]) return;
+        _tlsWatchFails[id] = 0;
         _tlsWatchTimers[id] = setInterval(async function () {
+          if (document.hidden) return;
+          // Arka arkaya hata: turların bir kısmını atlayarak yavaşla.
+          if (_tlsWatchFails[id] > 0 &&
+              (Date.now() % (8000 * Math.min(8, _tlsWatchFails[id] + 1))) > 8000) return;
           try {
             var r = await fetch(_tlsPanelBase+'api/batch-status.php?batch_id='+encodeURIComponent(id));
             var j = await r.json();
-            if (!j.ok || !j.batch) return;
+            if (!j.ok || !j.batch) { _tlsWatchFails[id]++; return; }
+            _tlsWatchFails[id] = 0;
             var b = j.batch, st = b.status || '', books = b.books || [];
             var pending = 0, processing = 0, done = 0, errs = 0;
             var nowSec = Math.floor(Date.now() / 1000);
@@ -844,7 +855,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             if (st === 'cancelled' || (pending === 0 && processing === 0)) {
               clearInterval(_tlsWatchTimers[id]); delete _tlsWatchTimers[id];
             }
-          } catch (e) {}
+          } catch (e) { _tlsWatchFails[id]++; }
         }, 8000);
       }
       // Sayfa açılışında bekleyen işi olan tüm batch kartlarını canlı izlemeye al.

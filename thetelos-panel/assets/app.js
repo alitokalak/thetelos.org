@@ -172,9 +172,42 @@ function _fireWorkersFor(id, count) {
     postData(API('batch-worker.php'), { batch_id: id }).catch(function(){});
   }
 }
+/* ── SUNUCUYU YORMAYAN YOKLAMA ────────────────────────────────────────────
+ * Bu nöbetçi HER açık sekmede 10 saniyede bir istek atıyordu. Gün boyu beş
+ * panel sekmesi açık kalınca bu, hiç kimse hiçbir şey yapmasa bile saatte
+ * ~1.800 istek demek — üstelik sunucu zorlanırken de aynı hızda devam ediyor
+ * ve worker ateşleyerek yükü ARTIRIYORDU. Sunucu 502 verdiğinde asıl zararlı
+ * olan da buydu: çöken sunucuya daha çok yüklenmek.
+ *
+ * İki kural:
+ *   1. Sekme görünmüyorsa yoklama YAPILMAZ. Arka plandaki sekmenin canlı
+ *      ilerleme göstermesi kimseye bir şey kazandırmıyor.
+ *   2. İstek düşerse aralık katlanarak açılır (10sn → 20 → 40 → 80, en çok
+ *      2 dk) ve worker ATEŞLENMEZ. Sunucu düzelince ilk başarılı yanıtta
+ *      normale döner.
+ */
+var _pollFails = 0;
+var _pollTimer = null;
+
+function _pollDelay() {
+  return Math.min(120000, 10000 * Math.pow(2, Math.min(_pollFails, 4)));
+}
+function _schedulePoll() {
+  clearTimeout(_pollTimer);
+  _pollTimer = setTimeout(async function () {
+    if (!document.hidden) await checkActiveJobs();
+    _schedulePoll();
+  }, _pollDelay());
+}
+// Sekmeye geri dönüldüğünde beklemeden tazele.
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) { _pollFails = 0; checkActiveJobs(); _schedulePoll(); }
+});
+
 async function checkActiveJobs() {
   try {
     const res = await postData(API('server-status.php'), {});
+    _pollFails = 0;
     const bar  = document.getElementById('active-jobs-bar');
     const list = document.getElementById('active-jobs-list');
     if (!bar || !list) return;
@@ -223,7 +256,11 @@ async function checkActiveJobs() {
         }
       }
     }
-  } catch(_) {}
+  } catch(_) {
+    // Sunucu cevap vermiyor: aralığı aç ve bu turda worker ATEŞLEME.
+    // Çöken sunucuya yüklenmek onu geri getirmiyor, tam tersini yapıyor.
+    _pollFails++;
+  }
 }
 async function stopAllJobs() {
   if (!confirm('Tüm çalışan batch\'ler durdurulacak. Emin misin?')) return;
@@ -237,7 +274,7 @@ async function stopAllJobs() {
   } catch(_) {}
 }
 checkActiveJobs();
-setInterval(checkActiveJobs, 10000);
+_schedulePoll();
 
 
 let state = { content:'', categories:[], selectedCover:'', quotes:[] };
