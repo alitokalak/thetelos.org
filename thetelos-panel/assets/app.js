@@ -291,17 +291,41 @@ function cleanGenerated(text) {
 }
 
 // Tek bir generate.php SSE çağrısı — Promise döner, canlı önizleme için onLive çağırır
-function runGenerateStream(params, onLive) {
+function runGenerateStream(params, onLive, label) {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
     Object.entries(params).forEach(([k, v]) => fd.append(k, v));
 
     let streamText = '', buffer = '', stats = {};
 
-    fetch(API('generate.php'), { method: 'POST', body: fd })
+    /* GEÇEN SÜREYİ GÖSTER + ÖLÜ İSTEĞİ BEKLEME.
+       Ekranda hiçbir şey değişmeyen bir çember dönüyordu: kullanıcı ne kadar
+       beklediğini, ilerleme olup olmadığını, sistemin ölüp ölmediğini
+       göremiyordu. Üstelik nabız düzeltmesinden sonra bağlantı artık
+       kopmadığı için, DeepSeek hiç yanıt vermediğinde bekleme 100 sn yerine
+       280 sn sürüyor ve 3 denemeyle dakikalarca dönebiliyordu.
+
+       İki şey birden: saniye sayan bir durum yazısı ve ilk içerik 90 saniyede
+       gelmezse isteği iptal et. Üretim BAŞLADIYSA sayaç sıfırlanır ve uzun
+       sürmesine izin verilir — kesilen şey yalnızca yanıtsız istek. */
+    const ac    = new AbortController();
+    const t0    = Date.now();
+    let lastData = Date.now();
+    const tickEl = () => document.getElementById('stream-status');
+    const timer = setInterval(() => {
+      const sn = Math.round((Date.now() - t0) / 1000);
+      const el = tickEl();
+      if (el) el.textContent = (label || 'İçerik üretiliyor') + ' — ' + sn + ' sn' +
+        (streamText ? ' · ' + streamText.split(/\s+/).length.toLocaleString('tr') + ' kelime' : ' · ilk yanıt bekleniyor');
+      if (!streamText && Date.now() - lastData > 90000) { clearInterval(timer); ac.abort('no-first-token'); }
+    }, 1000);
+    const stopTimer = () => clearInterval(timer);
+
+    fetch(API('generate.php'), { method: 'POST', body: fd, signal: ac.signal })
       .then(response => {
         const ct = response.headers.get('content-type') || '';
         if (ct.includes('application/json')) {
+          stopTimer();
           return response.json().then(data => reject(new Error(data.error || 'Hata')));
         }
         const reader = response.body.getReader();
@@ -310,6 +334,7 @@ function runGenerateStream(params, onLive) {
         function read() {
           reader.read().then(({ done, value }) => {
             if (done) {
+              stopTimer();
               // Sunucu hata olayı göndermeden akışı kapattıysa (PHP çöktü,
               // Cloudflare kesti) buraya düşeriz. Sebebi bilmiyoruz; en
               // azından NEYİN olmadığını söyle.
@@ -317,6 +342,7 @@ function runGenerateStream(params, onLive) {
               else resolve({ text: streamText, stats });
               return;
             }
+            lastData = Date.now();
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split('\n');
             buffer = lines.pop();
@@ -337,6 +363,7 @@ function runGenerateStream(params, onLive) {
                   const st = document.getElementById('stream-status');
                   if (st) st.textContent = evData.msg;
                 } else if (evName === 'error') {
+                  stopTimer();
                   reject(new Error(evData.error));
                 } else if (evName === 'done') {
                   stats = evData;
@@ -345,13 +372,21 @@ function runGenerateStream(params, onLive) {
             }
             read();
           }).catch(err => {
+            stopTimer();
             if (streamText) resolve({ text: streamText, stats });
+            else if (ac.signal.reason === 'no-first-token')
+              reject(new Error('90 saniyede tek kelime gelmedi — istek yanıtsız kaldı (sunucu ya da DeepSeek meşgul)'));
             else reject(new Error('Bağlantı kesildi: ' + err.message));
           });
         }
         read();
       })
-      .catch(err => reject(new Error('Hata: ' + err.message)));
+      .catch(err => {
+        stopTimer();
+        if (ac.signal.reason === 'no-first-token')
+          reject(new Error('90 saniyede tek kelime gelmedi — istek yanıtsız kaldı (sunucu ya da DeepSeek meşgul)'));
+        else reject(new Error('Hata: ' + err.message));
+      });
   });
 }
 
@@ -427,7 +462,8 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
                 const merged = accumulated ? (accumulated + '\n\n' + live) : live;
                 preview.innerHTML = md2html(cleanGenerated(merged));
                 preview.scrollTop = 9999;
-              }
+              },
+              `Part ${k}/${parts}` + (attempt > 1 ? ` (deneme ${attempt}/3)` : '')
             );
             if (r && r.text && r.text.trim()) { text = r.text; break; }
             partialErr = 'boş yanıt';
@@ -469,7 +505,8 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
         try {
           const r = await runGenerateStream(
             { ...baseParams },
-            (live) => { preview.innerHTML = md2html(live); preview.scrollTop = 9999; }
+            (live) => { preview.innerHTML = md2html(live); preview.scrollTop = 9999; },
+            'İçerik üretiliyor' + (attempt > 1 ? ` (deneme ${attempt}/3)` : '')
           );
           if (r && r.text && r.text.trim()) { res = r; break; }
           partialErr = 'boş yanıt';

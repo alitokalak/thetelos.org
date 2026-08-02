@@ -110,6 +110,18 @@ if ($parts <= 1) {
 
 // ── Web search ile kaynak metin bul ──────────────────────────────
 function fetch_source_text($book, $author) {
+    /* SERT SÜRE SINIRI.
+       Bu adım İSTEĞE BAĞLI bir iyileştirmedir: bulunursa alıntılar gerçek
+       kaynaktan seçilir, bulunmazsa üretim yine yapılır. Ama sınırsız
+       bekleyebiliyordu: Google araması @file_get_contents ile bağlam
+       verilmeden çağrılıyor, yani PHP'nin default_socket_timeout değeri (60 sn)
+       geçerli oluyordu. En kötü durumda 3 arama × 60 sn + 15 sayfa × 8 sn =
+       ~5 dakika. Bu sürenin tamamı DeepSeek'e HİÇ GİDİLMEDEN geçiyordu;
+       ekranda dönen çemberin büyük kısmı buydu.
+
+       Zorunlu olmayan bir adım, zorunlu olanı bekletemez. */
+    $deadline = microtime(true) + 20;   // sn — tüm arama aşaması için
+
     // Arama sorgusu: orijinal başlık + yazar + "full text" veya "translation"
     $queries = [
         '"' . $book . '" "' . $author . '" full text translation',
@@ -124,6 +136,7 @@ function fetch_source_text($book, $author) {
     $found_text = '';
 
     foreach ($queries as $q) {
+        if (microtime(true) > $deadline) break;
         $url = 'https://www.googleapis.com/customsearch/v1?' . http_build_query([
             'key' => $api_key,
             'cx'  => $cx,
@@ -131,12 +144,15 @@ function fetch_source_text($book, $author) {
             'num' => 5,
         ]);
 
-        $res  = @file_get_contents($url);
+        // Bağlam verilmediğinde default_socket_timeout (60 sn) geçerliydi.
+        $sctx = stream_context_create(['http' => ['timeout' => 6, 'user_agent' => 'Mozilla/5.0']]);
+        $res  = @file_get_contents($url, false, $sctx);
         if (!$res) continue;
         $data = json_decode($res, true);
         if (empty($data['items'])) continue;
 
         foreach ($data['items'] as $item) {
+            if (microtime(true) > $deadline) break 2;
             $link  = $item['link']    ?? '';
             $title = strtolower($item['title']   ?? '');
             $snip  = strtolower($item['snippet'] ?? '');
@@ -159,7 +175,7 @@ function fetch_source_text($book, $author) {
 
             // Sayfayı çek — ilk 5000 karakter al
             $ctx = stream_context_create(['http' => [
-                'timeout' => 8,
+                'timeout' => 6,
                 'header'  => 'User-Agent: Mozilla/5.0',
             ]]);
             $html = @file_get_contents($link, false, $ctx);
@@ -184,14 +200,35 @@ function fetch_source_text($book, $author) {
     return ['url' => $found_url, 'text' => $found_text];
 }
 
+// SSE başlat
+header('Content-Type: text/event-stream');
+header('Cache-Control: no-cache');
+header('X-Accel-Buffering: no');
+while (ob_get_level()) ob_end_flush();
+ob_implicit_flush(true);
+
+function sse($event, $data) {
+    echo "event: $event\ndata: " . json_encode($data, JSON_UNESCAPED_UNICODE) . "\n\n";
+    flush();
+}
+
+/* SSE, KAYNAK ARAMASINDAN ÖNCE başlatılır.
+   Eskiden arama (Google + sayfa indirme) tamamlanana kadar tarayıcıya tek
+   bayt gitmiyordu. İki sonucu vardı: kullanıcı boş bir ekrana bakıyordu ve
+   Cloudflare, hiç veri akmadığı için bağlantıyı 100 saniyede kesebiliyordu —
+   üstelik hata mesajı bile gönderilemeden. Artık bağlantı önce açılır,
+   kullanıcı hangi aşamada olduğunu görür. */
+
 // Web search — ilk parçada (veya tek seferde) çalıştır
 $source_text = '';
 $source_url  = '';
 if ($parts <= 1 || $part === 1) {
+    sse('status', ['msg' => 'Kaynak metin aranıyor (en fazla 20 sn)...']);
     $source = fetch_source_text($book, $author);
     $source_text = $source['text'];
     $source_url  = $source['url'];
 }
+sse('status', ['msg' => 'DeepSeek içerik üretiyor...']);
 if ($source_text) {
     $prompt .= "\n\n=== SOURCE TEXT (MANDATORY) ===\n"
              . "You MUST base your writing on the following original source text.\n"
@@ -212,19 +249,7 @@ if ($parts > 1) {
     $prompt .= tls_part_instruction($part, $parts, $headings, $tail, $part_words);
 }
 
-// SSE başlat
-header('Content-Type: text/event-stream');
-header('Cache-Control: no-cache');
-header('X-Accel-Buffering: no');
-while (ob_get_level()) ob_end_flush();
-ob_implicit_flush(true);
 
-function sse($event, $data) {
-    echo "event: $event\ndata: " . json_encode($data, JSON_UNESCAPED_UNICODE) . "\n\n";
-    flush();
-}
-
-sse('status', ['msg' => 'DeepSeek içerik üretiyor...']);
 
 $full_content  = '';
 $input_tokens  = 0;
@@ -234,9 +259,11 @@ $stream_buf    = '';
 $raw_buf       = '';
 $err_buf       = '';   // SSE olmayan gövde (hata JSON'u) — teşhis için saklanır
 $last_ping     = time();
+$req_start     = time();
+$first_token   = 0;      // ilk içerik jetonunun geldiği an
 
 // ── DeepSeek SSE ──────────────────────────────────────────
-$write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$err_buf, &$last_ping) {
+$write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$err_buf, &$last_ping, &$first_token) {
     $raw_buf .= $chunk;
     // API 200 dönmediğinde gövde SSE değil, düz JSON hatasıdır ("data: " ile
     // başlamaz) ve aşağıdaki ayrıştırıcı onu sessizce yutuyordu. Sonuç, sebebi
@@ -265,6 +292,7 @@ $write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_
             // OpenAI-uyumlu format
             $text = $ev['choices'][0]['delta']['content'] ?? '';
             if ($text !== '') {
+                if (!$first_token) $first_token = time();
                 $full_content .= $text;
                 $stream_buf   .= $text;
                 if (strlen($stream_buf) >= 200) {
@@ -296,12 +324,25 @@ $write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_
  * XFERINFOFUNCTION veri aksa da akmasa da libcurl tarafından düzenli çağrılır;
  * nabız artık isteğin yavaşlığından etkilenmiyor.
  */
-$beat = function () use (&$last_ping) {
+$FIRST_TOKEN_LIMIT = 75;   // sn — bu süre içinde tek kelime gelmezse istek ölüdür
+
+$beat = function () use (&$last_ping, &$first_token, $req_start, $FIRST_TOKEN_LIMIT) {
     if (time() - $last_ping >= 10) {
         echo ": ping\n\n";
         flush();
         $last_ping = time();
     }
+    /* İLK JETON GÖZCÜSÜ.
+       Nabız düzeltmesi bağlantının Cloudflare tarafından kesilmesini önledi —
+       ama istenmeyen bir yan etkisi oldu: DeepSeek hiç yanıt vermediğinde
+       tarayıcı artık 100 saniyede hata almak yerine CURLOPT_TIMEOUT dolana
+       kadar (280 sn) bekliyor, sonra istemci 3 kez deniyor. Ekranda dakikalarca
+       dönen bir çember, hiçbir açıklama yok.
+
+       Üretim başladıysa uzun sürmesi normaldir ve kesilmemelidir. Ama ilk
+       jeton 75 saniyede gelmediyse o istek ölüdür: beklemek bir şey
+       kazandırmaz. Sıfırdan farklı dönmek cURL'ü hemen durdurur. */
+    if (!$first_token && (time() - $req_start) > $FIRST_TOKEN_LIMIT) return 1;
     return 0;
 };
 
@@ -333,6 +374,14 @@ if ($stream_buf !== '') {
     sse('chunk', ['text' => $stream_buf]);
 }
 
+/* Gözcü kestiyse sebebini AÇIKÇA söyle — "Bağlantı hatası: Callback aborted"
+   kullanıcıya hiçbir şey anlatmaz. */
+if ($curl_err && !$first_token && (time() - $req_start) >= $FIRST_TOKEN_LIMIT) {
+    sse('error', ['error' =>
+        'DeepSeek ' . $FIRST_TOKEN_LIMIT . ' saniyede tek kelime döndürmedi — istek yanıtsız kaldı. ' .
+        'Sunucu yoğun olabilir; birkaç dakika sonra tekrar dene.']);
+    exit;
+}
 if ($curl_err) { sse('error', ['error' => 'Bağlantı hatası: ' . $curl_err]); exit; }
 
 /**
