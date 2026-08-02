@@ -261,9 +261,11 @@ $err_buf       = '';   // SSE olmayan gövde (hata JSON'u) — teşhis için sak
 $last_ping     = time();
 $req_start     = time();
 $first_token   = 0;      // ilk içerik jetonunun geldiği an
+$reasoning     = '';     // reasoning_content akışı (düşünme) — içeriğe eklenmez
+$last_reason   = 0;      // "düşünüyor" durumunu seyrek gönder
 
 // ── DeepSeek SSE ──────────────────────────────────────────
-$write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$err_buf, &$last_ping, &$first_token) {
+$write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_tokens, &$stop_reason, &$stream_buf, &$raw_buf, &$err_buf, &$last_ping, &$first_token, &$reasoning, &$last_reason, $req_start) {
     $raw_buf .= $chunk;
     // API 200 dönmediğinde gövde SSE değil, düz JSON hatasıdır ("data: " ile
     // başlamaz) ve aşağıdaki ayrıştırıcı onu sessizce yutuyordu. Sonuç, sebebi
@@ -290,7 +292,29 @@ $write_fn = function($ch, $chunk) use (&$full_content, &$input_tokens, &$output_
             $ev = json_decode($json, true);
             if (!$ev) continue;
             // OpenAI-uyumlu format
-            $text = $ev['choices'][0]['delta']['content'] ?? '';
+            $delta = $ev['choices'][0]['delta'] ?? [];
+            $text  = $delta['content'] ?? '';
+
+            /* REASONING (DÜŞÜNME) AKIŞI.
+               DeepSeek'in yeni modeli asıl içerikten ÖNCE uzun bir "düşünme"
+               metnini reasoning_content alanında akıtıyor (content-audit.php de
+               bu modelin bu alanı kullandığını biliyor). Streaming üretim bunu
+               görmezden geldiği için ekran "ilk yanıt bekleniyor"da donuyor,
+               oysa istek CANLI ve çalışıyor. İki şey yapıyoruz:
+                 1) Canlılık say: gözcü bu isteği "yanıtsız" diye öldürmesin.
+                 2) Kullanıcıya "düşünüyor" durumunu seyrek bildir (her ~3 sn).
+               Düşünme metni İÇERİĞE EKLENMEZ; yalnızca son çare olarak (content
+               hiç gelmezse) aşağıda yedek metin sayılır. */
+            $rtext = $delta['reasoning_content'] ?? '';
+            if ($rtext !== '') {
+                if (!$first_token) $first_token = time();   // canlı — gözcü kesmesin
+                $reasoning .= $rtext;
+                if ($text === '' && $full_content === '' && (time() - $last_reason) >= 3) {
+                    $last_reason = time();
+                    sse('status', ['msg' => 'DeepSeek düşünüyor…']);
+                }
+            }
+
             if ($text !== '') {
                 if (!$first_token) $first_token = time();
                 $full_content .= $text;
@@ -391,6 +415,16 @@ if ($curl_err && !$first_token && (time() - $req_start) >= $FIRST_TOKEN_LIMIT) {
     exit;
 }
 if ($curl_err) { sse('error', ['error' => 'Bağlantı hatası: ' . $curl_err]); exit; }
+
+/* SON ÇARE: content boş ama düşünme (reasoning) metni geldiyse onu kullan.
+   Model bazen asıl yanıtı reasoning_content'te bırakıp content'i hiç
+   doldurmuyor — content-audit.php de aynı yedeğe düşüyor. Ham düşünme metni
+   ideal değil ama boş ekrandan iyidir; tekli üretimde kullanıcı zaten
+   önizleyip karar veriyor. */
+if (!$full_content && mb_strlen(trim($reasoning)) > 400) {
+    $full_content = trim($reasoning);
+    sse('chunk', ['text' => $full_content]);
+}
 
 /**
  * Boş yanıtın SEBEBİNİ söyle.

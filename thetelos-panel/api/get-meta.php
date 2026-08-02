@@ -37,21 +37,38 @@ $mp = "Generate SEO metadata for \"{$book}\" by {$author}.\n\n"
     . "- Output ONLY the JSON object\n\n"
     . "CONTENT (for context):\n" . $snippet;
 
-$ch = curl_init(DEEPSEEK_API_URL);
-curl_setopt_array($ch,[
-    CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>30,
-    CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-    CURLOPT_POSTFIELDS=>json_encode([
-        'model'      => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
-        'max_tokens' => 700,
-        'messages'   => [
-            ['role'=>'system','content'=>$system_prompt],
-            ['role'=>'user',  'content'=>$mp],
-        ],
-    ]),
-]);
-$raw = curl_exec($ch); curl_close($ch);
-$raw_text = json_decode($raw,true)['choices'][0]['message']['content'] ?? '{}';
+/* NEDEN 120 sn + 2 DENEME + reasoning YEDEĞİ:
+   Eskiden timeout 30 sn'ydi ve kategoriler/excerpt/meta hep BOŞ geliyordu.
+   Sebep içerik üretimindekiyle aynı: DeepSeek'in yeni modeli basit bir JSON
+   meta için bile önce uzun uzun "düşünüyor" ve 30 sn'de yanıt vermiyor →
+   istek zaman aşımına uğrayıp boş {} dönüyordu. Ayrıca yanıt bazen content'te
+   değil reasoning_content'te geliyor (content-audit.php de bu yedeğe düşüyor).
+   Batch'in meta çağrısı 60 sn + 2 deneme olduğu için orada doluyordu; tekli
+   yol geride kalmıştı. */
+$raw_text = '{}';
+for ($mtry = 1; $mtry <= 2; $mtry++) {
+    $ch = curl_init(DEEPSEEK_API_URL);
+    curl_setopt_array($ch,[
+        CURLOPT_RETURNTRANSFER=>true, CURLOPT_POST=>true, CURLOPT_TIMEOUT=>120,
+        CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+        CURLOPT_POSTFIELDS=>json_encode([
+            'model'           => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
+            'max_tokens'      => 1500,
+            'response_format' => ['type'=>'json_object'],
+            'messages'   => [
+                ['role'=>'system','content'=>$system_prompt],
+                ['role'=>'user',  'content'=>$mp],
+            ],
+        ]),
+    ]);
+    $raw = curl_exec($ch); curl_close($ch);
+    $msg = json_decode($raw, true)['choices'][0]['message'] ?? [];
+    // content boşsa reasoning_content'e düş — bu model yanıtı orada bırakabiliyor
+    $cand = trim((string)($msg['content'] ?? ''));
+    if ($cand === '') $cand = trim((string)($msg['reasoning_content'] ?? ''));
+    if ($cand !== '') { $raw_text = $cand; break; }
+    if ($mtry < 2) usleep(500000);
+}
 
 // JSON extraction — backtick blokları, açıklamalar, vs. temizle
 $mt = $raw_text;

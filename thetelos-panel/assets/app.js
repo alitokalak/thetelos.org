@@ -347,7 +347,7 @@ function runGenerateStream(params, onLive, label) {
     const fd = new FormData();
     Object.entries(params).forEach(([k, v]) => fd.append(k, v));
 
-    let streamText = '', buffer = '', stats = {};
+    let streamText = '', buffer = '', stats = {}, serverStatus = '';
 
     /* GEÇEN SÜREYİ GÖSTER + ÖLÜ İSTEĞİ BEKLEME.
        Ekranda hiçbir şey değişmeyen bir çember dönüyordu: kullanıcı ne kadar
@@ -367,7 +367,8 @@ function runGenerateStream(params, onLive, label) {
       const sn = Math.round((Date.now() - t0) / 1000);
       const el = tickEl();
       if (el) el.textContent = (label || 'İçerik üretiliyor') + ' — ' + sn + ' sn' +
-        (streamText ? ' · ' + streamText.split(/\s+/).length.toLocaleString('tr') + ' kelime' : ' · ilk yanıt bekleniyor');
+        (streamText ? ' · ' + streamText.split(/\s+/).length.toLocaleString('tr') + ' kelime'
+                    : ' · ' + (serverStatus || 'ilk yanıt bekleniyor'));
       // Bu sayaç "hiç BAYT gelmiyor" (ölü bağlantı) durumunu yakalar. Sunucu
       // ilk kelimeyi beklerken 10 sn'de bir ": ping" gönderir; o pingler bu
       // sayacı sıfırlar, dolayısıyla yavaş-ama-canlı istek burada kesilmez —
@@ -416,6 +417,9 @@ function runGenerateStream(params, onLive, label) {
                   streamText += evData.text;
                   if (onLive) onLive(streamText);
                 } else if (evName === 'status') {
+                  // Sunucu durumunu sakla; saniye sayan zamanlayıcı bunu gösterir
+                  // (yoksa her saniye ezip "düşünüyor…" mesajını görünmez yapardı).
+                  serverStatus = evData.msg || '';
                   const st = document.getElementById('stream-status');
                   if (st) st.textContent = evData.msg;
                 } else if (evName === 'error') {
