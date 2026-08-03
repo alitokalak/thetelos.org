@@ -278,6 +278,25 @@ if ($action === 'fact_act') {
     exit;
 }
 
+/* Claude bağlantı testi: büyük taramadan ÖNCE anahtar/erişim doğru mu? */
+if ($action === 'claude_ping') {
+    require_once __DIR__ . '/_anthropic.php';
+    if (!tls_anthropic_ready()) {
+        echo json_encode(['ok' => false, 'error' => 'ANTHROPIC_KEY config.php’de tanımlı değil']);
+        exit;
+    }
+    $t0 = microtime(true);
+    $r  = tls_claude('', 'Reply with exactly: OK', ['max_tokens' => 16, 'temperature' => 0, 'timeout' => 30, 'retries' => 1]);
+    echo json_encode([
+        'ok'    => !empty($r['ok']),
+        'reply' => mb_substr((string) ($r['text'] ?? ''), 0, 40),
+        'error' => $r['error'] ?? '',
+        'model' => tls_anthropic_model(),
+        'sec'   => round(microtime(true) - $t0, 1),
+    ]);
+    exit;
+}
+
 /* ── Onarım ──────────────────────────────────────────────────────────────
    Yeniden üretmeden düzeltilebilen kusurlar: prompt/süreç satırlarının
    silinmesi, HTML'e çevrilmemiş markdown kalıntısının çevrilmesi, parça

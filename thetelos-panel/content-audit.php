@@ -127,6 +127,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
         </div>
         <div style="margin-top:10px">
           <button class="btn btn-ghost btn-sm" id="btn-facts-load" style="font-size:12px;color:#c58af0">📋 Bulguları İncele / Yenile</button>
+          <button class="btn btn-ghost btn-sm" id="btn-claude-ping" style="font-size:12px">🔌 Claude bağlı mı?</button>
           <span id="facts-summary" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
         </div>
       </div>
@@ -855,6 +856,16 @@ $('btn-kick').addEventListener('click', async () => {
 $('btn-auto').addEventListener('click', autoAll);
 $('btn-fact').addEventListener('click', factCheck);
 $('btn-facts-load').addEventListener('click', loadFacts);
+$('btn-claude-ping').addEventListener('click', async () => {
+  const s = $('facts-summary');
+  s.textContent = 'Claude sınanıyor…';
+  try {
+    const d = await post('action=claude_ping', 35000);
+    s.textContent = d.ok
+      ? '✓ Claude bağlı (' + (d.model||'') + ', ' + d.sec + ' sn) — denetim Claude ile yapılacak'
+      : '✗ Claude YOK: ' + (d.error||'bilinmiyor') + ' — denetim DeepSeek’e düşer';
+  } catch(e){ s.textContent = '✗ ' + e.message; }
+});
 // Sayfa açılışında OTOMATİK yükleme yok — liste hep ekranda durmasın; kullanıcı
 // "Bulguları İncele"ye basınca ya da bir olgu işi bitince gelir.
 $('btn-adv').addEventListener('click', () => {

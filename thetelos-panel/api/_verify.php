@@ -65,6 +65,9 @@ function tv_settings() {
         'factcheck'  => !isset($j['verify_factcheck'])  || (bool) $j['verify_factcheck'],
         'min_conf'   => max(0, min(100, (int) ($j['verify_min_conf'] ?? 55))),
         'gate'       => !isset($j['verify_gate'])       || (bool) $j['verify_gate'],
+        // Doğrulama sağlayıcısı: varsayılan Claude (kullanıcı kararı). Farklı
+        // model denetlerse DeepSeek kendi hatasını onaylamaz — daha güvenli.
+        'provider'   => (($j['verify_provider'] ?? 'anthropic') === 'deepseek') ? 'deepseek' : 'anthropic',
     ];
     return $s;
 }
@@ -78,6 +81,23 @@ function tv_settings() {
  * (temperature 0) ve JSON döndürmesi beklenir. Uzun akış mantığına gerek yok.
  */
 function tv_ask($prompt, $max_tokens = 700, $timeout = 90) {
+    /* SAĞLAYICI: doğrulama varsayılan olarak Claude (kullanıcı kararı).
+       Claude anahtarı yoksa ya da çağrı başarısız olursa DeepSeek'e düşülür —
+       böylece denetim sağlayıcı yüzünden hiç durmaz. */
+    if ((tv_settings()['provider'] ?? 'anthropic') === 'anthropic') {
+        require_once __DIR__ . '/_anthropic.php';
+        if (tls_anthropic_ready()) {
+            $r = tls_claude('', $prompt, [
+                'max_tokens'  => min(4000, max(500, (int) $max_tokens)),
+                'temperature' => 0,
+                'timeout'     => $timeout,
+                'retries'     => 3,
+            ]);
+            if (!empty($r['ok'])) return ['ok' => true, 'text' => $r['text']];
+            // Claude başarısız → DeepSeek yedeğine düş (aşağıda).
+        }
+    }
+
     if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) {
         return ['ok' => false, 'error' => 'DeepSeek anahtarı tanımsız'];
     }
