@@ -330,19 +330,29 @@ function tv_factcheck($book, $author, $html) {
     }
 
     $prompt = <<<TXT
-You are a fact-checker. A text below claims to describe a specific literary or philosophical work. Your ONLY job is to find statements in it that are NOT true of that work. Do not praise it, do not summarise it, do not improve it.
+You are a STRICT but FAIR fact-checker. The text below claims to describe a specific work. Decide whether it is genuinely ABOUT THAT WORK, and flag only substantive fabrications — not style, not unverifiable wording.
 
 CLAIMED WORK: {$book}
 CLAIMED AUTHOR: {$author}
 
-Check specifically for:
-- Characters, places, or proper names that do not exist in this work.
-- Plot events that do not happen in this work (who dies, who survives, what happens at the end).
-- Structural claims that are wrong (chapter count, ordering, form).
-- Content that actually belongs to a DIFFERENT work by this or another author.
-- Quotations attributed to the work that it does not contain.
+FLAG ONLY these (they show the text may be about the WRONG book or invented):
+- Named characters, places, or figures that do NOT exist in this work.
+- Plot events or outcomes that do NOT happen in this work (who dies, who leaves, how it ends).
+- Invented structure (e.g. chapters/sections that do not exist).
+- Content that clearly belongs to a DIFFERENT work.
 
-If you do not reliably know this work well enough to judge, say so — set "verdict":"unknown". That is a valid answer and is much better than approving something you cannot check.
+DO NOT FLAG these (they are NOT fabrication — ignore them completely):
+- Whether a quotation is word-for-word exact. You CANNOT verify verbatim wording, so NEVER mark a quote wrong just because the wording might differ. Only flag a quoted line if what it CLAIMS is something the work does not actually say or hold.
+- Interpretation, analysis, emphasis, or paraphrase that is broadly faithful to the work.
+- Small details you are merely unsure about.
+
+VERDICT RULES:
+- "wrong": ONLY when you are confident the text invents major elements (characters / plot / structure) OR describes a DIFFERENT work. This is a serious judgement — use it sparingly.
+- "suspect": one specific thing looks off but you are not certain, or only minor issues.
+- "ok": recognizably about the correct work and its real themes, even if imperfect.
+- "unknown": you do not know this work well enough to judge — prefer this over guessing.
+
+If the piece is clearly about the correct work, the verdict is "ok" even if it is not flawless.
 
 TEXT TO CHECK:
 ---
@@ -354,10 +364,10 @@ Reply with ONLY this JSON, no other text:
   "verdict": "ok" | "suspect" | "wrong" | "unknown",
   "describes_different_work": true or false,
   "issues": [
-    {"claim": "the exact wrong statement, quoted briefly", "problem": "what is actually true", "severity": "high" | "low"}
+    {"claim": "the specific wrong statement, quoted briefly", "problem": "what is actually true of the work", "severity": "high" | "low"}
   ]
 }
-Use "wrong" only when you are confident the text misrepresents the work. Use "suspect" when something looks off but you are not certain. Use at most 8 issues, most serious first.
+severity "high" ONLY for invented characters/plot/structure or wrong-work; everything else is "low". At most 6 issues, most serious first. If verdict is "ok", "issues" may be empty.
 TXT;
 
     // Bol token: reasoning fazı bütçeden yiyor, dar tutarsa JSON verdict'e

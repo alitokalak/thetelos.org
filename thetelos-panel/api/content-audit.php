@@ -243,17 +243,26 @@ if ($action === 'fact_findings') {
                 'severity' => (($i['severity'] ?? '') === 'high') ? 'high' : 'low',
             ];
         }
+        $high = 0;
+        foreach ($issues as $i) if ($i['severity'] === 'high') $high++;
         $items[] = [
             'id'      => (int) $r->ID,
             'title'   => $r->post_title,
             'status'  => $r->post_status,
             'verdict' => $verdict,
             'diff'    => !empty($fc['diff']),
+            'high'    => $high,
             'issues'  => $issues,
             'url'     => get_permalink($r->ID),
             'edit'    => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . (int) $r->ID . '&action=edit',
         ];
     }
+    // En ağır önce: başka-eser > yanlış > şüpheli; içinde ağır bulgu çok olan üste.
+    usort($items, function ($a, $b) {
+        $rank = fn($x) => ($x['diff'] ? 0 : ($x['verdict'] === 'wrong' ? 1 : 2));
+        if ($rank($a) !== $rank($b)) return $rank($a) - $rank($b);
+        return $b['high'] - $a['high'];
+    });
     echo json_encode(['ok' => true, 'count' => count($items), 'items' => $items]);
     exit;
 }
