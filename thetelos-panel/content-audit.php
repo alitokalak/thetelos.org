@@ -125,8 +125,15 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
           </select>
           <button class="btn btn-primary" id="btn-fact" style="background:#8b5cbf;border-color:#8b5cbf">🔎 Denetimi Başlat</button>
         </div>
+        <div style="margin-top:10px">
+          <button class="btn btn-ghost btn-sm" id="btn-facts-load" style="font-size:12px;color:#c58af0">📋 Bulguları İncele / Yenile</button>
+          <span id="facts-summary" style="font-size:12px;color:var(--muted);margin-left:8px"></span>
+        </div>
       </div>
     </div>
+
+    <!-- OLGU İNCELEME: otomatik kaldırma yok; her bulgu sebebiyle burada, kararı kullanıcı verir -->
+    <div id="facts-review" style="margin:0 0 16px"></div>
 
     <div class="prog" id="prog"><i></i></div>
     <div id="ca-errors" style="display:none;margin:0 0 14px;padding:10px 12px;border:1px solid rgba(204,24,24,.35);
@@ -138,7 +145,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <div id="ca-facts" style="display:none;margin:0 0 14px;padding:12px 14px;border:1px solid rgba(190,120,220,.4);
          border-radius:8px;background:rgba(190,120,220,.07);font-size:12px;line-height:1.7;max-width:960px">
       <b style="color:#c58af0">🔎 Olgu bulguları</b>
-      <div style="color:var(--muted);margin-top:2px">Metnin anlattığı kitap gerçekten o kitap mı? Kesin yanlış olanlar yayından alınır.</div>
+      <div style="color:var(--muted);margin-top:2px">Metnin anlattığı kitap gerçekten o kitap mı? Bulgular işaretlenir; kaldırma/geri yükleme kararını aşağıdaki inceleme ekranından sen verirsin.</div>
       <div id="ca-facts-list" style="margin-top:8px"></div>
     </div>
 
@@ -317,6 +324,74 @@ async function factCheck(){
     'Her yazı için ~1 API çağrısı yapılır (ücretli).\n' +
     'Metinler DEĞİŞTİRİLMEZ. Kesin yanlış olanlar yayından alınır, şüpheliler işaretlenir.\n' +
     'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?');
+}
+
+/* ── OLGU İNCELEME EKRANI ─────────────────────────────────────────────────
+   Otomatik kaldırma kaldırıldı. Bulgular burada SEBEBİYLE listelenir; kaldır /
+   geri yükle / sorun-yok kararını kullanıcı verir. Böylece yanlış işaretlenen
+   bir yazı sessizce yayından düşmez. */
+function fesc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function loadFacts(){
+  const sum = $('facts-summary');
+  sum.textContent = 'yükleniyor…';
+  let d;
+  try { d = await post('action=fact_findings', 60000); }
+  catch(e){ sum.textContent = '✗ ' + e.message; return; }
+  if (!d || !d.ok){ sum.textContent = '✗ alınamadı'; return; }
+  renderFactReview(d.items || []);
+  sum.textContent = (d.count || 0) + ' işaretli bulgu';
+}
+
+function renderFactReview(items){
+  const box = $('facts-review');
+  if (!items.length){
+    box.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">İşaretli olgu bulgusu yok. (Doğruluk denetimi çalıştırınca şüpheli/yanlış bulunanlar burada listelenir.)</div>';
+    return;
+  }
+  box.innerHTML =
+    '<div style="font-weight:600;margin-bottom:8px;color:#c58af0">🔎 Olgu bulguları — inceleme ('+items.length+')</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Aşağıdakiler <b>otomatik kaldırılmadı</b>. Her biri için sebebe bak, yazıyı aç, sonra karar ver.</div>' +
+    items.map(it => {
+      const vBadge = it.verdict==='wrong'
+        ? '<span class="badge" style="background:#e05252;color:#fff">yanlış</span>'
+        : '<span class="badge" style="background:#ff8c00;color:#111">şüpheli</span>';
+      const sBadge = it.status==='publish'
+        ? '<span class="badge badge-green">yayında</span>'
+        : '<span class="badge badge-gray">taslak (kaldırılmış)</span>';
+      const diff = it.diff ? ' <span class="badge" style="background:#e05252;color:#fff">başka eseri anlatıyor</span>' : '';
+      const issues = (it.issues||[]).map(i =>
+        '<li><b'+(i.severity==='high'?' style="color:#e05252"':'')+'>“'+fesc(i.claim)+'”</b>'
+        + (i.problem ? ' <span style="color:var(--muted)">— '+fesc(i.problem)+'</span>' : '') + '</li>').join('');
+      const restore = it.status!=='publish'
+        ? '<button class="btn btn-sm" style="color:#3ec27a" onclick="factAct('+it.id+',\'restore\',this)">↩ Geri Yükle</button>' : '';
+      const pull = it.status==='publish'
+        ? '<button class="btn btn-sm" style="color:#e05252" onclick="factAct('+it.id+',\'pull\',this)">⛔ Yayından Al</button>' : '';
+      return '<div class="card" data-fid="'+it.id+'" style="margin-bottom:10px;padding:12px 14px">'
+        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
+        +   vBadge+' '+sBadge+diff
+        +   '<b style="margin-left:4px">'+fesc(it.title)+'</b></div>'
+        + (issues
+            ? '<ul style="margin:4px 0 10px;padding-left:18px;font-size:13px;line-height:1.6">'+issues+'</ul>'
+            : '<div style="font-size:13px;color:var(--muted);margin:4px 0 10px">Ayrıntılı iddia yok — yazıyı açıp kontrol et.</div>')
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        +   '<a class="btn btn-sm btn-ghost" href="'+it.url+'" target="_blank">👁 Görüntüle</a>'
+        +   '<a class="btn btn-sm btn-ghost" href="'+it.edit+'" target="_blank">✎ Düzelt</a>'
+        +   restore + pull
+        +   '<button class="btn btn-sm" onclick="factAct('+it.id+',\'clear\',this)">✓ Sorun Yok</button>'
+        + '</div></div>';
+    }).join('');
+}
+
+async function factAct(id, act, btn){
+  if (act==='pull' && !confirm('Bu yazı yayından alınacak (taslağa düşer). Emin misin?')) return;
+  if (btn) btn.disabled = true;
+  try {
+    const d = await post('action=fact_act&id='+id+'&act='+act, 30000);
+    if (!d || !d.ok) throw new Error((d&&d.error)||'işlem başarısız');
+    if (act==='clear'){ const c = document.querySelector('.card[data-fid="'+id+'"]'); if(c) c.remove(); }
+    else loadFacts();
+  } catch(e){ if(btn) btn.disabled=false; alert('✗ '+e.message); }
 }
 
 /* ── Düzeltme sonrası yeniden denetim ─────────────────────────────────────
@@ -641,6 +716,13 @@ function jobPoll() {
       $('btn-regen').disabled    = false;
       $('btn-fact').disabled     = false;
       $('btn-stop').style.display = 'none';
+      // Olgu işi biçim tablosunu ilgilendirmez: bulguları İNCELEME ekranına
+      // yükle ve orada bırak (otomatik kaldırma yok, kararı kullanıcı verir).
+      if (j.kind === 'fact') {
+        $('ca-status').textContent = jobLabel(j);
+        loadFacts();
+        return;
+      }
       // İş bitti: işlenen yazıları YENİDEN OKU. "✓ Bitti" yazıp tabloyu eski
       // haliyle bırakmak, düzelenle düzelmeyeni ayırt edilemez kılıyordu.
       const done = jobLabel(j);
@@ -766,6 +848,8 @@ $('btn-kick').addEventListener('click', async () => {
 });
 $('btn-auto').addEventListener('click', autoAll);
 $('btn-fact').addEventListener('click', factCheck);
+$('btn-facts-load').addEventListener('click', loadFacts);
+loadFacts();   // sayfa açılışında mevcut işaretli bulguları göster
 $('btn-adv').addEventListener('click', () => {
   const r = $('adv-row'), open = r.style.display !== 'none';
   r.style.display = open ? 'none' : 'flex';

@@ -216,6 +216,68 @@ if ($action === 'fact_targets') {
     exit;
 }
 
+/* ── OLGU BULGULARI: inceleme listesi ────────────────────────────────────
+   Olgu denetimi artık otomatik kaldırmıyor; yalnız işaretliyor. Bu uç,
+   _tls_factcheck meta'sı olan (şüpheli/yanlış) yazıları SEBEBİYLE döndürür ki
+   kullanıcı ekranda görüp kararı kendisi versin. */
+if ($action === 'fact_findings') {
+    global $wpdb;
+    $rows = $wpdb->get_results(
+        "SELECT p.ID, p.post_title, p.post_status, pm.meta_value
+           FROM {$wpdb->posts} p
+           JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = '_tls_factcheck'
+          WHERE p.post_type IN ('post','analysis')
+       ORDER BY p.post_modified DESC
+          LIMIT 1000"
+    );
+    $items = [];
+    foreach ($rows as $r) {
+        $fc = json_decode((string) $r->meta_value, true) ?: [];
+        $verdict = $fc['verdict'] ?? 'unknown';
+        if (!in_array($verdict, ['wrong', 'suspect'], true)) continue;   // ok/unknown gösterme
+        $issues = [];
+        foreach (array_slice($fc['issues'] ?? [], 0, 6) as $i) {
+            $issues[] = [
+                'claim'    => mb_substr((string) ($i['claim'] ?? ''), 0, 240),
+                'problem'  => mb_substr((string) ($i['problem'] ?? ''), 0, 240),
+                'severity' => (($i['severity'] ?? '') === 'high') ? 'high' : 'low',
+            ];
+        }
+        $items[] = [
+            'id'      => (int) $r->ID,
+            'title'   => $r->post_title,
+            'status'  => $r->post_status,
+            'verdict' => $verdict,
+            'diff'    => !empty($fc['diff']),
+            'issues'  => $issues,
+            'url'     => get_permalink($r->ID),
+            'edit'    => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . (int) $r->ID . '&action=edit',
+        ];
+    }
+    echo json_encode(['ok' => true, 'count' => count($items), 'items' => $items]);
+    exit;
+}
+
+/* Tek yazıya olgu-inceleme kararı: geri yükle / yayından al / bulguyu temizle. */
+if ($action === 'fact_act') {
+    $id  = (int) ($_POST['id'] ?? 0);
+    $act = (string) ($_POST['act'] ?? '');
+    if (!$id || !get_post($id)) { echo json_encode(['ok' => false, 'error' => 'yazı yok']); exit; }
+    if ($act === 'restore') {
+        wp_update_post(['ID' => $id, 'post_status' => 'publish']);
+        do_action('litespeed_purge_post', $id);
+    } elseif ($act === 'pull') {
+        wp_update_post(['ID' => $id, 'post_status' => 'draft']);
+        do_action('litespeed_purge_post', $id);
+    } elseif ($act === 'clear') {
+        delete_post_meta($id, '_tls_factcheck');   // "sorun yok" — bulguyu kaldır, durumu değiştirme
+    } else {
+        echo json_encode(['ok' => false, 'error' => 'geçersiz işlem']); exit;
+    }
+    echo json_encode(['ok' => true, 'status' => get_post_status($id)]);
+    exit;
+}
+
 /* ── Onarım ──────────────────────────────────────────────────────────────
    Yeniden üretmeden düzeltilebilen kusurlar: prompt/süreç satırlarının
    silinmesi, HTML'e çevrilmemiş markdown kalıntısının çevrilmesi, parça
@@ -880,21 +942,20 @@ function ca_factcheck_post($id) {
         'issues'  => $fc['issues'],
     ], JSON_UNESCAPED_UNICODE)));
 
-    // AĞIR bulgu → yayından al. Şüpheli ama kesin değilse yayında bırakılır;
-    // işaretlenmiştir, kararı kullanıcı verir. Kesin yanlış olan beklemez.
-    $pulled = false;
-    if ($fc['verdict'] === 'wrong' && get_post_status($id) === 'publish') {
-        wp_update_post(['ID' => $id, 'post_status' => 'draft']);
-        do_action('litespeed_purge_post', $id);
-        $pulled = true;
-    }
-
+    /* OTOMATİK KALDIRMA YOK — yalnız İŞARETLE, kararı insana bırak.
+       Önceki sürüm "wrong" verdikçe yazıyı sessizce taslağa düşürüyordu; bir
+       tur 9 yazının 9'unu şüpheli işaretleyip 5'ini yayından aldı ve NEDEN
+       kaldırdığı ekranda görünmüyordu. Model yanılabilir (özellikle yanıtı
+       bozulduğunda), bu yüzden geri dönüşü olmayan "yayından al" kararı
+       otomatik verilmemeli. Bulgular _tls_factcheck'e yazılır; "Olgu
+       Bulguları" inceleme ekranında sebebiyle gösterilir ve kaldır/geri
+       yükle/sorun-yok kararını kullanıcı verir. */
     return [
         'ok'      => true,
         'verdict' => $fc['verdict'],
         'issues'  => count($fc['issues']),
         'high'    => $high,
-        'pulled'  => $pulled,
+        'pulled'  => false,
         'words'   => 0,
     ];
 }
