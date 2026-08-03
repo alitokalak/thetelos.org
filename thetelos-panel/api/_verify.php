@@ -104,7 +104,14 @@ function tv_ask($prompt, $max_tokens = 700, $timeout = 90) {
 
     if ($err) return ['ok' => false, 'error' => 'bağlantı: ' . $err];
     $j    = json_decode((string) $raw, true);
-    $text = $j['choices'][0]['message']['content'] ?? '';
+    $m    = $j['choices'][0]['message'] ?? [];
+    $text = trim((string) ($m['content'] ?? ''));
+    /* REASONING YEDEĞİ: DeepSeek'in yeni modeli yanıtı content yerine
+       reasoning_content'te bırakabiliyor (content-audit.php de bu yedeğe
+       düşüyor). Bu olmadan HER olgu denetimi ve HER üretim-öncesi yoklama
+       "HTTP 200 ama içerik boş" diye başarısız oluyordu — yani doğrulama
+       katmanı fiilen çalışmıyordu. */
+    if ($text === '') $text = trim((string) ($m['reasoning_content'] ?? ''));
     if ($text === '') {
         $msg = $j['error']['message'] ?? trim(preg_replace('/\s+/', ' ', strip_tags((string) $raw)));
         return ['ok' => false, 'error' => 'HTTP ' . $code . ($msg ? ' · ' . mb_substr($msg, 0, 180) : '')];
@@ -208,7 +215,9 @@ Reply with ONLY this JSON, no other text:
 }
 TXT;
 
-    $r = tv_ask($prompt, 500, 60);
+    // Reasoning modeli önce "düşünüyor" ve o tokenlar bütçeden düşüyor; dar
+    // bütçede content'e sıra gelmeden bitiyordu. Bol tut.
+    $r = tv_ask($prompt, 3000, 120);
     if (empty($r['ok'])) return ['ok' => false, 'error' => $r['error'] ?? 'yoklama başarısız'];
 
     $j = tv_json($r['text']);
@@ -316,7 +325,9 @@ Reply with ONLY this JSON, no other text:
 Use "wrong" only when you are confident the text misrepresents the work. Use "suspect" when something looks off but you are not certain. Use at most 8 issues, most serious first.
 TXT;
 
-    $r = tv_ask($prompt, 1200, 120);
+    // Bol token: reasoning fazı bütçeden yiyor, dar tutarsa JSON verdict'e
+    // sıra gelmeden kesiliyor ve denetim boşuna "başarısız" oluyordu.
+    $r = tv_ask($prompt, 4000, 150);
     if (empty($r['ok'])) return ['ok' => false, 'error' => $r['error'] ?? 'denetim başarısız'];
 
     $j = tv_json($r['text']);
