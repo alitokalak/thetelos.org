@@ -286,12 +286,12 @@ if ($action === 'claude_ping') {
         exit;
     }
     $t0 = microtime(true);
-    $r  = tls_claude('', 'Reply with exactly: OK', ['max_tokens' => 16, 'temperature' => 0, 'timeout' => 30, 'retries' => 1]);
+    $r  = tls_claude('', 'Reply with exactly: OK', ['model' => tls_claude_fast_model(), 'max_tokens' => 16, 'temperature' => 0, 'timeout' => 30, 'retries' => 1]);
     echo json_encode([
         'ok'    => !empty($r['ok']),
         'reply' => mb_substr((string) ($r['text'] ?? ''), 0, 40),
         'error' => $r['error'] ?? '',
-        'model' => tls_anthropic_model(),
+        'model' => tls_claude_fast_model(),
         'sec'   => round(microtime(true) - $t0, 1),
     ]);
     exit;

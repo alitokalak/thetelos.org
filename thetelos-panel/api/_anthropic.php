@@ -39,7 +39,22 @@ function tls_anthropic_ready() {
 function tls_anthropic_model($override = '') {
     if ($override !== '') return $override;
     if (defined('ANTHROPIC_MODEL') && ANTHROPIC_MODEL) return (string) ANTHROPIC_MODEL;
-    return 'claude-sonnet-4-20250514';
+    return 'claude-haiku-4-5-20251001';
+}
+
+/** HIZLI/UCUZ model — olgu denetimi, yoklama, meta gibi kısa çağrılar için.
+   NEDEN AYRI: config'deki ANTHROPIC_MODEL güncelliğini yitirmiş olabiliyor
+   (sonnet-4-20250514 artık 404 dönüyordu). Bu kısa işler için güncel Haiku
+   sabit; istenirse config'den ANTHROPIC_FAST_MODEL ile değiştirilebilir. */
+function tls_claude_fast_model() {
+    return (defined('ANTHROPIC_FAST_MODEL') && ANTHROPIC_FAST_MODEL)
+        ? (string) ANTHROPIC_FAST_MODEL : 'claude-haiku-4-5-20251001';
+}
+
+/** KALİTELİ model — yeniden yazma/özet gibi uzun, önemli üretim için. */
+function tls_claude_quality_model() {
+    return (defined('ANTHROPIC_QUALITY_MODEL') && ANTHROPIC_QUALITY_MODEL)
+        ? (string) ANTHROPIC_QUALITY_MODEL : 'claude-sonnet-4-5-20250929';
 }
 
 /**

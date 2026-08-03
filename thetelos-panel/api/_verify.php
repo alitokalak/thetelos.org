@@ -88,6 +88,7 @@ function tv_ask($prompt, $max_tokens = 700, $timeout = 90) {
         require_once __DIR__ . '/_anthropic.php';
         if (tls_anthropic_ready()) {
             $r = tls_claude('', $prompt, [
+                'model'       => tls_claude_fast_model(),   // config'deki model 404; geçerli Haiku
                 'max_tokens'  => min(4000, max(500, (int) $max_tokens)),
                 'temperature' => 0,
                 'timeout'     => $timeout,
