@@ -909,7 +909,7 @@ function ca_regenerate_post($id, $target_words = 6000) {
  *  - Yazıldıktan sonra yeni metin TEKRAR olgu denetiminden geçer; "ok" ise
  *    bulgu silinir (yazı incelemeden düşer), değilse işaretli kalır.
  */
-function ca_rewrite_claude($id) {
+function ca_rewrite_claude($id, $model_choice = '') {
     require_once __DIR__ . '/_anthropic.php';
     require_once __DIR__ . '/_verify.php';
     require_once __DIR__ . '/_checks.php';
@@ -937,9 +937,11 @@ function ca_rewrite_claude($id) {
                         [$book, $author, $book, $author], $template);
     $user = "Book: {$book}\nAuthor: {$author}\n\nWrite the piece now, following every rule above.";
 
+    // Ekonomik varsayılan Haiku; istenirse 'sonnet' (daha kaliteli, ~5x pahalı).
+    $model = ($model_choice === 'sonnet') ? tls_claude_quality_model() : tls_claude_fast_model();
     ca_beat();
     $r = tls_claude($sys, $user, [
-        'model'       => tls_claude_quality_model(),
+        'model'       => $model,
         'max_tokens'  => min(8000, defined('ANTHROPIC_MAX_TOKENS') ? (int) ANTHROPIC_MAX_TOKENS : 8000),
         'temperature' => 0.4,
         'timeout'     => 300,
@@ -1252,6 +1254,10 @@ if ($action === 'job_start') {
     if (!in_array($kind, ['auto', 'regen', 'complete', 'fact', 'rewrite'], true)) $kind = 'complete';
     if (!$ids) { echo json_encode(['ok' => false, 'error' => 'liste boş']); exit; }
 
+    // Yeniden-yazma modeli: varsayılan 'haiku' (ekonomik + performanslı);
+    // istenirse 'sonnet' (daha kaliteli, daha pahalı).
+    $rewrite_model = (($_POST['rewrite_model'] ?? '') === 'sonnet') ? 'sonnet' : 'haiku';
+
     ca_job_write([
         'kind'    => $kind,
         'ids'     => $ids,
@@ -1262,6 +1268,7 @@ if ($action === 'job_start') {
         'current' => '',
         'errors'  => [],
         'facts'   => [],    // olgu denetimi bulguları (kind=fact)
+        'rewrite_model' => $rewrite_model,
         'status'  => 'running',
         'started' => time(),
         'beat'    => time(),
@@ -1337,7 +1344,7 @@ if ($action === 'job_run') {
 
         if (($j = ca_job_read()) && $j['kind'] === 'auto')      $r = ca_fix_everything($id);
         elseif ($j && $j['kind'] === 'regen')                   $r = ca_regenerate_post($id);
-        elseif ($j && $j['kind'] === 'rewrite')                 $r = ca_rewrite_claude($id);
+        elseif ($j && $j['kind'] === 'rewrite')                 $r = ca_rewrite_claude($id, $j['rewrite_model'] ?? 'haiku');
         elseif ($j && $j['kind'] === 'fact')                    $r = ca_factcheck_post($id);
         else                                                    $r = ca_complete_post($id);
 
