@@ -349,17 +349,18 @@ function renderFactReview(items){
     box.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px 0">İşaretli olgu bulgusu yok. (Doğruluk denetimi çalıştırınca şüpheli/yanlış bulunanlar burada listelenir.)</div>';
     return;
   }
+  const pulled = items.filter(i => i.status !== 'publish').length;
   box.innerHTML =
-    '<div style="font-weight:600;margin-bottom:8px;color:#c58af0">🔎 Olgu bulguları — inceleme ('+items.length+')</div>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:10px">Aşağıdakiler <b>otomatik kaldırılmadı</b>. Her biri için sebebe bak, yazıyı aç, sonra karar ver.</div>' +
+    '<div style="font-weight:600;margin:2px 0 4px;color:#c58af0">🔎 Olgu bulguları ('+items.length+') · '+pulled+' kaldırılmış</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Satıra tıkla → sebep açılır. Otomatik kaldırma yok; kararı sen ver.</div>' +
     items.map(it => {
       const vBadge = it.verdict==='wrong'
         ? '<span class="badge" style="background:#e05252;color:#fff">yanlış</span>'
         : '<span class="badge" style="background:#ff8c00;color:#111">şüpheli</span>';
       const sBadge = it.status==='publish'
         ? '<span class="badge badge-green">yayında</span>'
-        : '<span class="badge badge-gray">taslak (kaldırılmış)</span>';
-      const diff = it.diff ? ' <span class="badge" style="background:#e05252;color:#fff">başka eseri anlatıyor</span>' : '';
+        : '<span class="badge badge-gray">taslak</span>';
+      const n = (it.issues||[]).length;
       const issues = (it.issues||[]).map(i =>
         '<li><b'+(i.severity==='high'?' style="color:#e05252"':'')+'>“'+fesc(i.claim)+'”</b>'
         + (i.problem ? ' <span style="color:var(--muted)">— '+fesc(i.problem)+'</span>' : '') + '</li>').join('');
@@ -367,19 +368,24 @@ function renderFactReview(items){
         ? '<button class="btn btn-sm" style="color:#3ec27a" onclick="factAct('+it.id+',\'restore\',this)">↩ Geri Yükle</button>' : '';
       const pull = it.status==='publish'
         ? '<button class="btn btn-sm" style="color:#e05252" onclick="factAct('+it.id+',\'pull\',this)">⛔ Yayından Al</button>' : '';
-      return '<div class="card" data-fid="'+it.id+'" style="margin-bottom:10px;padding:12px 14px">'
-        + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px">'
-        +   vBadge+' '+sBadge+diff
-        +   '<b style="margin-left:4px">'+fesc(it.title)+'</b></div>'
-        + (issues
-            ? '<ul style="margin:4px 0 10px;padding-left:18px;font-size:13px;line-height:1.6">'+issues+'</ul>'
-            : '<div style="font-size:13px;color:var(--muted);margin:4px 0 10px">Ayrıntılı iddia yok — yazıyı açıp kontrol et.</div>')
-        + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-        +   '<a class="btn btn-sm btn-ghost" href="'+it.url+'" target="_blank">👁 Görüntüle</a>'
-        +   '<a class="btn btn-sm btn-ghost" href="'+it.edit+'" target="_blank">✎ Düzelt</a>'
-        +   restore + pull
-        +   '<button class="btn btn-sm" onclick="factAct('+it.id+',\'clear\',this)">✓ Sorun Yok</button>'
-        + '</div></div>';
+      // Her bulgu KATLANIR: özet tek satır, tıklayınca sebep + butonlar açılır.
+      return '<details class="card" data-fid="'+it.id+'" style="margin-bottom:6px;padding:0">'
+        + '<summary style="cursor:pointer;list-style:none;padding:9px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        +   vBadge+sBadge
+        +   '<span style="flex:1;min-width:160px">'+fesc(it.title)+'</span>'
+        +   '<span style="font-size:12px;color:var(--muted);white-space:nowrap">'+n+' bulgu ▾</span>'
+        + '</summary>'
+        + '<div style="padding:0 12px 12px">'
+        +   (issues
+              ? '<ul style="margin:2px 0 10px;padding-left:18px;font-size:13px;line-height:1.55">'+issues+'</ul>'
+              : '<div style="font-size:13px;color:var(--muted);margin:2px 0 10px">Ayrıntı yok — yazıyı aç.</div>')
+        +   '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+        +     '<a class="btn btn-sm btn-ghost" href="'+it.url+'" target="_blank">👁 Görüntüle</a>'
+        +     '<a class="btn btn-sm btn-ghost" href="'+it.edit+'" target="_blank">✎ Düzelt</a>'
+        +     restore + pull
+        +     '<button class="btn btn-sm" onclick="factAct('+it.id+',\'clear\',this)">✓ Sorun Yok</button>'
+        +   '</div>'
+        + '</div></details>';
     }).join('');
 }
 
@@ -849,7 +855,8 @@ $('btn-kick').addEventListener('click', async () => {
 $('btn-auto').addEventListener('click', autoAll);
 $('btn-fact').addEventListener('click', factCheck);
 $('btn-facts-load').addEventListener('click', loadFacts);
-loadFacts();   // sayfa açılışında mevcut işaretli bulguları göster
+// Sayfa açılışında OTOMATİK yükleme yok — liste hep ekranda durmasın; kullanıcı
+// "Bulguları İncele"ye basınca ya da bir olgu işi bitince gelir.
 $('btn-adv').addEventListener('click', () => {
   const r = $('adv-row'), open = r.style.display !== 'none';
   r.style.display = open ? 'none' : 'flex';
