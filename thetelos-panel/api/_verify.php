@@ -84,23 +84,37 @@ function tv_ask($prompt, $max_tokens = 700, $timeout = 90) {
     $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
            ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
 
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_POST           => true,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => $timeout,
-        CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS     => json_encode([
-            'model'       => $model,
-            'max_tokens'  => $max_tokens,
-            'temperature' => 0,
-            'messages'    => [['role' => 'user', 'content' => $prompt]],
-        ], JSON_UNESCAPED_UNICODE),
-    ]);
-    $raw  = curl_exec($ch);
-    $err  = curl_error($ch);
-    $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
+    /* DÜŞÜNMEYİ KAPAT: bunlar doğrulama çağrıları — kısa, deterministik JSON
+       isteniyor, derin "düşünme" değil. DeepSeek V4 varsayılan olarak önce
+       reasoning_content üretiyor; bu hem yavaş hem de bütçeyi yiyip content'i
+       boş bırakabiliyordu (olgu denetimi bu yüzden "HTTP 200 ama boş" diye
+       başarısız oluyordu). thinking:disabled ile yanıt doğrudan content'e ve
+       hızlı gelir. Sağlayıcı bu parametreyi reddederse (400) parametresiz
+       tekrar denenir — böylece hiçbir koşulda gerileme olmaz. */
+    $body = [
+        'model'       => $model,
+        'max_tokens'  => $max_tokens,
+        'temperature' => 0,
+        'thinking'    => ['type' => 'disabled'],
+        'messages'    => [['role' => 'user', 'content' => $prompt]],
+    ];
+    $do = function ($payload) use ($timeout) {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => $timeout,
+            CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        ]);
+        $raw  = curl_exec($ch);
+        $err  = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        return [$raw, $err, $code];
+    };
+    [$raw, $err, $code] = $do($body);
+    if ($code === 400) { unset($body['thinking']); [$raw, $err, $code] = $do($body); }
 
     if ($err) return ['ok' => false, 'error' => 'bağlantı: ' . $err];
     $j    = json_decode((string) $raw, true);

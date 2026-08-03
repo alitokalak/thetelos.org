@@ -55,6 +55,9 @@ for ($mtry = 1; $mtry <= 2; $mtry++) {
             'model'           => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
             'max_tokens'      => 1500,
             'response_format' => ['type'=>'json_object'],
+            // Meta = kısa deterministik JSON; düşünmeye gerek yok. Kapatınca
+            // hızlı ve doğrudan content'e yanıt gelir (boş alanların asıl çaresi).
+            'thinking'        => ['type'=>'disabled'],
             'messages'   => [
                 ['role'=>'system','content'=>$system_prompt],
                 ['role'=>'user',  'content'=>$mp],

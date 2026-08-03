@@ -613,6 +613,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 'model'           => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
                 'max_tokens'      => 3000,
                 'response_format' => ['type' => 'json_object'],
+                'thinking'        => ['type' => 'disabled'],   // meta = kısa JSON, düşünme gereksiz + yavaş
                 'messages'        => [['role'=>'user','content'=>$mp]],
             ]),
         ]);
