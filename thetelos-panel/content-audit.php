@@ -107,7 +107,9 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
 
       <!-- B: Doğruluk / uydurma -->
       <div style="border:1px solid rgba(190,120,220,.45);border-radius:12px;padding:14px;background:rgba(190,120,220,.06)">
-        <div style="font-weight:600;margin-bottom:2px;color:#c58af0">🔎 Doğruluk denetimi (uydurma avı)</div>
+        <div style="font-weight:600;margin-bottom:2px;color:#c58af0">🔎 Doğruluk denetimi (uydurma avı)
+          <span id="claude-status" style="font-size:12px;font-weight:400;margin-left:6px;color:var(--muted)">· Claude sınanıyor…</span>
+        </div>
         <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">
           Metnin anlattığı kitap gerçekten o kitap mı? Biçime değil <b>doğruluğa</b> bakar —
           uydurma içerik biçimsel olarak kusursuz olabilir. Kesin yanlış olan yayından alınır.
@@ -856,16 +858,28 @@ $('btn-kick').addEventListener('click', async () => {
 $('btn-auto').addEventListener('click', autoAll);
 $('btn-fact').addEventListener('click', factCheck);
 $('btn-facts-load').addEventListener('click', loadFacts);
-$('btn-claude-ping').addEventListener('click', async () => {
-  const s = $('facts-summary');
-  s.textContent = 'Claude sınanıyor…';
+async function checkClaude(force){
+  const badge = $('claude-status');
+  // 10 dk önbellek: her yenilemede tekrar API çağırma
+  if (!force) {
+    try {
+      const c = JSON.parse(sessionStorage.getItem('tls_claude_status')||'null');
+      if (c && Date.now()-c.t < 600000){ badge.innerHTML = c.html; return; }
+    } catch(e){}
+  }
+  badge.textContent = '· Claude sınanıyor…';
+  let html;
   try {
     const d = await post('action=claude_ping', 35000);
-    s.textContent = d.ok
-      ? '✓ Claude bağlı (' + (d.model||'') + ', ' + d.sec + ' sn) — denetim Claude ile yapılacak'
-      : '✗ Claude YOK: ' + (d.error||'bilinmiyor') + ' — denetim DeepSeek’e düşer';
-  } catch(e){ s.textContent = '✗ ' + e.message; }
-});
+    html = d.ok
+      ? '· <b style="color:#3ec27a">Claude bağlı ✓</b> ('+(d.model||'')+') — denetim Claude ile'
+      : '· <b style="color:#e05252">Claude YOK</b> ('+(d.error||'?')+') — DeepSeek yedeğiyle çalışır';
+  } catch(e){ html = '· <span style="color:#e05252">Claude sınanamadı: '+e.message+'</span>'; }
+  badge.innerHTML = html;
+  try { sessionStorage.setItem('tls_claude_status', JSON.stringify({t:Date.now(), html})); } catch(e){}
+}
+$('btn-claude-ping').addEventListener('click', () => checkClaude(true));
+checkClaude(false);   // sayfa açılışında otomatik — kullanıcı sormasın, panel söylesin
 // Sayfa açılışında OTOMATİK yükleme yok — liste hep ekranda durmasın; kullanıcı
 // "Bulguları İncele"ye basınca ya da bir olgu işi bitince gelir.
 $('btn-adv').addEventListener('click', () => {
