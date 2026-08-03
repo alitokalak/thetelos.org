@@ -65,9 +65,9 @@ function tv_settings() {
         'factcheck'  => !isset($j['verify_factcheck'])  || (bool) $j['verify_factcheck'],
         'min_conf'   => max(0, min(100, (int) ($j['verify_min_conf'] ?? 55))),
         'gate'       => !isset($j['verify_gate'])       || (bool) $j['verify_gate'],
-        // Doğrulama sağlayıcısı: varsayılan Claude (kullanıcı kararı). Farklı
-        // model denetlerse DeepSeek kendi hatasını onaylamaz — daha güvenli.
-        'provider'   => (($j['verify_provider'] ?? 'anthropic') === 'deepseek') ? 'deepseek' : 'anthropic',
+        // Doğrulama sağlayıcısı: VARSAYILAN DEEPSEEK (ucuz). Claude yalnız açık
+        // istekle — maliyet güvenliği. Panelden her denetimde ayrı seçilebilir.
+        'provider'   => (($j['verify_provider'] ?? 'deepseek') === 'anthropic') ? 'anthropic' : 'deepseek',
     ];
     return $s;
 }
@@ -80,11 +80,13 @@ function tv_settings() {
  * Doğrulama çağrıları üretim çağrılarından farklıdır: kısa, deterministik
  * (temperature 0) ve JSON döndürmesi beklenir. Uzun akış mantığına gerek yok.
  */
-function tv_ask($prompt, $max_tokens = 700, $timeout = 90) {
-    /* SAĞLAYICI: doğrulama varsayılan olarak Claude (kullanıcı kararı).
-       Claude anahtarı yoksa ya da çağrı başarısız olursa DeepSeek'e düşülür —
-       böylece denetim sağlayıcı yüzünden hiç durmaz. */
-    if ((tv_settings()['provider'] ?? 'anthropic') === 'anthropic') {
+function tv_ask($prompt, $max_tokens = 700, $timeout = 90, $provider = null) {
+    /* SAĞLAYICI: VARSAYILAN DEEPSEEK (ucuz). Claude yalnızca AÇIKÇA istenirse
+       ($provider='anthropic') — maliyet kontrolü için. Böylece "Denetimi Başlat"
+       Claude kredisini kazara yakmaz. Claude seçildiyse ve başarısız olursa yine
+       DeepSeek'e düşülür; denetim hiç durmaz. */
+    if ($provider === null) $provider = tv_settings()['provider'] ?? 'deepseek';
+    if ($provider === 'anthropic') {
         require_once __DIR__ . '/_anthropic.php';
         if (tls_anthropic_ready()) {
             $r = tls_claude('', $prompt, [
@@ -314,7 +316,7 @@ TXT;
  *
  * Dönüş: ['ok'=>bool, 'verdict'=>'ok|suspect|wrong', 'issues'=>[...]]
  */
-function tv_factcheck($book, $author, $html) {
+function tv_factcheck($book, $author, $html, $provider = null) {
     $text = trim(preg_replace('/\s+/u', ' ', strip_tags((string) $html)));
     if (mb_strlen($text) < 200) return ['ok' => false, 'error' => 'metin çok kısa'];
 
@@ -372,7 +374,7 @@ TXT;
 
     // Bol token: reasoning fazı bütçeden yiyor, dar tutarsa JSON verdict'e
     // sıra gelmeden kesiliyor ve denetim boşuna "başarısız" oluyordu.
-    $r = tv_ask($prompt, 4000, 150);
+    $r = tv_ask($prompt, 4000, 150, $provider);
     if (empty($r['ok'])) return ['ok' => false, 'error' => $r['error'] ?? 'denetim başarısız'];
 
     $j = tv_json($r['text']);

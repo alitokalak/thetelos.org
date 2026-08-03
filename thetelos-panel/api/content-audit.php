@@ -1029,7 +1029,7 @@ if ($action === 'regen') {
  * insana ait. Ağır bulgu varsa yazı yayından alınır — okuyucunun yanlış bilgi
  * görmesi, bir yazının taslakta beklemesinden ağır basar.
  */
-function ca_factcheck_post($id) {
+function ca_factcheck_post($id, $provider = 'deepseek') {
     require_once __DIR__ . '/_verify.php';
 
     $p = get_post($id);
@@ -1048,7 +1048,7 @@ function ca_factcheck_post($id) {
     if ($search_book === '') $search_book = $book;
 
     ca_beat();
-    $fc = tv_factcheck($search_book, $author, (string) $p->post_content);
+    $fc = tv_factcheck($search_book, $author, (string) $p->post_content, $provider);
     if (empty($fc['ok'])) return ['ok' => false, 'error' => $fc['error'] ?? 'denetim başarısız'];
 
     $high = 0;
@@ -1254,9 +1254,23 @@ if ($action === 'job_start') {
     if (!in_array($kind, ['auto', 'regen', 'complete', 'fact', 'rewrite'], true)) $kind = 'complete';
     if (!$ids) { echo json_encode(['ok' => false, 'error' => 'liste boş']); exit; }
 
-    // Yeniden-yazma modeli: varsayılan 'haiku' (ekonomik + performanslı);
-    // istenirse 'sonnet' (daha kaliteli, daha pahalı).
+    // Yeniden-yazma modeli: varsayılan 'haiku' (ekonomik); 'sonnet' = kaliteli/pahalı.
     $rewrite_model = (($_POST['rewrite_model'] ?? '') === 'sonnet') ? 'sonnet' : 'haiku';
+    // Denetim sağlayıcısı: VARSAYILAN DeepSeek (ucuz); 'anthropic' = Claude (pahalı).
+    $fact_provider = (($_POST['fact_provider'] ?? '') === 'anthropic') ? 'anthropic' : 'deepseek';
+
+    /* ── CLAUDE İÇİN SERT ÜST SINIR (maliyet güvenliği) ──────────────────────
+       Kullanıcı bütçesi küçük; tek bir kazayla yüzlerce Claude çağrısı
+       yapılmasın. Claude kullanan işlerde iş başına yazı sayısı sınırlanır:
+         - yeniden yazma (her zaman Claude): en fazla 30
+         - Claude ile olgu denetimi: en fazla 50
+       DeepSeek işlerinde sınır yok (ucuz). Aşan kısım kırpılır, kullanıcıya
+       kaç yazının alındığı bildirilir. */
+    $cap = 0;
+    if ($kind === 'rewrite')                                   $cap = 30;
+    elseif ($kind === 'fact' && $fact_provider === 'anthropic') $cap = 50;
+    $capped = 0;
+    if ($cap > 0 && count($ids) > $cap) { $capped = count($ids) - $cap; $ids = array_slice($ids, 0, $cap); }
 
     ca_job_write([
         'kind'    => $kind,
@@ -1269,6 +1283,7 @@ if ($action === 'job_start') {
         'errors'  => [],
         'facts'   => [],    // olgu denetimi bulguları (kind=fact)
         'rewrite_model' => $rewrite_model,
+        'fact_provider' => $fact_provider,
         'status'  => 'running',
         'started' => time(),
         'beat'    => time(),
@@ -1284,7 +1299,7 @@ if ($action === 'job_start') {
     if ($kind === 'rewrite') $workers = min($workers, 2);
     $j = ca_job_read(); $j['wcap'] = $workers; $j['spawned'] = time(); ca_job_write($j);
     for ($w = 0; $w < $workers; $w++) { ca_job_spawn(); usleep(300000); }
-    echo json_encode(['ok' => true, 'total' => count($ids), 'kind' => $kind, 'workers' => $workers]);
+    echo json_encode(['ok' => true, 'total' => count($ids), 'kind' => $kind, 'workers' => $workers, 'capped' => $capped]);
     exit;
 }
 
@@ -1345,7 +1360,7 @@ if ($action === 'job_run') {
         if (($j = ca_job_read()) && $j['kind'] === 'auto')      $r = ca_fix_everything($id);
         elseif ($j && $j['kind'] === 'regen')                   $r = ca_regenerate_post($id);
         elseif ($j && $j['kind'] === 'rewrite')                 $r = ca_rewrite_claude($id, $j['rewrite_model'] ?? 'haiku');
-        elseif ($j && $j['kind'] === 'fact')                    $r = ca_factcheck_post($id);
+        elseif ($j && $j['kind'] === 'fact')                    $r = ca_factcheck_post($id, $j['fact_provider'] ?? 'deepseek');
         else                                                    $r = ca_complete_post($id);
 
         ca_job_finish($id, $r);

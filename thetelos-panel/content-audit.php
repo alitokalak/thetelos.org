@@ -125,6 +125,11 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
             <option value="list">Tarama listesindekiler</option>
             <option value="selected">Yalnız seçili satırlar</option>
           </select>
+          <label style="font-size:12px;color:var(--muted)">Denetçi:</label>
+          <select id="fact-provider" style="padding:6px 8px;border-radius:6px;background:#1e1e28;color:var(--text);border:1px solid rgba(255,255,255,.18)">
+            <option value="deepseek" selected>DeepSeek (ucuz)</option>
+            <option value="anthropic">Claude (pahalı, en doğru)</option>
+          </select>
           <button class="btn btn-primary" id="btn-fact" style="background:#8b5cbf;border-color:#8b5cbf">🔎 Denetimi Başlat</button>
         </div>
         <div style="margin-top:10px">
@@ -322,11 +327,18 @@ async function factCheck(){
     label = (scope === 'all' ? 'TÜM ' : 'en çok okunan ') + ids.length + ' yazı (sitede toplam ' + d.total + ')';
   }
 
+  const provider = ($('fact-provider') || {}).value || 'deepseek';
+  const perCost  = provider === 'anthropic' ? 0.006 : 0.001;   // yaklaşık $/yazı
+  const est      = (ids.length * perCost);
+  const capNote  = (provider === 'anthropic' && ids.length > 50)
+    ? '\n⚠ Claude ile en fazla 50 yazı/tur işlenir; fazlası bu tura alınmaz.' : '';
   startJob('fact', ids,
     label + ' OLGU açısından denetlenecek — uydurma avı.\n\n' +
-    'Her yazı için ~1 API çağrısı yapılır (ücretli).\n' +
-    'Metinler DEĞİŞTİRİLMEZ. Kesin yanlış olanlar yayından alınır, şüpheliler işaretlenir.\n' +
-    'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?');
+    'Denetçi: ' + (provider === 'anthropic' ? 'Claude (pahalı, en doğru)' : 'DeepSeek (ucuz)') + '\n' +
+    'Tahmini maliyet: ~$' + est.toFixed(2) + ' (' + ids.length + ' yazı × ~$' + perCost + ')' + capNote + '\n\n' +
+    'Metinler DEĞİŞTİRİLMEZ. Bulgular işaretlenir; kaldırma/yeniden-yazma kararı sende.\n' +
+    'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?',
+    '&fact_provider=' + provider);
 }
 
 /* ── OLGU İNCELEME EKRANI ─────────────────────────────────────────────────
@@ -355,9 +367,14 @@ function renderFactReview(items){
   const pulled = items.filter(i => i.status !== 'publish').length;
   const wrong  = items.filter(i => i.verdict === 'wrong').length;
   box.innerHTML =
-    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:2px 0 4px">' +
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:2px 0 4px">' +
       '<span style="font-weight:600;color:#c58af0">🔎 Olgu bulguları ('+items.length+') · '+pulled+' kaldırılmış · '+wrong+' yanlış</span>' +
-      (wrong ? '<button class="btn btn-sm" style="background:#8b5cbf;border-color:#8b5cbf;color:#fff" onclick="rewriteFlagged()">♻️ \'Yanlış\'ları Claude ile yeniden yaz ('+wrong+')</button>' : '') +
+      '<label style="font-size:12px;color:var(--muted)">Model:</label>' +
+      '<select id="rewrite-model" style="padding:5px 7px;border-radius:6px;background:#1e1e28;color:var(--text);border:1px solid rgba(255,255,255,.18);font-size:12px">' +
+        '<option value="haiku" selected>Haiku (ekonomik ~$0.03)</option>' +
+        '<option value="sonnet">Sonnet (kaliteli ~$0.10)</option>' +
+      '</select>' +
+      (wrong ? '<button class="btn btn-sm" style="background:#8b5cbf;border-color:#8b5cbf;color:#fff" onclick="rewriteFlagged()">♻️ \'Yanlış\'ları yeniden yaz ('+wrong+')</button>' : '') +
     '</div>' +
     '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Satıra tıkla → sebep açılır. Otomatik kaldırma yok; kararı sen ver. Yeniden yazma Claude (kaliteli) kullanır — <b>ücretlidir</b>, önce birkaç taneyle dene.</div>' +
     items.map(it => {
@@ -411,22 +428,33 @@ async function factAct(id, act, btn){
 /* CLAUDE İLE YENİDEN YAZMA — arka plan işi (donma/zaman aşımı korumalı).
    Ret gelirse (Claude kitabı bilmiyorsa) eski metne dokunulmaz; yeni metin
    yazıldıktan sonra tekrar denetlenir, temizse bulgu düşer. */
+function rwModel(){ return ($('rewrite-model')||{}).value || 'haiku'; }
+function rwCost(m){ return m === 'sonnet' ? 0.10 : 0.03; }   // yaklaşık $/yazı
+
 function rewriteOne(id){
+  const m = rwModel(), c = rwCost(m);
   startJob('rewrite', [id],
-    'Bu yazı Claude (kaliteli model) ile SIFIRDAN yeniden yazılacak.\n\n' +
+    'Bu yazı Claude ile SIFIRDAN yeniden yazılacak.\n\n' +
+    'Model: ' + (m === 'sonnet' ? 'Sonnet (kaliteli)' : 'Haiku (ekonomik)') + '\n' +
+    'Tahmini maliyet: ~$' + c.toFixed(2) + '\n\n' +
     'Eski metin yedeklenir (geri alınabilir). Claude eseri güvenilir bilmiyorsa YAZMAZ, eski metne dokunmaz.\n' +
     'Yazıldıktan sonra tekrar olgu denetiminden geçer; temizse bulgu düşer.\n' +
-    'API kullanır (ücretli). Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?');
+    'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?',
+    '&rewrite_model=' + m);
 }
 function rewriteFlagged(){
   const ids = [...document.querySelectorAll('#facts-review details[data-verdict="wrong"]')]
                 .map(el => parseInt(el.dataset.fid,10)).filter(Boolean);
   if (!ids.length){ $('ca-status').textContent = '"Yanlış" işaretli yazı yok.'; return; }
+  const m = rwModel(), c = rwCost(m), n = Math.min(ids.length, 30);
+  const capNote = ids.length > 30 ? '\n⚠ Üst sınır: bu turda en fazla 30 yazı işlenir; kalan ' + (ids.length-30) + ' için tekrar çalıştır.' : '';
   startJob('rewrite', ids,
     '"Yanlış" işaretli ' + ids.length + ' yazı Claude ile SIFIRDAN yeniden yazılacak.\n\n' +
-    '⚠ Her yazı ~1 kaliteli-model çağrısıdır (ÜCRETLİ, $ tüketir). Kredin azsa önce KÜÇÜK grupla dene.\n' +
+    'Model: ' + (m === 'sonnet' ? 'Sonnet (kaliteli)' : 'Haiku (ekonomik)') + '\n' +
+    'Tahmini maliyet: ~$' + (n*c).toFixed(2) + ' (' + n + ' yazı × ~$' + c + ')' + capNote + '\n\n' +
     'Eski metinler yedeklenir. Claude kitabı bilmiyorsa o yazıya dokunulmaz.\n' +
-    'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?');
+    'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?',
+    '&rewrite_model=' + m);
 }
 
 /* ── Düzeltme sonrası yeniden denetim ─────────────────────────────────────
@@ -736,6 +764,9 @@ function jobPoll() {
     const total = (j.ids || []).length || 1;
     $('prog').firstElementChild.style.width = Math.round((j.done + j.failed) / total * 100) + '%';
     $('ca-status').textContent = jobLabel(j);
+    // İlerlemeyi inceleme alanında da göster (buraya scroll etmiş kullanıcı
+    // yukarıdaki durumu görmüyordu → "hiçbir şey olmuyor" sanıyordu).
+    if ((j.kind === 'rewrite' || j.kind === 'fact') && $('facts-summary')) $('facts-summary').textContent = jobLabel(j);
     // Hata konsola gömülmez: ekranda görünür, yoksa "neden olmadı" bilinmiyor.
     if (j.errors && j.errors.length) {
       $('ca-errors').style.display = '';
@@ -779,7 +810,7 @@ function jobPoll() {
   }, 4000);
 }
 
-async function startJob(kind, ids, onay) {
+async function startJob(kind, ids, onay, extra) {
   if (!ids.length) { $('ca-status').textContent = 'İşlenecek yazı yok.'; return; }
   if (!confirm(onay)) return;
 
@@ -790,9 +821,11 @@ async function startJob(kind, ids, onay) {
   $('ca-status').textContent  = 'İş başlatılıyor…';
 
   try {
-    const d = await post('action=job_start&kind=' + kind + '&ids=' + ids.join(','), 180000);
+    const d = await post('action=job_start&kind=' + kind + '&ids=' + ids.join(',') + (extra || ''), 180000);
     if (!d || !d.ok) throw new Error((d && d.error) || 'başlatılamadı');
-    $('ca-status').textContent = 'Arka planda başladı — ' + d.total + ' yazı. Sekmeyi kapatabilirsin.';
+    $('ca-status').textContent = 'Arka planda başladı — ' + d.total + ' yazı' +
+      (d.capped ? ' (üst sınır: ' + d.capped + ' yazı bu tura alınmadı, ayrı çalıştır)' : '') +
+      '. Sekmeyi kapatabilirsin.';
     jobPoll();
   } catch (e) {
     $('btn-complete').disabled = false;
@@ -903,8 +936,8 @@ async function checkClaude(force){
   try {
     const d = await post('action=claude_ping', 35000);
     html = d.ok
-      ? '· <b style="color:#3ec27a">Claude bağlı ✓</b> ('+(d.model||'')+') — denetim Claude ile'
-      : '· <b style="color:#e05252">Claude YOK</b> ('+(d.error||'?')+') — DeepSeek yedeğiyle çalışır';
+      ? '· <b style="color:#3ec27a">Claude hazır ✓</b> ('+(d.model||'')+') — denetçi varsayılan <b>DeepSeek (ucuz)</b>; Claude opt-in'
+      : '· <b style="color:#e05252">Claude YOK</b> ('+(d.error||'?')+') — DeepSeek kullanılır';
   } catch(e){ html = '· <span style="color:#e05252">Claude sınanamadı: '+e.message+'</span>'; }
   badge.innerHTML = html;
   try { sessionStorage.setItem('tls_claude_status', JSON.stringify({t:Date.now(), html})); } catch(e){}
