@@ -894,6 +894,95 @@ function ca_regenerate_post($id, $target_words = 6000) {
     return ['ok' => true, 'words' => $words];
 }
 
+/**
+ * CLAUDE İLE YENİDEN YAZMA — olgu denetiminde işaretlenen yazıyı, daha az
+ * uyduran güçlü modelle (Claude, kaliteli) SIFIRDAN yeniden yazar.
+ *
+ * Prompt'un üç kademeli dürüstlük kapısı geçerli: Claude eseri iyi biliyorsa
+ * tam yazar, yüzeysel biliyorsa kısa olgu notu, hiç bilmiyorsa CANNOT VERIFY.
+ *
+ * DAYANIKLILIK (kullanıcı isteği: donma/zaman aşımı olmasın):
+ *  - Uzun çağrı boyunca ca_beat() ile job heartbeat tazelenir → worker "öldü"
+ *    sanılmaz; _anthropic zaten CONNECTTIMEOUT+TIMEOUT+429/529/5xx retry taşır.
+ *  - RET gelirse eski metin EZİLMEZ (kitap yok/yanlış olabilir; karar insana).
+ *  - Üstüne yazmadan ÖNCE eski gövde yedeklenir (geri alınabilir).
+ *  - Yazıldıktan sonra yeni metin TEKRAR olgu denetiminden geçer; "ok" ise
+ *    bulgu silinir (yazı incelemeden düşer), değilse işaretli kalır.
+ */
+function ca_rewrite_claude($id) {
+    require_once __DIR__ . '/_anthropic.php';
+    require_once __DIR__ . '/_verify.php';
+    require_once __DIR__ . '/_checks.php';
+
+    if (!tls_anthropic_ready()) return ['ok' => false, 'error' => 'ANTHROPIC_KEY tanımlı değil'];
+
+    $p = get_post($id);
+    if (!$p) return ['ok' => false, 'error' => 'yazı yok'];
+
+    $prompts  = defined('PROMPTS_FILE') && file_exists(PROMPTS_FILE)
+              ? json_decode((string) file_get_contents(PROMPTS_FILE), true) : [];
+    $type     = ($p->post_type === 'analysis') ? 'analysis' : 'summary';
+    $template = trim($prompts[$type] ?? '');
+    if ($template === '') return ['ok' => false, 'error' => 'prompt şablonu yok'];
+
+    $authors = get_the_terms($id, 'authors');
+    $author  = (!empty($authors) && !is_wp_error($authors)) ? $authors[0]->name : '';
+    $title   = get_the_title($id);
+    $book    = $author !== ''
+             ? trim(preg_replace('/\s*[-–—]\s*' . preg_quote($author, '/') . '\s*$/u', '', $title))
+             : $title;
+    if ($book === '') $book = $title;
+
+    $sys  = str_replace(['{book_title}', '{author_name}', '{BOOK_TITLE}', '{AUTHOR_NAME}'],
+                        [$book, $author, $book, $author], $template);
+    $user = "Book: {$book}\nAuthor: {$author}\n\nWrite the piece now, following every rule above.";
+
+    ca_beat();
+    $r = tls_claude($sys, $user, [
+        'model'       => tls_claude_quality_model(),
+        'max_tokens'  => min(8000, defined('ANTHROPIC_MAX_TOKENS') ? (int) ANTHROPIC_MAX_TOKENS : 8000),
+        'temperature' => 0.4,
+        'timeout'     => 300,
+        'retries'     => 3,
+        'on_beat'     => 'ca_beat',
+    ]);
+    if (empty($r['ok'])) return ['ok' => false, 'error' => 'Claude: ' . ($r['error'] ?? 'başarısız')];
+
+    $md   = (string) $r['text'];
+    $html = bw_md2html(bw_clean_content($md));
+
+    // RET → eski metni EZME.
+    if (ca_check_refusal($html) !== ''
+        || preg_match('/^\s*[*_>#\-]*\s*cannot verify\b/i', trim(strip_tags($md)))) {
+        return ['ok' => false, 'code' => 'refused',
+                'error' => 'Claude bu eseri güvenilir tanımadı (CANNOT VERIFY) — kitap yok ya da yazar yanlış olabilir; elle karar ver'];
+    }
+
+    $words = str_word_count(wp_strip_all_tags($html));
+    if ($words < 300) return ['ok' => false, 'error' => "yeni metin çok kısa ({$words} kelime) — değiştirilmedi"];
+    // NOT: "yeni eskisinden kısa olamaz" kuralı BİLEREK yok — uydurma uzun metni
+    // doğru ama kısa metinle değiştirmek tam da istenen sonuç.
+
+    ca_backup_before($id, $p->post_content);
+    wp_update_post(['ID' => $id, 'post_content' => $html]);
+    do_action('litespeed_purge_post', $id);
+
+    // YENİDEN DENETLE: yeni metin temizse bulguyu sil → yazı incelemeden düşer.
+    ca_beat();
+    $search_book = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)) ?: $book;
+    $fc = tv_factcheck($search_book, $author, $html);
+    $verdict = !empty($fc['ok']) ? ($fc['verdict'] ?? 'unknown') : 'unknown';
+    if (!empty($fc['ok']) && $verdict === 'ok') {
+        delete_post_meta($id, '_tls_factcheck');
+    } elseif (!empty($fc['ok'])) {
+        update_post_meta($id, '_tls_factcheck', wp_slash(json_encode([
+            'at' => time(), 'verdict' => $verdict, 'diff' => !empty($fc['diff']), 'issues' => $fc['issues'] ?? [],
+        ], JSON_UNESCAPED_UNICODE)));
+    }
+
+    return ['ok' => true, 'words' => $words, 'verdict' => $verdict, 'cleared' => ($verdict === 'ok')];
+}
+
 if ($action === 'regen') {
     // Uzun API üretimi: 300 sn'lik varsayılan sınır süreci ORTADA öldürüyordu.
     @set_time_limit(0);
@@ -1160,7 +1249,7 @@ function ca_job_finish($id, $r) {
 if ($action === 'job_start') {
     $ids  = array_values(array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? '')))));
     $kind = $_POST['kind'] ?? 'complete';
-    if (!in_array($kind, ['auto', 'regen', 'complete', 'fact'], true)) $kind = 'complete';
+    if (!in_array($kind, ['auto', 'regen', 'complete', 'fact', 'rewrite'], true)) $kind = 'complete';
     if (!$ids) { echo json_encode(['ok' => false, 'error' => 'liste boş']); exit; }
 
     ca_job_write([
@@ -1183,6 +1272,9 @@ if ($action === 'job_start') {
     // Paralel worker: iş API hızıyla sınırlı, tek tek yapmak gereksiz yavaş.
     // 3 worker ile 88 kitap ~2,5 saat yerine ~50 dakikada biter.
     $workers = max(1, min(4, (int) ceil(count($ids) / 10)));
+    // Claude yeniden-yazma: yeni/düşük kotalı hesapta çok paralel çağrı 429
+    // yağmuruna yol açar. En fazla 2 worker — retry'lar zaten var, acele yok.
+    if ($kind === 'rewrite') $workers = min($workers, 2);
     $j = ca_job_read(); $j['wcap'] = $workers; $j['spawned'] = time(); ca_job_write($j);
     for ($w = 0; $w < $workers; $w++) { ca_job_spawn(); usleep(300000); }
     echo json_encode(['ok' => true, 'total' => count($ids), 'kind' => $kind, 'workers' => $workers]);
@@ -1245,6 +1337,7 @@ if ($action === 'job_run') {
 
         if (($j = ca_job_read()) && $j['kind'] === 'auto')      $r = ca_fix_everything($id);
         elseif ($j && $j['kind'] === 'regen')                   $r = ca_regenerate_post($id);
+        elseif ($j && $j['kind'] === 'rewrite')                 $r = ca_rewrite_claude($id);
         elseif ($j && $j['kind'] === 'fact')                    $r = ca_factcheck_post($id);
         else                                                    $r = ca_complete_post($id);
 

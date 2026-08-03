@@ -353,9 +353,13 @@ function renderFactReview(items){
     return;
   }
   const pulled = items.filter(i => i.status !== 'publish').length;
+  const wrong  = items.filter(i => i.verdict === 'wrong').length;
   box.innerHTML =
-    '<div style="font-weight:600;margin:2px 0 4px;color:#c58af0">🔎 Olgu bulguları ('+items.length+') · '+pulled+' kaldırılmış</div>' +
-    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Satıra tıkla → sebep açılır. Otomatik kaldırma yok; kararı sen ver.</div>' +
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:2px 0 4px">' +
+      '<span style="font-weight:600;color:#c58af0">🔎 Olgu bulguları ('+items.length+') · '+pulled+' kaldırılmış · '+wrong+' yanlış</span>' +
+      (wrong ? '<button class="btn btn-sm" style="background:#8b5cbf;border-color:#8b5cbf;color:#fff" onclick="rewriteFlagged()">♻️ \'Yanlış\'ları Claude ile yeniden yaz ('+wrong+')</button>' : '') +
+    '</div>' +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">Satıra tıkla → sebep açılır. Otomatik kaldırma yok; kararı sen ver. Yeniden yazma Claude (kaliteli) kullanır — <b>ücretlidir</b>, önce birkaç taneyle dene.</div>' +
     items.map(it => {
       const vBadge = it.verdict==='wrong'
         ? '<span class="badge" style="background:#e05252;color:#fff">yanlış</span>'
@@ -372,7 +376,7 @@ function renderFactReview(items){
       const pull = it.status==='publish'
         ? '<button class="btn btn-sm" style="color:#e05252" onclick="factAct('+it.id+',\'pull\',this)">⛔ Yayından Al</button>' : '';
       // Her bulgu KATLANIR: özet tek satır, tıklayınca sebep + butonlar açılır.
-      return '<details class="card" data-fid="'+it.id+'" style="margin-bottom:6px;padding:0">'
+      return '<details class="card" data-fid="'+it.id+'" data-verdict="'+it.verdict+'" style="margin-bottom:6px;padding:0">'
         + '<summary style="cursor:pointer;list-style:none;padding:9px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
         +   vBadge+sBadge
         +   '<span style="flex:1;min-width:160px">'+fesc(it.title)+'</span>'
@@ -385,6 +389,7 @@ function renderFactReview(items){
         +   '<div style="display:flex;gap:8px;flex-wrap:wrap">'
         +     '<a class="btn btn-sm btn-ghost" href="'+it.url+'" target="_blank">👁 Görüntüle</a>'
         +     '<a class="btn btn-sm btn-ghost" href="'+it.edit+'" target="_blank">✎ Düzelt</a>'
+        +     '<button class="btn btn-sm" style="background:#8b5cbf;border-color:#8b5cbf;color:#fff" onclick="rewriteOne('+it.id+')">♻️ Claude ile Yeniden Yaz</button>'
         +     restore + pull
         +     '<button class="btn btn-sm" onclick="factAct('+it.id+',\'clear\',this)">✓ Sorun Yok</button>'
         +   '</div>'
@@ -401,6 +406,27 @@ async function factAct(id, act, btn){
     if (act==='clear'){ const c = document.querySelector('.card[data-fid="'+id+'"]'); if(c) c.remove(); }
     else loadFacts();
   } catch(e){ if(btn) btn.disabled=false; alert('✗ '+e.message); }
+}
+
+/* CLAUDE İLE YENİDEN YAZMA — arka plan işi (donma/zaman aşımı korumalı).
+   Ret gelirse (Claude kitabı bilmiyorsa) eski metne dokunulmaz; yeni metin
+   yazıldıktan sonra tekrar denetlenir, temizse bulgu düşer. */
+function rewriteOne(id){
+  startJob('rewrite', [id],
+    'Bu yazı Claude (kaliteli model) ile SIFIRDAN yeniden yazılacak.\n\n' +
+    'Eski metin yedeklenir (geri alınabilir). Claude eseri güvenilir bilmiyorsa YAZMAZ, eski metne dokunmaz.\n' +
+    'Yazıldıktan sonra tekrar olgu denetiminden geçer; temizse bulgu düşer.\n' +
+    'API kullanır (ücretli). Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?');
+}
+function rewriteFlagged(){
+  const ids = [...document.querySelectorAll('#facts-review details[data-verdict="wrong"]')]
+                .map(el => parseInt(el.dataset.fid,10)).filter(Boolean);
+  if (!ids.length){ $('ca-status').textContent = '"Yanlış" işaretli yazı yok.'; return; }
+  startJob('rewrite', ids,
+    '"Yanlış" işaretli ' + ids.length + ' yazı Claude ile SIFIRDAN yeniden yazılacak.\n\n' +
+    '⚠ Her yazı ~1 kaliteli-model çağrısıdır (ÜCRETLİ, $ tüketir). Kredin azsa önce KÜÇÜK grupla dene.\n' +
+    'Eski metinler yedeklenir. Claude kitabı bilmiyorsa o yazıya dokunulmaz.\n' +
+    'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?');
 }
 
 /* ── Düzeltme sonrası yeniden denetim ─────────────────────────────────────
@@ -679,9 +705,10 @@ let poller = null;
 
 function jobLabel(j) {
   const total = (j.ids || []).length;
-  const kind  = j.kind === 'regen' ? 'Yeniden üretiliyor'
-              : j.kind === 'auto'  ? 'Düzeltiliyor'
-              : j.kind === 'fact'  ? 'Olgu denetimi' : 'Tamamlanıyor';
+  const kind  = j.kind === 'regen'   ? 'Yeniden üretiliyor'
+              : j.kind === 'rewrite' ? 'Claude ile yeniden yazılıyor'
+              : j.kind === 'auto'    ? 'Düzeltiliyor'
+              : j.kind === 'fact'    ? 'Olgu denetimi' : 'Tamamlanıyor';
   if (j.status === 'done' && j.kind === 'fact') {
     const f = (j.facts || []).length;
     const p = (j.facts || []).filter(x => x.pulled).length;
@@ -716,7 +743,9 @@ function jobPoll() {
         ((j.failed > j.errors.length) ? '<br>… ve ' + (j.failed - j.errors.length) + ' tane daha' : '');
     }
 
-    if (j.facts && j.facts.length) renderFacts(j.facts);
+    // Eski geçici bulgu kutusu (renderFacts) KALDIRILDI — tek biçim: aşağıdaki
+    // inceleme ekranı (loadFacts). İkisi birden gösterilince "birazı başka
+    // birazı başka" görünüyordu.
 
     $('btn-kick').style.display = (j.status === 'running') ? '' : 'none';
     if (j.status !== 'running') {
@@ -727,8 +756,10 @@ function jobPoll() {
       $('btn-stop').style.display = 'none';
       // Olgu işi biçim tablosunu ilgilendirmez: bulguları İNCELEME ekranına
       // yükle ve orada bırak (otomatik kaldırma yok, kararı kullanıcı verir).
-      if (j.kind === 'fact') {
-        $('ca-status').textContent = jobLabel(j);
+      if (j.kind === 'fact' || j.kind === 'rewrite') {
+        $('ca-status').textContent = (j.kind === 'rewrite')
+          ? '✓ Yeniden yazma bitti — ' + j.done + ' yazı' + (j.failed ? ', ' + j.failed + ' atlandı/başarısız' : '') + '. Liste güncelleniyor…'
+          : jobLabel(j);
         loadFacts();
         return;
       }
