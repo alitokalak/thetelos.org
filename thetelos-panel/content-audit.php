@@ -72,24 +72,60 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <div class="stat-box"><div class="stat-val" id="st-1" style="color:var(--muted)">–</div><div class="stat-lbl">Hafif</div></div>
     </div>
 
-    <div class="bulk-row">
+    <!-- Üst satır: tarama + durum -->
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px">
       <button class="btn btn-primary" id="btn-scan">🩺 Taramayı Başlat</button>
       <button class="btn" id="btn-stop" style="display:none">■ Durdur</button>
       <button class="btn" id="btn-kick" style="display:none">⟳ Canlandır</button>
-      <label style="font-size:12px;color:var(--muted)">Kısa sayılacak sınır:
+      <label style="font-size:12px;color:var(--muted)">Kısa sınırı:
         <input type="number" id="min-words" value="1500" step="100" min="0"
-               style="width:82px;padding:4px 6px;margin-left:4px">
-        kelime
+               style="width:74px;padding:4px 6px;margin-left:4px"> kelime
       </label>
-      <button class="btn btn-primary" id="btn-auto">✨ Hepsini Düzelt</button>
-      <button class="btn" id="btn-undo" style="color:#e05252">↩ Onarımı Geri Al</button>
-      <button class="btn" id="btn-autofix">🔧 Onarılabilirleri Düzelt</button>
-      <button class="btn" id="btn-complete">🩹 Yarım Kalanları Tamamla</button>
-      <button class="btn" id="btn-regen">♻️ Kalanları Yeniden Üret</button>
-      <button class="btn" id="btn-fact" style="color:#c58af0">🔎 Olgu Denetimi</button>
-      <button class="btn" id="btn-draft" style="color:#e05252">⛔ Yayından Kaldır</button>
-      <button class="btn" id="btn-csv" style="display:none">↓ CSV indir</button>
-      <span id="ca-status"></span>
+      <span id="ca-status" style="font-size:13px;color:var(--muted)"></span>
+    </div>
+
+    <!-- İKİ AYRI İŞ: biçim onarımı vs. doğruluk denetimi. Karıştırma. -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-bottom:16px">
+
+      <!-- A: Biçim & eksik -->
+      <div style="border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:14px">
+        <div style="font-weight:600;margin-bottom:2px">🧹 Biçim &amp; eksik onarımı</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">
+          Artık satır, yarım metin, tekrar, üretim reddi. Tarama listesindeki yazılara uygulanır
+          (satır seçersen yalnız onlara). <b>Bedava kısmı önce çalışır.</b></div>
+        <button class="btn btn-primary" id="btn-auto" style="width:100%;margin-bottom:8px">✨ Hepsini Otomatik Düzelt</button>
+        <button class="btn btn-ghost btn-sm" id="btn-adv" style="font-size:12px">Tek tek işlemler ▾</button>
+        <div id="adv-row" style="display:none;flex-wrap:wrap;gap:6px;margin-top:8px">
+          <button class="btn btn-sm" id="btn-autofix">🔧 Onar</button>
+          <button class="btn btn-sm" id="btn-complete">🩹 Tamamla</button>
+          <button class="btn btn-sm" id="btn-regen">♻️ Yeniden Üret</button>
+          <button class="btn btn-sm" id="btn-draft" style="color:#e05252">⛔ Yayından Kaldır</button>
+          <button class="btn btn-sm" id="btn-undo" style="color:#e05252">↩ Geri Al</button>
+          <button class="btn btn-sm" id="btn-csv" style="display:none">↓ CSV</button>
+        </div>
+      </div>
+
+      <!-- B: Doğruluk / uydurma -->
+      <div style="border:1px solid rgba(190,120,220,.45);border-radius:12px;padding:14px;background:rgba(190,120,220,.06)">
+        <div style="font-weight:600;margin-bottom:2px;color:#c58af0">🔎 Doğruluk denetimi (uydurma avı)</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5">
+          Metnin anlattığı kitap gerçekten o kitap mı? Biçime değil <b>doğruluğa</b> bakar —
+          uydurma içerik biçimsel olarak kusursuz olabilir. Kesin yanlış olan yayından alınır.
+          Yazı başına ~1 API çağrısı (<b>ücretli</b>).</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <label style="font-size:12px;color:var(--muted)">Kapsam:</label>
+          <select id="fact-scope" style="padding:6px 8px;border-radius:6px;background:#1e1e28;color:var(--text);border:1px solid rgba(255,255,255,.18)">
+            <option value="pop100" selected>En çok okunan 100</option>
+            <option value="pop50">En çok okunan 50</option>
+            <option value="pop250">En çok okunan 250</option>
+            <option value="pop500">En çok okunan 500</option>
+            <option value="all">Tüm yayınlanan yazılar</option>
+            <option value="list">Tarama listesindekiler</option>
+            <option value="selected">Yalnız seçili satırlar</option>
+          </select>
+          <button class="btn btn-primary" id="btn-fact" style="background:#8b5cbf;border-color:#8b5cbf">🔎 Denetimi Başlat</button>
+        </div>
+      </div>
     </div>
 
     <div class="prog" id="prog"><i></i></div>
@@ -106,30 +142,24 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <div id="ca-facts-list" style="margin-top:8px"></div>
     </div>
 
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:900px;line-height:1.7">
-      <b style="color:var(--text)">Kolay yol:</b> tarama bitince <b>✨ Hepsini Düzelt</b>'e bas ve sekmeyi kapat.
-      Her yazı için doğru işlem sırayla uygulanır: artıkları temizle → eksikse tamamla →
-      kitap tanınmıyorsa yayından kaldır. Aşağıdaki diğer butonlar tek tür işi ayrı ayrı
-      yapmak istersen diye duruyor; satır seçersen yalnız seçtiklerin işlenir.
+    <details style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:900px;line-height:1.7">
+      <summary style="cursor:pointer;color:var(--text);font-weight:500">Renk kodları &amp; önem ne demek?</summary>
       <div style="margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;align-items:baseline">
         <span style="color:#3ec27a;white-space:nowrap">🔧 onarılabilir</span>
-        <span>artık satır / biçim / tekrar temizliği — <b>bedava ve hızlı</b>, önce bunu çalıştır</span>
+        <span>artık satır / biçim / tekrar temizliği — <b>bedava ve hızlı</b></span>
         <span style="color:#7aa2f7;white-space:nowrap">🩹 tamamlanabilir</span>
-        <span>metin eksik; kaldığı yerden sürdürülür — <b>API, ücretli</b>, kitap başına ~1 dk</span>
+        <span>metin eksik; kaldığı yerden sürdürülür — <b>API, ücretli</b>, ~1 dk</span>
         <span style="color:#c58af0;white-space:nowrap">♻️ yeniden üretilecek</span>
-        <span>metin baştan geçersiz (üretim reddi) — <b>API, ücretli</b>, en yavaşı</span>
+        <span>metin baştan geçersiz (üretim reddi) — <b>API, ücretli</b></span>
         <span style="color:#c58af0;white-space:nowrap">🔎 olgu denetimi</span>
-        <span>metnin anlattığı kitap gerçekten o kitap mı — <b>API, ücretli</b>, kitap başına ~1 çağrı.
-          Biçime değil <b>doğruluğa</b> bakan tek kontrol; diğerlerinin göremediği kusur budur.</span>
+        <span>metnin anlattığı kitap gerçekten o kitap mı — biçime değil <b>doğruluğa</b> bakar</span>
         <span style="color:var(--muted);white-space:nowrap">eylem gerekmiyor</span>
         <span>yalnızca üslup notu var, dokunmaya değmez</span>
       </div>
       <div style="margin-top:8px">
-        Önem: <b style="color:#e05252">Ağır</b> okuyucunun gördüğü kaza (üretim reddi, prompt şablonu,
-        parça işareti, yarım metin) · <b style="color:#ff8c00">Orta</b> biçim/tekrar ·
-        <b>Hafif</b> üslup.
+        Önem: <b style="color:#e05252">Ağır</b> okuyucunun gördüğü kaza · <b style="color:#ff8c00">Orta</b> biçim/tekrar · <b>Hafif</b> üslup.
       </div>
-    </div>
+    </details>
 
     <div class="filters" id="filters" style="display:none">
       <button data-f="all" class="on">Tümü</button>
@@ -253,14 +283,40 @@ function renderFacts(facts){
 
 /* Olgu denetimi: seçili yazılar (yoksa listedeki tümü) tek tek eseri bilen bir
    denetçiye sorulur. Ücretli olduğu için seçim yapmak teşvik edilir. */
-function factCheck(){
-  const ids = selectedPool().map(p => p.id);
-  const sec = [...document.querySelectorAll('.ca-cb:checked')].length;
+/* Olgu denetimi — KAPSAM seçime göre.
+   Kritik: uydurma yazılar biçimsel olarak kusursuz olabilir ve tarama
+   listesinde HİÇ görünmez. Bu yüzden kapsam olarak "en çok okunan N" ya da
+   "tümü" seçilince, tarama listesine bakılmaz; sunucudan (fact_targets)
+   yazılar okunma sırasına göre çekilir. Böylece kullanıcı istediği alanda,
+   yalnız olgu testini çalıştırabilir. */
+async function factCheck(){
+  const scope = ($('fact-scope') || {}).value || 'list';
+  let ids = [], label = '';
+
+  if (scope === 'selected') {
+    ids = [...document.querySelectorAll('.ca-cb:checked')].map(cb => parseInt(cb.closest('tr').dataset.id, 10));
+    if (!ids.length) { $('ca-status').textContent = '✗ Önce tablodan satır seç.'; return; }
+    label = 'seçili ' + ids.length + ' yazı';
+  } else if (scope === 'list') {
+    ids = all.map(p => p.id);
+    if (!ids.length) { $('ca-status').textContent = '✗ Liste boş — önce tara ya da kapsamı "en çok okunan" yap.'; return; }
+    label = 'tarama listesindeki ' + ids.length + ' yazı';
+  } else {
+    const n = (scope === 'all') ? 100000 : parseInt(scope.replace('pop', ''), 10);
+    $('ca-status').textContent = 'Yazılar okunma sırasına göre belirleniyor…';
+    let d;
+    try { d = await post('action=fact_targets&limit=' + n, 60000); }
+    catch(e){ $('ca-status').textContent = '✗ Liste alınamadı: ' + e.message; return; }
+    if (!d || !d.ok || !(d.ids || []).length) { $('ca-status').textContent = '✗ Uygun yazı bulunamadı.'; return; }
+    ids   = d.ids;
+    label = (scope === 'all' ? 'TÜM ' : 'en çok okunan ') + ids.length + ' yazı (sitede toplam ' + d.total + ')';
+  }
+
   startJob('fact', ids,
-    ids.length + ' yazı OLGU açısından denetlenecek' + (sec ? ' (seçtiklerin)' : ' (listedeki tümü)') + '.\n\n' +
+    label + ' OLGU açısından denetlenecek — uydurma avı.\n\n' +
     'Her yazı için ~1 API çağrısı yapılır (ücretli).\n' +
-    'Metinler DEĞİŞTİRİLMEZ. Kesin yanlış olanlar yayından alınır, şüpheliler işaretlenir.\n\n' +
-    'Devam?');
+    'Metinler DEĞİŞTİRİLMEZ. Kesin yanlış olanlar yayından alınır, şüpheliler işaretlenir.\n' +
+    'Arka planda çalışır, sekmeyi kapatabilirsin.\n\nDevam?');
 }
 
 /* ── Düzeltme sonrası yeniden denetim ─────────────────────────────────────
@@ -710,6 +766,11 @@ $('btn-kick').addEventListener('click', async () => {
 });
 $('btn-auto').addEventListener('click', autoAll);
 $('btn-fact').addEventListener('click', factCheck);
+$('btn-adv').addEventListener('click', () => {
+  const r = $('adv-row'), open = r.style.display !== 'none';
+  r.style.display = open ? 'none' : 'flex';
+  $('btn-adv').textContent = open ? 'Tek tek işlemler ▾' : 'Tek tek işlemler ▲';
+});
 $('btn-draft').addEventListener('click', draftPosts);
 $('btn-scan').addEventListener('click', scan);
 $('btn-autofix').addEventListener('click', autofix);

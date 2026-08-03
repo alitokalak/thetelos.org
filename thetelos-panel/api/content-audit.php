@@ -178,6 +178,44 @@ if ($action === 'scan') {
     exit;
 }
 
+/* ── OLGU HEDEFLERİ: en çok okunan yayınlanmış yazılar ────────────────────
+   NEDEN AYRI: mevcut "scan" yalnızca BİÇİMSEL kusuru olan yazıları listeliyor.
+   Ama uydurma içerik genelde biçimsel olarak KUSURSUZ (Peter Camenzind gibi):
+   düzgün başlıklı, akıcı, sadece anlattığı kitap yanlış. Bu yüzden uydurma
+   avı biçimden BAĞIMSIZ olmalı ve okuyucunun en çok gördüğü yazılardan
+   başlamalı — hasar oralarda en büyük. Bu uç yalnız ID listesi döndürür;
+   asıl denetimi mevcut 'fact' işi (job_start kind=fact) yapar. */
+if ($action === 'fact_targets') {
+    global $wpdb;
+    $limit  = max(1, min(3000, (int) ($_POST['limit']  ?? 50)));
+    $offset = max(0, (int) ($_POST['offset'] ?? 0));
+
+    $total = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->posts}
+          WHERE post_type IN ('post','analysis') AND post_status = 'publish'"
+    );
+
+    // post_views_count meta'sı olmayan yazılar 0 sayılır ve sona düşer.
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT p.ID, p.post_title,
+                CAST(COALESCE(m.meta_value, 0) AS UNSIGNED) AS views
+           FROM {$wpdb->posts} p
+      LEFT JOIN {$wpdb->postmeta} m
+             ON m.post_id = p.ID AND m.meta_key = 'post_views_count'
+          WHERE p.post_type IN ('post','analysis') AND p.post_status = 'publish'
+       ORDER BY views DESC, p.post_date DESC
+          LIMIT %d OFFSET %d", $limit, $offset
+    ) );
+
+    $ids = []; $items = [];
+    foreach ($rows as $r) {
+        $ids[]   = (int) $r->ID;
+        $items[] = ['id' => (int) $r->ID, 'title' => $r->post_title, 'views' => (int) $r->views];
+    }
+    echo json_encode(['ok' => true, 'total' => $total, 'ids' => $ids, 'items' => $items]);
+    exit;
+}
+
 /* ── Onarım ──────────────────────────────────────────────────────────────
    Yeniden üretmeden düzeltilebilen kusurlar: prompt/süreç satırlarının
    silinmesi, HTML'e çevrilmemiş markdown kalıntısının çevrilmesi, parça
