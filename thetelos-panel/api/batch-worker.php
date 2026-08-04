@@ -377,6 +377,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $parts        = bw_effective_parts($batch);
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
 
+    /* ── YENİDEN YAZ MODU ────────────────────────────────────────────
+       Bu modda amaç yeni post OLUŞTURMAK değil, sitedeki MEVCUT yazıyı yeni
+       (dürüstlük kurallı) içerikle GÜNCELLEMEK. Mevcut yazıyı ŞİMDİ (üretimden
+       ÖNCE) buluyoruz: yoksa satır atlanır ve boşuna üretim yapılmaz. */
+    $rewrite    = !empty($batch['rewrite']);
+    $update_pid = 0;
+    if ($rewrite) {
+        $rt_title = $author ? "$book - $author" : $book;
+        $rt_slug  = mb_strtolower($rt_title, 'UTF-8');
+        $rt_slug  = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $rt_slug) ?: $rt_slug;
+        $rt_slug  = trim(preg_replace('/[^a-z0-9]+/', '-', $rt_slug), '-');
+        [$rt_sp, $rt_sc] = bw_wp("$wp_api/$ep?slug=" . urlencode($rt_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+        if ($rt_sc === 200 && !empty($rt_sp[0]['id'])) {
+            $update_pid = (int) $rt_sp[0]['id'];
+        } else {
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: sitede bulunamadı (atlandı)']);
+            return;
+        }
+    }
+
     // ── Prompt ────────────────────────────────────────────────────
     $prompts  = file_exists(PROMPTS_FILE) ? json_decode(file_get_contents(PROMPTS_FILE), true) : [];
     $template = trim($prompts[$type] ?? '');
@@ -392,12 +412,23 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        hata olarak işaretlenir — API'ye 4 parça yazdırıp sonra atmaktan
        hem çok daha ucuz hem de tek güvenilir koruma budur. */
     require_once __DIR__ . '/_verify.php';
-    if ($post_status === 'publish' && tv_settings()['probe']) {
+    if (($post_status === 'publish' || $rewrite) && tv_settings()['probe']) {
         bw_touch_hb($batch_file, $idx);
         $pr = tv_probe($search_book, $author);
         // Yoklama ÇALIŞMADIYSA (ağ/kota) kitabı reddetme: doğrulayamamak,
         // eserin bilinmediğini göstermez. Yalnızca net "bilmiyorum" durdurur.
         if (!empty($pr['ok']) && empty($pr['known'])) {
+            if ($rewrite && $update_pid) {
+                // Yeniden yaz modu: model eseri tanımıyorsa mevcut yazıyı
+                // YAYINDAN AL (taslağa çek) — yanlış içerik yayında kalmasın.
+                bw_wp("$wp_api/$ep/$update_pid", 'POST', ['status' => 'draft'], $auth, 30);
+                bw_update_book($batch_file, $idx, [
+                    'status'  => 'done',
+                    'post_id' => $update_pid,
+                    'error'   => 'yayından kaldırıldı: model eseri tanımıyor',
+                ]);
+                return;
+            }
             bw_update_book($batch_file, $idx, [
                 'status' => 'error',
                 'error'  => 'DOĞRULANAMADI: model bu eseri tanımıyor — ' .
@@ -552,6 +583,16 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        (atlandı) işaretliyoruz; hiçbir post oluşmuyor, API da boşa gitmiyor. */
     require_once __DIR__ . '/_checks.php';
     if (($refusal = ca_check_refusal($content)) !== '') {
+        if ($rewrite && $update_pid) {
+            // Yeniden yaz modu: model reddettiyse mevcut yazıyı YAYINDAN AL.
+            bw_wp("$wp_api/$ep/$update_pid", 'POST', ['status' => 'draft'], $auth, 30);
+            bw_update_book($batch_file, $idx, [
+                'status'  => 'done',
+                'post_id' => $update_pid,
+                'error'   => 'yayından kaldırıldı: model eseri tanımıyor (ret)',
+            ]);
+            return;
+        }
         bw_update_book($batch_file, $idx, [
             'status' => 'error',
             'error'  => 'DOĞRULANAMADI: model eseri güvenilir tanımadı, atlandı — ' .
@@ -759,8 +800,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $expected_slug = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $expected_slug) ?: $expected_slug;
     $expected_slug = preg_replace('/[^a-z0-9]+/', '-', $expected_slug);
     $expected_slug = trim($expected_slug, '-');
-    [$slug_posts, $slug_code] = bw_wp("$wp_api/$ep?slug=" . urlencode($expected_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
-    if ($slug_code === 200 && !empty($slug_posts[0]['id'])) {
+    // YENİDEN YAZ modunda bu "zaten var → atla" bloğu ÇALIŞMAZ: mevcut yazıyı
+    // zaten en başta bulduk ($update_pid) ve amaç onu GÜNCELLEMEK.
+    [$slug_posts, $slug_code] = $rewrite ? [null, 0]
+        : bw_wp("$wp_api/$ep?slug=" . urlencode($expected_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+    if (!$rewrite && $slug_code === 200 && !empty($slug_posts[0]['id'])) {
         $pid = $slug_posts[0]['id'];
         // Mevcut post yazara bağlı değilse bağla — aksi halde yazar sayfasında görünmez.
         $existing_authors = $slug_posts[0]['authors'] ?? [];
@@ -816,13 +860,18 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     ];
     if ($ep !== 'analysis' && $cat_ids) $pb['categories'] = $cat_ids;
 
-    [$post, $pc] = bw_wp("$wp_api/$ep", 'POST', $pb, $auth, 60);
+    // YENİDEN YAZ: mevcut yazının ÜSTÜNE yaz (POST /$ep/$id). Aksi halde yeni oluştur.
+    if ($rewrite && $update_pid) {
+        [$post, $pc] = bw_wp("$wp_api/$ep/$update_pid", 'POST', $pb, $auth, 60);
+    } else {
+        [$post, $pc] = bw_wp("$wp_api/$ep", 'POST', $pb, $auth, 60);
+    }
     if ($pc < 200 || $pc >= 300) {
         $err = $post['message'] ?? "WP HTTP $pc";
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>$err]);
         return;
     }
-    $pid = $post['id'];
+    $pid = $post['id'] ?? ($update_pid ?: 0);
     // post_id'yi hemen kaydet — crash sonrası recovery bu kitabı tekrar işlemesin
     bw_update_book($batch_file, $idx, ['post_id' => $pid]);
 

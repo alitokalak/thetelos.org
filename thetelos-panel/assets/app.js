@@ -965,6 +965,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   setLoading(btn, true, 'Batch oluşturuluyor...');
 
   // Sunucuda batch oluştur
+  const rewrite = document.getElementById('bulk_rewrite')?.checked ? '1' : '0';
   const res = await postData(API('batch-create.php'), {
     books:        JSON.stringify(batchBooks),
     type,
@@ -973,6 +974,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
     api_provider: activeProvider,
     parts:        parts,
     workers:      workerCount,
+    rewrite,
   });
 
   if (!res.ok) {

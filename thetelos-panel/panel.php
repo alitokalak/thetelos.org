@@ -280,6 +280,11 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         </label>
         <span id="peak-skip-msg" style="display:block;margin-top:6px;font-size:12px;color:var(--gold)"></span>
 
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.5;border:1px solid rgba(190,120,220,.4);border-radius:10px;padding:12px 14px;background:rgba(190,120,220,.06)">
+          <input type="checkbox" id="bulk_rewrite" style="margin-top:2px">
+          <span>♻️ <b style="color:#c58af0">Yeniden yaz modu (mevcut yazıları güncelle)</b> — Bu liste sitede ZATEN varsa, yeni oluşturmaz; her eseri yeni dürüstlük kurallarıyla <b>yeniden yazıp mevcut yazının üstüne kaydeder</b>. Model eseri güvenilir tanımıyorsa o yazıyı <b>yayından kaldırır</b>. Sitede bulunmayan eser atlanır. <span style="font-size:11px">(Aynı CSV listeni ver — sistem eşleştirir.)</span></span>
+        </label>
+
         <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
           <button class="btn btn-primary" id="btn-batch-start" disabled>▶ Batch İşlemi Başlat</button>
           <button class="btn btn-ghost" id="btn-batch-pause" style="display:none">⏸ Duraklat</button>

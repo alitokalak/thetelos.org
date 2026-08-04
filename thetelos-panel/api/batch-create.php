@@ -11,6 +11,9 @@ $api_provider = trim($_POST['api_provider'] ?? 'deepseek');
 $parts        = max(1, min(4, (int)($_POST['parts'] ?? 2)));
 $workers      = max(1, min(5, (int)($_POST['workers'] ?? 1)));
 $books_json   = trim($_POST['books']        ?? '[]');
+// YENİDEN YAZ MODU: mevcut yazıyı bulup ÜSTÜNE yaz (yeni oluşturma). Listedeki
+// eserlerin sitede zaten olanları, yeni dürüstlük kurallarıyla güncellenir.
+$rewrite      = !empty($_POST['rewrite']) && $_POST['rewrite'] !== '0';
 
 $books = json_decode($books_json, true);
 if (!$books || !is_array($books) || count($books) === 0) {
@@ -70,6 +73,7 @@ $batch = [
     'api_provider' => $api_provider,
     'parts'        => $parts,
     'workers'      => $workers,
+    'rewrite'      => $rewrite,   // true: mevcut yazıyı güncelle, yoksa atla
     'total'        => count($books),
     'done'         => 0,
     'ok'           => 0,
