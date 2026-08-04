@@ -394,20 +394,24 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $s = preg_replace('/[^a-z0-9]+/', ' ', $s);
             return trim(preg_replace('/\s+/', ' ', $s));
         };
-        // 1) slug ile (üretimde WP'nin ürettiği slug'a en yakın tahmin)
-        $rt_slug = trim(preg_replace('/\s+/', '-', $nrm($rt_title)), '-');
-        [$sp, $sc] = bw_wp("$wp_api/$ep?slug=" . urlencode($rt_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
-        if ($sc === 200 && !empty($sp[0]['id'])) $update_pid = (int) $sp[0]['id'];
-        // 2) BAŞLIK ARAMASI YEDEĞİ — slug WP tarafında farklı üretilmiş olabilir
-        //    (Unicode, diakritik, "-2" ekleri). Aynı liste verildiği için eser
-        //    sitede VARDIR; kaçırmamak için başlıkla da ararız.
-        if (!$update_pid) {
-            $tgt = $nrm($rt_title);
-            [$srch, $scc] = bw_wp("$wp_api/$ep?search=" . urlencode($book) . '&status=any&per_page=20&_fields=id,title', 'GET', [], $auth, 20);
+        $tgt     = $nrm($rt_title);
+        $tgt_b   = $nrm($book);
+        $rt_slug = trim(preg_replace('/\s+/', '-', $tgt), '-');
+
+        /* HER İKİ TİPTE DE ARA: özet (posts) VE analiz (analysis).
+           Kullanıcı batch tipini yanlış seçse bile (ör. "Derin Analiz" seçip
+           mevcut içerik aslında özet), yazıyı yine bulur. Bulunan tip neyse
+           prompt de ona göre seçilir — yani mevcut yazı NE İSE o güncellenir. */
+        foreach (['posts', 'analysis'] as $try_ep) {
+            // 1) slug ile
+            [$sp, $sc] = bw_wp("$wp_api/$try_ep?slug=" . urlencode($rt_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+            if ($sc === 200 && !empty($sp[0]['id'])) { $update_pid = (int) $sp[0]['id']; $ep = $try_ep; break; }
+            // 2) başlık araması (slug WP tarafında farklı üretilmiş olabilir)
+            [$srch, $scc] = bw_wp("$wp_api/$try_ep?search=" . rawurlencode($book) . '&status=any&per_page=20&_fields=id,title', 'GET', [], $auth, 20);
             if ($scc === 200 && is_array($srch)) {
                 foreach ($srch as $cand) {
                     $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
-                    if ($ct !== '' && ($ct === $tgt || $ct === $nrm($book))) { $update_pid = (int) $cand['id']; break; }
+                    if ($ct !== '' && ($ct === $tgt || $ct === $tgt_b)) { $update_pid = (int) $cand['id']; $ep = $try_ep; break 2; }
                 }
             }
         }
@@ -415,6 +419,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: sitede eşleşen yazı bulunamadı (atlandı)']);
             return;
         }
+        // Bulunan tipe göre prompt tipini düzelt: mevcut yazı özetse özet, analizse analiz.
+        $type = ($ep === 'analysis') ? 'analysis' : 'summary';
     }
 
     // ── Prompt ────────────────────────────────────────────────────
