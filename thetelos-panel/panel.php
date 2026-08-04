@@ -206,9 +206,13 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div style="margin-top:10px">
           <label style="font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px">
             <input type="checkbox" id="bulk-skip-onsite" checked>
-            Sitede zaten olan yazarları atla
+            <span id="skip-onsite-lbl">Sitede zaten olan yazarları atla</span>
           </label>
         </div>
+        <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.5;border:1px solid rgba(190,120,220,.4);border-radius:10px;padding:12px 14px;background:rgba(190,120,220,.06)">
+          <input type="checkbox" id="bulk_rewrite" style="margin-top:2px">
+          <span>♻️ <b style="color:#c58af0">Yeniden yaz modu (mevcut yazıları güncelle)</b> — Aynı CSV listeni ver; sistem sitedeki MEVCUT yazıyı bulup <b>yalnız gövdesini</b> yeni dürüstlük kurallarıyla yeniden yazar (başlık, kapak, kategori, yazar AYNEN kalır). Model eseri tanımıyorsa yazıyı <b>yayından kaldırır</b>.<br><b style="color:#e6963c">Not:</b> bu modda yukarıdaki "sitede olanları atla" kutusunu <b>KAPAT</b> — açık kalırsa liste elenir.</span>
+        </label>
         <div style="display:flex;gap:8px;margin-top:10px" id="upload-actions" style="display:none">
           <button class="btn btn-ghost btn-sm" id="btn-add-more">+ Dosya Ekle</button>
           <button class="btn btn-ghost btn-sm" id="btn-clear-list" style="color:var(--red)">✕ Listeyi Temizle</button>
@@ -279,11 +283,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <span>💤 <b style="color:var(--text)">Yoğun saatlerde tasarruf et</b> — DeepSeek'in 2× fiyatlı saatlerinde (TR 04:00–07:00 &amp; 09:00–13:00) üretimi otomatik duraklatır, uygun saat gelince kaldığı yerden devam eder. Liste oluşturma (ücretsiz) etkilenmez. <span style="font-size:11px">(önerilen: açık)</span></span>
         </label>
         <span id="peak-skip-msg" style="display:block;margin-top:6px;font-size:12px;color:var(--gold)"></span>
-
-        <label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.5;border:1px solid rgba(190,120,220,.4);border-radius:10px;padding:12px 14px;background:rgba(190,120,220,.06)">
-          <input type="checkbox" id="bulk_rewrite" style="margin-top:2px">
-          <span>♻️ <b style="color:#c58af0">Yeniden yaz modu (mevcut yazıları güncelle)</b> — Bu liste sitede ZATEN varsa, yeni oluşturmaz; her eseri yeni dürüstlük kurallarıyla <b>yeniden yazıp mevcut yazının üstüne kaydeder</b>. Model eseri güvenilir tanımıyorsa o yazıyı <b>yayından kaldırır</b>. Sitede bulunmayan eser atlanır. <span style="font-size:11px">(Aynı CSV listeni ver — sistem eşleştirir.)</span></span>
-        </label>
 
         <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
           <button class="btn btn-primary" id="btn-batch-start" disabled>▶ Batch İşlemi Başlat</button>
