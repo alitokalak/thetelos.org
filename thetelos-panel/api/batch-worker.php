@@ -385,14 +385,34 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $update_pid = 0;
     if ($rewrite) {
         $rt_title = $author ? "$book - $author" : $book;
-        $rt_slug  = mb_strtolower($rt_title, 'UTF-8');
-        $rt_slug  = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $rt_slug) ?: $rt_slug;
-        $rt_slug  = trim(preg_replace('/[^a-z0-9]+/', '-', $rt_slug), '-');
-        [$rt_sp, $rt_sc] = bw_wp("$wp_api/$ep?slug=" . urlencode($rt_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
-        if ($rt_sc === 200 && !empty($rt_sp[0]['id'])) {
-            $update_pid = (int) $rt_sp[0]['id'];
-        } else {
-            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: sitede bulunamadı (atlandı)']);
+        // Normalize: küçük harf, diakritik→ascii, parantez içi at, noktalama→boşluk.
+        $nrm = function ($s) {
+            $s = mb_strtolower(trim((string) $s), 'UTF-8');
+            $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+            if ($x !== false && $x !== '') $s = $x;
+            $s = preg_replace('/\([^()]*\)/', ' ', $s);
+            $s = preg_replace('/[^a-z0-9]+/', ' ', $s);
+            return trim(preg_replace('/\s+/', ' ', $s));
+        };
+        // 1) slug ile (üretimde WP'nin ürettiği slug'a en yakın tahmin)
+        $rt_slug = trim(preg_replace('/\s+/', '-', $nrm($rt_title)), '-');
+        [$sp, $sc] = bw_wp("$wp_api/$ep?slug=" . urlencode($rt_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+        if ($sc === 200 && !empty($sp[0]['id'])) $update_pid = (int) $sp[0]['id'];
+        // 2) BAŞLIK ARAMASI YEDEĞİ — slug WP tarafında farklı üretilmiş olabilir
+        //    (Unicode, diakritik, "-2" ekleri). Aynı liste verildiği için eser
+        //    sitede VARDIR; kaçırmamak için başlıkla da ararız.
+        if (!$update_pid) {
+            $tgt = $nrm($rt_title);
+            [$srch, $scc] = bw_wp("$wp_api/$ep?search=" . urlencode($book) . '&status=any&per_page=20&_fields=id,title', 'GET', [], $auth, 20);
+            if ($scc === 200 && is_array($srch)) {
+                foreach ($srch as $cand) {
+                    $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
+                    if ($ct !== '' && ($ct === $tgt || $ct === $nrm($book))) { $update_pid = (int) $cand['id']; break; }
+                }
+            }
+        }
+        if (!$update_pid) {
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: sitede eşleşen yazı bulunamadı (atlandı)']);
             return;
         }
     }
@@ -597,6 +617,41 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'status' => 'error',
             'error'  => 'DOĞRULANAMADI: model eseri güvenilir tanımadı, atlandı — ' .
                         mb_substr($refusal, 0, 160),
+        ]);
+        return;
+    }
+
+    /* ── YENİDEN YAZ: YALNIZ GÖVDEYİ GÜNCELLE ────────────────────────────────
+       Kullanıcı isteği: başlık (H1), kapak, açıklama (excerpt/meta), kategori,
+       yazar AYNEN kalsın — hem hız hem gereksiz API yok. Sadece `content`
+       güncellenir. Bu blok döndüğü için aşağıdaki meta/kapak/yazar/oluşturma
+       kodunun hiçbiri rewrite modunda ÇALIŞMAZ. */
+    if ($rewrite && $update_pid) {
+        // İçerikteki H1'i at (tema post başlığını zaten H1 gösterir — orijinalde de böyle).
+        $rw = preg_replace('/^# \*\*[^\n]+\*\*\n*/m', '', $content, 1);
+        $rw = preg_replace('/^# [^\n]+\n*/m', '', $rw, 1);
+        $rw_html = bw_md2html(ltrim($rw));
+
+        // Mekanik kapı (BEDAVA, hızlı): yarım/kesik/prompt-dökümü yeni içeriği
+        // yayına salma. Olgu denetimi (API) burada YOK — hız için; dürüstlük
+        // prompt'u + ret kontrolü uyduruğu zaten büyük ölçüde eliyor.
+        require_once __DIR__ . '/_verify.php';
+        $rw_body = ['content' => $rw_html];   // SADECE gövde — başlık/kapak/kategori/yazar/meta'ya dokunma
+        if (tv_settings()['gate']) {
+            $g = tv_gate($book, $author, $rw_html, ['min_words' => 300, 'skip_factcheck' => true]);
+            if (!$g['pass']) $rw_body['status'] = 'draft';   // kusurluysa taslağa çek
+        }
+        [$rw_post, $rw_pc] = bw_wp("$wp_api/$ep/$update_pid", 'POST', $rw_body, $auth, 60);
+        if ($rw_pc < 200 || $rw_pc >= 300) {
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'güncellenemedi: WP ' . $rw_pc]);
+            return;
+        }
+        bw_update_book($batch_file, $idx, [
+            'status'   => 'done',
+            'post_id'  => $update_pid,
+            'post_url' => $rw_post['link'] ?? '',
+            'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+            'error'    => isset($rw_body['status']) ? 'yeniden yazıldı ama kapıdan geçemedi → taslak' : '',
         ]);
         return;
     }
