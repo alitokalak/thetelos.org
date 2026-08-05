@@ -211,7 +211,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         </div>
         <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.5;border:1px solid rgba(190,120,220,.4);border-radius:10px;padding:12px 14px;background:rgba(190,120,220,.06)">
           <input type="checkbox" id="bulk_rewrite" style="margin-top:2px">
-          <span>♻️ <b style="color:#c58af0">Yeniden yaz modu (mevcut yazıları güncelle)</b> — Aynı CSV listeni ver; sistem sitedeki MEVCUT yazıyı bulup <b>yalnız gövdesini</b> yeni dürüstlük kurallarıyla yeniden yazar (başlık, kapak, kategori, yazar AYNEN kalır). Model eseri tanımıyorsa yazıyı <b>yayından kaldırır</b>.<br><b style="color:#e6963c">Not:</b> bu modda yukarıdaki "sitede olanları atla" kutusunu <b>KAPAT</b> — açık kalırsa liste elenir.</span>
+          <span>♻️ <b style="color:#c58af0">Yeniden yaz modu (mevcut yazıları güncelle)</b> — Aynı CSV listeni ver; sistem sitedeki MEVCUT yazıyı bulup <b>yalnız gövdesini</b> yeni dürüstlük kurallarıyla yeniden yazar (başlık, kapak, kategori, yazar AYNEN kalır). <b>Hiçbir yazı yayından kaldırılmaz:</b> model eseri tanımıyorsa gövdeye "içerik henüz hazırlanmadı" yer tutucusu konur, yazı yayında kalır ve <b>sorunlu listeye</b> düşer (sonra başka modelle yazılır).<br><b style="color:#e6963c">Not:</b> bu modda yukarıdaki "sitede olanları atla" kutusunu <b>KAPAT</b> — açık kalırsa liste elenir.</span>
         </label>
         <div style="display:flex;gap:8px;margin-top:10px" id="upload-actions" style="display:none">
           <button class="btn btn-ghost btn-sm" id="btn-add-more">+ Dosya Ekle</button>

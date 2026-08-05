@@ -28,12 +28,13 @@ $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 function pr_label($code) {
     switch ($code) {
         case 'not_found':   return 'sitede bulunamadı';
-        case 'unpublished': return 'yayından kaldırıldı (model tanımadı)';
+        case 'placeholder': return 'model tanımadı → yer tutucu (yayında)';
+        case 'unpublished': return 'yayından kaldırıldı (eski davranış)';
         case 'unknown':     return 'doğrulanamadı (model tanımadı)';
         case 'refused':     return 'model reddetti (uydurma önlendi)';
-        case 'gate_draft':  return 'yazıldı ama kapıdan geçemedi → taslak';
+        case 'gate_draft':  return 'kapıdan geçemedi (eski davranış)';
         case 'wp_error':    return 'WordPress güncelleme hatası';
-        case 'gen_error':   return 'üretim hatası / boş yanıt';
+        case 'gen_error':   return 'içerik kusurlu → mevcut korundu';
         default:            return $code;
     }
 }

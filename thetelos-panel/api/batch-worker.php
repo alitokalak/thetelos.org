@@ -269,6 +269,21 @@ function bw_flag_problem($book, $author, $cover, $year, $reason, $detail = '', $
     @file_put_contents($file, json_encode($rec, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
 }
 
+/* ── YER-TUTUCU GÖVDE ────────────────────────────────────────────────────
+   Model eseri güvenilir tanımıyorsa yazıyı YAYINDAN ALMAYIZ (link ölmesin,
+   trafik/Google keşfi sürsün). Bunun yerine gövdeye nazik, dürüst bir
+   yer-tutucu koyar, yayında bırakırız. Eski (muhtemelen uydurma) gövde de
+   böylece temizlenmiş olur; eser sorunlu listeye düşer → sonra başka modelle
+   gerçek içerik yazılır. */
+function bw_placeholder_html($book, $author) {
+    $b = htmlspecialchars(trim((string) $book),   ENT_QUOTES, 'UTF-8');
+    $a = htmlspecialchars(trim((string) $author), ENT_QUOTES, 'UTF-8');
+    $title = $b . ($a !== '' ? ' — ' . $a : '');
+    return "<p><strong>" . $title . "</strong> için özet içeriği henüz hazırlanmadı.</p>"
+         . "<p>Bu eser üzerinde çalışıyoruz; doğrulanmış içerik hazır olduğunda bu sayfa güncellenecektir. "
+         . "Yanlış ya da uydurma bilgi yayınlamamak adına, kaynağını teyit edemediğimiz metinleri yayınlamıyoruz.</p>";
+}
+
 /* ── Başlık kök eşleştirme (JS titleTokens/titlesSame ile aynı mantık) ── */
 function bw_title_tokens($s) {
     static $stop = null;
@@ -637,14 +652,18 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     require_once __DIR__ . '/_checks.php';
     if (($refusal = ca_check_refusal($content)) !== '') {
         if ($rewrite && $update_pid) {
-            // Yeniden yaz modu: model reddettiyse mevcut yazıyı YAYINDAN AL.
-            bw_wp("$wp_api/$ep/$update_pid", 'POST', ['status' => 'draft'], $auth, 30);
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unpublished', $refusal, $update_pid, 'rewrite');
+            // Yeniden yaz modu: model eseri tanımıyor. YAYINDAN ALMA — yazı
+            // yayında kalsın (link/trafik ölmesin). Gövdeye yer-tutucu koy
+            // (eski uydurma içerik de temizlenir), sorunlu listeye ekle.
+            $ph = bw_placeholder_html($book, $author);
+            [$rp, $rc] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', $refusal, $update_pid, 'rewrite');
             bw_update_book($batch_file, $idx, [
                 'status'   => 'done',
                 'post_id'  => $update_pid,
+                'post_url' => $rp['link'] ?? '',
                 'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-                'error'    => 'yayından kaldırıldı: model eseri tanımıyor (ret)',
+                'error'    => 'model tanımadı → yer tutucu kondu (yayında)',
             ]);
             return;
         }
@@ -672,34 +691,41 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         // yayına salma. Olgu denetimi (API) burada YOK — hız için; dürüstlük
         // prompt'u + ret kontrolü uyduruğu zaten büyük ölçüde eliyor.
         require_once __DIR__ . '/_verify.php';
-        // SADECE gövde + status=publish. status=publish KENDİNİ ONARIR: önceki
-        // hatalı çalıştırma bu gerçek yazıyı yanlışlıkla taslağa çektiyse, listeyi
-        // yeniden verince yayına geri döner. (Başlık/kapak/kategori/yazar/meta'ya
-        // DOKUNULMAZ — yalnız content ve status alanları gönderilir.)
-        $rw_body = ['content' => $rw_html, 'status' => 'publish'];
+        // Mekanik kapı (BEDAVA): içerik yarım/kesik/prompt-dökümü mü? ARTIK
+        // TASLAĞA ÇEKMİYORUZ (hiçbir yazı yayından alınmaz). Kusurlu geldiyse
+        // MEVCUT yazının üstüne YAZMA — eski (iyi olabilecek) gövdeyi koru,
+        // sorunlu listeye ekle, sonra yeniden denenir. Böylece ne link ölür
+        // ne de yerine bozuk metin geçer.
         if (tv_settings()['gate']) {
             $g = tv_gate($book, $author, $rw_html, ['min_words' => 300, 'skip_factcheck' => true]);
-            if (!$g['pass']) $rw_body['status'] = 'draft';   // yalnız içerik gerçekten kusurluysa taslağa çek
+            if (!$g['pass']) {
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', 'içerik kusurlu geldi (kapı)', $update_pid, 'rewrite');
+                bw_update_book($batch_file, $idx, [
+                    'status'   => 'done',
+                    'post_id'  => $update_pid,
+                    'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                    'error'    => 'içerik kusurlu geldi → mevcut yazı korundu (yeniden dene)',
+                ]);
+                return;
+            }
         }
-        [$rw_post, $rw_pc] = bw_wp("$wp_api/$ep/$update_pid", 'POST', $rw_body, $auth, 60);
+        // Temiz: SADECE gövde + status=publish. status=publish KENDİNİ ONARIR —
+        // eser daha önce (eski sürümde) yanlışlıkla taslağa çekildiyse yayına
+        // döner. Başlık/kapak/kategori/yazar/meta'ya DOKUNULMAZ.
+        [$rw_post, $rw_pc] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $rw_html, 'status' => 'publish'], $auth, 60);
         if ($rw_pc < 200 || $rw_pc >= 300) {
             bw_flag_problem($book, $author, $pre_cover, $pre_year, 'wp_error', 'WP ' . $rw_pc, $update_pid, 'rewrite');
             bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'güncellenemedi: WP ' . $rw_pc]);
             return;
         }
-        $rw_drafted = (($rw_body['status'] ?? '') === 'draft');
-        if ($rw_drafted) {
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gate_draft', 'mekanik kapıdan geçemedi', $update_pid, 'rewrite');
-        } else {
-            // Temiz yayınlandı: varsa önceki 'sorunlu' kaydını GEÇERSİZ kıl (kendini onarır).
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'ok', 'yeniden yazıldı, yayında', $update_pid, 'rewrite');
-        }
+        // Temiz yayınlandı: varsa önceki 'sorunlu' kaydını GEÇERSİZ kıl (liste kendini onarır).
+        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'ok', 'yeniden yazıldı, yayında', $update_pid, 'rewrite');
         bw_update_book($batch_file, $idx, [
             'status'   => 'done',
             'post_id'  => $update_pid,
             'post_url' => $rw_post['link'] ?? '',
             'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-            'error'    => $rw_drafted ? 'yeniden yazıldı ama kapıdan geçemedi → taslak' : '',
+            'error'    => '',
         ]);
         return;
     }

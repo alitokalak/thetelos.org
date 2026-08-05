@@ -2384,8 +2384,9 @@ async function loadProblems() {
   }
   // Neden bazında özet
   const labelMap = {
-    not_found: 'sitede bulunamadı', unpublished: 'yayından kaldırıldı', unknown: 'doğrulanamadı',
-    refused: 'model reddetti', gate_draft: 'taslağa çekildi', wp_error: 'WP hatası', gen_error: 'üretim hatası',
+    not_found: 'sitede bulunamadı', placeholder: 'yer tutucu (yayında)', unpublished: 'yayından kaldırıldı',
+    unknown: 'doğrulanamadı', refused: 'model reddetti', gate_draft: 'kapıdan geçemedi',
+    wp_error: 'WP hatası', gen_error: 'içerik kusurlu',
   };
   const chips = Object.entries(res.counts || {}).map(([k, v]) =>
     `<span class="badge badge-gray" style="margin:0 4px 4px 0">${prEsc(labelMap[k] || k)}: ${v}</span>`).join('');
