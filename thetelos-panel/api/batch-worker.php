@@ -246,6 +246,29 @@ function bw_update_book($batch_file, $idx, $updates) {
     }
 }
 
+/* ── SORUNLU ESER GÜNLÜĞÜ ───────────────────────────────────────────────
+   Yazılamayan / hata alan / yayından kaldırılan / kapıdan geçemeyen her eseri
+   KALICI bir loga yazar. Amaç: kullanıcı bu listeyi sonradan indirip (aynı CSV
+   formatında) FARKLI bir modelle yeniden yazdırabilsin. Dosya jobs/ altında
+   olduğundan FTP deploy'u ASLA üzerine yazmaz (deploy jobs/** hariç tutar) →
+   sürümler arası kaybolmaz. JSONL: her satır bir olay; okuma tarafı
+   normalize-anahtarla tekilleştirir (aynı eserin son durumu geçerli sayılır). */
+function bw_flag_problem($book, $author, $cover, $year, $reason, $detail = '', $pid = 0, $mode = 'rewrite') {
+    $file = dirname(__DIR__) . '/jobs/rewrite-problems.jsonl';
+    $rec  = [
+        't'      => time(),
+        'book'   => (string) $book,
+        'author' => (string) $author,
+        'cover'  => (string) $cover,
+        'year'   => (string) $year,
+        'reason' => (string) $reason,          // kod: not_found / unpublished / gate_draft / wp_error / gen_error / refused
+        'detail' => mb_substr((string) $detail, 0, 200),
+        'pid'    => (int) $pid,
+        'mode'   => (string) $mode,            // rewrite | create
+    ];
+    @file_put_contents($file, json_encode($rec, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+}
+
 /* ── Başlık kök eşleştirme (JS titleTokens/titlesSame ile aynı mantık) ── */
 function bw_title_tokens($s) {
     static $stop = null;
@@ -416,6 +439,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             }
         }
         if (!$update_pid) {
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'not_found', 'sitede eşleşen yazı bulunamadı');
             bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: sitede eşleşen yazı bulunamadı (atlandı)']);
             return;
         }
@@ -456,6 +480,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         // Yoklama ÇALIŞMADIYSA (ağ/kota) kitabı reddetme: doğrulayamamak,
         // eserin bilinmediğini göstermez. Yalnızca net "bilmiyorum" durdurur.
         if (!empty($pr['ok']) && empty($pr['known'])) {
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', (string) $pr['reason'], 0, 'create');
             bw_update_book($batch_file, $idx, [
                 'status' => 'error',
                 'error'  => 'DOĞRULANAMADI: model bu eseri tanımıyor — ' .
@@ -593,6 +618,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     if ($accumulated !== '') $content = bw_clean_content($accumulated);
 
     if ($gen_error || !$content) {
+        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', $gen_error ?: 'Boş içerik', $update_pid, $rewrite ? 'rewrite' : 'create');
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>$gen_error ?: 'Boş içerik']);
         return;
     }
@@ -613,6 +639,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         if ($rewrite && $update_pid) {
             // Yeniden yaz modu: model reddettiyse mevcut yazıyı YAYINDAN AL.
             bw_wp("$wp_api/$ep/$update_pid", 'POST', ['status' => 'draft'], $auth, 30);
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unpublished', $refusal, $update_pid, 'rewrite');
             bw_update_book($batch_file, $idx, [
                 'status'   => 'done',
                 'post_id'  => $update_pid,
@@ -621,6 +648,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             ]);
             return;
         }
+        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'refused', $refusal, 0, 'create');
         bw_update_book($batch_file, $idx, [
             'status' => 'error',
             'error'  => 'DOĞRULANAMADI: model eseri güvenilir tanımadı, atlandı — ' .
@@ -655,15 +683,23 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
         [$rw_post, $rw_pc] = bw_wp("$wp_api/$ep/$update_pid", 'POST', $rw_body, $auth, 60);
         if ($rw_pc < 200 || $rw_pc >= 300) {
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'wp_error', 'WP ' . $rw_pc, $update_pid, 'rewrite');
             bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'güncellenemedi: WP ' . $rw_pc]);
             return;
+        }
+        $rw_drafted = (($rw_body['status'] ?? '') === 'draft');
+        if ($rw_drafted) {
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gate_draft', 'mekanik kapıdan geçemedi', $update_pid, 'rewrite');
+        } else {
+            // Temiz yayınlandı: varsa önceki 'sorunlu' kaydını GEÇERSİZ kıl (kendini onarır).
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'ok', 'yeniden yazıldı, yayında', $update_pid, 'rewrite');
         }
         bw_update_book($batch_file, $idx, [
             'status'   => 'done',
             'post_id'  => $update_pid,
             'post_url' => $rw_post['link'] ?? '',
             'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-            'error'    => (($rw_body['status'] ?? '') === 'draft') ? 'yeniden yazıldı ama kapıdan geçemedi → taslak' : '',
+            'error'    => $rw_drafted ? 'yeniden yazıldı ama kapıdan geçemedi → taslak' : '',
         ]);
         return;
     }

@@ -319,6 +319,27 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       </div>
 
       <div id="bulk-preview"></div>
+
+      <!-- ══ SORUNLU / YAZDIRILAMAYAN ESERLER ═══════════════════════
+           Yeniden-yaz veya üretim sırasında temiz yayınlanamayan eserler
+           (bulunamadı, model tanımadı, taslağa çekildi, hata) burada birikir.
+           Bu listeyi indirip AYNI CSV formatıyla FARKLI bir modelle yeniden
+           yazdırabilirsin. Sayfa açılışında yüklenmez — "Yenile" ile gelir. -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          ⚠️ Sorunlu / Yazdırılamayan Eserler
+          <span id="problems-count" class="badge badge-gray">—</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-ghost btn-sm" id="btn-problems-refresh" type="button">🔄 Yenile</button>
+          <button class="btn btn-green btn-sm" id="btn-problems-csv" type="button">⬇ CSV indir</button>
+          <button class="btn btn-ghost btn-sm" id="btn-problems-clear" type="button" style="color:var(--muted)">🗑 Temizle</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin:2px 0 8px">
+          Sistem bu listeyi kalıcı tutar (sürümler arası kaybolmaz). İndirdiğin CSV,
+          Toplu Batch'e tekrar yükleyip başka bir modelle yazdırabileceğin formattadır.
+        </div>
+        <div id="problems-list" style="font-size:13px"></div>
+      </div>
     </div>
 
     <!-- ══ LİSTE OLUŞTUR ═══════════════════════════════════ -->

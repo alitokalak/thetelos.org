@@ -2354,3 +2354,70 @@ document.getElementById('btn-cleaner-export-removed')?.addEventListener('click',
   for (const r of rows) csv += [cleanerCsvEscape(r.title), cleanerCsvEscape(r.author), cleanerCsvEscape(r.reason || '')].join(',') + '\n';
   cleanerDownload('ELENENLER_' + rows.length + '.csv', csv);
 });
+
+/* ── Sorunlu / yazdırılamayan eserler ───────────────────────────────────
+   batch-worker temiz yayınlanamayan eserleri kalıcı loglar (api/problems.php).
+   Burada listeler, CSV indirir, temizleriz. Sayfa açılışında OTOMATİK yüklenmez
+   — kullanıcı "Yenile" der (istek boşuna atılmasın). */
+function prEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+async function loadProblems() {
+  const box = document.getElementById('problems-list');
+  const cnt = document.getElementById('problems-count');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--muted)">Yükleniyor…</span>';
+  let res;
+  try {
+    res = await (await fetch(API('problems.php') + '?action=list', { credentials: 'same-origin' })).json();
+  } catch (e) {
+    box.innerHTML = '<span style="color:#e0a800">Liste alınamadı.</span>';
+    return;
+  }
+  if (!res || !res.ok) { box.innerHTML = '<span style="color:#e0a800">Liste alınamadı.</span>'; return; }
+  if (cnt) cnt.textContent = res.total + ' eser';
+  if (!res.total) {
+    box.innerHTML = '<span style="color:var(--muted)">Sorunlu eser yok. 🎉</span>';
+    return;
+  }
+  // Neden bazında özet
+  const labelMap = {
+    not_found: 'sitede bulunamadı', unpublished: 'yayından kaldırıldı', unknown: 'doğrulanamadı',
+    refused: 'model reddetti', gate_draft: 'taslağa çekildi', wp_error: 'WP hatası', gen_error: 'üretim hatası',
+  };
+  const chips = Object.entries(res.counts || {}).map(([k, v]) =>
+    `<span class="badge badge-gray" style="margin:0 4px 4px 0">${prEsc(labelMap[k] || k)}: ${v}</span>`).join('');
+  // Kompakt tablo (ilk 200)
+  const rows = res.items.slice(0, 200).map((it, i) => `
+    <tr>
+      <td style="color:var(--muted)">${i + 1}</td>
+      <td>${prEsc(it.book)}</td>
+      <td>${prEsc(it.author)}</td>
+      <td><span class="badge badge-gray">${prEsc(it.label)}</span></td>
+    </tr>`).join('');
+  const more = res.total > 200 ? `<div style="color:var(--muted);font-size:12px;margin-top:6px">…ve ${res.total - 200} tane daha (CSV'de hepsi var).</div>` : '';
+  box.innerHTML = `
+    <div style="margin-bottom:8px">${chips}</div>
+    <div style="max-height:340px;overflow:auto;border:1px solid var(--border,#333);border-radius:8px">
+      <table class="bulk-table" style="width:100%">
+        <thead><tr><th>#</th><th>Kitap</th><th>Yazar</th><th>Neden</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>${more}`;
+}
+
+document.getElementById('btn-problems-refresh')?.addEventListener('click', loadProblems);
+
+document.getElementById('btn-problems-csv')?.addEventListener('click', () => {
+  window.location = API('problems.php') + '?action=csv';
+});
+
+document.getElementById('btn-problems-clear')?.addEventListener('click', async () => {
+  if (!confirm('Sorunlu eser listesi temizlensin mi? (Sitedeki yazılara dokunmaz, yalnız bu kaydı siler.)')) return;
+  try {
+    await fetch(API('problems.php') + '?action=clear', { method: 'POST', credentials: 'same-origin' });
+  } catch (e) {}
+  loadProblems();
+});
