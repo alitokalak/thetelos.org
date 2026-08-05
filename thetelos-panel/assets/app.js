@@ -1192,8 +1192,14 @@ function renderBatchStatus(b) {
     const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
     // Tamamlandı ama bir parçası eksik kaldıysa ⚠ ile göster (içerik kısa olabilir)
     const partial = st==='done' && bk.error && bk.error !== 'duplicate_skipped';
+    // Bağlantı: düzenleme linki yoksa ön-yüz linkine düş; ikisi de yoksa düz #id
+    // (asla href="null" üretme → /thetelos-panel/null 404'u buradan geliyordu).
+    const link = bk.edit_url || bk.post_url || '';
+    const idHtml = link
+      ? `<a href="${link}" target="_blank">#${bk.post_id}</a>`
+      : `#${bk.post_id}`;
     const lbl = st==='done'
-      ? `✓ <a href="${bk.edit_url}" target="_blank">#${bk.post_id}</a>${bk.cover_set?' 🖼':''}`
+      ? `✓ ${idHtml}${bk.cover_set?' 🖼':''}`
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'

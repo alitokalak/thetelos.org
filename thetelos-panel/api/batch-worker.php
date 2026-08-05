@@ -438,23 +438,24 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        hata olarak işaretlenir — API'ye 4 parça yazdırıp sonra atmaktan
        hem çok daha ucuz hem de tek güvenilir koruma budur. */
     require_once __DIR__ . '/_verify.php';
-    if (($post_status === 'publish' || $rewrite) && tv_settings()['probe']) {
+    /* YOKLAMA yalnız SIFIRDAN üretimde (yeni post) çalışır. YENİDEN YAZ modunda
+       ÇALIŞTIRMIYORUZ — çünkü:
+         • Liste kullanıcının bizzat seçtiği, sitede ZATEN olan gerçek eserler.
+         • DeepSeek yoklaması ara sıra boş/kararsız dönüyor (reasoning_content).
+           Böyle tek bir kararsız sinyalle GERÇEK bir yazıyı yayından almak
+           (draft'a çekmek) çok yıkıcı — Hesse/Mises gibi ünlü kitaplar bile
+           yanlışlıkla gizleniyordu. Kullanıcının "yeni post oluşturuyor" diye
+           gördüğü #23701… aslında yeni değil; DOĞRU eşleşen mevcut post'un
+           yoklamayla yayından alınmış haliydi.
+       Yeniden yaz modunda tek yayından-alma tetikleyicisi, üretilen METNİN
+       KENDİSİNDEKİ açık ret (aşağıdaki ca_check_refusal). Model gerçekten
+       yazabiliyorsa post yayında kalır ve gövdesi güncellenir. */
+    if ($post_status === 'publish' && !$rewrite && tv_settings()['probe']) {
         bw_touch_hb($batch_file, $idx);
         $pr = tv_probe($search_book, $author);
         // Yoklama ÇALIŞMADIYSA (ağ/kota) kitabı reddetme: doğrulayamamak,
         // eserin bilinmediğini göstermez. Yalnızca net "bilmiyorum" durdurur.
         if (!empty($pr['ok']) && empty($pr['known'])) {
-            if ($rewrite && $update_pid) {
-                // Yeniden yaz modu: model eseri tanımıyorsa mevcut yazıyı
-                // YAYINDAN AL (taslağa çek) — yanlış içerik yayında kalmasın.
-                bw_wp("$wp_api/$ep/$update_pid", 'POST', ['status' => 'draft'], $auth, 30);
-                bw_update_book($batch_file, $idx, [
-                    'status'  => 'done',
-                    'post_id' => $update_pid,
-                    'error'   => 'yayından kaldırıldı: model eseri tanımıyor',
-                ]);
-                return;
-            }
             bw_update_book($batch_file, $idx, [
                 'status' => 'error',
                 'error'  => 'DOĞRULANAMADI: model bu eseri tanımıyor — ' .
@@ -613,9 +614,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             // Yeniden yaz modu: model reddettiyse mevcut yazıyı YAYINDAN AL.
             bw_wp("$wp_api/$ep/$update_pid", 'POST', ['status' => 'draft'], $auth, 30);
             bw_update_book($batch_file, $idx, [
-                'status'  => 'done',
-                'post_id' => $update_pid,
-                'error'   => 'yayından kaldırıldı: model eseri tanımıyor (ret)',
+                'status'   => 'done',
+                'post_id'  => $update_pid,
+                'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                'error'    => 'yayından kaldırıldı: model eseri tanımıyor (ret)',
             ]);
             return;
         }
