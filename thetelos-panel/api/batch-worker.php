@@ -644,10 +644,14 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         // yayına salma. Olgu denetimi (API) burada YOK — hız için; dürüstlük
         // prompt'u + ret kontrolü uyduruğu zaten büyük ölçüde eliyor.
         require_once __DIR__ . '/_verify.php';
-        $rw_body = ['content' => $rw_html];   // SADECE gövde — başlık/kapak/kategori/yazar/meta'ya dokunma
+        // SADECE gövde + status=publish. status=publish KENDİNİ ONARIR: önceki
+        // hatalı çalıştırma bu gerçek yazıyı yanlışlıkla taslağa çektiyse, listeyi
+        // yeniden verince yayına geri döner. (Başlık/kapak/kategori/yazar/meta'ya
+        // DOKUNULMAZ — yalnız content ve status alanları gönderilir.)
+        $rw_body = ['content' => $rw_html, 'status' => 'publish'];
         if (tv_settings()['gate']) {
             $g = tv_gate($book, $author, $rw_html, ['min_words' => 300, 'skip_factcheck' => true]);
-            if (!$g['pass']) $rw_body['status'] = 'draft';   // kusurluysa taslağa çek
+            if (!$g['pass']) $rw_body['status'] = 'draft';   // yalnız içerik gerçekten kusurluysa taslağa çek
         }
         [$rw_post, $rw_pc] = bw_wp("$wp_api/$ep/$update_pid", 'POST', $rw_body, $auth, 60);
         if ($rw_pc < 200 || $rw_pc >= 300) {
@@ -659,7 +663,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'post_id'  => $update_pid,
             'post_url' => $rw_post['link'] ?? '',
             'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-            'error'    => isset($rw_body['status']) ? 'yeniden yazıldı ama kapıdan geçemedi → taslak' : '',
+            'error'    => (($rw_body['status'] ?? '') === 'draft') ? 'yeniden yazıldı ama kapıdan geçemedi → taslak' : '',
         ]);
         return;
     }
