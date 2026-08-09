@@ -340,6 +340,25 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         </div>
         <div id="problems-list" style="font-size:13px"></div>
       </div>
+
+      <!-- ══ TASLAKTA KALAN YAZILAR (kurtarma) ═══════════════════════
+           Eski turlarda yanlışlıkla taslağa çekilmiş gerçek yazıları bulur;
+           tek tıkla (veya toptan) yayına alır. Ön yüzde 404 veren yazıların
+           kaynağı budur. -->
+      <div class="card" style="margin-top:14px">
+        <div class="card-title" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          🗂 Taslakta Kalan Yazılar
+          <span id="drafts-count" class="badge badge-gray">—</span>
+          <span style="flex:1"></span>
+          <button class="btn btn-ghost btn-sm" id="btn-drafts-refresh" type="button">🔄 Yenile</button>
+          <button class="btn btn-green btn-sm" id="btn-drafts-puball" type="button">✅ Tümünü yayına al</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin:2px 0 8px">
+          Ön yüzde görünmeyen (taslakta kalmış) yazılar burada listelenir. Tek tek
+          "Yayınla" ya da toptan "Tümünü yayına al". Sayfa açılışında yüklenmez.
+        </div>
+        <div id="drafts-list" style="font-size:13px"></div>
+      </div>
     </div>
 
     <!-- ══ LİSTE OLUŞTUR ═══════════════════════════════════ -->

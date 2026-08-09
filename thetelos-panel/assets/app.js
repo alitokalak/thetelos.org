@@ -2422,3 +2422,62 @@ document.getElementById('btn-problems-clear')?.addEventListener('click', async (
   } catch (e) {}
   loadProblems();
 });
+
+/* ── Taslakta kalan yazılar (kurtarma) ───────────────────────────────────
+   Eski turlarda yanlışlıkla taslağa çekilmiş gerçek yazıları bulup yayına alır. */
+async function loadDrafts() {
+  const box = document.getElementById('drafts-list');
+  const cnt = document.getElementById('drafts-count');
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--muted)">Yükleniyor…</span>';
+  let res;
+  try {
+    res = await (await fetch(API('drafts.php') + '?action=list', { credentials: 'same-origin' })).json();
+  } catch (e) { box.innerHTML = '<span style="color:#e0a800">Liste alınamadı.</span>'; return; }
+  if (!res || !res.ok) { box.innerHTML = '<span style="color:#e0a800">Liste alınamadı.</span>'; return; }
+  if (cnt) cnt.textContent = res.total + ' taslak';
+  if (!res.total) { box.innerHTML = '<span style="color:var(--muted)">Taslakta kalan yazı yok. 🎉</span>'; return; }
+  const rows = res.items.map((it, i) => `
+    <tr data-id="${it.id}" data-type="${prEsc(it.type)}">
+      <td style="color:var(--muted)">${i + 1}</td>
+      <td>${prEsc(it.title) || '(başlıksız)'}</td>
+      <td><span class="badge badge-gray">${it.type === 'analysis' ? 'analiz' : 'özet'}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-green btn-sm dr-pub" type="button">Yayınla</button>
+        ${it.link ? `<a class="btn btn-ghost btn-sm" href="${it.link}" target="_blank">Gör</a>` : ''}
+      </td>
+    </tr>`).join('');
+  box.innerHTML = `
+    <div style="max-height:360px;overflow:auto;border:1px solid var(--border,#333);border-radius:8px">
+      <table class="bulk-table" style="width:100%">
+        <thead><tr><th>#</th><th>Başlık</th><th>Tip</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  box.querySelectorAll('.dr-pub').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const tr = btn.closest('tr');
+      const id = tr.getAttribute('data-id'), type = tr.getAttribute('data-type');
+      btn.disabled = true; btn.textContent = '...';
+      try {
+        const r = await postData(API('drafts.php'), { action: 'publish', id, type });
+        if (r.ok) { tr.style.opacity = '.5'; btn.textContent = '✓ Yayında'; }
+        else { btn.disabled = false; btn.textContent = 'Yayınla'; alert('Yayınlanamadı (HTTP ' + (r.code || '?') + ')'); }
+      } catch (e) { btn.disabled = false; btn.textContent = 'Yayınla'; }
+    });
+  });
+}
+
+document.getElementById('btn-drafts-refresh')?.addEventListener('click', loadDrafts);
+
+document.getElementById('btn-drafts-puball')?.addEventListener('click', async () => {
+  if (!confirm('Taslakta kalan TÜM yazılar yayına alınsın mı?')) return;
+  const btn = document.getElementById('btn-drafts-puball');
+  btn.disabled = true; const old = btn.textContent; btn.textContent = 'Yayınlanıyor…';
+  try {
+    const r = await postData(API('drafts.php'), { action: 'publish_all' }, 300000);
+    alert(`${r.published || 0} yazı yayına alındı${r.failed ? ', ' + r.failed + ' başarısız' : ''}.`);
+  } catch (e) { alert('İşlem tamamlanamadı.'); }
+  btn.disabled = false; btn.textContent = old;
+  loadDrafts();
+});
