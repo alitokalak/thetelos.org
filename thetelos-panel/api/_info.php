@@ -81,16 +81,14 @@ function tv_wikipedia($book, $author) {
         return ['found' => false];
     }
 
-    // 4) Yazar maddesini de bağlam için ekle. Giriş yerine daha GENİŞ metin al
-    //    (gerçek biyografi/bağlam → "Yazar ve Bağlam" bölümü uydurmasız uzar).
+    // 4) Yazar maddesinin yalnız KISA girişini bağlam için ekle. Odak KİTAP;
+    //    yazar biyografisi zaten sitedeki yazar sayfasında — burada şişirmeyiz.
     $author_text = '';
     if ($author !== '') {
-        $aj = $get($api . 'prop=extracts&explaintext=1&redirects=1&titles=' . rawurlencode($author));
+        $aj = $get($api . 'prop=extracts&exintro=1&explaintext=1&redirects=1&titles=' . rawurlencode($author));
         $ap = $aj['query']['pages'] ?? [];
         $apg = $ap ? reset($ap) : [];
-        $at = (string) ($apg['extract'] ?? '');
-        $at = preg_split('/\n=+\s*(References|Notes|See also|External links|Further reading|Bibliography|Works)\s*=+/i', $at)[0] ?? $at;
-        $author_text = trim(mb_substr($at, 0, 3500, 'UTF-8'));
+        $author_text = trim(mb_substr((string) ($apg['extract'] ?? ''), 0, 700, 'UTF-8'));
     }
 
     return ['found' => true, 'title' => $best, 'book_text' => $text, 'author_text' => $author_text];
@@ -169,22 +167,24 @@ WHAT MAKES THIS WORTH PUBLISHING — add real value, but ONLY safely:
 - CONTEXT & FRAMING: help the reader see why the work matters, how its ideas connect, and its place and relevance. Interpretation and framing ARE welcome — but every such point must be supported by what the sources actually say (their statements on themes, influence, reception). Never invent a novel claim just to sound insightful.
 - Write in a clear, engaged, thoughtful editorial voice — knowledgeable and readable, third person. The value is in how clearly and intelligently you present REAL, sourced material in your own words, not in inventing anything.
 
+FOCUS ON THE BOOK, NOT THE AUTHOR. This article is about the WORK itself — its ideas, arguments, and content. Keep biography to an absolute minimum: at most one sentence of author context where it is genuinely needed to understand the book. Do NOT write a biography of {$A} — the website has a separate author page for that. Spend the article's length on the book's own substance.
+
 WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliable material for (do not write empty or padded sections):
 ### What the Work Is
-  Genre/form, when and where it first appeared, its language, and a one- or two-sentence identity of the book.
-### The Author and Context
-  Who {$A} is and the intellectual, historical, or literary context of the work — at a general, reliable level.
-### Subject and Central Idea
-  What the book is about and its main thesis, aim, or argument.
-### Key Themes and Ideas
-  The major themes, concepts, or concerns of the work, at a general level.
-### Significance and Reception
-  Its importance, influence, place in the author's body of work, or reception — only if the sources support it.
+  Genre/form, when and where it first appeared, its language, and a crisp one- or two-sentence identity of the book. (At most one clause of author context if needed.)
+### What the Book Is About
+  The book's subject and its central idea, thesis, aim, or argument — the heart of the article.
+### Key Ideas and Themes
+  The major ideas, concepts, arguments, and themes the book itself develops, explained clearly for a general reader. This is where a well-sourced article should be FULLEST.
+### Structure and Approach
+  How the work is organised and its method or style — ONLY as the sources actually describe it. Never invent chapters, sections, or a structure.
+### Significance and Influence
+  Its importance, reception, and influence — only if the sources support it.
 
 FORMAT:
 - First line: # **{$book} — {$author}**
 - Second line: ## a short original subtitle capturing what the work is (do NOT repeat the title).
-- Then the ### sections in flowing prose. Develop each section as fully as the SOURCE MATERIAL genuinely supports — draw out the details, context, and ideas that are actually present in the sources. Overall length is DRIVEN BY THE SOURCES: when the material is rich, write a thorough article (roughly 1200–2500 words); when it is thin, write a shorter one. NEVER pad, repeat, or invent anything to reach a length — a shorter accurate article always beats a longer padded one. End cleanly; no "In conclusion" paragraph.
+- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Develop each section as fully as the SOURCE MATERIAL genuinely supports. Overall length is DRIVEN BY THE SOURCES: when the material is rich (a work you can reliably cover in depth), write a thorough, generous article (roughly 1500–2500 words); when it is thin, write a shorter one. NEVER pad, repeat, or invent anything to reach a length — a shorter accurate article always beats a longer padded one. End cleanly; no "In conclusion" paragraph.
 
 === VERIFIED SOURCE MATERIAL ===
 {$dossier}
