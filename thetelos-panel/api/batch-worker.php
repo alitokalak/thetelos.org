@@ -437,18 +437,41 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         };
         $tgt     = $nrm($rt_title);
         $tgt_b   = $nrm($book);
-        $rt_slug = trim(preg_replace('/\s+/', '-', $tgt), '-');
 
-        /* HER İKİ TİPTE DE ARA: özet (posts) VE analiz (analysis).
-           Kullanıcı batch tipini yanlış seçse bile (ör. "Derin Analiz" seçip
-           mevcut içerik aslında özet), yazıyı yine bulur. Bulunan tip neyse
-           prompt de ona göre seçilir — yani mevcut yazı NE İSE o güncellenir. */
+        /* WordPress slug'ını OLUŞTURMA YOLUYLA BİREBİR kur: küçük harf →
+           diakritik translit → [^a-z0-9]+ '-'. ÖNEMLİ: parantez içi ATILMAZ
+           (post oluşturulurken de atılmamıştı). Örn:
+           "Relativity ... (Über die ...) - Albert Einstein" →
+           "relativity-...-uber-die-...-albert-einstein" — sitedeki slug bu.
+           Eski eşleştirici parantezi attığı için ("...-albert-einstein") hiç
+           tutmuyordu; "bulunamadı"nın sebebi buydu. */
+        $mkslug = function ($s) {
+            $s = mb_strtolower(trim((string) $s), 'UTF-8');
+            $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+            if ($x !== false && $x !== '') $s = $x;
+            $s = preg_replace('/[^a-z0-9]+/', '-', $s);
+            return trim($s, '-');
+        };
+        // Çok sayıda slug adayı: parantezli/parantezsiz, yazarlı/yazarsız.
+        $slug_cands = array_values(array_filter(array_unique([
+            $mkslug($rt_title),                                  // book(paren) - author  ← oluşturma yolu
+            $mkslug($book),                                      // book(paren) only
+            $mkslug($search_book . ($author ? " - $author" : '')), // paren-stripped + author
+            $mkslug($search_book),                               // paren-stripped only
+            trim(preg_replace('/\s+/', '-', $tgt), '-'),         // normalize(book-author) paren-stripped
+            trim(preg_replace('/\s+/', '-', $tgt_b), '-'),       // normalize(book) paren-stripped
+        ])));
+
+        /* HER İKİ TİPTE DE ARA: özet (posts) VE analiz (analysis). */
         foreach (['posts', 'analysis'] as $try_ep) {
-            // 1) slug ile
-            [$sp, $sc] = bw_wp("$wp_api/$try_ep?slug=" . urlencode($rt_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
-            if ($sc === 200 && !empty($sp[0]['id'])) { $update_pid = (int) $sp[0]['id']; $ep = $try_ep; break; }
-            // 2) başlık araması (slug WP tarafında farklı üretilmiş olabilir)
-            [$srch, $scc] = bw_wp("$wp_api/$try_ep?search=" . rawurlencode($book) . '&status=any&per_page=20&_fields=id,title', 'GET', [], $auth, 20);
+            // 1) Slug adaylarını sırayla dene (en güvenilir yol)
+            foreach ($slug_cands as $cand_slug) {
+                if ($cand_slug === '') continue;
+                [$sp, $sc] = bw_wp("$wp_api/$try_ep?slug=" . urlencode($cand_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+                if ($sc === 200 && !empty($sp[0]['id'])) { $update_pid = (int) $sp[0]['id']; $ep = $try_ep; break 2; }
+            }
+            // 2) Başlık araması (yedek) — parantezsiz sade terimle daha iyi eşleşir.
+            [$srch, $scc] = bw_wp("$wp_api/$try_ep?search=" . rawurlencode($search_book) . '&status=any&per_page=50&_fields=id,title', 'GET', [], $auth, 20);
             if ($scc === 200 && is_array($srch)) {
                 foreach ($srch as $cand) {
                     $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
