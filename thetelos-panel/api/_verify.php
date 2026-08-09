@@ -223,7 +223,7 @@ function tv_openlibrary($book, $author) {
  */
 function tv_google_books($book, $author) {
     $q = trim($book . ($author ? ' ' . $author : ''));
-    $url = 'https://www.googleapis.com/books/v1/volumes?country=US&maxResults=3&q=' . rawurlencode($q);
+    $url = 'https://www.googleapis.com/books/v1/volumes?country=US&maxResults=6&q=' . rawurlencode($q);
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
@@ -238,23 +238,35 @@ function tv_google_books($book, $author) {
     $j = json_decode($r, true);
     if (!is_array($j) || empty($j['items'])) return ['found' => false];
 
-    // Açıklaması en dolu olan kaydı seç (bazı baskılar boş gelir).
-    $best = null; $best_len = -1;
+    // Tek baskıyla yetinme: FARKLI baskıların açıklamalarını topla (biri kısa,
+    // biri dolu olabilir), tekrarları ele, en uzunları birleştir. Kategoriler de
+    // birden çok baskıdan toplanır. Böylece Google Books gerçekten yük taşır.
+    $descs = []; $cats = []; $year = null; $g_title = ''; $g_author = '';
     foreach ($j['items'] as $it) {
-        $vi  = $it['volumeInfo'] ?? [];
-        $len = mb_strlen((string) ($vi['description'] ?? ''));
-        if ($len > $best_len) { $best_len = $len; $best = $vi; }
+        $vi = $it['volumeInfo'] ?? [];
+        if ($g_title === '')  $g_title  = (string) ($vi['title'] ?? '');
+        if ($g_author === '') $g_author = (string) (($vi['authors'][0]) ?? '');
+        if ($year === null && !empty($vi['publishedDate']) && preg_match('/\d{4}/', $vi['publishedDate'], $ym)) $year = (int) $ym[0];
+        foreach ((array) ($vi['categories'] ?? []) as $cat) $cats[$cat] = true;
+        $d = trim((string) ($vi['description'] ?? ''));
+        if (mb_strlen($d) >= 60) $descs[] = $d;
     }
-    $vi = $best ?: (($j['items'][0]['volumeInfo']) ?? []);
-    $year = null;
-    if (!empty($vi['publishedDate']) && preg_match('/\d{4}/', $vi['publishedDate'], $ym)) $year = (int) $ym[0];
+    // Tekrar/alt-küme açıklamaları ele; uzundan kısaya
+    usort($descs, fn($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+    $kept = [];
+    foreach ($descs as $d) {
+        $dup = false;
+        foreach ($kept as $k) { if (mb_stripos($k, mb_substr($d, 0, 80)) !== false) { $dup = true; break; } }
+        if (!$dup) $kept[] = $d;
+        if (count($kept) >= 3) break;
+    }
     return [
         'found'    => true,
-        'title'    => (string) ($vi['title'] ?? ''),
-        'author'   => (string) (($vi['authors'][0]) ?? ''),
+        'title'    => $g_title,
+        'author'   => $g_author,
         'year'     => $year,
-        'desc'     => trim((string) ($vi['description'] ?? '')),
-        'subjects' => array_slice((array) ($vi['categories'] ?? []), 0, 8),
+        'desc'     => trim(implode("\n\n", $kept)),
+        'subjects' => array_slice(array_keys($cats), 0, 10),
     ];
 }
 
@@ -263,7 +275,7 @@ function tv_google_books($book, $author) {
  * tv_openlibrary yalnız varlık/yıl bakıyordu; bu ek olarak AÇIKLAMA getirir.
  */
 function tv_openlibrary_desc($book, $author) {
-    $s = 'https://openlibrary.org/search.json?limit=1&fields=key,title,first_publish_year,subject'
+    $s = 'https://openlibrary.org/search.json?limit=1&fields=key,title,first_publish_year,subject,subject_people,subject_places,subject_times,first_sentence'
        . '&title=' . rawurlencode($book) . ($author ? '&author=' . rawurlencode($author) : '');
     $ch = curl_init($s);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
@@ -273,24 +285,39 @@ function tv_openlibrary_desc($book, $author) {
     $j = json_decode($r, true);
     $doc = $j['docs'][0] ?? null;
     if (!$doc || empty($doc['key'])) return ['found' => false];
+    // Konu etiketlerini genişlet: genel + kişi/yer/dönem (kitabın kapsamını verir).
+    $subj = array_merge(
+        array_slice((array) ($doc['subject'] ?? []), 0, 10),
+        array_slice((array) ($doc['subject_people'] ?? []), 0, 5),
+        array_slice((array) ($doc['subject_places'] ?? []), 0, 5),
+        array_slice((array) ($doc['subject_times'] ?? []), 0, 3)
+    );
     $out = [
         'found'    => true,
         'title'    => (string) ($doc['title'] ?? ''),
         'year'     => isset($doc['first_publish_year']) ? (int) $doc['first_publish_year'] : null,
-        'subjects' => array_slice((array) ($doc['subject'] ?? []), 0, 8),
+        'subjects' => array_values(array_unique($subj)),
         'desc'     => '',
     ];
-    // Work kaydından açıklama çek
+    // Work kaydından açıklama + (varsa) alıntılar/ilk cümle
     $wc = curl_init('https://openlibrary.org' . $doc['key'] . '.json');
     curl_setopt_array($wc, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)']]);
     $wr = curl_exec($wc); $wcode = (int) curl_getinfo($wc, CURLINFO_HTTP_CODE); curl_close($wc);
+    $extra = [];
     if ($wcode === 200 && $wr) {
         $wj = json_decode($wr, true);
         $de = $wj['description'] ?? '';
         if (is_array($de)) $de = $de['value'] ?? '';
-        $out['desc'] = trim((string) $de);
+        $de = trim((string) $de);
+        if ($de !== '') $extra[] = $de;
+        // Kitabın ilk cümlesi (kişiye özel değil, kitaptan) — bağlam verir.
+        $fs = $wj['first_sentence'] ?? ($doc['first_sentence'][0] ?? '');
+        if (is_array($fs)) $fs = $fs['value'] ?? '';
+        $fs = trim((string) $fs);
+        if ($fs !== '' && mb_strlen($fs) < 400) $extra[] = 'Opening line: ' . $fs;
     }
+    $out['desc'] = trim(implode("\n\n", $extra));
     return $out;
 }
 

@@ -104,8 +104,106 @@ function tv_wikipedia($book, $author) {
             'author_text' => $author_text, 'lang' => $chosen['lang']];
 }
 
+/* ── Wikidata: YAPISAL OLGULAR ───────────────────────────────────────────
+   Wikipedia'dan FARKLI bir kaynak: tür, ana konu, akım, karakterler, dönem,
+   etkilendikleri gibi yapısal gerçekler. Yanlış varlık çekmemek için YAZAR
+   TEYİDİ şart (P50 yazar ya da açıklama yazarı içermeli). Dönüş: kısa olgu
+   metni (bulunamazsa ''). */
+function tv_wikidata($book, $author) {
+    $ua = 'thetelos.org/1.0 (book info; https://thetelos.org)';
+    $get = function ($url) use ($ua) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 12,
+            CURLOPT_FOLLOWLOCATION => true, CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: ' . $ua]]);
+        $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($c !== 200 || !$r) return null;
+        $j = json_decode($r, true); return is_array($j) ? $j : null;
+    };
+    $surname = '';
+    $an = mb_strtolower(trim((string) $author), 'UTF-8');
+    if ($an !== '') { $p = explode(' ', $an); $surname = end($p); }
+
+    // 1) Varlığı ara — kitap gibi görünen ADAYI seç
+    $sj = $get('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&limit=6&search=' . rawurlencode($book));
+    $cands = $sj['search'] ?? [];
+    if (!$cands) return '';
+    $qid = '';
+    foreach ($cands as $c) {
+        $desc = mb_strtolower((string) ($c['description'] ?? ''), 'UTF-8');
+        // Kitap/eser çağrışımı olan ya da yazarı anan aday
+        if (preg_match('/\b(book|novel|essay|treatise|work|poem|play|non-fiction|memoir|written)\b/', $desc)
+            || ($surname !== '' && strpos($desc, $surname) !== false)) {
+            $qid = (string) ($c['id'] ?? ''); break;
+        }
+    }
+    if ($qid === '') $qid = (string) ($cands[0]['id'] ?? '');
+    if ($qid === '') return '';
+
+    // 2) Claim'leri çek
+    $ej = $get("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&languages=en&ids={$qid}");
+    $ent = $ej['entities'][$qid] ?? null;
+    if (!$ent) return '';
+    $claims = $ent['claims'] ?? [];
+
+    $props = [
+        'P50' => 'Author', 'P136' => 'Genre', 'P921' => 'Main subject', 'P135' => 'Movement',
+        'P7937' => 'Form', 'P674' => 'Characters', 'P840' => 'Narrative location',
+        'P941' => 'Inspired by', 'P144' => 'Based on', 'P495' => 'Country of origin',
+        'P407' => 'Language', 'P155' => 'Follows', 'P156' => 'Followed by',
+    ];
+    $need = [];           // çözülecek Q-id'ler
+    $vals = [];           // prop => [Q-id...]
+    $pubyear = '';
+    foreach ($props as $pid => $_) {
+        foreach ($claims[$pid] ?? [] as $cl) {
+            $dv = $cl['mainsnak']['datavalue']['value'] ?? null;
+            if (is_array($dv) && isset($dv['id'])) { $vals[$pid][] = $dv['id']; $need[$dv['id']] = true; }
+        }
+    }
+    foreach ($claims['P577'] ?? [] as $cl) {   // yayın tarihi
+        $t = $cl['mainsnak']['datavalue']['value']['time'] ?? '';
+        if (preg_match('/(\d{4})/', $t, $m)) { $pubyear = $m[1]; break; }
+    }
+    if (!$vals && $pubyear === '') return '';
+
+    // 3) Yazar TEYİDİ: P50 yazar etiketi soyadı içermeli (ya da açıklama).
+    $entdesc = mb_strtolower((string) ($ent['descriptions']['en']['value'] ?? ''), 'UTF-8');
+
+    // 4) Q-id etiketlerini tek çağrıda çöz
+    $labels = [];
+    if ($need) {
+        $ids = implode('|', array_slice(array_keys($need), 0, 50));
+        $lj = $get("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=labels&languages=en&ids=" . rawurlencode($ids));
+        foreach ($lj['entities'] ?? [] as $qq => $e2) {
+            $labels[$qq] = (string) ($e2['labels']['en']['value'] ?? '');
+        }
+    }
+    // Yazar teyidi
+    if ($surname !== '') {
+        $author_ok = strpos($entdesc, $surname) !== false;
+        foreach ($vals['P50'] ?? [] as $aq) {
+            if (mb_stripos((string) ($labels[$aq] ?? ''), $surname) !== false) { $author_ok = true; break; }
+        }
+        // Yazar bilgisi HİÇ yoksa (ne P50 ne açıklama) → riskli, kullanma.
+        if (!$author_ok && (isset($vals['P50']) || $entdesc !== '')) return '';
+    }
+
+    // 5) Kısa olgu metni kur
+    $lines = [];
+    $emit = function ($pid, $label) use (&$lines, $vals, $labels) {
+        if (empty($vals[$pid])) return;
+        $names = [];
+        foreach (array_slice($vals[$pid], 0, 6) as $q) { $n = trim((string) ($labels[$q] ?? '')); if ($n !== '') $names[] = $n; }
+        if ($names) $lines[] = $label . ': ' . implode(', ', array_unique($names));
+    };
+    if ($pubyear !== '') $lines[] = 'First published: ' . $pubyear;
+    foreach ($props as $pid => $label) if ($pid !== 'P50') $emit($pid, $label);
+
+    return $lines ? implode("\n", $lines) : '';
+}
+
 /* ── KAYNAK DOSYASI ──────────────────────────────────────────────────────
-   Üç kaynağı birleştirir. have=false ise yazılacak gerçek veri yok demektir
+   Kaynakları birleştirir. have=false ise yazılacak gerçek veri yok demektir
    (çağıran taraf yer tutucu/kısa not yapar).
    Dönüş: ['have'=>bool,'text'=>string,'sources'=>[...],'year'=>?,'subjects'=>[]] */
 function tls_info_dossier($book, $author) {
@@ -139,12 +237,20 @@ function tls_info_dossier($book, $author) {
         if (!$subjects && !empty($o['subjects'])) $subjects = $o['subjects'];
     }
 
+    // Wikidata yapısal olguları (tür/konu/akım/karakter/etki) — farklı kaynak.
+    $wd = tv_wikidata($book, $author);
+    if ($wd !== '') {
+        $sources[] = 'Wikidata';
+        $parts[] = "[Wikidata — structured facts]\n" . $wd;
+    }
+
     $meta = [];
     if ($year)     $meta[] = "First published: {$year}";
-    if ($subjects) $meta[] = 'Subjects: ' . implode(', ', array_slice($subjects, 0, 8));
+    if ($subjects) $meta[] = 'Subjects: ' . implode(', ', array_slice($subjects, 0, 12));
     if ($meta) array_unshift($parts, "[Catalog metadata]\n" . implode("\n", $meta));
 
     // "Yeterli" ölçütü: en az bir GERÇEK açıklama metni (Wikipedia ya da blurb).
+    // (Wikidata tek başına yeterli sayılmaz — terse olgular yazıya yetmez.)
     $have = !empty($wk['found']) || (!empty($g['desc'])) || (!empty($o['desc']));
 
     return [
@@ -164,7 +270,7 @@ function tls_info_prompt($book, $author, $dossier) {
     return <<<TXT
 You are writing a FACTUAL, encyclopedic INFORMATIONAL ARTICLE about a book, in English, for a books website (thetelos.org).
 
-You are given VERIFIED SOURCE MATERIAL collected from Wikipedia, Google Books, and Open Library. Write the article using ONLY this material plus facts that are widely and reliably established and uncontroversial. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book.
+You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. Write the article using ONLY this material plus facts that are widely and reliably established and uncontroversial. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book.
 
 ABSOLUTE RULES (a violation is worse than a short article):
 - Ground every factual claim in the source material or in very widely established knowledge. If the material is thin, write a SHORTER article. NEVER pad.
