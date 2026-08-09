@@ -213,6 +213,142 @@ function tv_openlibrary($book, $author) {
     ];
 }
 
+/**
+ * Google Books'tan kitabı ara: açıklama + üstveri.
+ * Google Books çok dilli ve açıklama kapsamı Open Library'den geniştir
+ * (Burocracia, Liberalismus gibi çeviri başlıkları da bulur). Anahtarsız
+ * kullanım IP başına günlük kotaya tabidir; kota dolarsa boş döner (sorun değil,
+ * Open Library'ye düşülür).
+ * Dönüş: ['found'=>bool|null,'title','author','year','desc','subjects'=>[]]
+ */
+function tv_google_books($book, $author) {
+    $q = trim($book . ($author ? ' ' . $author : ''));
+    $url = 'https://www.googleapis.com/books/v1/volumes?country=US&maxResults=3&q=' . rawurlencode($q);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER     => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)'],
+    ]);
+    $r = curl_exec($ch);
+    $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($c !== 200 || !$r) return ['found' => null];   // kota/ağ → "bakılamadı"
+    $j = json_decode($r, true);
+    if (!is_array($j) || empty($j['items'])) return ['found' => false];
+
+    // Açıklaması en dolu olan kaydı seç (bazı baskılar boş gelir).
+    $best = null; $best_len = -1;
+    foreach ($j['items'] as $it) {
+        $vi  = $it['volumeInfo'] ?? [];
+        $len = mb_strlen((string) ($vi['description'] ?? ''));
+        if ($len > $best_len) { $best_len = $len; $best = $vi; }
+    }
+    $vi = $best ?: (($j['items'][0]['volumeInfo']) ?? []);
+    $year = null;
+    if (!empty($vi['publishedDate']) && preg_match('/\d{4}/', $vi['publishedDate'], $ym)) $year = (int) $ym[0];
+    return [
+        'found'    => true,
+        'title'    => (string) ($vi['title'] ?? ''),
+        'author'   => (string) (($vi['authors'][0]) ?? ''),
+        'year'     => $year,
+        'desc'     => trim((string) ($vi['description'] ?? '')),
+        'subjects' => array_slice((array) ($vi['categories'] ?? []), 0, 8),
+    ];
+}
+
+/**
+ * Open Library "work" açıklaması (search → work key → work.json.description).
+ * tv_openlibrary yalnız varlık/yıl bakıyordu; bu ek olarak AÇIKLAMA getirir.
+ */
+function tv_openlibrary_desc($book, $author) {
+    $s = 'https://openlibrary.org/search.json?limit=1&fields=key,title,first_publish_year,subject'
+       . '&title=' . rawurlencode($book) . ($author ? '&author=' . rawurlencode($author) : '');
+    $ch = curl_init($s);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)']]);
+    $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    if ($c !== 200 || !$r) return ['found' => null];
+    $j = json_decode($r, true);
+    $doc = $j['docs'][0] ?? null;
+    if (!$doc || empty($doc['key'])) return ['found' => false];
+    $out = [
+        'found'    => true,
+        'title'    => (string) ($doc['title'] ?? ''),
+        'year'     => isset($doc['first_publish_year']) ? (int) $doc['first_publish_year'] : null,
+        'subjects' => array_slice((array) ($doc['subject'] ?? []), 0, 8),
+        'desc'     => '',
+    ];
+    // Work kaydından açıklama çek
+    $wc = curl_init('https://openlibrary.org' . $doc['key'] . '.json');
+    curl_setopt_array($wc, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)']]);
+    $wr = curl_exec($wc); $wcode = (int) curl_getinfo($wc, CURLINFO_HTTP_CODE); curl_close($wc);
+    if ($wcode === 200 && $wr) {
+        $wj = json_decode($wr, true);
+        $de = $wj['description'] ?? '';
+        if (is_array($de)) $de = $de['value'] ?? '';
+        $out['desc'] = trim((string) $de);
+    }
+    return $out;
+}
+
+/**
+ * BİRLEŞİK KAYNAK KARTI — grounding'in temeli.
+ *
+ * Modelin hafızasına güvenmek yerine kitabın GERÇEK tanıtımını dış kataloglardan
+ * toplar. Google Books (geniş, çok dilli, iyi açıklama) → Open Library (yedek).
+ * Üretim bu karta DAYANARAK yazar → uydurma kaynağında kesilir; ayrıca "gerçek
+ * kitap mı" sorusu modelin belleğinden değil, bağımsız kayıttan cevaplanır.
+ *
+ * Dönüş: [
+ *   'real'     => bool,      // herhangi bir katalogda bulundu mu (gerçek kitap)
+ *   'checked'  => bool,      // en az bir katalog cevap verdi mi (ağ/kota değil)
+ *   'desc'     => string,    // gerçek açıklama (varsa) — grounding metni
+ *   'year'     => int|null,
+ *   'subjects' => array,
+ *   'source'   => string,    // google | openlibrary | ''
+ * ]
+ */
+function tv_book_source($book, $author) {
+    $desc = ''; $year = null; $subjects = []; $source = '';
+    $real = false; $checked = false;
+
+    $g = tv_google_books($book, $author);
+    if ($g['found'] !== null) $checked = true;
+    if (!empty($g['found'])) {
+        $real = true;
+        if (!empty($g['desc']))     { $desc = $g['desc']; $source = 'google'; }
+        if (!empty($g['year']))     $year = $g['year'];
+        if (!empty($g['subjects'])) $subjects = $g['subjects'];
+    }
+
+    // Açıklama yoksa ya da hiç bulunmadıysa Open Library'yi dene.
+    if ($desc === '' || !$real) {
+        $o = tv_openlibrary_desc($book, $author);
+        if (isset($o['found']) && $o['found'] !== null) $checked = true;
+        if (!empty($o['found'])) {
+            $real = true;
+            if ($desc === '' && !empty($o['desc'])) { $desc = $o['desc']; $source = 'openlibrary'; }
+            if ($year === null && !empty($o['year'])) $year = $o['year'];
+            if (!$subjects && !empty($o['subjects'])) $subjects = $o['subjects'];
+        }
+    }
+
+    // Açıklama aşırı kısaysa (ör. "A book.") grounding için işe yaramaz — atla.
+    if (mb_strlen($desc) < 60) $desc = '';
+
+    return [
+        'real'     => $real,
+        'checked'  => $checked,
+        'desc'     => $desc,
+        'year'     => $year,
+        'subjects' => array_values(array_unique($subjects)),
+        'source'   => $desc !== '' ? $source : '',
+    ];
+}
+
 /* ── 1. KATMAN: bilgi yoklaması (üretimden ÖNCE) ─────────────────────────── */
 
 /**
@@ -226,79 +362,68 @@ function tv_openlibrary($book, $author) {
  * Dönüş: ['ok'=>bool, 'known'=>bool, 'conf'=>int, 'reason'=>string, 'data'=>array]
  */
 function tv_probe($book, $author) {
+    /* ── ÖNCE BAĞIMSIZ KAYNAK ─────────────────────────────────────────────
+       Kararın belkemiği artık modelin belleği DEĞİL, dış katalog. Google Books
+       + Open Library kitabı buluyorsa bu GERÇEK, tanımlanabilir bir eserdir;
+       modelin "chapter by chapter bilmiyorum" demesi onu reddetmek için sebep
+       olamaz (eski hata buydu: Bureaucracy, Planned Chaos gibi gerçek Mises
+       kitaplarına "güven 0" deyip eliyordu). Üretim zaten bu kaynağa dayanarak
+       yazacak (grounding). */
+    $src = tv_book_source($book, $author);
+
     $prompt = <<<TXT
-You are being asked ONLY to report what you reliably know. You are NOT being asked to write anything about this work. Saying you do not know it is a CORRECT and expected answer — there is no penalty for it, and a wrong guess is far worse than an honest "no".
+Identify this published book. You are NOT writing its contents — only identifying it.
 
 WORK: {$book}
 AUTHOR: {$author}
 
-Do you have specific, reliable knowledge of THIS EXACT WORK by THIS EXACT AUTHOR — enough to describe its actual contents chapter by chapter without inventing anything?
-
-Set "known": false if ANY of these apply:
-- You are not certain this exact work exists.
-- You know the author but not this particular work.
-- You know only the title and its general reputation, not its actual contents.
-- You would have to guess at its characters, structure, or arguments.
-
 Reply with ONLY this JSON, no other text:
 {
-  "known": true or false,
-  "confidence": 0-100,
+  "identifiable": true or false,   // is this a real, identifiable published work by (or associated with) this author?
+  "confidence": 0-100,             // how sure are you that you can IDENTIFY the work (not summarize it)
   "year": "first publication year, or empty string",
   "form": "novel | treatise | essay collection | poetry | memoir | other | unknown",
-  "key_names": ["up to 5 proper names that actually appear in the work — characters, places, or key terms"],
-  "structure": "one short sentence on how the work is organised, or empty string",
-  "why_not": "if known is false, one short sentence explaining what you are missing"
+  "why_not": "if identifiable is false, one short sentence explaining why"
 }
 TXT;
 
-    // Reasoning modeli önce "düşünüyor" ve o tokenlar bütçeden düşüyor; dar
-    // bütçede content'e sıra gelmeden bitiyordu. Bol tut.
-    $r = tv_ask($prompt, 3000, 120);
-    if (empty($r['ok'])) return ['ok' => false, 'error' => $r['error'] ?? 'yoklama başarısız'];
+    $r = tv_ask($prompt, 1500, 90);
+    $j = !empty($r['ok']) ? tv_json($r['text']) : null;
+    // Model cevabı okunamasa bile kaynak kitabı bulduysa DEVAM edebiliriz.
+    $m_ident = is_array($j) ? !empty($j['identifiable']) : false;
+    $conf    = is_array($j) ? max(0, min(100, (int) ($j['confidence'] ?? 0))) : 0;
+    $notes   = [];
 
-    $j = tv_json($r['text']);
-    if (!is_array($j)) {
-        return ['ok' => false, 'error' => 'yoklama yanıtı okunamadı: ' . mb_substr(trim($r['text']), 0, 140)];
-    }
-
-    $known = !empty($j['known']);
-    $conf  = max(0, min(100, (int) ($j['confidence'] ?? 0)));
-
-    // Open Library ile çapraz kontrol — modelin kendi iddiasından bağımsız.
-    $ol = tv_openlibrary($book, $author);
-    $notes = [];
-
-    if ($ol['found'] === false) {
-        // Eser kayıtlarda yok. Tek başına red sebebi değil (Open Library
-        // eksiktir, özellikle çeviri ve eski eserlerde), ama modelin yüksek
-        // güveniyle birleşmediğinde şüphe sebebidir.
-        $notes[] = 'Open Library kaydı yok';
-        if ($conf < 80) $known = false;
-    } elseif ($ol['found'] === true && $ol['year'] && !empty($j['year']) && preg_match('/\d{4}/', (string) $j['year'], $ym)) {
-        $diff = abs((int) $ym[0] - $ol['year']);
-        // Modelin verdiği yıl kayıttan çok uzaksa büyük olasılıkla BAŞKA bir
-        // eseri anlatıyor. 20 yıl payı bırakılır: baskı yılı ile ilk yayın
-        // yılı doğal olarak ayrışabiliyor.
-        if ($diff > 20) {
-            $notes[] = "yıl uyuşmuyor (model {$ym[0]}, kayıt {$ol['year']})";
-            $known = false;
-        }
-    }
-
-    if ($conf < tv_settings()['min_conf']) {
-        $notes[] = "güven düşük ({$conf})";
-        $known = false;
+    /* ── KARAR (katalog öncelikli) ────────────────────────────────────────
+       real  = herhangi bir katalogda bulundu (gerçek kitap)
+       known = üretime izin ver mi?
+         • Katalogda GERÇEK ise → known=true (düşük model güveni ret sebebi değil).
+         • Katalog cevap verdi ve BULAMADIYSA → yalnız model yüksek güvenle
+           tanıyorsa geç; değilse bilinmiyor (yer tutucu).
+         • Katalog ağ/kota yüzünden bakılamadıysa → modele düş: tanıyorsa geç. */
+    if (!empty($src['real'])) {
+        $known = true;
+        if ($src['source'] !== '') $notes[] = 'kaynak: ' . $src['source'];
+        else $notes[] = 'katalogda var';
+    } elseif (!empty($src['checked'])) {
+        // Katalog baktı, bulamadı → şüpheli. Sadece model gerçekten emin+tanıyorsa geç.
+        $known = ($m_ident && $conf >= 70);
+        if (!$known) $notes[] = 'katalogda yok';
+    } else {
+        // Katalog bakılamadı (ağ/kota) → modelin sözüne bak, temkinli.
+        $known = ($m_ident && $conf >= max(50, tv_settings()['min_conf']));
+        if (!$known) $notes[] = 'katalog bakılamadı; model tanımıyor';
     }
 
     return [
         'ok'      => true,
         'known'   => $known,
         'conf'    => $conf,
-        'reason'  => $known ? '' : trim(($j['why_not'] ?? '') . ($notes ? ' [' . implode('; ', $notes) . ']' : '')),
+        'reason'  => $known ? '' : trim(((is_array($j) ? ($j['why_not'] ?? '') : 'model yanıtı yok'))
+                                        . ($notes ? ' [' . implode('; ', $notes) . ']' : '')),
         'notes'   => $notes,
-        'ol'      => $ol,
-        'data'    => $j,
+        'src'     => $src,        // grounding kartı — üretim yeniden çekmesin diye
+        'data'    => is_array($j) ? $j : [],
     ];
 }
 

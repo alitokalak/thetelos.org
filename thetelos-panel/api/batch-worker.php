@@ -477,32 +477,49 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        hata olarak işaretlenir — API'ye 4 parça yazdırıp sonra atmaktan
        hem çok daha ucuz hem de tek güvenilir koruma budur. */
     require_once __DIR__ . '/_verify.php';
-    /* YOKLAMA yalnız SIFIRDAN üretimde (yeni post) çalışır. YENİDEN YAZ modunda
-       ÇALIŞTIRMIYORUZ — çünkü:
-         • Liste kullanıcının bizzat seçtiği, sitede ZATEN olan gerçek eserler.
-         • DeepSeek yoklaması ara sıra boş/kararsız dönüyor (reasoning_content).
-           Böyle tek bir kararsız sinyalle GERÇEK bir yazıyı yayından almak
-           (draft'a çekmek) çok yıkıcı — Hesse/Mises gibi ünlü kitaplar bile
-           yanlışlıkla gizleniyordu. Kullanıcının "yeni post oluşturuyor" diye
-           gördüğü #23701… aslında yeni değil; DOĞRU eşleşen mevcut post'un
-           yoklamayla yayından alınmış haliydi.
-       Yeniden yaz modunda tek yayından-alma tetikleyicisi, üretilen METNİN
-       KENDİSİNDEKİ açık ret (aşağıdaki ca_check_refusal). Model gerçekten
-       yazabiliyorsa post yayında kalır ve gövdesi güncellenir. */
-    if ($post_status === 'publish' && !$rewrite && tv_settings()['probe']) {
+    /* ── ÜRETİM ÖNCESİ YOKLAMA (artık KATALOG öncelikli + GROUNDING kaynağı) ──
+       Yoklama yeniden yazıldı: kararın belkemiği modelin belleği değil, dış
+       katalog (Google Books + Open Library). Gerçek/bulunabilir bir kitap,
+       model "bilmiyorum" dese bile GEÇER — ve kataloğun açıklaması aşağıda
+       üretime KAYNAK olarak verilir (grounding: model ezberden değil, gerçek
+       tanıtımdan yazar). Artık hem sıfırdan üretimde hem yeniden yaz modunda
+       çalışır; yeniden yaz modunda "bilinmiyor" sonucu YAYINDAN ALMAZ, gövdeye
+       yer tutucu koyar (yazı yayında kalır). */
+    $src = null;                       // grounding kaynağı (varsa)
+    if (tv_settings()['probe'] && ($post_status === 'publish' || $rewrite)) {
         bw_touch_hb($batch_file, $idx);
         $pr = tv_probe($search_book, $author);
-        // Yoklama ÇALIŞMADIYSA (ağ/kota) kitabı reddetme: doğrulayamamak,
-        // eserin bilinmediğini göstermez. Yalnızca net "bilmiyorum" durdurur.
-        if (!empty($pr['ok']) && empty($pr['known'])) {
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', (string) $pr['reason'], 0, 'create');
-            bw_update_book($batch_file, $idx, [
-                'status' => 'error',
-                'error'  => 'DOĞRULANAMADI: model bu eseri tanımıyor — ' .
-                            mb_substr((string) $pr['reason'], 0, 180),
-            ]);
-            return;
+        if (!empty($pr['ok'])) {
+            $src = $pr['src'] ?? null;
+            if (empty($pr['known'])) {
+                if ($rewrite && $update_pid) {
+                    // Yeniden yaz + bilinmiyor: YAYINDAN ALMA — yer tutucu koy, yayında kalsın.
+                    $ph = bw_placeholder_html($book, $author);
+                    [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', (string) $pr['reason'], $update_pid, 'rewrite');
+                    bw_update_book($batch_file, $idx, [
+                        'status'   => 'done',
+                        'post_id'  => $update_pid,
+                        'post_url' => $rp['link'] ?? '',
+                        'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                        'error'    => 'model tanımadı → yer tutucu kondu (yayında)',
+                    ]);
+                    return;
+                }
+                // Sıfırdan üretim + bilinmiyor: post oluşturma, atla.
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', (string) $pr['reason'], 0, 'create');
+                bw_update_book($batch_file, $idx, [
+                    'status' => 'error',
+                    'error'  => 'DOĞRULANAMADI: eser kataloglarda yok, model de tanımıyor — ' .
+                                mb_substr((string) $pr['reason'], 0, 180),
+                ]);
+                return;
+            }
         }
+    }
+    // Yoklama kapalıysa da grounding kaynağını yine de dene (ucuz, uydurmayı azaltır).
+    if ($src === null) {
+        $src = tv_book_source($search_book, $author);
     }
 
     // ── İçerik üretimi ────────────────────────────────────────────
@@ -512,6 +529,32 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     $accumulated = '';
     $part_words  = (int)ceil($target_words / max(1, $parts));
+
+    /* ── GROUNDING: gerçek katalog açıklamasını üretime KAYNAK ver ───────────
+       Model ezberden değil, dış kaynağın DOĞRULANMIŞ tanıtımından yazsın →
+       uydurma büyük ölçüde kesilir. Kaynak yoksa blok boş kalır (model eski
+       davranışına döner, dürüstlük prompt'u yine geçerli). */
+    $ground = '';
+    if (is_array($src)) {
+        $sd = trim((string) ($src['desc'] ?? ''));
+        $sy = $src['year'] ?? null;
+        $ssub = implode(', ', array_slice((array) ($src['subjects'] ?? []), 0, 6));
+        if ($sd !== '') {
+            $ground = "\n\n=== VERIFIED SOURCE MATERIAL (from a book catalog) ===\n"
+                . "Use ONLY this verified description plus well-established facts as your basis. "
+                . "Do NOT invent characters, plot points, chapters, or arguments that are not supported by this material or by widely-known facts about the work. "
+                . "If the material is thin, write a shorter, factual overview rather than filling gaps with invention.\n"
+                . ($sy ? "First published: {$sy}\n" : '')
+                . ($ssub !== '' ? "Subjects: {$ssub}\n" : '')
+                . "Description:\n" . mb_substr($sd, 0, 2000) . "\n=== END SOURCE MATERIAL ===";
+        } elseif (!empty($src['real'])) {
+            // Açıklama yok ama kitap gerçek: en azından yıl/konu bağla + uydurma yasağı.
+            $ground = "\n\nNOTE: This is a real, catalogued work"
+                . ($sy ? " (first published {$sy})" : '')
+                . ($ssub !== '' ? ", subjects: {$ssub}" : '')
+                . ". If you do not reliably know its actual contents, write a SHORT factual overview based on what is genuinely established — do NOT invent characters, plot, or chapter details.";
+        }
+    }
 
     for ($k = 1; $k <= $parts; $k++) {
         bw_touch_hb($batch_file, $idx);   // ucuz canlılık damgası (her parçadan önce)
@@ -524,6 +567,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
         $pr = $template
             . "\n\nBook: {$book}\nAuthor: {$author}"
+            . $ground
             . bw_part_instruction($k, $parts, $headings, $tail, $part_words);
 
         // Streaming üretim: yanıt parça parça gelirken HER chunk'ta heartbeat'i
