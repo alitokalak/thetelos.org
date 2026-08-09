@@ -323,6 +323,50 @@ function ca_check_prompt_leak($html) {
 }
 
 /**
+ * DÜZENEK ETİKETİ SIZINTISI (scaffold leak).
+ *
+ * Özet prompt'u içeride "LOCATE → PRESENT → CLARIFY" adımlarını ve bir
+ * "WHY THIS MATTERS" başlığını kullanıyor. Model bunları ETİKET sanıp
+ * doğrudan çıktıya basabiliyor: "CLARIFY: …", "**Why this matters:**",
+ * "This chapter matters because…". Bunlar okuyucu metninde KESİNLİKLE olmamalı
+ * (saf özet, dış yorum yok) ve hiçbir kitap metninde de doğal geçmez → her
+ * yerde geçersiz, alıntı içinde bile. Yakalanırsa yazı yayına çıkmaz.
+ */
+function ca_check_scaffold_leak($html) {
+    $text = wp_strip_all_tags((string) $html);
+    $pats = [
+        '/\b(?:CLARIFY|LOCATE|PRESENT)\s*:/',                 // büyük harf adım etiketi
+        '/\bWhy this matters\s*:/i',                          // yorum başlığı (etiket → iki nokta zorunlu)
+        '/\bThis (?:chapter|section|part) matters because\b/i',
+        '/\bStep\s*[1-3]\s*[:—-]\s*(?:locate|present|clarify)\b/i',
+    ];
+    foreach ($pats as $p) {
+        if (preg_match($p, $text, $m)) return ca_context($text, $m[0]);
+    }
+    return '';
+}
+
+/**
+ * NUMARALANDIRMA ÇÖKMESİ: aynı "Chapter N" başlığı birden çok kez.
+ *
+ * Uzun kelime hedefi altında model bittiğini kabul etmeyip döngüye giriyor:
+ * "Chapter 2 … Chapter 3 …" yazıp sonra yeniden "Chapter 2 … Chapter 3"e
+ * dönüyor (140 sayfalık 6 bölümlük kitaba 45 bölüm uydurmak buradan çıkıyor).
+ * Aynı bölüm numarasının tekrarı bu çöküşün kesin işaretidir.
+ */
+function ca_check_dup_chapters($html) {
+    if (!preg_match_all('/<h[1-6][^>]*>\s*(?:chapter|bölüm)\s+(\d{1,2})\b/i', (string) $html, $m)) {
+        // Başlıklar HTML değilse (ham markdown) düz metinde de bak
+        if (!preg_match_all('/^\s*#{1,6}\s*(?:chapter|bölüm)\s+(\d{1,2})\b/im', (string) $html, $m)) return '';
+    }
+    $counts = array_count_values($m[1]);
+    foreach ($counts as $num => $c) {
+        if ($c >= 2) return "Chapter {$num} × {$c}";
+    }
+    return '';
+}
+
+/**
  * Model kendi süreciyle konuşmuş mu? — cümlenin içinde bile kabul edilemez
  * olanlar. Alıntılar hariç tutulur: bir mektup ya da diyalog alıntısında
  * "per your request" geçebilir, bu kitabın sesidir.

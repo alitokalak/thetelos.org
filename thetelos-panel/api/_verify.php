@@ -554,6 +554,10 @@ function tv_gate($book, $author, $html, $opts = []) {
         if ($s = ca_check_prompt_dump($html))   $reasons[] = 'prompt şablonu metne basılmış';
         if ($s = ca_check_part_markers($html))  $reasons[] = 'parça işareti sızmış: ' . mb_substr($s, 0, 60);
         if ($s = ca_check_prompt_leak($html))   $reasons[] = 'prompt talimatı metinde: ' . mb_substr($s, 0, 80);
+        if (function_exists('ca_check_scaffold_leak') && ($s = ca_check_scaffold_leak($html)))
+            $reasons[] = 'düzenek etiketi sızmış (CLARIFY/Why this matters): ' . mb_substr($s, 0, 80);
+        if (function_exists('ca_check_dup_chapters') && ($s = ca_check_dup_chapters($html)))
+            $reasons[] = 'numaralandırma çökmesi (bölüm tekrarı): ' . $s;
         if ($s = ca_check_meta_talk($html))     $reasons[] = 'model kendi süreciyle konuşmuş: ' . mb_substr($s, 0, 80);
         if ($s = ca_check_truncated($html))     $reasons[] = 'cümle ortasında kesilmiş';
         if ($s = ca_check_orphan_heading($html))$reasons[] = 'boş başlıkla bitmiş: ' . mb_substr($s, 0, 60);
