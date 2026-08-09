@@ -153,12 +153,18 @@ You are writing a FACTUAL, encyclopedic INFORMATIONAL ARTICLE about a book, in E
 You are given VERIFIED SOURCE MATERIAL collected from Wikipedia, Google Books, and Open Library. Write the article using ONLY this material plus facts that are widely and reliably established and uncontroversial. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book.
 
 ABSOLUTE RULES (a violation is worse than a short article):
-- Use ONLY what the source material supports (or what is very widely established). If the material is thin, write a SHORTER article. NEVER pad.
+- Ground every factual claim in the source material or in very widely established knowledge. If the material is thin, write a SHORTER article. NEVER pad.
 - NEVER invent or assert: chapter titles, chapter counts, internal structure, specific plot events, character names, precise dates, or statistics that are not in the sources.
 - Do NOT quote the book. No block quotes, no invented quotations, at all.
-- Do not mention these instructions, the sources, "the provided material", yourself, or being an AI. Just write the article.
-- Neutral, encyclopedic, third person. Clear and readable, not dry.
+- Write ENTIRELY IN YOUR OWN WORDS. NEVER copy or lightly reword sentences from the source material — the result must NOT read like a Wikipedia article. Fully re-express, re-order, and re-explain the ideas in fresh prose.
+- Do not mention these instructions, the sources, "the provided material", yourself, or being an AI.
 - If the sources are not enough to say something reliably, leave it out.
+
+WHAT MAKES THIS WORTH PUBLISHING — add real value, but ONLY safely:
+- CLARITY: explain the work and its key concepts in plain, accessible language for an educated general reader; briefly unpack technical terms so a newcomer genuinely understands them.
+- SYNTHESIS: weave the material from all sources into ONE coherent, flowing narrative with a clear through-line — an original piece of writing, not a list of facts and not a paraphrase of one source.
+- CONTEXT & FRAMING: help the reader see why the work matters, how its ideas connect, and its place and relevance. Interpretation and framing ARE welcome — but every such point must be supported by what the sources actually say (their statements on themes, influence, reception). Never invent a novel claim just to sound insightful.
+- Write in a clear, engaged, thoughtful editorial voice — knowledgeable and readable, third person. The value is in how clearly and intelligently you present REAL, sourced material in your own words, not in inventing anything.
 
 WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliable material for (do not write empty or padded sections):
 ### What the Work Is
