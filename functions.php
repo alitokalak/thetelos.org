@@ -2190,9 +2190,19 @@ function thetelos_smart_search($query){
     $all_authors=get_transient('thetelos_all_authors');
     if(false===$all_authors){$all_authors=get_terms(['taxonomy'=>'authors','hide_empty'=>true,'number'=>0]);if(is_wp_error($all_authors))$all_authors=[];set_transient('thetelos_all_authors',$all_authors,3600);}
     $has_sep=preg_match('/[–—\-\/]/',$raw);
-    $parts=$has_sep?array_values(array_filter(array_map('trim',preg_split('/\s*[–—\-\/]\s*/u',$raw)),function($p){return mb_strlen($p)>=2;})):array_values(array_filter(preg_split('/\s+/',$raw),function($w){return mb_strlen($w)>=2;}));
     $author_term_ids=[];$title_tokens=[];
-    foreach($parts as $part){$found=false;foreach($all_authors as $term){if(thetelos_fuzzy_match($part,$term->name)){$author_term_ids[]=$term->term_id;$found=true;break;}}if(!$found)$title_tokens[]=$part;}
+    if($has_sep){
+        // "Başlık – Yazar" biçimi: her parçayı hem yazar hem başlık için dene.
+        $parts=array_values(array_filter(array_map('trim',preg_split('/\s*[–—\-\/]\s*/u',$raw)),function($p){return mb_strlen($p)>=2;}));
+        foreach($parts as $part){$found=false;foreach($all_authors as $term){if(thetelos_fuzzy_match($part,$term->name)){$author_term_ids[]=$term->term_id;$found=true;break;}}if(!$found)$title_tokens[]=$part;}
+    }else{
+        // AYRAÇSIZ DÜZ İFADE: tek tek kelimeleri YAZAR sanma (aksi halde
+        // "The Special ... General Theory"de bir kelime yanlışlıkla bir yazara
+        // benzeyip arama o yazara kilitleniyor ve gerçek yazı KAYBOLUYORDU).
+        // Yalnız TÜM ifade bir yazar adına benziyorsa yazar araması yap;
+        // değilse aşağıdaki dal kelimeleri başlık/içerikte AND ile arar.
+        foreach($all_authors as $term){if(thetelos_fuzzy_match($raw,$term->name)){$author_term_ids[]=$term->term_id;break;}}
+    }
     $author_term_ids=array_unique($author_term_ids);
     if(empty($author_term_ids)){
         // Yazar eşleşmedi → varsayılan WP aramasını apostrof-toleranslı
