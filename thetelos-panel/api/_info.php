@@ -37,61 +37,71 @@ function tv_wikipedia($book, $author) {
         if ($t !== false && $t !== '') $s = $t;
         return trim(preg_replace('/[^a-z0-9]+/', ' ', $s));
     };
-    $api = 'https://en.wikipedia.org/w/api.php?format=json&action=query&';
+    $book_n  = $norm($book);
+    $surname = '';
+    if (($an = $norm($author)) !== '') { $ap = explode(' ', $an); $surname = end($ap); }
 
-    // 1) Ara
-    $sj = $get($api . 'list=search&srlimit=5&srsearch=' . rawurlencode("$book $author"));
-    $cands = $sj['query']['search'] ?? [];
-    if (!$cands) return ['found' => false];
+    // Bir DİLDEKİ Wikipedia'dan kitabı bul + düz metin özetini getir. Aday sayfa
+    // puanlanır ve yazar/başlık teyidi geçmezse null döner (yanlış madde freni).
+    $fetch_book = function ($lang) use ($get, $norm, $book, $author, $book_n, $surname) {
+        $api = "https://{$lang}.wikipedia.org/w/api.php?format=json&action=query&";
+        $sj = $get($api . 'list=search&srlimit=5&srsearch=' . rawurlencode("$book $author"));
+        $cands = $sj['query']['search'] ?? [];
+        if (!$cands) return null;
+        $best = null; $bs = 0;
+        foreach ($cands as $cand) {
+            $title = (string) ($cand['title'] ?? '');
+            $tn    = $norm($title);
+            $snip  = $norm(strip_tags((string) ($cand['snippet'] ?? '')));
+            $sc = 0;
+            if ($book_n !== '' && strpos($tn, $book_n) !== false) $sc += 3;
+            if (preg_match('/\((?:book|novel|essay|treatise|poem|play|memoir|roman|livre|libro|buch)\)/iu', $title)) $sc += 2;
+            if ($surname !== '' && strpos($snip, $surname) !== false) $sc += 2;
+            if ($sc > $bs) { $bs = $sc; $best = $title; }
+        }
+        if (!$best || $bs < 2) return null;
+        $ej = $get($api . 'prop=extracts&explaintext=1&redirects=1&titles=' . rawurlencode($best));
+        $pages = $ej['query']['pages'] ?? [];
+        $page  = $pages ? reset($pages) : [];
+        $text  = (string) ($page['extract'] ?? '');
+        $text  = preg_split('/\n=+\s*(References|Notes|See also|External links|Further reading|Bibliography|Sources|Weblinks|Literatur|Einzelnachweise|Notes et références|Bibliographie|Véase también|Bibliografía|Note|Bibliografia|Kaynakça|Dış bağlantılar)\s*=+/iu', $text)[0] ?? $text;
+        $text  = trim(mb_substr($text, 0, 28000, 'UTF-8'));
+        if (mb_strlen($text, 'UTF-8') < 200) return null;
+        // Yazar teyidi (yanlış madde çekmeyi engelle).
+        if ($surname !== '' && strpos($norm(mb_substr($text, 0, 1500, 'UTF-8')), $surname) === false
+            && strpos($norm($best), $book_n) === false) return null;
+        return ['title' => $best, 'text' => $text, 'lang' => $lang];
+    };
 
-    $book_n   = $norm($book);
-    $author_n = $norm($author);
-    $surname  = '';
-    if ($author_n !== '') { $ap = explode(' ', $author_n); $surname = end($ap); }
-
-    // 2) Aday sayfayı PUANLA (yanlış sayfa çekmemek için)
-    $best = null; $best_score = 0;
-    foreach ($cands as $cand) {
-        $title = (string) ($cand['title'] ?? '');
-        $tn    = $norm($title);
-        $snip  = $norm(strip_tags((string) ($cand['snippet'] ?? '')));
-        $score = 0;
-        if ($book_n !== '' && strpos($tn, $book_n) !== false) $score += 3;   // başlık kitabı içeriyor
-        if (preg_match('/\((?:book|novel|essay|treatise|poem|play|memoir)\)/i', $title)) $score += 2;
-        if ($surname !== '' && strpos($snip, $surname) !== false) $score += 2; // özet yazarı anıyor
-        if ($score > $best_score) { $best_score = $score; $best = $title; }
+    // ÖNCE İngilizce. Zayıf (<1500 krk) ya da yoksa DİĞER DİLLER → en zengini seç.
+    // Böylece İngilizce Wikipedia'sı ince eserlerde bile gerçek kaynak bulunur;
+    // model dili ne olursa olsun sentezleyip İngilizce yazar.
+    $chosen = $fetch_book('en');
+    if (!$chosen || mb_strlen($chosen['text'], 'UTF-8') < 1500) {
+        foreach (['de', 'fr', 'it', 'es', 'tr', 'ru'] as $lang) {
+            $r = $fetch_book($lang);
+            if ($r && (!$chosen || mb_strlen($r['text'], 'UTF-8') > mb_strlen((string) ($chosen['text'] ?? ''), 'UTF-8'))) {
+                $chosen = $r;
+            }
+            if ($chosen && mb_strlen($chosen['text'], 'UTF-8') >= 3000) break; // yeterince zengin
+        }
     }
-    // Eşik: yazar/başlık teyidi yoksa Wikipedia'yı KULLANMA (yanlış madde riski).
-    if (!$best || $best_score < 2) return ['found' => false];
+    if (!$chosen) return ['found' => false];
 
-    // 3) Seçilen sayfanın DÜZ METİN özetini çek (kaynak referanslarını at)
-    $ej = $get($api . 'prop=extracts&explaintext=1&redirects=1&titles=' . rawurlencode($best));
-    $pages = $ej['query']['pages'] ?? [];
-    $page  = $pages ? reset($pages) : [];
-    $text  = (string) ($page['extract'] ?? '');
-    // "== References ==" ve sonrasını at; makul uzunlukta tut
-    $text = preg_split('/\n=+\s*(References|Notes|See also|External links|Further reading|Bibliography)\s*=+/i', $text)[0] ?? $text;
-    // Daha uzun metin İÇİN daha çok GERÇEK kaynak ver (uydurma değil): maddenin
-    // büyük kısmını al. Uzunluk kaynağa göre ölçeklensin diye sınır yüksek.
-    $text = trim(mb_substr($text, 0, 28000, 'UTF-8'));
-
-    // 3b) SON DOĞRULAMA: metin gerçekten bu yazardan bahsediyor mu? (yanlış madde freni)
-    if ($surname !== '' && strpos($norm(mb_substr($text, 0, 1200, 'UTF-8')), $surname) === false
-        && strpos($norm($best), $book_n) === false) {
-        return ['found' => false];
-    }
-
-    // 4) Yazar maddesinin yalnız KISA girişini bağlam için ekle. Odak KİTAP;
-    //    yazar biyografisi zaten sitedeki yazar sayfasında — burada şişirmeyiz.
+    // Yazar maddesinin yalnız KISA girişi (odak KİTAP; biyografi yazar sayfasında).
     $author_text = '';
     if ($author !== '') {
-        $aj = $get($api . 'prop=extracts&exintro=1&explaintext=1&redirects=1&titles=' . rawurlencode($author));
-        $ap = $aj['query']['pages'] ?? [];
-        $apg = $ap ? reset($ap) : [];
-        $author_text = trim(mb_substr((string) ($apg['extract'] ?? ''), 0, 700, 'UTF-8'));
+        foreach (array_values(array_unique([$chosen['lang'], 'en'])) as $lang) {
+            $aj = $get("https://{$lang}.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&exintro=1&explaintext=1&redirects=1&titles=" . rawurlencode($author));
+            $ap = $aj['query']['pages'] ?? [];
+            $apg = $ap ? reset($ap) : [];
+            $t = trim((string) ($apg['extract'] ?? ''));
+            if ($t !== '') { $author_text = trim(mb_substr($t, 0, 700, 'UTF-8')); break; }
+        }
     }
 
-    return ['found' => true, 'title' => $best, 'book_text' => $text, 'author_text' => $author_text];
+    return ['found' => true, 'title' => $chosen['title'], 'book_text' => $chosen['text'],
+            'author_text' => $author_text, 'lang' => $chosen['lang']];
 }
 
 /* ── KAYNAK DOSYASI ──────────────────────────────────────────────────────
@@ -103,9 +113,12 @@ function tls_info_dossier($book, $author) {
 
     $wk = tv_wikipedia($book, $author);
     if (!empty($wk['found'])) {
-        $sources[] = 'Wikipedia';
-        if (!empty($wk['author_text'])) $parts[] = "[Wikipedia — about the author]\n" . $wk['author_text'];
-        $parts[] = "[Wikipedia — about the book \"{$wk['title']}\"]\n" . $wk['book_text'];
+        $lang = strtoupper($wk['lang'] ?? 'en');
+        $sources[] = 'Wikipedia' . ($lang !== 'EN' ? " ({$lang})" : '');
+        // Kaynak İngilizce değilse modele: sentezle ve İngilizce yaz.
+        $tr = ($lang !== 'EN') ? " (in {$lang}; read it and synthesize your article in English)" : '';
+        if (!empty($wk['author_text'])) $parts[] = "[Wikipedia{$tr} — about the author]\n" . $wk['author_text'];
+        $parts[] = "[Wikipedia{$tr} — about the book \"{$wk['title']}\"]\n" . $wk['book_text'];
     }
 
     $g = tv_google_books($book, $author);
