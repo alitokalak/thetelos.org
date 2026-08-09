@@ -677,11 +677,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
         if (!$piece_ok) {
             if ($k === 1) {
-                // İlk parça hiç gelmedi → kitap üretilemedi
+                // İlk parça hiç gelmedi → kitap üretilemedi. Sağlayıcı adını
+                // DOĞRU yaz (Claude seçiliyken "DeepSeek" demek yanıltıyordu).
+                $prov = ($api_provider === 'anthropic') ? 'Claude' : 'DeepSeek';
                 $errj = json_decode($raw_tail, true);
                 $gen_error = $cerr
-                    ? "DeepSeek Part {$k} bağlantı hatası (3 deneme): {$cerr}"
-                    : "DeepSeek Part {$k} (3 deneme): " . ($errj['error']['message'] ?? 'boş yanıt');
+                    ? "$prov Part {$k} bağlantı hatası (3 deneme): {$cerr}"
+                    : "$prov Part {$k} (3 deneme): " . ($errj['error']['message'] ?? 'boş yanıt');
             } else {
                 // Ara/son parça gelmedi → elimizdeki kısmı yayınla AMA işaretle,
                 // yoksa kısa içerik "tam" sanılıp fark edilmiyor.
