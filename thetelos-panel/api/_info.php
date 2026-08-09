@@ -71,7 +71,9 @@ function tv_wikipedia($book, $author) {
     $text  = (string) ($page['extract'] ?? '');
     // "== References ==" ve sonrasını at; makul uzunlukta tut
     $text = preg_split('/\n=+\s*(References|Notes|See also|External links|Further reading|Bibliography)\s*=+/i', $text)[0] ?? $text;
-    $text = trim(mb_substr($text, 0, 6000, 'UTF-8'));
+    // Daha uzun metin İÇİN daha çok GERÇEK kaynak ver (uydurma değil): maddenin
+    // büyük kısmını al. Uzunluk kaynağa göre ölçeklensin diye sınır yüksek.
+    $text = trim(mb_substr($text, 0, 16000, 'UTF-8'));
 
     // 3b) SON DOĞRULAMA: metin gerçekten bu yazardan bahsediyor mu? (yanlış madde freni)
     if ($surname !== '' && strpos($norm(mb_substr($text, 0, 1200, 'UTF-8')), $surname) === false
@@ -108,7 +110,7 @@ function tls_info_dossier($book, $author) {
     $g = tv_google_books($book, $author);
     if (!empty($g['found']) && !empty($g['desc'])) {
         $sources[] = 'Google Books';
-        $parts[] = "[Google Books — publisher description]\n" . mb_substr($g['desc'], 0, 2500, 'UTF-8');
+        $parts[] = "[Google Books — publisher description]\n" . mb_substr($g['desc'], 0, 4000, 'UTF-8');
     }
     if (!empty($g['year']))     $year = $g['year'];
     if (!empty($g['subjects'])) $subjects = $g['subjects'];
@@ -117,7 +119,7 @@ function tls_info_dossier($book, $author) {
     if (!empty($o['found'])) {
         if (!empty($o['desc'])) {
             $sources[] = 'Open Library';
-            $parts[] = "[Open Library — description]\n" . mb_substr($o['desc'], 0, 2000, 'UTF-8');
+            $parts[] = "[Open Library — description]\n" . mb_substr($o['desc'], 0, 3000, 'UTF-8');
         }
         if ($year === null && !empty($o['year'])) $year = $o['year'];
         if (!$subjects && !empty($o['subjects'])) $subjects = $o['subjects'];
@@ -173,7 +175,7 @@ WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliab
 FORMAT:
 - First line: # **{$book} — {$author}**
 - Second line: ## a short original subtitle capturing what the work is (do NOT repeat the title).
-- Then the ### sections in flowing prose. Overall length should be DRIVEN BY THE SOURCES — roughly 800–1500 words when the sources are rich, shorter when they are thin. End cleanly; no "In conclusion" paragraph.
+- Then the ### sections in flowing prose. Develop each section as fully as the SOURCE MATERIAL genuinely supports — draw out the details, context, and ideas that are actually present in the sources. Overall length is DRIVEN BY THE SOURCES: when the material is rich, write a thorough article (roughly 1200–2500 words); when it is thin, write a shorter one. NEVER pad, repeat, or invent anything to reach a length — a shorter accurate article always beats a longer padded one. End cleanly; no "In conclusion" paragraph.
 
 === VERIFIED SOURCE MATERIAL ===
 {$dossier}
@@ -198,7 +200,7 @@ function tls_info_generate($book, $author, $opts = []) {
     }
 
     $prompt = tls_info_prompt($book, $author, $dos['text']);
-    $r = tv_ask($prompt, 4000, 150, $provider);
+    $r = tv_ask($prompt, 6000, 200, $provider);
     if ($on_beat) $on_beat();
     if (empty($r['ok']) || trim((string) $r['text']) === '') {
         return ['ok' => false, 'insufficient' => false, 'md' => '', 'html' => '', 'words' => 0,
