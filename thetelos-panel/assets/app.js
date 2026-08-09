@@ -314,6 +314,9 @@ document.querySelectorAll('.api-btn').forEach(btn => {
     activeProvider = btn.dataset.provider;
     subGroup.style.display = activeProvider === 'anthropic' ? '' : 'none';
     if (activeProvider === 'deepseek') activeModel = 'deepseek-chat';
+    // Toplu batch'te Claude modeli satırını göster/gizle
+    const cmRow = document.getElementById('claude-model-row');
+    if (cmRow) cmRow.style.display = activeProvider === 'anthropic' ? '' : 'none';
     updateActiveLabel();
   });
 });
@@ -966,12 +969,14 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
 
   // Sunucuda batch oluştur
   const rewrite = document.getElementById('bulk_rewrite')?.checked ? '1' : '0';
+  const claudeModel = document.getElementById('bulk_claude_model')?.value || 'sonnet';
   const res = await postData(API('batch-create.php'), {
     books:        JSON.stringify(batchBooks),
     type,
     post_status:  status,
     max_tokens:   tokens,
     api_provider: activeProvider,
+    claude_model: claudeModel,
     parts:        parts,
     workers:      workerCount,
     rewrite,
@@ -987,7 +992,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   saveBatchId(batchId);
   batchRunning = true;
   batchPaused  = false;
-  batchSettings = { type, post_status: status, max_tokens: tokens, api_provider: activeProvider, parts, workerCount };
+  batchSettings = { type, post_status: status, max_tokens: tokens, api_provider: activeProvider, claude_model: claudeModel, parts, workerCount };
 
   document.getElementById('batch-progress-wrap').style.display = '';
   document.getElementById('btn-batch-pause').style.display = '';
@@ -1083,6 +1088,7 @@ async function retryBooks(books) {
     post_status:  s.post_status  || 'draft',
     max_tokens:   s.max_tokens   || 3000,
     api_provider: s.api_provider || 'deepseek',
+    claude_model: s.claude_model || 'sonnet',
     parts:        s.parts        || 2,
   });
 

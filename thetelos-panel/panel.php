@@ -274,6 +274,22 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           </div>
         </div>
 
+        <!-- Claude modeli — yalnız üstte "Anthropic" seçiliyken geçerli.
+             Ana içeriği Claude yazar; yoklama+meta yine DeepSeek (maliyet böl). -->
+        <div class="form-row" id="claude-model-row" style="margin-top:14px;display:none">
+          <div>
+            <label for="bulk_claude_model">Claude Modeli <span style="color:#c58af0;font-weight:400;font-size:11px">(Anthropic seçili)</span></label>
+            <select id="bulk_claude_model">
+              <option value="sonnet" selected>Sonnet 4.5 — kaliteli (önerilen)</option>
+              <option value="haiku">Haiku 4.5 — ucuz/hızlı</option>
+            </select>
+            <span style="display:block;margin-top:6px;font-size:11px;color:#e6963c;line-height:1.5">
+              ⚠️ Claude ücretlidir. Ana metni Claude yazar; yoklama ve meta yine DeepSeek kalır
+              (maliyet düşük tutulur). Önce <b>küçük bir listeyle (5–10)</b> deneyip maliyeti gör.
+            </span>
+          </div>
+        </div>
+
         <?php
           $tls_peak_flag = __DIR__ . '/jobs/.peak-skip';
           $tls_peak_on   = !file_exists($tls_peak_flag) || trim((string) @file_get_contents($tls_peak_flag)) !== '0';

@@ -412,6 +412,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $target_words = max(500, min(8000, (int)$batch['max_tokens']));
     $post_status  = $batch['post_status'];
     $api_provider = $batch['api_provider'] ?? 'deepseek';
+    // Claude seçiliyse ANA İÇERİK modeli: kalite için varsayılan Sonnet, ucuz
+    // isteyene Haiku. (Yoklama + meta yine DeepSeek — maliyet bölünür.)
+    $claude_model = (($batch['claude_model'] ?? 'sonnet') === 'haiku') ? 'haiku' : 'sonnet';
     $parts        = bw_effective_parts($batch);
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
 
@@ -614,6 +617,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $cerr = ''; $piece_ok = false; $piece_partial = '';
         for ($try = 1; $try <= 3; $try++) {
             $piece = ''; $sbuf = ''; $raw_tail = '';   // her denemede buffer sıfırla
+            if ($api_provider === 'anthropic') {
+                /* ── CLAUDE ile ÜRETİM (kaliteli içerik) ──────────────────
+                   DeepSeek'in kalitesi yetmediğinde ana metni Claude yazar.
+                   Bloklu çağrı; canlılık için önce/sonra + on_beat ile heartbeat
+                   tazelenir. Yoklama ve meta yine DeepSeek (maliyet böl). */
+                require_once __DIR__ . '/_anthropic.php';
+                bw_touch_hb($batch_file, $idx);
+                $cm = ($claude_model === 'haiku') ? tls_claude_fast_model() : tls_claude_quality_model();
+                $cres = tls_claude('', $pr, [
+                    'model'       => $cm,
+                    'max_tokens'  => 8000,
+                    'temperature' => 0.4,
+                    'timeout'     => 240,
+                    'retries'     => 1,            // dış döngü zaten 3 kez deniyor
+                    'on_beat'     => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+                ]);
+                bw_touch_hb($batch_file, $idx);
+                if (!empty($cres['ok'])) { $piece = (string) $cres['text']; $cerr = ''; }
+                else { $cerr = 'Claude: ' . ($cres['error'] ?? 'boş yanıt'); $raw_tail = $cerr; }
+            } else {
             $ch = curl_init(DEEPSEEK_API_URL);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
@@ -622,6 +645,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 CURLOPT_WRITEFUNCTION => $stream_cb,
             ]);
             curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
+            }
 
             if (!$cerr) {
                 if ($piece_complete($piece)) {

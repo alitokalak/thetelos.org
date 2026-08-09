@@ -8,6 +8,8 @@ $type         = trim($_POST['type']         ?? 'summary');
 $post_status  = trim($_POST['post_status']  ?? 'draft');
 $max_tokens   = max(500, min(8000, (int)($_POST['max_tokens'] ?? 3000)));
 $api_provider = trim($_POST['api_provider'] ?? 'deepseek');
+// Claude seçildiğinde ana içerik modeli: sonnet (kaliteli, varsayılan) | haiku (ucuz).
+$claude_model = (trim($_POST['claude_model'] ?? 'sonnet') === 'haiku') ? 'haiku' : 'sonnet';
 $parts        = max(1, min(4, (int)($_POST['parts'] ?? 2)));
 $workers      = max(1, min(5, (int)($_POST['workers'] ?? 1)));
 $books_json   = trim($_POST['books']        ?? '[]');
@@ -71,6 +73,7 @@ $batch = [
     'post_status'  => $post_status,
     'max_tokens'   => $max_tokens,
     'api_provider' => $api_provider,
+    'claude_model' => $claude_model,
     'parts'        => $parts,
     'workers'      => $workers,
     'rewrite'      => $rewrite,   // true: mevcut yazıyı güncelle, yoksa atla
