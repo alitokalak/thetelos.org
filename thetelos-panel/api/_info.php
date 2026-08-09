@@ -73,7 +73,7 @@ function tv_wikipedia($book, $author) {
     $text = preg_split('/\n=+\s*(References|Notes|See also|External links|Further reading|Bibliography)\s*=+/i', $text)[0] ?? $text;
     // Daha uzun metin İÇİN daha çok GERÇEK kaynak ver (uydurma değil): maddenin
     // büyük kısmını al. Uzunluk kaynağa göre ölçeklensin diye sınır yüksek.
-    $text = trim(mb_substr($text, 0, 16000, 'UTF-8'));
+    $text = trim(mb_substr($text, 0, 28000, 'UTF-8'));
 
     // 3b) SON DOĞRULAMA: metin gerçekten bu yazardan bahsediyor mu? (yanlış madde freni)
     if ($surname !== '' && strpos($norm(mb_substr($text, 0, 1200, 'UTF-8')), $surname) === false
@@ -184,7 +184,7 @@ WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliab
 FORMAT:
 - First line: # **{$book} — {$author}**
 - Second line: ## a short original subtitle capturing what the work is (do NOT repeat the title).
-- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Develop each section as fully as the SOURCE MATERIAL genuinely supports. Overall length is DRIVEN BY THE SOURCES: when the material is rich (a work you can reliably cover in depth), write a thorough, generous article (roughly 1500–2500 words); when it is thin, write a shorter one. NEVER pad, repeat, or invent anything to reach a length — a shorter accurate article always beats a longer padded one. End cleanly; no "In conclusion" paragraph.
+- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Develop each section as fully as the SOURCE MATERIAL genuinely supports. Overall length is DRIVEN BY THE SOURCES, with NO fixed target: when the material is rich and you can cover the work reliably in depth, be thorough and generous — a very well-documented work may run 2500–4000+ words, and that is good. When the material is thin, write a short article. The ONLY rule is that every sentence must be supported by the sources or by very widely established fact — NEVER pad, repeat, restate, or invent anything to make it longer. A shorter accurate article always beats a longer padded one. End cleanly; no "In conclusion" paragraph.
 
 === VERIFIED SOURCE MATERIAL ===
 {$dossier}
@@ -209,7 +209,7 @@ function tls_info_generate($book, $author, $opts = []) {
     }
 
     $prompt = tls_info_prompt($book, $author, $dos['text']);
-    $r = tv_ask($prompt, 6000, 200, $provider);
+    $r = tv_ask($prompt, 8000, 240, $provider);
     if ($on_beat) $on_beat();
     if (empty($r['ok']) || trim((string) $r['text']) === '') {
         return ['ok' => false, 'insufficient' => false, 'md' => '', 'html' => '', 'words' => 0,

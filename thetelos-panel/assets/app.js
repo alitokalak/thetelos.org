@@ -2488,10 +2488,18 @@ document.getElementById('btn-drafts-puball')?.addEventListener('click', async ()
   loadDrafts();
 });
 
-/* Bilgi Metni tipi seçilince açıklama notunu göster (kelime/parça bu tipte kullanılmaz). */
+/* Bilgi Metni tipi seçilince: açıklama notunu göster, kelime + parça ayarlarını
+   GİZLE (bu tipte uzunluk kaynağa göre değişkendir, bu ayarlar kullanılmaz). */
+function updateBulkTypeUI() {
+  const isInfo = !!document.getElementById('bt-info')?.checked;
+  const note = document.getElementById('bulk-info-note');
+  if (note) note.style.display = isInfo ? '' : 'none';
+  const tc = document.getElementById('bulk-token-control');
+  if (tc) tc.style.display = isInfo ? 'none' : '';
+  const pr = document.getElementById('bulk-parts-row');
+  if (pr) pr.style.display = isInfo ? 'none' : '';
+}
 document.querySelectorAll('input[name=bulk_type]').forEach(r => {
-  r.addEventListener('change', () => {
-    const note = document.getElementById('bulk-info-note');
-    if (note) note.style.display = (document.getElementById('bt-info')?.checked) ? '' : 'none';
-  });
+  r.addEventListener('change', updateBulkTypeUI);
 });
+updateBulkTypeUI();   // sayfa açılışında da uygula

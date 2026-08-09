@@ -236,7 +236,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           bu tipte kullanılmaz.)
         </div>
 
-        <div class="token-control" style="margin-bottom:16px">
+        <div class="token-control" id="bulk-token-control" style="margin-bottom:16px">
           <div class="token-header">
             <label>Kaç kelime yazılsın? (tüm liste için)</label>
             <span id="bulk-token-display" class="token-val">3.000 kelime</span>
@@ -267,7 +267,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           </div>
         </div>
 
-        <div class="form-row" style="margin-top:14px">
+        <div class="form-row" id="bulk-parts-row" style="margin-top:14px">
           <div>
             <label for="bulk-parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek — uzun içerik için)</span></label>
             <select id="bulk-parts-select">
