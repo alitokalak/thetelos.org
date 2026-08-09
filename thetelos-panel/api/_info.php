@@ -81,13 +81,16 @@ function tv_wikipedia($book, $author) {
         return ['found' => false];
     }
 
-    // 4) Yazar maddesinin girişini de bağlam için ekle (kısa)
+    // 4) Yazar maddesini de bağlam için ekle. Giriş yerine daha GENİŞ metin al
+    //    (gerçek biyografi/bağlam → "Yazar ve Bağlam" bölümü uydurmasız uzar).
     $author_text = '';
     if ($author !== '') {
-        $aj = $get($api . 'prop=extracts&exintro=1&explaintext=1&redirects=1&titles=' . rawurlencode($author));
+        $aj = $get($api . 'prop=extracts&explaintext=1&redirects=1&titles=' . rawurlencode($author));
         $ap = $aj['query']['pages'] ?? [];
         $apg = $ap ? reset($ap) : [];
-        $author_text = trim(mb_substr((string) ($apg['extract'] ?? ''), 0, 1200, 'UTF-8'));
+        $at = (string) ($apg['extract'] ?? '');
+        $at = preg_split('/\n=+\s*(References|Notes|See also|External links|Further reading|Bibliography|Works)\s*=+/i', $at)[0] ?? $at;
+        $author_text = trim(mb_substr($at, 0, 3500, 'UTF-8'));
     }
 
     return ['found' => true, 'title' => $best, 'book_text' => $text, 'author_text' => $author_text];
