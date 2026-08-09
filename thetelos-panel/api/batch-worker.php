@@ -462,13 +462,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             return;
         }
         // Bulunan tipe göre prompt tipini düzelt: mevcut yazı özetse özet, analizse analiz.
-        $type = ($ep === 'analysis') ? 'analysis' : 'summary';
+        // AMA 'info' (bilgi metni) tipini KORU — o endpoint'ten bağımsız kendi motoruyla üretir.
+        if ($type !== 'info') $type = ($ep === 'analysis') ? 'analysis' : 'summary';
     }
 
     // ── Prompt ────────────────────────────────────────────────────
+    // Bilgi metni (info) tipi prompts.json kullanmaz — kendi motoru var (_info.php).
     $prompts  = file_exists(PROMPTS_FILE) ? json_decode(file_get_contents(PROMPTS_FILE), true) : [];
     $template = trim($prompts[$type] ?? '');
-    if (!$template) {
+    if (!$template && $type !== 'info') {
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'Prompt boş']);
         return;
     }
@@ -529,6 +531,41 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $content   = '';
     $gen_error = '';
     $part_warn = '';      // parça eksik kaldıysa uyarı (yayınlanır ama işaretlenir)
+
+    /* ── BİLGİ METNİ TİPİ (info) ─────────────────────────────────────────
+       Walkthrough YOK. Wikipedia + Google Books + Open Library'den GERÇEK veri
+       toplanır (tls_info_generate), model yalnız buna dayanarak kendi sesiyle
+       yazar. Kaynak yoksa uydurmaz → yer tutucu/atla. */
+    if ($type === 'info') {
+        require_once __DIR__ . '/_info.php';
+        bw_touch_hb($batch_file, $idx);
+        $ir = tls_info_generate($search_book, $author, [
+            'provider' => ($api_provider === 'anthropic' ? 'anthropic' : 'deepseek'),
+            'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+        ]);
+        if (!empty($ir['insufficient'])) {
+            // Güvenilir kaynak yok → UYDURMA. Rewrite'ta yer tutucu, create'te atla.
+            if ($rewrite && $update_pid) {
+                $ph = bw_placeholder_html($book, $author);
+                [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yetersiz (bilgi metni)', $update_pid, 'rewrite');
+                bw_update_book($batch_file, $idx, [
+                    'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
+                    'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                    'error' => 'kaynak yetersiz → yer tutucu (yayında)',
+                ]);
+                return;
+            }
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yetersiz (bilgi metni)', 0, 'create');
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'kaynak yetersiz: güvenilir bilgi bulunamadı (bilgi metni)']);
+            return;
+        }
+        if (empty($ir['ok']) || trim((string) $ir['md']) === '') {
+            $gen_error = 'bilgi metni üretilemedi: ' . ($ir['error'] ?? 'boş');
+        } else {
+            $content = bw_clean_content($ir['md']);
+        }
+    } else {
 
     $accumulated = '';
     $part_words  = (int)ceil($target_words / max(1, $parts));
@@ -701,6 +738,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
 
     if ($accumulated !== '') $content = bw_clean_content($accumulated);
+    }   // ── /walkthrough (type !== 'info') ──
 
     if ($gen_error || !$content) {
         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', $gen_error ?: 'Boş içerik', $update_pid, $rewrite ? 'rewrite' : 'create');

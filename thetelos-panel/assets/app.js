@@ -2487,3 +2487,11 @@ document.getElementById('btn-drafts-puball')?.addEventListener('click', async ()
   btn.disabled = false; btn.textContent = old;
   loadDrafts();
 });
+
+/* Bilgi Metni tipi seçilince açıklama notunu göster (kelime/parça bu tipte kullanılmaz). */
+document.querySelectorAll('input[name=bulk_type]').forEach(r => {
+  r.addEventListener('change', () => {
+    const note = document.getElementById('bulk-info-note');
+    if (note) note.style.display = (document.getElementById('bt-info')?.checked) ? '' : 'none';
+  });
+});

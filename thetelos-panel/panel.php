@@ -226,6 +226,14 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <label for="bt-summary">📄 Özet</label>
           <input type="radio" name="bulk_type" id="bt-analysis" value="analysis">
           <label for="bt-analysis">🔍 Derin Analiz</label>
+          <input type="radio" name="bulk_type" id="bt-info" value="info">
+          <label for="bt-info">📚 Bilgi Metni</label>
+        </div>
+        <div id="bulk-info-note" style="display:none;font-size:12px;color:#7fb37f;line-height:1.5;margin:-4px 0 12px;border:1px solid rgba(90,170,90,.35);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.06)">
+          📚 <b>Bilgi Metni (önerilen):</b> kitap hakkında Wikipedia + Google Books + Open Library'den
+          GERÇEK veri toplanır, model yalnız buna dayanarak kendi sesiyle yazar. <b>Uydurma yok, kaynağa
+          sadık.</b> Uzunluk kaynağa göre değişir. Kaynak yoksa yer tutucu konur. (Kelime/parça ayarları
+          bu tipte kullanılmaz.)
         </div>
 
         <div class="token-control" style="margin-bottom:16px">
