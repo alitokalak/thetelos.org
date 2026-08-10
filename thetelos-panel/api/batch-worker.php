@@ -587,6 +587,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $gen_error = 'bilgi metni üretilemedi: ' . ($ir['error'] ?? 'boş');
         } else {
             $content = bw_clean_content($ir['md']);
+            // Kaynaksız KISA NOT (modelin bilgisinden) → yayınlanır ama sorunlu
+            // listeye 'shortnote' olarak düşer: sonra daha iyi kaynak/modelle
+            // zenginleştirmek istersen elinde liste olur.
+            if (!empty($ir['shortnote'])) {
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynaksız kısa not (modelin bilgisi)', $update_pid, $rewrite ? 'rewrite' : 'create');
+            }
         }
     } else {
 
@@ -828,7 +834,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         // sorunlu listeye ekle, sonra yeniden denenir. Böylece ne link ölür
         // ne de yerine bozuk metin geçer.
         if (tv_settings()['gate']) {
-            $g = tv_gate($book, $author, $rw_html, ['min_words' => 300, 'skip_factcheck' => true]);
+            $g = tv_gate($book, $author, $rw_html, ['min_words' => ($type === 'info' ? 120 : 300), 'skip_factcheck' => true]);
             if (!$g['pass']) {
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', 'içerik kusurlu geldi (kapı)', $update_pid, 'rewrite');
                 bw_update_book($batch_file, $idx, [
@@ -1106,7 +1112,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         require_once __DIR__ . '/_verify.php';
         if (tv_settings()['gate']) {
             bw_touch_hb($batch_file, $idx);   // doğrulama sürerken worker ölü sanılmasın
-            $g = tv_gate($book, $author, $body_html, ['min_words' => 300]);
+            $g = tv_gate($book, $author, $body_html, ['min_words' => ($type === 'info' ? 120 : 300)]);
             $gate_report = $g['report'];
             if (!$g['pass']) $post_status = 'draft';
         }

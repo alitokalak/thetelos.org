@@ -364,11 +364,37 @@ function tls_info_generate($book, $author, $opts = []) {
     $provider = ($opts['provider'] ?? 'deepseek') === 'anthropic' ? 'anthropic' : 'deepseek';
     $on_beat  = $opts['on_beat'] ?? null;
 
+    // md → gövde html + kelime (H1'i at; tema başlığı zaten gösteriyor).
+    $to_html = function ($md) {
+        $body = preg_replace('/^#\s*\*\*[^\n]+\*\*\s*\n+/m', '', trim((string) $md), 1);
+        $body = preg_replace('/^#\s+[^\n]+\n+/m', '', $body, 1);
+        $html = bw_md2html(ltrim($body));
+        return [$html, str_word_count(strip_tags($html))];
+    };
+
     $dos = tls_info_dossier($book, $author);
     if ($on_beat) $on_beat();
+
     if (empty($dos['have'])) {
-        return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
-                'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
+        /* KAYNAK YOK → hemen pes etme. Modele bir kez sor: eserin NE OLDUĞUNU
+           güvenilir biliyor mu? Biliyorsa KISA not (genel konu/tema); bilmiyorsa
+           CANNOT VERIFY → yer tutucu. Özgül şey (olay/karakter/bölüm/alıntı)
+           uydurmak YASAK. Böylece gerçekten bilinen kitaplarda sayfa boş kalmaz. */
+        require_once __DIR__ . '/_checks.php';
+        $nr = tv_ask(tls_info_shortnote_prompt($book, $author), 1500, 90, $provider);
+        if ($on_beat) $on_beat();
+        $nt = !empty($nr['ok']) ? trim((string) $nr['text']) : '';
+        $refused = $nt === ''
+            || stripos($nt, 'CANNOT VERIFY') !== false
+            || (function_exists('ca_check_refusal') && ca_check_refusal($nt) !== '');
+        [$nhtml, $nwords] = $refused ? ['', 0] : $to_html($nt);
+        if ($refused || $nwords < 40) {   // güvenilir bir şey çıkmadı → yer tutucu
+            return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
+                    'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
+        }
+        return ['ok' => true, 'insufficient' => false, 'shortnote' => true,
+                'md' => $nt, 'html' => $nhtml, 'words' => $nwords,
+                'sources' => ['model (kısa not)'], 'dossier' => $dos['text'], 'error' => ''];
     }
 
     $prompt = tls_info_prompt($book, $author, $dos['text']);
@@ -381,12 +407,36 @@ function tls_info_generate($book, $author, $opts = []) {
     }
 
     $md = trim((string) $r['text']);
-    // Gövde HTML'i: tema başlığı H1'i zaten gösterir → H1'i at (rewrite ile uyumlu).
-    $body = preg_replace('/^#\s*\*\*[^\n]+\*\*\s*\n+/m', '', $md, 1);
-    $body = preg_replace('/^#\s+[^\n]+\n+/m', '', $body, 1);
-    $html = bw_md2html(ltrim($body));
-    $words = str_word_count(strip_tags($html));
+    [$html, $words] = $to_html($md);
 
     return ['ok' => true, 'insufficient' => false, 'md' => $md, 'html' => $html,
             'words' => $words, 'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
+}
+
+/* ── KISA NOT PROMPT'U (kaynaksız, yalnız modelin GÜVENİLİR bildiği) ────────
+   Genel konu/tema düzeyinde; özgül şey (olay/karakter/bölüm/alıntı/tarih)
+   uydurmak YASAK. Emin değilse tek satır: CANNOT VERIFY */
+function tls_info_shortnote_prompt($book, $author) {
+    $A = $author !== '' ? $author : 'the author';
+    return <<<TXT
+You are writing a SHORT factual note about a book for a books website (thetelos.org), in English.
+
+There is NO external source material available for this work. Write ONLY from what you RELIABLY and INDEPENDENTLY know. If you do NOT reliably know THIS EXACT work by {$A} — enough to state, WITHOUT guessing, what it is and what it is generally about — then output EXACTLY this one line and nothing else:
+CANNOT VERIFY
+
+If you DO reliably know it, write a short note of about 150–350 words covering ONLY, at a GENERAL level:
+- what the work is (its genre/form, and roughly when or in what context it appeared);
+- its general subject and main themes — what it is about;
+- its significance or place, if you reliably know it.
+
+STRICTLY FORBIDDEN (a violation is far worse than a short note): inventing or asserting specific plot events, character names, chapter titles or counts, precise dates, statistics, or quotations. If you are not certain of any detail, LEAVE IT OUT. Do not pad. Neutral, encyclopedic third person. Do not mention sources, yourself, or being an AI.
+
+FORMAT:
+# **{$book} — {$author}**
+## a short subtitle (do not repeat the title)
+then the note as flowing prose.
+
+WORK: {$book}
+AUTHOR: {$author}
+TXT;
 }

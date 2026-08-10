@@ -28,6 +28,7 @@ $action = $_GET['action'] ?? $_POST['action'] ?? 'list';
 function pr_label($code) {
     switch ($code) {
         case 'not_found':   return 'sitede bulunamadı';
+        case 'shortnote':   return 'kaynaksız kısa not (yayında — zenginleştirilebilir)';
         case 'placeholder': return 'model tanımadı → yer tutucu (yayında)';
         case 'unpublished': return 'yayından kaldırıldı (eski davranış)';
         case 'unknown':     return 'doğrulanamadı (model tanımadı)';
