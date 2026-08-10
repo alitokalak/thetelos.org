@@ -278,10 +278,10 @@ function bw_flag_problem($book, $author, $cover, $year, $reason, $detail = '', $
 function bw_placeholder_html($book, $author) {
     $b = htmlspecialchars(trim((string) $book),   ENT_QUOTES, 'UTF-8');
     $a = htmlspecialchars(trim((string) $author), ENT_QUOTES, 'UTF-8');
-    $title = $b . ($a !== '' ? ' — ' . $a : '');
-    return "<p><strong>" . $title . "</strong> için özet içeriği henüz hazırlanmadı.</p>"
-         . "<p>Bu eser üzerinde çalışıyoruz; doğrulanmış içerik hazır olduğunda bu sayfa güncellenecektir. "
-         . "Yanlış ya da uydurma bilgi yayınlamamak adına, kaynağını teyit edemediğimiz metinleri yayınlamıyoruz.</p>";
+    // Kısa, profesyonel, itirafsız. (Site İngilizce.)
+    return "<p>A detailed overview of <strong>" . $b . "</strong>"
+         . ($a !== '' ? " by " . $a : "")
+         . " is being prepared and will be published here soon.</p>";
 }
 
 /* ── Başlık kök eşleştirme (JS titleTokens/titlesSame ile aynı mantık) ── */

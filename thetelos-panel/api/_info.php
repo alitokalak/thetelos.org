@@ -123,27 +123,36 @@ function tv_wikidata($book, $author) {
     $an = mb_strtolower(trim((string) $author), 'UTF-8');
     if ($an !== '') { $p = explode(' ', $an); $surname = end($p); }
 
-    // 1) Varlığı ara — kitap gibi görünen ADAYI seç
-    $sj = $get('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&limit=6&search=' . rawurlencode($book));
-    $cands = $sj['search'] ?? [];
-    if (!$cands) return '';
+    $empty = ['facts' => '', 'enwiki' => '', 'label' => ''];
+
+    // 1) Varlığı ara (İngilizce). Dil sınırlaması olmadan da dene: bölgesel/çeviri
+    //    başlıklar (ör. Tamilce "Satya Sothanai") İngilizce label'da olmayabilir.
+    $cands = [];
+    foreach (['en', ''] as $lng) {
+        $u = 'https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&limit=6&search=' . rawurlencode($book)
+           . ($lng ? "&language={$lng}&uselang={$lng}" : '&language=en&uselang=en&strictlanguage=0');
+        $sj = $get($u);
+        if (!empty($sj['search'])) { $cands = $sj['search']; break; }
+    }
+    if (!$cands) return $empty;
     $qid = '';
     foreach ($cands as $c) {
         $desc = mb_strtolower((string) ($c['description'] ?? ''), 'UTF-8');
-        // Kitap/eser çağrışımı olan ya da yazarı anan aday
-        if (preg_match('/\b(book|novel|essay|treatise|work|poem|play|non-fiction|memoir|written)\b/', $desc)
+        if (preg_match('/\b(book|novel|essay|treatise|work|poem|play|non-fiction|memoir|autobiograph|written)\b/', $desc)
             || ($surname !== '' && strpos($desc, $surname) !== false)) {
             $qid = (string) ($c['id'] ?? ''); break;
         }
     }
     if ($qid === '') $qid = (string) ($cands[0]['id'] ?? '');
-    if ($qid === '') return '';
+    if ($qid === '') return $empty;
 
-    // 2) Claim'leri çek
-    $ej = $get("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions&languages=en&ids={$qid}");
+    // 2) Claim + İngilizce Wikipedia bağlantısı (sitelink) + etiket çek
+    $ej = $get("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|descriptions|labels|sitelinks&languages=en&sitefilter=enwiki&ids={$qid}");
     $ent = $ej['entities'][$qid] ?? null;
-    if (!$ent) return '';
-    $claims = $ent['claims'] ?? [];
+    if (!$ent) return $empty;
+    $claims  = $ent['claims'] ?? [];
+    $enwiki  = (string) ($ent['sitelinks']['enwiki']['title'] ?? '');   // kanonik İngilizce madde adı
+    $enlabel = (string) ($ent['labels']['en']['value'] ?? '');
 
     $props = [
         'P50' => 'Author', 'P136' => 'Genre', 'P921' => 'Main subject', 'P135' => 'Movement',
@@ -164,7 +173,8 @@ function tv_wikidata($book, $author) {
         $t = $cl['mainsnak']['datavalue']['value']['time'] ?? '';
         if (preg_match('/(\d{4})/', $t, $m)) { $pubyear = $m[1]; break; }
     }
-    if (!$vals && $pubyear === '') return '';
+    // Olgu yoksa bile enwiki bağlantısı değerli (köprü) → onu döndür.
+    if (!$vals && $pubyear === '') return ['facts' => '', 'enwiki' => $enwiki, 'label' => $enlabel];
 
     // 3) Yazar TEYİDİ: P50 yazar etiketi soyadı içermeli (ya da açıklama).
     $entdesc = mb_strtolower((string) ($ent['descriptions']['en']['value'] ?? ''), 'UTF-8');
@@ -184,8 +194,9 @@ function tv_wikidata($book, $author) {
         foreach ($vals['P50'] ?? [] as $aq) {
             if (mb_stripos((string) ($labels[$aq] ?? ''), $surname) !== false) { $author_ok = true; break; }
         }
-        // Yazar bilgisi HİÇ yoksa (ne P50 ne açıklama) → riskli, kullanma.
-        if (!$author_ok && (isset($vals['P50']) || $entdesc !== '')) return '';
+        // Yazar bilgisi HİÇ yoksa (ne P50 ne açıklama) → olguları kullanma, ama
+        // enwiki köprüsünü yine döndür (Wikipedia tarafında yazar teyidi var).
+        if (!$author_ok && (isset($vals['P50']) || $entdesc !== '')) return ['facts' => '', 'enwiki' => $enwiki, 'label' => $enlabel];
     }
 
     // 5) Kısa olgu metni kur
@@ -199,7 +210,26 @@ function tv_wikidata($book, $author) {
     if ($pubyear !== '') $lines[] = 'First published: ' . $pubyear;
     foreach ($props as $pid => $label) if ($pid !== 'P50') $emit($pid, $label);
 
-    return $lines ? implode("\n", $lines) : '';
+    return ['facts' => ($lines ? implode("\n", $lines) : ''), 'enwiki' => $enwiki, 'label' => $enlabel];
+}
+
+/* Belirli bir Wikipedia maddesini TAM ADIYLA çek (arama yok). Wikidata köprüsü
+   kanonik madde adını verince (bölgesel/çeviri başlıklar için) bunu kullanırız. */
+function tv_wiki_extract_by_title($lang, $title) {
+    if ($title === '') return '';
+    $ua = 'thetelos.org/1.0 (book info; https://thetelos.org)';
+    $ch = curl_init("https://{$lang}.wikipedia.org/w/api.php?format=json&action=query&prop=extracts&explaintext=1&redirects=1&titles=" . rawurlencode($title));
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: ' . $ua]]);
+    $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    if ($c !== 200 || !$r) return '';
+    $j = json_decode($r, true);
+    $pages = $j['query']['pages'] ?? [];
+    $page  = $pages ? reset($pages) : [];
+    $text  = (string) ($page['extract'] ?? '');
+    $text  = preg_split('/\n=+\s*(References|Notes|See also|External links|Further reading|Bibliography|Sources)\s*=+/i', $text)[0] ?? $text;
+    $text  = trim(mb_substr($text, 0, 28000, 'UTF-8'));
+    return mb_strlen($text, 'UTF-8') >= 200 ? $text : '';
 }
 
 /* ── KAYNAK DOSYASI ──────────────────────────────────────────────────────
@@ -208,15 +238,30 @@ function tv_wikidata($book, $author) {
    Dönüş: ['have'=>bool,'text'=>string,'sources'=>[...],'year'=>?,'subjects'=>[]] */
 function tls_info_dossier($book, $author) {
     $parts = []; $sources = []; $year = null; $subjects = [];
+    $wiki_ok = false;
 
     $wk = tv_wikipedia($book, $author);
     if (!empty($wk['found'])) {
+        $wiki_ok = true;
         $lang = strtoupper($wk['lang'] ?? 'en');
         $sources[] = 'Wikipedia' . ($lang !== 'EN' ? " ({$lang})" : '');
         // Kaynak İngilizce değilse modele: sentezle ve İngilizce yaz.
         $tr = ($lang !== 'EN') ? " (in {$lang}; read it and synthesize your article in English)" : '';
         if (!empty($wk['author_text'])) $parts[] = "[Wikipedia{$tr} — about the author]\n" . $wk['author_text'];
         $parts[] = "[Wikipedia{$tr} — about the book \"{$wk['title']}\"]\n" . $wk['book_text'];
+    }
+
+    // Wikidata: yapısal olgular + KANONİK Wikipedia köprüsü. Bölgesel/çeviri
+    // başlıklarda (ör. Tamilce "Satya Sothanai" → "The Story of My Experiments
+    // with Truth") başlıkla bulunamayan eser buradan kanonik maddeye bağlanır.
+    $wd = tv_wikidata($book, $author);
+    if (!$wiki_ok && !empty($wd['enwiki'])) {
+        $canon = tv_wiki_extract_by_title('en', $wd['enwiki']);
+        if ($canon !== '') {
+            $wiki_ok = true;
+            $sources[] = 'Wikipedia';
+            $parts[] = "[Wikipedia — about the book \"{$wd['enwiki']}\" (this is the same work as \"{$book}\")]\n" . $canon;
+        }
     }
 
     $g = tv_google_books($book, $author);
@@ -238,10 +283,9 @@ function tls_info_dossier($book, $author) {
     }
 
     // Wikidata yapısal olguları (tür/konu/akım/karakter/etki) — farklı kaynak.
-    $wd = tv_wikidata($book, $author);
-    if ($wd !== '') {
+    if (!empty($wd['facts'])) {
         $sources[] = 'Wikidata';
-        $parts[] = "[Wikidata — structured facts]\n" . $wd;
+        $parts[] = "[Wikidata — structured facts]\n" . $wd['facts'];
     }
 
     $meta = [];
@@ -249,9 +293,9 @@ function tls_info_dossier($book, $author) {
     if ($subjects) $meta[] = 'Subjects: ' . implode(', ', array_slice($subjects, 0, 12));
     if ($meta) array_unshift($parts, "[Catalog metadata]\n" . implode("\n", $meta));
 
-    // "Yeterli" ölçütü: en az bir GERÇEK açıklama metni (Wikipedia ya da blurb).
-    // (Wikidata tek başına yeterli sayılmaz — terse olgular yazıya yetmez.)
-    $have = !empty($wk['found']) || (!empty($g['desc'])) || (!empty($o['desc']));
+    // "Yeterli" ölçütü: en az bir GERÇEK açıklama metni (Wikipedia — doğrudan ya
+    // da Wikidata köprüsüyle — veya bir katalog açıklaması).
+    $have = $wiki_ok || (!empty($g['desc'])) || (!empty($o['desc']));
 
     return [
         'have'     => $have,
