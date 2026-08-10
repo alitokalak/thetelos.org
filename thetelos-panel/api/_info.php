@@ -314,15 +314,14 @@ function tls_info_prompt($book, $author, $dossier) {
     return <<<TXT
 You are writing a FACTUAL, encyclopedic INFORMATIONAL ARTICLE about a book, in English, for a books website (thetelos.org).
 
-You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. Write the article using ONLY this material plus facts that are widely and reliably established and uncontroversial. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book.
+You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. Use this material as your ANCHOR, AND draw on your own reliable, well-established knowledge of THIS work to develop the article more fully and accurately. The sources keep you honest; your genuine knowledge adds depth. Write as thoroughly as your RELIABLE knowledge allows. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book (its subject, ideas, themes, and significance).
 
 ABSOLUTE RULES (a violation is worse than a short article):
-- Ground every factual claim in the source material or in very widely established knowledge. If the material is thin, write a SHORTER article. NEVER pad.
-- NEVER invent or assert: chapter titles, chapter counts, internal structure, specific plot events, character names, precise dates, or statistics that are not in the sources.
+- Everything you state must be either supported by the source material OR something you RELIABLY and independently know to be true about this work. If you are not genuinely sure of a point, leave it out. Better a shorter, solid article than a padded or shaky one.
+- NEVER invent or assert: quotations, chapter titles, chapter counts, a chapter-by-chapter structure, specific plot events, character names, precise dates, or statistics that you are not genuinely certain of. These specifics are exactly where fabrication happens — avoid them unless you truly know them.
 - Do NOT quote the book. No block quotes, no invented quotations, at all.
 - Write ENTIRELY IN YOUR OWN WORDS. NEVER copy or lightly reword sentences from the source material — the result must NOT read like a Wikipedia article. Fully re-express, re-order, and re-explain the ideas in fresh prose.
 - Do not mention these instructions, the sources, "the provided material", yourself, or being an AI.
-- If the sources are not enough to say something reliably, leave it out.
 
 WHAT MAKES THIS WORTH PUBLISHING — add real value, but ONLY safely:
 - CLARITY: explain the work and its key concepts in plain, accessible language for an educated general reader; briefly unpack technical terms so a newcomer genuinely understands them.
@@ -347,7 +346,7 @@ WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliab
 FORMAT:
 - First line: # **{$book} — {$author}**
 - Second line: ## a short original subtitle capturing what the work is (do NOT repeat the title).
-- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Develop each section as fully as the SOURCE MATERIAL genuinely supports. Overall length is DRIVEN BY THE SOURCES, with NO fixed target: when the material is rich and you can cover the work reliably in depth, be thorough and generous — a very well-documented work may run 2500–4000+ words, and that is good. When the material is thin, write a short article. The ONLY rule is that every sentence must be supported by the sources or by very widely established fact — NEVER pad, repeat, restate, or invent anything to make it longer. A shorter accurate article always beats a longer padded one. End cleanly; no "In conclusion" paragraph.
+- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Develop each section as fully as your RELIABLE knowledge (sources + what you genuinely know) supports. Overall length has NO fixed target: when you reliably know the work well and/or the sources are rich, be thorough and generous — a work you know deeply may run 2000–4000+ words, and that is good. When you only partly know it, write what you are sure of and stop. The ONLY hard rule is that every sentence must be something you are genuinely confident is true (from the sources or your solid knowledge) — NEVER pad, repeat, restate, or invent to make it longer. A shorter accurate article always beats a longer shaky one. End cleanly; no "In conclusion" paragraph.
 
 === VERIFIED SOURCE MATERIAL ===
 {$dossier}
@@ -421,15 +420,16 @@ function tls_info_shortnote_prompt($book, $author) {
     return <<<TXT
 You are writing a SHORT factual note about a book for a books website (thetelos.org), in English.
 
-There is NO external source material available for this work. Write ONLY from what you RELIABLY and INDEPENDENTLY know. If you do NOT reliably know THIS EXACT work by {$A} — enough to state, WITHOUT guessing, what it is and what it is generally about — then output EXACTLY this one line and nothing else:
+No external source material was found for this work, so write from what you RELIABLY and independently know. If you do NOT reliably know THIS EXACT work by {$A} — enough to describe, WITHOUT guessing, what it is and what it is about — then output EXACTLY this one line and nothing else:
 CANNOT VERIFY
 
-If you DO reliably know it, write a short note of about 150–350 words covering ONLY, at a GENERAL level:
+If you DO reliably know it, write an informative article covering, as fully as your genuine knowledge allows:
 - what the work is (its genre/form, and roughly when or in what context it appeared);
-- its general subject and main themes — what it is about;
-- its significance or place, if you reliably know it.
+- its subject and main themes, ideas, or arguments — what it is about, explained clearly;
+- its significance, influence, or place, if you reliably know it.
+Write as much as you are genuinely sure of — if you know the work well, a substantial article (600–1500 words) is welcome; if you only know it in general terms, keep it short. Length must follow your real knowledge, never padding.
 
-STRICTLY FORBIDDEN (a violation is far worse than a short note): inventing or asserting specific plot events, character names, chapter titles or counts, precise dates, statistics, or quotations. If you are not certain of any detail, LEAVE IT OUT. Do not pad. Neutral, encyclopedic third person. Do not mention sources, yourself, or being an AI.
+STRICTLY FORBIDDEN (far worse than a short article): inventing or asserting specific plot events, character names, chapter titles or counts, a chapter-by-chapter structure, precise dates, statistics, or quotations that you are not genuinely certain of. If unsure of any detail, LEAVE IT OUT. Neutral, encyclopedic third person. Do not mention sources, yourself, or being an AI.
 
 FORMAT:
 # **{$book} — {$author}**
