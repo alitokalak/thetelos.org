@@ -386,8 +386,14 @@ function tls_info_generate($book, $author, $opts = []) {
         $refused = $nt === ''
             || stripos($nt, 'CANNOT VERIFY') !== false
             || (function_exists('ca_check_refusal') && ca_check_refusal($nt) !== '');
-        [$nhtml, $nwords] = $refused ? ['', 0] : $to_html($nt);
-        if ($refused || $nwords < 40) {   // güvenilir bir şey çıkmadı → yer tutucu
+        if ($refused) {   // güvenilir bir şey çıkmadı → yer tutucu
+            return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
+                    'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
+        }
+        // Kaynaksız ama biliniyor: DeepSeek tek seferde kısa → 2-3 kademede derinleştir.
+        $nt = tls_info_expand($book, $author, '', $nt, $provider, $on_beat, 2);
+        [$nhtml, $nwords] = $to_html($nt);
+        if ($nwords < 40) {
             return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
                     'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
         }
@@ -405,11 +411,54 @@ function tls_info_generate($book, $author, $opts = []) {
                 'error' => $r['error'] ?? 'boş yanıt'];
     }
 
-    $md = trim((string) $r['text']);
+    // DeepSeek tek seferde ~1000-1500 kelimede duruyor → 2-3 kademede derinleştir.
+    $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $provider, $on_beat, 2);
     [$html, $words] = $to_html($md);
 
     return ['ok' => true, 'insufficient' => false, 'md' => $md, 'html' => $html,
             'words' => $words, 'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
+}
+
+/* ── ÇOK KADEMELİ DERİNLEŞTİRME ──────────────────────────────────────────
+   DeepSeek tek istekte kısa kesiyor. Her kademede modele: "yalnız kaynaktan +
+   gerçekten bildiğinden YENİ şey ekle; tekrar etme, sonuç yazma, uydurma;
+   eklenecek sağlam bir şey kalmadıysa DONE." Böylece iyi bilinen kitapta
+   derinlik artar, bilinmeyende 2. kademede DONE deyip durur (doldurmaz). */
+function tls_info_expand($book, $author, $dossier, $md, $provider, $on_beat, $passes = 2) {
+    for ($i = 0; $i < $passes; $i++) {
+        if (str_word_count(strip_tags(bw_md2html($md))) > 3800) break;   // yeterince uzun
+        $r = tv_ask(tls_info_continue_prompt($book, $author, $dossier, $md), 6000, 200, $provider);
+        if ($on_beat) $on_beat();
+        $t = !empty($r['ok']) ? trim((string) $r['text']) : '';
+        if ($t === '') break;
+        // "DONE" → eklenecek güvenilir şey yok, dur.
+        if (preg_match('/^\s*DONE\s*$/i', $t) || stripos($t, 'DONE') === 0) break;
+        $t = trim(preg_replace('/\n*\bDONE\b\s*$/i', '', $t));
+        // Kazara H1/H2/başlık tekrarı geldiyse at.
+        $t = preg_replace('/^#{1,2}\s*\**[^\n]+\**\s*\n+/', '', $t);
+        if (str_word_count(strip_tags(bw_md2html($t))) < 60) break;   // kayda değer ekleme yok
+        $md = rtrim($md) . "\n\n" . trim($t);
+    }
+    return $md;
+}
+
+/* Devam (continuation) prompt'u — YALNIZ yeni, güvenilir içerik; tekrar/uydurma yok. */
+function tls_info_continue_prompt($book, $author, $dossier, $md) {
+    $src = $dossier !== '' ? "\n\n=== VERIFIED SOURCE MATERIAL ===\n{$dossier}\n=== END SOURCE MATERIAL ===" : '';
+    return <<<TXT
+Below is an informational article ABOUT the book "{$book}" by {$author}. CONTINUE it: add further depth and important aspects NOT yet covered, drawing ONLY on the source material (if any) and on what you RELIABLY and independently know about this exact work.
+
+HARD RULES:
+- Do NOT repeat, restate, or lightly rephrase anything already written.
+- Do NOT write a conclusion or an overall summary.
+- NEVER invent quotations, chapter titles, a chapter-by-chapter structure, character names, plot events, dates, or statistics you are not genuinely certain of.
+- Everything you add must be something you are confident is true.
+- Write ONLY the new continuation text (further ### sections or developed paragraphs). Do NOT restate the title or a subtitle.
+- If there is nothing substantial and reliable left to add, output EXACTLY: DONE
+
+ARTICLE SO FAR:
+{$md}{$src}
+TXT;
 }
 
 /* ── KISA NOT PROMPT'U (kaynaksız, yalnız modelin GÜVENİLİR bildiği) ────────
