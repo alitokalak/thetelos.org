@@ -452,10 +452,21 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $s = preg_replace('/[^a-z0-9]+/', '-', $s);
             return trim($s, '-');
         };
-        // Çok sayıda slug adayı: parantezli/parantezsiz, yazarlı/yazarsız.
+        // WP, LATİN-DIŞI harfleri (Çince/Kiril/Arapça…) slug'da KORUR:
+        // "...-art-在延安文艺座谈会上的讲话-mao-zedong". ASCII translit bunları atıyordu →
+        // "bulunamadı". Bu aday Unicode harfleri korur (apostrof WP gibi silinir).
+        $mkslug_u = function ($s) {
+            $s = mb_strtolower(trim((string) $s), 'UTF-8');
+            $s = preg_replace('/[\x{2018}\x{2019}\x{02BC}\x{0027}]/u', '', $s);   // apostrof at (WP)
+            $s = preg_replace('/[^\p{L}\p{N}]+/u', '-', $s);                       // harf/rakam dışı → '-'
+            return trim($s, '-');
+        };
+        // Çok sayıda slug adayı: parantezli/parantezsiz, yazarlı/yazarsız, ASCII+Unicode.
         $slug_cands = array_values(array_filter(array_unique([
-            $mkslug($rt_title),                                  // book(paren) - author  ← oluşturma yolu
-            $mkslug($book),                                      // book(paren) only
+            $mkslug($rt_title),                                  // book(paren) - author  ← oluşturma yolu (ASCII)
+            $mkslug($book),                                      // book(paren) only (ASCII)
+            $mkslug_u($rt_title),                                // book(paren) - author  ← Unicode korur (CJK/Kiril…)
+            $mkslug_u($book),                                    // book(paren) only (Unicode)
             $mkslug($search_book . ($author ? " - $author" : '')), // paren-stripped + author
             $mkslug($search_book),                               // paren-stripped only
             trim(preg_replace('/\s+/', '-', $tgt), '-'),         // normalize(book-author) paren-stripped

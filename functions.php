@@ -2187,6 +2187,11 @@ function thetelos_smart_search($query){
     if(!$query->is_search()||!$query->is_main_query()||is_admin())return;
     $raw=tls_norm_apostrophes(trim(get_query_var('s')));
     if(empty($raw))return;
+    // Parantez içini (çoğu zaman orijinal-dil/CJK kopya başlık) arama teriminden
+    // AT: "Talks ... (在延安文艺座谈会上的讲话)" → "Talks ...". Yoksa o token AND'i
+    // bozup gerçek yazıyı eliyordu. (Tamamı parantezse orijinali koru.)
+    $stripped=trim(preg_replace('/\s*\([^()]*\)\s*/u',' ',$raw));
+    if($stripped!=='')$raw=$stripped;
     $all_authors=get_transient('thetelos_all_authors');
     if(false===$all_authors){$all_authors=get_terms(['taxonomy'=>'authors','hide_empty'=>true,'number'=>0]);if(is_wp_error($all_authors))$all_authors=[];set_transient('thetelos_all_authors',$all_authors,3600);}
     $has_sep=preg_match('/[–—\-\/]/',$raw);
