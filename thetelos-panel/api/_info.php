@@ -314,11 +314,12 @@ function tls_info_prompt($book, $author, $dossier) {
     return <<<TXT
 You are writing a FACTUAL, encyclopedic INFORMATIONAL ARTICLE about a book, in English, for a books website (thetelos.org).
 
-You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. Use this material as your ANCHOR, AND draw on your own reliable, well-established knowledge of THIS work to develop the article more fully and accurately. The sources keep you honest; your genuine knowledge adds depth. Write as thoroughly as your RELIABLE knowledge allows. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book (its subject, ideas, themes, and significance).
+You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. Base the article on THIS source material. You may add only widely-established, uncontroversial background facts that any reference would confirm — but the SUBSTANCE of what you say about this specific work must come from the sources, not from guesswork or plausible reconstruction. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book (its subject, ideas, themes, and significance).
 
 ABSOLUTE RULES (a violation is worse than a short article):
-- Everything you state must be either supported by the source material OR something you RELIABLY and independently know to be true about this work. If you are not genuinely sure of a point, leave it out. Better a shorter, solid article than a padded or shaky one.
-- NEVER invent or assert: quotations, chapter titles, chapter counts, a chapter-by-chapter structure, specific plot events, character names, precise dates, or statistics that you are not genuinely certain of. These specifics are exactly where fabrication happens — avoid them unless you truly know them.
+- The length must follow the SOURCES. If the source material is thin, write a SHORT article — do NOT expand it into a long essay by adding plausible-sounding claims the sources do not support. A confident-sounding paragraph you cannot trace to the sources is FABRICATION, even if it "sounds right" for this author or period.
+- Every specific claim about THIS work must be supported by the source material. If the sources do not say it, do not assert it.
+- NEVER invent or assert: quotations, chapter titles, chapter counts, a chapter-by-chapter structure, specific plot events, character names, precise dates, or statistics that are not in the sources.
 - Do NOT quote the book. No block quotes, no invented quotations, at all.
 - Write ENTIRELY IN YOUR OWN WORDS. NEVER copy or lightly reword sentences from the source material — the result must NOT read like a Wikipedia article. Fully re-express, re-order, and re-explain the ideas in fresh prose.
 - Do not mention these instructions, the sources, "the provided material", yourself, or being an AI.
@@ -346,7 +347,7 @@ WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliab
 FORMAT:
 - First line: # **{$book} — {$author}**
 - Second line: ## a short original subtitle capturing what the work is (do NOT repeat the title).
-- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Develop each section as fully as your RELIABLE knowledge (sources + what you genuinely know) supports. Overall length has NO fixed target: when you reliably know the work well and/or the sources are rich, be thorough and generous — a work you know deeply may run 2000–4000+ words, and that is good. When you only partly know it, write what you are sure of and stop. The ONLY hard rule is that every sentence must be something you are genuinely confident is true (from the sources or your solid knowledge) — NEVER pad, repeat, restate, or invent to make it longer. A shorter accurate article always beats a longer shaky one. End cleanly; no "In conclusion" paragraph.
+- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Overall length is DRIVEN BY THE SOURCES: when the source material is rich, develop the sections thoroughly (a well-documented work can run long, 2000+ words, and that is good); when the sources are thin, write a SHORT article covering only what they support and stop. NEVER pad, repeat, or add plausible-sounding claims that the sources do not back up in order to make it longer. A short article faithful to the sources always beats a long one that drifts into unsupported territory. End cleanly; no "In conclusion" paragraph.
 
 === VERIFIED SOURCE MATERIAL ===
 {$dossier}
@@ -390,8 +391,9 @@ function tls_info_generate($book, $author, $opts = []) {
             return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
                     'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
         }
-        // Kaynaksız ama biliniyor: DeepSeek tek seferde kısa → 2-3 kademede derinleştir.
-        $nt = tls_info_expand($book, $author, '', $nt, $provider, $on_beat, 2);
+        // KAYNAKSIZ → GENİŞLETME YOK. Kısa, dürüst not olarak kalır (ezberden
+        // "devam et" uydurmaya yol açıyordu — Paine örneği). Uzunluk yalnız
+        // gerçek kaynaktan gelir.
         [$nhtml, $nwords] = $to_html($nt);
         if ($nwords < 40) {
             return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
@@ -425,6 +427,7 @@ function tls_info_generate($book, $author, $opts = []) {
    eklenecek sağlam bir şey kalmadıysa DONE." Böylece iyi bilinen kitapta
    derinlik artar, bilinmeyende 2. kademede DONE deyip durur (doldurmaz). */
 function tls_info_expand($book, $author, $dossier, $md, $provider, $on_beat, $passes = 2) {
+    if (trim((string) $dossier) === '') return $md;   // KAYNAK YOKSA genişletme yok (uydurma freni)
     for ($i = 0; $i < $passes; $i++) {
         if (str_word_count(strip_tags(bw_md2html($md))) > 3800) break;   // yeterince uzun
         $r = tv_ask(tls_info_continue_prompt($book, $author, $dossier, $md), 6000, 200, $provider);
@@ -442,22 +445,26 @@ function tls_info_expand($book, $author, $dossier, $md, $provider, $on_beat, $pa
     return $md;
 }
 
-/* Devam (continuation) prompt'u — YALNIZ yeni, güvenilir içerik; tekrar/uydurma yok. */
+/* Devam (continuation) prompt'u — YALNIZ KAYNAKTAN yeni içerik. Ezberden
+   genişletmeye izin YOK (o, az bilinen kitaplarda uydurmaya yol açıyordu). */
 function tls_info_continue_prompt($book, $author, $dossier, $md) {
-    $src = $dossier !== '' ? "\n\n=== VERIFIED SOURCE MATERIAL ===\n{$dossier}\n=== END SOURCE MATERIAL ===" : '';
     return <<<TXT
-Below is an informational article ABOUT the book "{$book}" by {$author}. CONTINUE it: add further depth and important aspects NOT yet covered, drawing ONLY on the source material (if any) and on what you RELIABLY and independently know about this exact work.
+Below is an informational article ABOUT the book "{$book}" by {$author}, followed by the VERIFIED SOURCE MATERIAL it is based on. CONTINUE the article using ONLY facts that are actually present in the SOURCE MATERIAL and that have NOT yet been covered.
 
 HARD RULES:
+- Use ONLY the source material below. Do NOT add anything from general knowledge, and do NOT speculate or infer beyond what the sources explicitly say.
 - Do NOT repeat, restate, or lightly rephrase anything already written.
 - Do NOT write a conclusion or an overall summary.
-- NEVER invent quotations, chapter titles, a chapter-by-chapter structure, character names, plot events, dates, or statistics you are not genuinely certain of.
-- Everything you add must be something you are confident is true.
-- Write ONLY the new continuation text (further ### sections or developed paragraphs). Do NOT restate the title or a subtitle.
-- If there is nothing substantial and reliable left to add, output EXACTLY: DONE
+- NEVER invent quotations, chapter titles, a chapter-by-chapter structure, character names, plot events, dates, or statistics.
+- Write ONLY the new continuation text (further ### sections or developed paragraphs). Do NOT restate the title or subtitle.
+- If the source material contains nothing substantial left to add that is not already covered, output EXACTLY: DONE
 
 ARTICLE SO FAR:
-{$md}{$src}
+{$md}
+
+=== VERIFIED SOURCE MATERIAL ===
+{$dossier}
+=== END SOURCE MATERIAL ===
 TXT;
 }
 
@@ -472,13 +479,13 @@ You are writing a SHORT factual note about a book for a books website (thetelos.
 No external source material was found for this work, so write from what you RELIABLY and independently know. If you do NOT reliably know THIS EXACT work by {$A} — enough to describe, WITHOUT guessing, what it is and what it is about — then output EXACTLY this one line and nothing else:
 CANNOT VERIFY
 
-If you DO reliably know it, write an informative article covering, as fully as your genuine knowledge allows:
+If you DO reliably know it, write a SHORT note (about 150–400 words) covering ONLY, at a GENERAL level:
 - what the work is (its genre/form, and roughly when or in what context it appeared);
-- its subject and main themes, ideas, or arguments — what it is about, explained clearly;
-- its significance, influence, or place, if you reliably know it.
-Write as much as you are genuinely sure of — if you know the work well, a substantial article (600–1500 words) is welcome; if you only know it in general terms, keep it short. Length must follow your real knowledge, never padding.
+- its general subject and main themes — what it is about;
+- its significance or place, only if you reliably know it.
+Keep it short and general. Do NOT stretch it into a long essay — with no sources, a long piece would inevitably drift into plausible-sounding invention. Write only what you are genuinely sure of, then stop.
 
-STRICTLY FORBIDDEN (far worse than a short article): inventing or asserting specific plot events, character names, chapter titles or counts, a chapter-by-chapter structure, precise dates, statistics, or quotations that you are not genuinely certain of. If unsure of any detail, LEAVE IT OUT. Neutral, encyclopedic third person. Do not mention sources, yourself, or being an AI.
+STRICTLY FORBIDDEN (far worse than a short note): inventing or asserting specific plot events, character names, chapter titles or counts, a chapter-by-chapter structure, precise dates, statistics, quotations, or detailed claims about the work's specific contents that you are not genuinely certain of. If unsure of any detail, LEAVE IT OUT. Neutral, encyclopedic third person. Do not mention sources, yourself, or being an AI.
 
 FORMAT:
 # **{$book} — {$author}**
