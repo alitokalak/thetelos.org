@@ -883,6 +883,36 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'güncellenemedi: WP ' . $rw_pc]);
             return;
         }
+
+        /* ── META TAZELE (rewrite) ───────────────────────────────────────────
+           Eski meta description bazen gövdeyle uyumsuz/yanıltıcıydı (rewrite
+           eskiden meta'ya hiç dokunmuyordu). Yeni gövde zaten DOĞRU ve kaynağa
+           dayalı olduğundan, excerpt + meta description'ı ONDAN türetiriz:
+           yanıltıcı değil, UYDURMA DEĞİL (yalnız yayınlanan metni özetler).
+           Başlık/H1, kapak, kategori, yazar YİNE değişmez. Kısa çıktı → ucuz.
+           ($batch['rewrite_meta']='0' ile kapatılır.) */
+        if (($batch['rewrite_meta'] ?? '1') !== '0') {
+            bw_touch_hb($batch_file, $idx);
+            $body_snip = mb_substr(trim(strip_tags($rw_html)), 0, 1400);
+            if ($body_snip !== '') {
+                $mprov = in_array($api_provider, ['anthropic', 'gemini'], true) ? $api_provider : 'deepseek';
+                $mprompt = "Based ONLY on the article text below (about the book \"{$book}\" by {$author}), return a JSON object:\n"
+                    . "{\"excerpt\":\"...\",\"meta_description\":\"...\"}\n"
+                    . "RULES: Each value is ONE complete sentence, factual and FAITHFUL to the article text, ending with a period, at most 150 characters. Do NOT introduce any fact, claim, or angle not present in the text. The excerpt and meta_description must differ from each other. Return ONLY the JSON, no extra text.\n\n"
+                    . "=== ARTICLE TEXT ===\n{$body_snip}\n=== END ARTICLE TEXT ===";
+                $mr = tv_ask($mprompt, 400, 90, $mprov);
+                if (!empty($mr['ok']) && preg_match('/\{.*\}/s', (string) $mr['text'], $mm)) {
+                    $mj = json_decode($mm[0], true);
+                    if (is_array($mj)) {
+                        $new_ex = !empty($mj['excerpt'])          ? bw_norm_sentence($mj['excerpt'], 155)          : '';
+                        $new_md = !empty($mj['meta_description']) ? bw_norm_sentence($mj['meta_description'], 155) : '';
+                        if ($new_ex !== '') bw_wp("$wp_api/$ep/$update_pid", 'POST', ['excerpt' => $new_ex], $auth, 30);
+                        if ($new_md !== '') bw_wp("$wp_api/$ep/$update_pid", 'POST', ['meta' => ['_yoast_wpseo_metadesc' => $new_md]], $auth, 30);
+                    }
+                }
+            }
+        }
+
         // Temiz yayınlandı: varsa önceki 'sorunlu' kaydını GEÇERSİZ kıl (liste kendini onarır).
         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'ok', 'yeniden yazıldı, yayında', $update_pid, 'rewrite');
         bw_update_book($batch_file, $idx, [

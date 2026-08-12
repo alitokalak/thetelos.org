@@ -77,6 +77,9 @@ $batch = [
     'parts'        => $parts,
     'workers'      => $workers,
     'rewrite'      => $rewrite,   // true: mevcut yazıyı güncelle, yoksa atla
+    // Yeniden yaz modunda yeni gövdeden taze excerpt+meta description üret
+    // (gövdeye çıpalı, uydurma değil). '0' → dokunma (eski davranış). Vars. açık.
+    'rewrite_meta' => (($_POST['rewrite_meta'] ?? '1') !== '0') ? '1' : '0',
     'total'        => count($books),
     'done'         => 0,
     'ok'           => 0,
