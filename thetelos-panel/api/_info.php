@@ -472,7 +472,7 @@ function tls_info_generate($book, $author, $opts = []) {
     // Derinleştirme: Claude tek çağrıda tam ve dengeli yazar → genişletme YOK
     // (çok kademeli "devam" Einstein/Luther'de tekrar+şişmeye yol açıyordu).
     // DeepSeek/Gemini kısa kesince en fazla 1 kademe eklenir; tavan düşük.
-    $passes = ($gen_prov === 'anthropic') ? 0 : 1;
+    $passes = in_array($gen_prov, ['anthropic', 'gemini'], true) ? 0 : 1;
     $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $gen_prov, $on_beat, $passes);
 
     /* ── HAKEM: kaynağa-sadakat denetimi (kademeli: Gemini → şüphede Claude) ──
@@ -483,9 +483,17 @@ function tls_info_generate($book, $author, $opts = []) {
     $referee = ['verdict' => 'skip'];
     if (($opts['referee'] ?? true) && trim($dos['text']) !== '') {
         require_once __DIR__ . '/_referee.php';
+        /* Hakem YAZARDAN BAĞIMSIZ olmalı — yazan model kendi metnini denetleyemez
+           (aynı kör noktalar). Yazar kimse, hakem farklı model:
+             yazar gemini    → hakem Claude (doğrudan),
+             yazar anthropic → hakem Gemini,
+             yazar deepseek  → hakem Gemini, şüphede Claude. */
+        if ($gen_prov === 'gemini')         { $rp = 'anthropic'; $re = ''; }
+        elseif ($gen_prov === 'anthropic')  { $rp = 'gemini';    $re = ''; }
+        else                                { $rp = 'gemini';    $re = 'anthropic'; }
         $referee = tls_referee($md, $dos['text'], $book, $author, [
-            'primary'  => $opts['referee_primary']  ?? 'gemini',
-            'escalate' => $opts['referee_escalate'] ?? 'anthropic',
+            'primary'  => $opts['referee_primary']  ?? $rp,
+            'escalate' => $opts['referee_escalate'] ?? $re,
         ]);
         if ($on_beat) $on_beat();
         if ($referee['verdict'] === 'fabricated') {
