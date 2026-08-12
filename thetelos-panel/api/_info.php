@@ -468,12 +468,33 @@ function tls_info_generate($book, $author, $opts = []) {
     // DeepSeek tek seferde ~1000-1500 kelimede duruyor → 2-3 kademede derinleştir.
     // Derinleştirme, ana metni üreten sağlayıcıyla (birincil ya da yedek) sürer.
     $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $gen_prov, $on_beat, 2);
-    [$html, $words] = $to_html($md);
 
+    /* ── HAKEM: kaynağa-sadakat denetimi (kademeli: Gemini → şüphede Claude) ──
+       BAĞIMSIZ hakem, üretilen metni KAYNAKLARLA kıyaslar. "fabricated" derse
+       bu gövdeyi YAYINLAMAYIZ → insufficient=true ile dürüst yer tutucu yoluna
+       düşer (rewrite: yer tutucu + yayında; create: atla). Böylece uydurma
+       fiilen yayına çıkmaz. Kaynak yoksa hakem çalışmaz (kıyas yapılamaz). */
+    $referee = ['verdict' => 'skip'];
+    if (($opts['referee'] ?? true) && trim($dos['text']) !== '') {
+        require_once __DIR__ . '/_referee.php';
+        $referee = tls_referee($md, $dos['text'], $book, $author, [
+            'primary'  => $opts['referee_primary']  ?? 'gemini',
+            'escalate' => $opts['referee_escalate'] ?? 'anthropic',
+        ]);
+        if ($on_beat) $on_beat();
+        if ($referee['verdict'] === 'fabricated') {
+            return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
+                    'sources' => $dos['sources'], 'dossier' => $dos['text'],
+                    'referee' => $referee, 'error' => ''];
+        }
+    }
+
+    [$html, $words] = $to_html($md);
     $srcs = $dos['sources'];
     if ($gen_prov !== $provider) $srcs[] = $gen_prov . ' yedek (yazım)';
     return ['ok' => true, 'insufficient' => false, 'md' => $md, 'html' => $html,
-            'words' => $words, 'sources' => $srcs, 'dossier' => $dos['text'], 'error' => ''];
+            'words' => $words, 'sources' => $srcs, 'dossier' => $dos['text'],
+            'referee' => $referee, 'error' => ''];
 }
 
 /* ── ÇOK KADEMELİ DERİNLEŞTİRME ──────────────────────────────────────────

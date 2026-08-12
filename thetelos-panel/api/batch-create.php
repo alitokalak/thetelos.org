@@ -80,6 +80,9 @@ $batch = [
     // Yeniden yaz modunda yeni gövdeden taze excerpt+meta description üret
     // (gövdeye çıpalı, uydurma değil). '0' → dokunma (eski davranış). Vars. açık.
     'rewrite_meta' => (($_POST['rewrite_meta'] ?? '1') !== '0') ? '1' : '0',
+    // Kademeli hakem (Gemini denetler, şüphede Claude): üretilen bilgi metnini
+    // kaynaklarla kıyaslar; uydurma bulursa yayınlamaz. '0' → kapat. Vars. açık.
+    'referee'      => (($_POST['referee'] ?? '1') !== '0') ? '1' : '0',
     'total'        => count($books),
     'done'         => 0,
     'ok'           => 0,

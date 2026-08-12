@@ -575,23 +575,31 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_touch_hb($batch_file, $idx);
         $ir = tls_info_generate($search_book, $author, [
             'provider' => in_array($api_provider, ['anthropic', 'gemini'], true) ? $api_provider : 'deepseek',
+            'referee'  => (($batch['referee'] ?? '1') !== '0'),   // kademeli hakem (Gemini→Claude)
             'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
         ]);
         if (!empty($ir['insufficient'])) {
-            // Güvenilir kaynak yok → UYDURMA. Rewrite'ta yer tutucu, create'te atla.
+            // İki neden olabilir: (a) güvenilir kaynak yok, (b) HAKEM metni
+            // uydurma bulup reddetti. İkisinde de UYDURMA yayına çıkmaz.
+            $ref_fab = (($ir['referee']['verdict'] ?? '') === 'fabricated');
+            $pr_probs = $ref_fab ? implode(' | ', array_slice($ir['referee']['problems'] ?? [], 0, 3)) : '';
+            $pr_reason = $ref_fab
+                ? ('hakem uydurma buldu (' . ($ir['referee']['judge'] ?? '?') . ')' . ($pr_probs ? ': ' . $pr_probs : ''))
+                : 'kaynak yetersiz (bilgi metni)';
+            // Rewrite'ta yer tutucu (yayında kalsın), create'te atla.
             if ($rewrite && $update_pid) {
                 $ph = bw_placeholder_html($book, $author);
                 [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yetersiz (bilgi metni)', $update_pid, 'rewrite');
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, ($ref_fab ? 'referee' : 'placeholder'), $pr_reason, $update_pid, 'rewrite');
                 bw_update_book($batch_file, $idx, [
                     'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
                     'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-                    'error' => 'kaynak yetersiz → yer tutucu (yayında)',
+                    'error' => ($ref_fab ? 'hakem uydurma buldu → yer tutucu (yayında)' : 'kaynak yetersiz → yer tutucu (yayında)'),
                 ]);
                 return;
             }
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yetersiz (bilgi metni)', 0, 'create');
-            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'kaynak yetersiz: güvenilir bilgi bulunamadı (bilgi metni)']);
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, ($ref_fab ? 'referee' : 'unknown'), $pr_reason, 0, 'create');
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => ($ref_fab ? ('hakem uydurma buldu: ' . $pr_probs) : 'kaynak yetersiz: güvenilir bilgi bulunamadı (bilgi metni)')]);
             return;
         }
         if (empty($ir['ok']) || trim((string) $ir['md']) === '') {
