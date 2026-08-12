@@ -359,11 +359,35 @@ TXT;
    Dönüş: [
      'ok'=>bool, 'insufficient'=>bool, 'md'=>string, 'html'=>string,
      'words'=>int, 'sources'=>[...], 'dossier'=>string, 'error'=>string ]
-   provider: 'deepseek' (varsayılan, ucuz) | 'anthropic' */
+
+   provider: 'deepseek' (varsayılan, ucuz) | 'anthropic' | 'gemini'
+
+   YEDEK (fallback): birincil sağlayıcı (DeepSeek) bir kitabı bilmiyor / boş
+   dönüyorsa, İKİNCİ bir sağlayıcı (varsayılan Gemini) AYNI kaynak+uydurma-yasağı
+   kurallarıyla bir kez daha dener. Amaç: yer tutucuda kalan kitap sayısını
+   düşürmek. Maliyet küçük — yalnız azınlık (bilinmeyen) kitaplarda ve kısa
+   çıktıyla tetiklenir. opts['fallback']='' ile kapatılır; anahtar yoksa ya da
+   birincil sağlayıcıyla aynıysa kendiliğinden pas geçer. UYDURMA GÜVENCESİ
+   AYNEN korunur: yedek de CANNOT VERIFY diyebilir ve o zaman yer tutucuya
+   düşülür — yani ikinci model "bilmiyorsa" yine uydurmaz. */
 function tls_info_generate($book, $author, $opts = []) {
     $pv = $opts['provider'] ?? 'deepseek';
     $provider = in_array($pv, ['anthropic', 'gemini'], true) ? $pv : 'deepseek';
     $on_beat  = $opts['on_beat'] ?? null;
+
+    // Yedek sağlayıcı: varsayılan gemini (anahtar varsa). Birincil ile aynıysa
+    // ya da anahtar yoksa devre dışı.
+    $fallback = array_key_exists('fallback', $opts) ? (string) $opts['fallback'] : 'gemini';
+    if ($fallback === $provider) $fallback = '';
+    if ($fallback === 'gemini') {
+        require_once __DIR__ . '/_gemini.php';
+        if (!tls_gemini_ready()) $fallback = '';
+    } elseif ($fallback === 'anthropic') {
+        require_once __DIR__ . '/_anthropic.php';
+        if (!tls_anthropic_ready()) $fallback = '';
+    } elseif ($fallback !== '') {
+        $fallback = '';
+    }
 
     // md → gövde html + kelime (H1'i at; tema başlığı zaten gösteriyor).
     $to_html = function ($md) {
@@ -373,6 +397,23 @@ function tls_info_generate($book, $author, $opts = []) {
         return [$html, str_word_count(strip_tags($html))];
     };
 
+    // Bir "kısa not" denemesi: verilen sağlayıcıya sor, güvenilir bir şey
+    // çıktıysa metni döndür, çıkmadıysa '' (refused). CANNOT VERIFY / ret /
+    // <40 kelime → boş. Uydurma yasağı prompt'un kendisinde.
+    $try_shortnote = function ($prov) use ($book, $author, $on_beat, $to_html) {
+        $nr = tv_ask(tls_info_shortnote_prompt($book, $author), 1500, 90, $prov);
+        if ($on_beat) $on_beat();
+        $nt = !empty($nr['ok']) ? trim((string) $nr['text']) : '';
+        if ($nt === ''
+            || stripos($nt, 'CANNOT VERIFY') !== false
+            || (function_exists('ca_check_refusal') && ca_check_refusal($nt) !== '')) {
+            return ['', 0, ''];
+        }
+        [$nhtml, $nwords] = $to_html($nt);
+        if ($nwords < 40) return ['', 0, ''];
+        return [$nt, $nwords, $nhtml];
+    };
+
     $dos = tls_info_dossier($book, $author);
     if ($on_beat) $on_beat();
 
@@ -380,46 +421,59 @@ function tls_info_generate($book, $author, $opts = []) {
         /* KAYNAK YOK → hemen pes etme. Modele bir kez sor: eserin NE OLDUĞUNU
            güvenilir biliyor mu? Biliyorsa KISA not (genel konu/tema); bilmiyorsa
            CANNOT VERIFY → yer tutucu. Özgül şey (olay/karakter/bölüm/alıntı)
-           uydurmak YASAK. Böylece gerçekten bilinen kitaplarda sayfa boş kalmaz. */
+           uydurmak YASAK. Böylece gerçekten bilinen kitaplarda sayfa boş kalmaz.
+           BİRİNCİL bilmiyorsa YEDEK (Gemini) bir kez daha dener — o da bilmiyorsa
+           yer tutucu. İkinci şans, uydurma değil. */
         require_once __DIR__ . '/_checks.php';
-        $nr = tv_ask(tls_info_shortnote_prompt($book, $author), 1500, 90, $provider);
-        if ($on_beat) $on_beat();
-        $nt = !empty($nr['ok']) ? trim((string) $nr['text']) : '';
-        $refused = $nt === ''
-            || stripos($nt, 'CANNOT VERIFY') !== false
-            || (function_exists('ca_check_refusal') && ca_check_refusal($nt) !== '');
-        if ($refused) {   // güvenilir bir şey çıkmadı → yer tutucu
+        [$nt, $nwords, $nhtml] = $try_shortnote($provider);
+        $used = $provider;
+        if ($nt === '' && $fallback !== '') {
+            [$nt, $nwords, $nhtml] = $try_shortnote($fallback);
+            if ($nt !== '') $used = $fallback;
+        }
+        if ($nt === '') {   // ne birincil ne yedek güvenilir bir şey verdi → yer tutucu
             return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
                     'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
         }
         // KAYNAKSIZ → GENİŞLETME YOK. Kısa, dürüst not olarak kalır (ezberden
         // "devam et" uydurmaya yol açıyordu — Paine örneği). Uzunluk yalnız
         // gerçek kaynaktan gelir.
-        [$nhtml, $nwords] = $to_html($nt);
-        if ($nwords < 40) {
-            return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
-                    'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
-        }
+        $slabel = 'model (kısa not)' . ($used !== $provider ? ' · ' . $used . ' yedek' : '');
         return ['ok' => true, 'insufficient' => false, 'shortnote' => true,
                 'md' => $nt, 'html' => $nhtml, 'words' => $nwords,
-                'sources' => ['model (kısa not)'], 'dossier' => $dos['text'], 'error' => ''];
+                'sources' => [$slabel], 'dossier' => $dos['text'], 'error' => ''];
     }
 
     $prompt = tls_info_prompt($book, $author, $dos['text']);
     $r = tv_ask($prompt, 8000, 240, $provider);
     if ($on_beat) $on_beat();
+    $gen_prov = $provider;
     if (empty($r['ok']) || trim((string) $r['text']) === '') {
-        return ['ok' => false, 'insufficient' => false, 'md' => '', 'html' => '', 'words' => 0,
-                'sources' => $dos['sources'], 'dossier' => $dos['text'],
-                'error' => $r['error'] ?? 'boş yanıt'];
+        // Birincil kaynaktan yazamadı → YEDEK aynı kaynakla dener (uydurma yok:
+        // prompt kaynak-çıpalı). Yedek de veremezse hata.
+        if ($fallback !== '') {
+            $r2 = tv_ask($prompt, 8000, 240, $fallback);
+            if ($on_beat) $on_beat();
+            if (!empty($r2['ok']) && trim((string) $r2['text']) !== '') {
+                $r = $r2; $gen_prov = $fallback;
+            }
+        }
+        if (empty($r['ok']) || trim((string) $r['text']) === '') {
+            return ['ok' => false, 'insufficient' => false, 'md' => '', 'html' => '', 'words' => 0,
+                    'sources' => $dos['sources'], 'dossier' => $dos['text'],
+                    'error' => $r['error'] ?? 'boş yanıt'];
+        }
     }
 
     // DeepSeek tek seferde ~1000-1500 kelimede duruyor → 2-3 kademede derinleştir.
-    $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $provider, $on_beat, 2);
+    // Derinleştirme, ana metni üreten sağlayıcıyla (birincil ya da yedek) sürer.
+    $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $gen_prov, $on_beat, 2);
     [$html, $words] = $to_html($md);
 
+    $srcs = $dos['sources'];
+    if ($gen_prov !== $provider) $srcs[] = $gen_prov . ' yedek (yazım)';
     return ['ok' => true, 'insufficient' => false, 'md' => $md, 'html' => $html,
-            'words' => $words, 'sources' => $dos['sources'], 'dossier' => $dos['text'], 'error' => ''];
+            'words' => $words, 'sources' => $srcs, 'dossier' => $dos['text'], 'error' => ''];
 }
 
 /* ── ÇOK KADEMELİ DERİNLEŞTİRME ──────────────────────────────────────────
