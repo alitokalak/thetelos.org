@@ -10,7 +10,7 @@
  * Dönüş sözleşmeleri fonksiyon başlıklarında.
  */
 
-require_once __DIR__ . '/_verify.php';            // tv_google_books, tv_openlibrary_desc, tv_ask, tv_json
+require_once __DIR__ . '/_verify.php';            // tv_google_books, tv_openlibrary_desc, tv_ask, tv_json, tls_fetch_json
 require_once __DIR__ . '/_content-format.php';    // bw_md2html
 
 /* ── Wikipedia ───────────────────────────────────────────────────────────
@@ -20,17 +20,7 @@ require_once __DIR__ . '/_content-format.php';    // bw_md2html
    Dönüş: ['found'=>bool,'title'=>string,'book_text'=>string,'author_text'=>string] */
 function tv_wikipedia($book, $author) {
     $ua = 'thetelos.org/1.0 (book info article; https://thetelos.org)';
-    $get = function ($url) use ($ua) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: ' . $ua],
-        ]);
-        $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-        if ($c !== 200 || !$r) return null;
-        $j = json_decode($r, true);
-        return is_array($j) ? $j : null;
-    };
+    $get = function ($url) use ($ua) { return tls_fetch_json($url, $ua, 15, 3); };
     $norm = function ($s) {
         $s = mb_strtolower(trim((string) $s), 'UTF-8');
         $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
@@ -111,14 +101,7 @@ function tv_wikipedia($book, $author) {
    metni (bulunamazsa ''). */
 function tv_wikidata($book, $author) {
     $ua = 'thetelos.org/1.0 (book info; https://thetelos.org)';
-    $get = function ($url) use ($ua) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 12,
-            CURLOPT_FOLLOWLOCATION => true, CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: ' . $ua]]);
-        $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-        if ($c !== 200 || !$r) return null;
-        $j = json_decode($r, true); return is_array($j) ? $j : null;
-    };
+    $get = function ($url) use ($ua) { return tls_fetch_json($url, $ua, 12, 3); };
     $surname = '';
     $an = mb_strtolower(trim((string) $author), 'UTF-8');
     if ($an !== '') { $p = explode(' ', $an); $surname = end($p); }

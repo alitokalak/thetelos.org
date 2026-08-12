@@ -235,22 +235,43 @@ function tv_openlibrary($book, $author) {
  * Open Library'ye düşülür).
  * Dönüş: ['found'=>bool|null,'title','author','year','desc','subjects'=>[]]
  */
+/* ── DAYANIKLI JSON GET (retry + backoff) ────────────────────────────────
+   Toplu üretimde birden çok worker aynı anda Wikipedia/OpenLibrary/GoogleBooks/
+   Wikidata'ya vurunca API'ler 429 (hız limiti) / timeout dönebiliyor. Tek
+   denemede null dönmek o kitabın kaynağını BOŞ bırakıp içeriği kısaltıyordu
+   (asıl "ünlü kitap ama kısa" sebebi bu yük-altı tıkanma). 429/5xx/ağ hatasında
+   üstel geri çekilmeyle yeniden dener; kalıcı 4xx'te (404 vb.) hemen null döner.
+   Hem _verify (GoogleBooks/OpenLibrary) hem _info (Wikipedia/Wikidata) kullanır. */
+if (!function_exists('tls_fetch_json')) {
+function tls_fetch_json($url, $ua = 'thetelos.org/1.0', $timeout = 15, $tries = 3) {
+    for ($i = 1; $i <= $tries; $i++) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_FOLLOWLOCATION => true, CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: ' . $ua],
+        ]);
+        $r = curl_exec($ch);
+        $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+        if ($c === 200 && $r) {
+            $j = json_decode($r, true);
+            return is_array($j) ? $j : null;
+        }
+        $retryable = ($c === 429 || $c >= 500 || $c === 0 || $err !== '');
+        if (!$retryable || $i === $tries) return null;
+        usleep((int) (($c === 429 ? 700000 : 350000) * $i));   // 0.35-0.7s × deneme
+    }
+    return null;
+}
+}
+
 function tv_google_books($book, $author) {
     $q = trim($book . ($author ? ' ' . $author : ''));
     $url = 'https://www.googleapis.com/books/v1/volumes?country=US&maxResults=6&q=' . rawurlencode($q);
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 15,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTPHEADER     => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)'],
-    ]);
-    $r = curl_exec($ch);
-    $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($c !== 200 || !$r) return ['found' => null];   // kota/ağ → "bakılamadı"
-    $j = json_decode($r, true);
-    if (!is_array($j) || empty($j['items'])) return ['found' => false];
+    $j = tls_fetch_json($url, 'thetelos.org/1.0 (verify)', 15, 3);
+    if ($j === null) return ['found' => null];             // kota/ağ → "bakılamadı" (retry sonrası)
+    if (empty($j['items'])) return ['found' => false];
 
     // Tek baskıyla yetinme: FARKLI baskıların açıklamalarını topla (biri kısa,
     // biri dolu olabilir), tekrarları ele, en uzunları birleştir. Kategoriler de
@@ -291,12 +312,8 @@ function tv_google_books($book, $author) {
 function tv_openlibrary_desc($book, $author) {
     $s = 'https://openlibrary.org/search.json?limit=1&fields=key,title,first_publish_year,subject,subject_people,subject_places,subject_times,first_sentence'
        . '&title=' . rawurlencode($book) . ($author ? '&author=' . rawurlencode($author) : '');
-    $ch = curl_init($s);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)']]);
-    $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-    if ($c !== 200 || !$r) return ['found' => null];
-    $j = json_decode($r, true);
+    $j = tls_fetch_json($s, 'thetelos.org/1.0 (verify)', 15, 3);
+    if ($j === null) return ['found' => null];
     $doc = $j['docs'][0] ?? null;
     if (!$doc || empty($doc['key'])) return ['found' => false];
     // Konu etiketlerini genişlet: genel + kişi/yer/dönem (kitabın kapsamını verir).
@@ -314,13 +331,9 @@ function tv_openlibrary_desc($book, $author) {
         'desc'     => '',
     ];
     // Work kaydından açıklama + (varsa) alıntılar/ilk cümle
-    $wc = curl_init('https://openlibrary.org' . $doc['key'] . '.json');
-    curl_setopt_array($wc, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)']]);
-    $wr = curl_exec($wc); $wcode = (int) curl_getinfo($wc, CURLINFO_HTTP_CODE); curl_close($wc);
+    $wj = tls_fetch_json('https://openlibrary.org' . $doc['key'] . '.json', 'thetelos.org/1.0 (verify)', 15, 3);
     $extra = [];
-    if ($wcode === 200 && $wr) {
-        $wj = json_decode($wr, true);
+    if (is_array($wj)) {
         $de = $wj['description'] ?? '';
         if (is_array($de)) $de = $de['value'] ?? '';
         $de = trim((string) $de);
