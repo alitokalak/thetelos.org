@@ -228,7 +228,8 @@ if ($parts <= 1 || $part === 1) {
     $source_text = $source['text'];
     $source_url  = $source['url'];
 }
-sse('status', ['msg' => 'DeepSeek içerik üretiyor...']);
+$prov_label = $api_provider === 'gemini' ? 'Gemini' : ($api_provider === 'anthropic' ? 'Claude' : 'DeepSeek');
+sse('status', ['msg' => $prov_label . ' içerik üretiyor...']);
 if ($source_text) {
     $prompt .= "\n\n=== SOURCE TEXT (MANDATORY) ===\n"
              . "You MUST base your writing on the following original source text.\n"
