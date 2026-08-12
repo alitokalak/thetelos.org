@@ -11,6 +11,50 @@
 if (!defined('ABSPATH') && !defined('TLS_PANEL')) { /* panelden de doğrudan çağrılabilir */ }
 
 if (!function_exists('bw_clean_content')) {
+
+/* Tekrarlanan bölümleri temizle.
+   Çok kademeli üretim/genişletme, "tekrar etme" talimatına rağmen bazen aynı
+   #/##/### başlıklı bölümü (ve gövdesini) İKİNCİ kez yazıyor (Origin of Species:
+   "The Problem of Instinct", "The Book's Structure" vb. dört bölüm iki kez).
+   Bu, SEO'yu bozan gerçek bir içerik hatası. Başlık metnini normalize edip İLK
+   görülen bölümü tutar, sonraki AYNI başlıklı bloğu gövdesiyle birlikte atar.
+   Farklı başlıklı özgün içerik korunur. Model talimata uymasa bile mekanik
+   olarak temizlenir. */
+function bw_dedup_sections($text) {
+    $text = (string) $text;
+    if (strpos($text, '#') === false) return $text;   // başlık yoksa iş yok
+    $norm = function ($h) {
+        $h = preg_replace('/^#{1,6}\s*/', '', trim($h));
+        $h = preg_replace('/[*_`>#]+/', '', $h);
+        $a = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $h);
+        if ($a !== false && $a !== '') $h = $a;
+        $h = mb_strtolower(trim($h), 'UTF-8');
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', $h));
+    };
+    $lines  = explode("\n", str_replace(["\r\n", "\r"], "\n", $text));
+    $blocks = [];
+    $cur    = ['key' => null, 'lines' => []];
+    foreach ($lines as $ln) {
+        if (preg_match('/^#{1,3}\s+\S/', $ln)) {   // yeni bölüm başlığı
+            $blocks[] = $cur;
+            $cur = ['key' => $norm($ln), 'lines' => [$ln]];
+        } else {
+            $cur['lines'][] = $ln;
+        }
+    }
+    $blocks[] = $cur;
+    $seen = []; $out = []; $removed = 0;
+    foreach ($blocks as $b) {
+        if ($b['key'] !== null && $b['key'] !== '') {
+            if (isset($seen[$b['key']])) { $removed++; continue; }   // kopya → at
+            $seen[$b['key']] = true;
+        }
+        $out[] = implode("\n", $b['lines']);
+    }
+    if ($removed === 0) return $text;   // tekrar yok → dokunma
+    return preg_replace('/\n{4,}/', "\n\n\n", implode("\n", $out));
+}
+
 function bw_clean_content($text) {
     $text = preg_replace('/%%PART[12]_(?:END|START)%%/i', '', $text);
     $text = preg_replace('/%%PART_END%%/i', '', $text);
@@ -34,6 +78,9 @@ function bw_clean_content($text) {
         '/^\s*[*_(\[]{0,2}\s*(?:as (?:requested|instructed)|per your (?:request|instructions)|'
         . 'let me know if you|i hope this (?:helps|summary)|word count:?)[^\n]*$/im',
         '', $text);
+
+    // Tekrarlanan bölümleri at (çok kademeli üretim kopyaları).
+    $text = bw_dedup_sections($text);
 
     $text = preg_replace('/\n{4,}/', "\n\n\n", $text);
     return trim($text);

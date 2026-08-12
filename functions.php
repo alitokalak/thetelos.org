@@ -1123,26 +1123,23 @@ function content(  $limit  ) {
 // Reading Time
 // -----------------------------------------------------
 function mediumish_estimated_reading_time() {
+    /* TEK KANONİK KAYNAK: okuma süresi iki ayrı yerde (bu fonksiyon +
+       thetelos_post_reading_time) hesaplanıyordu. Bu fonksiyon GLOBAL post'u
+       kullanıyordu; bir related-posts / döngü içinde global post başka bir
+       yazıya kaydığında sayfada aynı yazı için farklı süreler görünebiliyordu
+       (ör. gövdede 23 dk, bir kartta 35 dk). Artık her iki yol da AYNI
+       fonksiyondan ve o anki döngü post'unun ID'sinden hesaplıyor. */
+    if ( function_exists( 'thetelos_post_reading_time' ) ) {
+        return thetelos_post_reading_time( get_the_ID() );
+    }
     $post = get_post();
     $content = strip_tags( $post->post_content );
     $words = str_word_count( $content );
-    // Count the number of Chinese characters
-    preg_match_all( '/[\\x{4e00}-\\x{9fa5}]/u', $content, $matches );
-    $chinese_characters = count( $matches[0] );
-    // If the content contains Chinese characters
-    if ( $chinese_characters > 0 ) {
-        $minutes = floor( $chinese_characters / 500 );
-        $seconds = floor( $chinese_characters % 500 / (500 / 60) );
-    } else {
-        $minutes = floor( $words / 295 );
-        $seconds = floor( $words % 295 / (295 / 60) );
-    }
-    if ( 1 <= $minutes ) {
-        $estimated_time = $minutes . ' ' . esc_attr__( 'min read', 'mediumish' );
-    } else {
-        $estimated_time = $seconds . ' ' . esc_attr__( 'sec read', 'mediumish' );
-    }
-    return $estimated_time;
+    $minutes = floor( $words / 295 );
+    $seconds = floor( $words % 295 / (295 / 60) );
+    return ( 1 <= $minutes )
+        ? $minutes . ' ' . esc_attr__( 'min read', 'mediumish' )
+        : $seconds . ' ' . esc_attr__( 'sec read', 'mediumish' );
 }
 
 // -----------------------------------------------------
