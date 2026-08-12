@@ -80,18 +80,20 @@ function tv_settings() {
  * Doğrulama çağrıları üretim çağrılarından farklıdır: kısa, deterministik
  * (temperature 0) ve JSON döndürmesi beklenir. Uzun akış mantığına gerek yok.
  */
-function tv_ask($prompt, $max_tokens = 700, $timeout = 90, $provider = null) {
+function tv_ask($prompt, $max_tokens = 700, $timeout = 90, $provider = null, $model = '') {
     /* SAĞLAYICI: VARSAYILAN DEEPSEEK (ucuz). Claude yalnızca AÇIKÇA istenirse
        ($provider='anthropic') — maliyet kontrolü için. Böylece "Denetimi Başlat"
        Claude kredisini kazara yakmaz. Claude seçildiyse ve başarısız olursa yine
-       DeepSeek'e düşülür; denetim hiç durmaz. */
+       DeepSeek'e düşülür; denetim hiç durmaz.
+       $model: anthropic için model override (üretimde Haiku/Sonnet seçimi). Boşsa
+       hızlı model (Haiku) — kısa denetim/yoklama çağrıları için. */
     if ($provider === null) $provider = tv_settings()['provider'] ?? 'deepseek';
     if ($provider === 'anthropic') {
         require_once __DIR__ . '/_anthropic.php';
         if (tls_anthropic_ready()) {
             $r = tls_claude('', $prompt, [
-                'model'       => tls_claude_fast_model(),   // config'deki model 404; geçerli Haiku
-                'max_tokens'  => min(4000, max(500, (int) $max_tokens)),
+                'model'       => $model !== '' ? $model : tls_claude_fast_model(),
+                'max_tokens'  => min(8000, max(500, (int) $max_tokens)),
                 'temperature' => 0,
                 'timeout'     => $timeout,
                 'retries'     => 3,

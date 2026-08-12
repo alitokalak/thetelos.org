@@ -318,6 +318,8 @@ You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in ano
 
 ABSOLUTE RULES (a violation is worse than a short article):
 - The length must follow the SOURCES. If the source material is thin, write a SHORT article — do NOT expand it into a long essay by adding plausible-sounding claims the sources do not support. A confident-sounding paragraph you cannot trace to the sources is FABRICATION, even if it "sounds right" for this author or period.
+- NO PADDING, NO REPETITION. Make each point ONCE. Do NOT restate the same idea under a different heading, and do NOT split one idea across several sections to seem longer. A short work (a single sermon, a brief essay, a poem) gets a SHORT article — never inflate it. If you catch yourself rephrasing something you already said, stop and end the article instead.
+- Each ### section must cover a DISTINCT aspect. If you do not have distinct, sourced material for a section, omit that section entirely rather than repeat earlier content under a new title.
 - Every specific claim about THIS work must be supported by the source material. If the sources do not say it, do not assert it.
 - NEVER invent or assert: quotations, chapter titles, chapter counts, a chapter-by-chapter structure, specific plot events, character names, precise dates, or statistics that are not in the sources.
 - Do NOT quote the book. No block quotes, no invented quotations, at all.
@@ -445,7 +447,9 @@ function tls_info_generate($book, $author, $opts = []) {
     }
 
     $prompt = tls_info_prompt($book, $author, $dos['text']);
-    $r = tv_ask($prompt, 8000, 240, $provider);
+    // Anthropic seçiliyse ana makaleyi istenen Claude modeliyle yaz (Haiku/Sonnet).
+    $cmodel = ($provider === 'anthropic') ? (string) ($opts['model'] ?? '') : '';
+    $r = tv_ask($prompt, 8000, 240, $provider, $cmodel);
     if ($on_beat) $on_beat();
     $gen_prov = $provider;
     if (empty($r['ok']) || trim((string) $r['text']) === '') {
@@ -465,9 +469,11 @@ function tls_info_generate($book, $author, $opts = []) {
         }
     }
 
-    // DeepSeek tek seferde ~1000-1500 kelimede duruyor → 2-3 kademede derinleştir.
-    // Derinleştirme, ana metni üreten sağlayıcıyla (birincil ya da yedek) sürer.
-    $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $gen_prov, $on_beat, 2);
+    // Derinleştirme: Claude tek çağrıda tam ve dengeli yazar → genişletme YOK
+    // (çok kademeli "devam" Einstein/Luther'de tekrar+şişmeye yol açıyordu).
+    // DeepSeek/Gemini kısa kesince en fazla 1 kademe eklenir; tavan düşük.
+    $passes = ($gen_prov === 'anthropic') ? 0 : 1;
+    $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $gen_prov, $on_beat, $passes);
 
     /* ── HAKEM: kaynağa-sadakat denetimi (kademeli: Gemini → şüphede Claude) ──
        BAĞIMSIZ hakem, üretilen metni KAYNAKLARLA kıyaslar. "fabricated" derse
@@ -505,7 +511,7 @@ function tls_info_generate($book, $author, $opts = []) {
 function tls_info_expand($book, $author, $dossier, $md, $provider, $on_beat, $passes = 2) {
     if (trim((string) $dossier) === '') return $md;   // KAYNAK YOKSA genişletme yok (uydurma freni)
     for ($i = 0; $i < $passes; $i++) {
-        if (str_word_count(strip_tags(bw_md2html($md))) > 3800) break;   // yeterince uzun
+        if (str_word_count(strip_tags(bw_md2html($md))) > 2200) break;   // yeterince uzun (şişme freni)
         $r = tv_ask(tls_info_continue_prompt($book, $author, $dossier, $md), 6000, 200, $provider);
         if ($on_beat) $on_beat();
         $t = !empty($r['ok']) ? trim((string) $r['text']) : '';

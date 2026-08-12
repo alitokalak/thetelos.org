@@ -572,9 +572,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        yazar. Kaynak yoksa uydurmaz → yer tutucu/atla. */
     if ($type === 'info') {
         require_once __DIR__ . '/_info.php';
+        require_once __DIR__ . '/_anthropic.php';   // model id yardımcıları
         bw_touch_hb($batch_file, $idx);
+        // Anthropic seçiliyse ana makaleyi yazacak Claude modeli (haiku/sonnet).
+        $info_cmodel = ($api_provider === 'anthropic')
+            ? (($claude_model === 'haiku') ? tls_claude_fast_model() : tls_claude_quality_model())
+            : '';
         $ir = tls_info_generate($search_book, $author, [
             'provider' => in_array($api_provider, ['anthropic', 'gemini'], true) ? $api_provider : 'deepseek',
+            'model'    => $info_cmodel,
             'referee'  => (($batch['referee'] ?? '1') !== '0'),   // kademeli hakem (Gemini→Claude)
             'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
         ]);
