@@ -301,9 +301,10 @@ let activeModel    = 'claude-haiku-4-5-20251001';
 const subGroup = document.getElementById('api-sub-anthropic');
 
 function updateActiveLabel() {
-  const label = activeProvider === 'deepseek'
-    ? 'deepseek-chat'
-    : document.querySelector('.api-sub-btn.active')?.dataset.label || 'haiku';
+  let label;
+  if (activeProvider === 'deepseek')      label = 'deepseek-chat';
+  else if (activeProvider === 'gemini')   label = 'gemini-2.5-flash';
+  else label = document.querySelector('.api-sub-btn.active')?.dataset.label || 'haiku';
   document.getElementById('api-active-label').textContent = label;
 }
 
@@ -479,7 +480,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   document.getElementById('single-result').style.display = '';
   document.getElementById('gen-stats').innerHTML = '';
   preview.innerHTML =
-    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${isDeepSeek ? `DeepSeek içerik üretiyor (Part 1/${parts})` : 'Claude içerik üretiyor'}...</span></div>`;
+    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${isDeepSeek ? `DeepSeek içerik üretiyor (Part 1/${parts})` : (activeProvider === 'gemini' ? 'Gemini içerik üretiyor' : 'Claude içerik üretiyor')}...</span></div>`;
   document.getElementById('cover-card').style.display = 'none';
 
   const baseParams = {

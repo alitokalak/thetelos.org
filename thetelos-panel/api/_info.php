@@ -361,7 +361,8 @@ TXT;
      'words'=>int, 'sources'=>[...], 'dossier'=>string, 'error'=>string ]
    provider: 'deepseek' (varsayılan, ucuz) | 'anthropic' */
 function tls_info_generate($book, $author, $opts = []) {
-    $provider = ($opts['provider'] ?? 'deepseek') === 'anthropic' ? 'anthropic' : 'deepseek';
+    $pv = $opts['provider'] ?? 'deepseek';
+    $provider = in_array($pv, ['anthropic', 'gemini'], true) ? $pv : 'deepseek';
     $on_beat  = $opts['on_beat'] ?? null;
 
     // md → gövde html + kelime (H1'i at; tema başlığı zaten gösteriyor).

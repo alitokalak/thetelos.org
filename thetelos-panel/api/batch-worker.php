@@ -574,7 +574,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         require_once __DIR__ . '/_info.php';
         bw_touch_hb($batch_file, $idx);
         $ir = tls_info_generate($search_book, $author, [
-            'provider' => ($api_provider === 'anthropic' ? 'anthropic' : 'deepseek'),
+            'provider' => in_array($api_provider, ['anthropic', 'gemini'], true) ? $api_provider : 'deepseek',
             'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
         ]);
         if (!empty($ir['insufficient'])) {
@@ -713,6 +713,23 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 bw_touch_hb($batch_file, $idx);
                 if (!empty($cres['ok'])) { $piece = (string) $cres['text']; $cerr = ''; }
                 else { $cerr = 'Claude: ' . ($cres['error'] ?? 'boş yanıt'); $raw_tail = $cerr; }
+            } elseif ($api_provider === 'gemini') {
+                /* ── GEMINI ile ÜRETİM (ucuz + hızlı alternatif) ───────────
+                   Bloklu çağrı; canlılık için on_beat ile heartbeat tazelenir.
+                   2.5-flash düşünen model → istemci varsayılan thinkingBudget=0
+                   ile düşünmeyi kapatır (maliyet). Yoklama/meta yine DeepSeek. */
+                require_once __DIR__ . '/_gemini.php';
+                bw_touch_hb($batch_file, $idx);
+                $gres = tls_gemini('', $pr, [
+                    'max_tokens'  => 16000,
+                    'temperature' => 0.4,
+                    'timeout'     => 240,
+                    'retries'     => 1,            // dış döngü zaten 3 kez deniyor
+                    'on_beat'     => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+                ]);
+                bw_touch_hb($batch_file, $idx);
+                if (!empty($gres['ok'])) { $piece = (string) $gres['text']; $cerr = ''; }
+                else { $cerr = 'Gemini: ' . ($gres['error'] ?? 'boş yanıt'); $raw_tail = $cerr; }
             } else {
             $ch = curl_init(DEEPSEEK_API_URL);
             curl_setopt_array($ch, [
@@ -756,7 +773,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             if ($k === 1) {
                 // İlk parça hiç gelmedi → kitap üretilemedi. Sağlayıcı adını
                 // DOĞRU yaz (Claude seçiliyken "DeepSeek" demek yanıltıyordu).
-                $prov = ($api_provider === 'anthropic') ? 'Claude' : 'DeepSeek';
+                $prov = ($api_provider === 'anthropic') ? 'Claude' : (($api_provider === 'gemini') ? 'Gemini' : 'DeepSeek');
                 $errj = json_decode($raw_tail, true);
                 $gen_error = $cerr
                     ? "$prov Part {$k} bağlantı hatası (3 deneme): {$cerr}"

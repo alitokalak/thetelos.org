@@ -72,6 +72,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <button class="api-btn" data-provider="anthropic">
           <span class="api-dot anthropic"></span> Anthropic
         </button>
+        <button class="api-btn" data-provider="gemini">
+          <span class="api-dot gemini"></span> Gemini
+        </button>
         <button class="api-btn active" data-provider="deepseek">
           <span class="api-dot deepseek"></span> DeepSeek
         </button>

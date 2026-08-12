@@ -99,6 +99,18 @@ function tv_ask($prompt, $max_tokens = 700, $timeout = 90, $provider = null) {
             if (!empty($r['ok'])) return ['ok' => true, 'text' => $r['text']];
             // Claude başarısız → DeepSeek yedeğine düş (aşağıda).
         }
+    } elseif ($provider === 'gemini') {
+        require_once __DIR__ . '/_gemini.php';
+        if (tls_gemini_ready()) {
+            $r = tls_gemini('', $prompt, [
+                'max_tokens'  => min(24000, max(500, (int) $max_tokens)),
+                'temperature' => 0,
+                'timeout'     => $timeout,
+                'retries'     => 3,
+            ]);
+            if (!empty($r['ok'])) return ['ok' => true, 'text' => $r['text']];
+            // Gemini başarısız → DeepSeek yedeğine düş (aşağıda).
+        }
     }
 
     if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) {

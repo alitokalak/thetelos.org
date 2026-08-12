@@ -378,6 +378,40 @@ $beat = function () use (&$last_ping, &$first_token, $req_start, $FIRST_TOKEN_LI
     return 0;
 };
 
+/* ── GEMINI ile TEKLI ÜRETİM ─────────────────────────────────────────────
+   Gemini streaming değil bloklu istenir; tek seferde tam metni alıp SSE
+   chunk+done ile arayüze veririz. $beat nabzı canlı tutar (Cloudflare 100 sn
+   kesmesin) ve ilk-jeton gözcüsü ölü isteği kesebilir — DeepSeek ile aynı. */
+if ($api_provider === 'gemini') {
+    require_once __DIR__ . '/_gemini.php';
+    $gr = tls_gemini('', $prompt, [
+        'max_tokens'  => $max_tokens,
+        'temperature' => 0.4,
+        'timeout'     => 240,
+        'retries'     => 2,
+        'on_beat'     => $beat,
+    ]);
+    if (empty($gr['ok']) || trim((string) $gr['text']) === '') {
+        sse('error', ['error' => 'Gemini: ' . ($gr['error'] ?? 'boş yanıt')]);
+        exit;
+    }
+    $full_content  = trim((string) $gr['text']);
+    sse('chunk', ['text' => $full_content]);
+    $u             = $gr['usage'] ?? [];
+    $input_tokens  = (int) ($u['promptTokenCount']     ?? 0);
+    $output_tokens = (int) ($u['candidatesTokenCount'] ?? 0);
+    $stop_reason   = (string) ($gr['stop_reason'] ?? '');
+    $refused = (bool) preg_match('/^\s*[*_>#\-]*\s*cannot verify\b/i', ltrim(strip_tags($full_content)));
+    sse('done', [
+        'word_count'    => str_word_count(strip_tags($full_content)),
+        'input_tokens'  => $input_tokens,
+        'output_tokens' => $output_tokens,
+        'stop_reason'   => $stop_reason,
+        'refused'       => $refused,
+    ]);
+    exit;
+}
+
 $ch = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch, [
     CURLOPT_POST          => true,
