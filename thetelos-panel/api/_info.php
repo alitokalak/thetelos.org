@@ -220,7 +220,7 @@ function tv_wiki_extract_by_title($lang, $title) {
    (çağıran taraf yer tutucu/kısa not yapar).
    Dönüş: ['have'=>bool,'text'=>string,'sources'=>[...],'year'=>?,'subjects'=>[]] */
 function tls_info_dossier($book, $author) {
-    $parts = []; $sources = []; $year = null; $subjects = [];
+    $parts = []; $sources = []; $year = null; $subjects = []; $years = [];
     $wiki_ok = false;
 
     $wk = tv_wikipedia($book, $author);
@@ -252,7 +252,7 @@ function tls_info_dossier($book, $author) {
         $sources[] = 'Google Books';
         $parts[] = "[Google Books — publisher description]\n" . mb_substr($g['desc'], 0, 4000, 'UTF-8');
     }
-    if (!empty($g['year']))     $year = $g['year'];
+    if (!empty($g['year']))     $years[] = (int) $g['year'];
     if (!empty($g['subjects'])) $subjects = $g['subjects'];
 
     $o = tv_openlibrary_desc($book, $author);
@@ -261,7 +261,7 @@ function tls_info_dossier($book, $author) {
             $sources[] = 'Open Library';
             $parts[] = "[Open Library — description]\n" . mb_substr($o['desc'], 0, 3000, 'UTF-8');
         }
-        if ($year === null && !empty($o['year'])) $year = $o['year'];
+        if (!empty($o['year'])) $years[] = (int) $o['year'];
         if (!$subjects && !empty($o['subjects'])) $subjects = $o['subjects'];
     }
 
@@ -271,6 +271,9 @@ function tls_info_dossier($book, $author) {
         $parts[] = "[Wikidata — structured facts]\n" . $wd['facts'];
     }
 
+    // Birden çok kaynak farklı yıl verebilir (Google Books çoğu zaman YENİ
+    // baskının yılını verir → 2018 gibi). Orijinal yayın = EN ERKEN yıl.
+    if ($years) $year = min($years);
     $meta = [];
     if ($year)     $meta[] = "First published: {$year}";
     if ($subjects) $meta[] = 'Subjects: ' . implode(', ', array_slice($subjects, 0, 12));
