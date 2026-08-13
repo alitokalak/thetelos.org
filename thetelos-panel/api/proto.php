@@ -40,18 +40,18 @@ $sys    = $_GET['sys'] ?? 'both';
 if ($book === '') { sse('error', ['error' => 'Kitap adı gerekli']); exit; }
 
 /* ── Ham metin indir (JSON değil) — retry'li ───────────────────────────── */
-function proto_fetch_text($url, $max_bytes = 3000000, $tries = 3) {
+function proto_fetch_text($url, $tries = 3) {
     for ($i = 1; $i <= $tries; $i++) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 40, CURLOPT_CONNECTTIMEOUT => 12,
-            CURLOPT_FOLLOWLOCATION => true, CURLOPT_HTTPHEADER => ['User-Agent: thetelos.org/1.0 (research prototype)'],
-            CURLOPT_RANGE => '0-' . $max_bytes,
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45, CURLOPT_CONNECTTIMEOUT => 12,
+            CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5,
+            CURLOPT_HTTPHEADER => ['User-Agent: Mozilla/5.0 (compatible; thetelos-research/1.0)', 'Accept: text/plain,*/*'],
         ]);
         $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch);
         curl_close($ch);
-        if (($c === 200 || $c === 206) && $r !== false && $r !== '') return (string) $r;
-        if ($i < $tries && ($c === 429 || $c >= 500 || $c === 0 || $err !== '')) { usleep(400000 * $i); continue; }
+        if ($c === 200 && $r !== false && $r !== '') return (string) $r;
+        if ($i < $tries && ($c === 429 || $c >= 500 || $c === 0 || $err !== '')) { usleep(500000 * $i); continue; }
         return '';
     }
     return '';
@@ -71,20 +71,31 @@ function proto_gutenberg($book, $author) {
             if ($surname !== '' && mb_stripos((string) ($a['name'] ?? ''), $surname) !== false) { $ok_auth = true; break; }
         }
         if (!$ok_auth) continue;
-        // text/plain formatını bul (utf-8 tercih).
-        $fmts = $r['formats'] ?? [];
-        $url = '';
-        foreach ($fmts as $mime => $u) {
-            if (stripos($mime, 'text/plain') !== false && stripos((string) $u, '.zip') === false) {
-                if (stripos($mime, 'utf-8') !== false) { $url = $u; break; }
-                if ($url === '') $url = $u;
-            }
+
+        // TAM METİN için aday URL'ler: önce KANONİK cache URL (en güvenilir,
+        // tüm kitap), sonra ebook .txt, sonra gutendex'in verdiği text/plain'ler.
+        // Hepsini dener, EN BÜYÜK metni seçer (kısa/robot sayfası eleme).
+        $id = (int) ($r['id'] ?? 0);
+        $cands = [];
+        if ($id) {
+            $cands[] = "https://www.gutenberg.org/cache/epub/{$id}/pg{$id}.txt";
+            $cands[] = "https://www.gutenberg.org/files/{$id}/{$id}-0.txt";
+            $cands[] = "https://www.gutenberg.org/ebooks/{$id}.txt.utf-8";
         }
-        if ($url === '') continue;
-        $txt = proto_fetch_text($url);
-        if (mb_strlen($txt) < 2000) continue;
-        return ['found' => true, 'url' => $url, 'title' => (string) ($r['title'] ?? $book),
-                'source' => 'Project Gutenberg', 'text' => $txt];
+        foreach (($r['formats'] ?? []) as $mime => $u) {
+            if (stripos($mime, 'text/plain') !== false && stripos((string) $u, '.zip') === false) $cands[] = (string) $u;
+        }
+        $cands = array_values(array_unique($cands));
+
+        $best = ''; $best_url = '';
+        foreach ($cands as $u) {
+            $t = proto_fetch_text($u);
+            if (mb_strlen($t) > mb_strlen($best)) { $best = $t; $best_url = $u; }
+            if (mb_strlen($best) > 150000) break;   // yeterince büyük → dur
+        }
+        if (mb_strlen($best) < 5000) continue;      // bu adayda düzgün tam metin yok
+        return ['found' => true, 'url' => $best_url, 'title' => (string) ($r['title'] ?? $book),
+                'source' => 'Project Gutenberg', 'text' => $best, 'raw_len' => mb_strlen($best)];
     }
     return ['found' => false];
 }
@@ -106,7 +117,7 @@ function proto_clean_gutenberg($t) {
 /* ── Bölüm başlıklarını tespit et (gösterim için) ──────────────────────── */
 function proto_detect_chapters($t) {
     $heads = [];
-    if (preg_match_all('/^\s*(BOOK|CHAPTER|Book|Chapter)\s+([IVXLCDM0-9]+)[.\s:—-]*([^\n]{0,80})/m', $t, $m, PREG_SET_ORDER)) {
+    if (preg_match_all('/^\s*(BOOK|CHAPTER|SECTION|PART|Book|Chapter|Section|Part)\s+([IVXLCDM0-9]+)[.\s:—-]*([^\n]{0,80})/m', $t, $m, PREG_SET_ORDER)) {
         foreach ($m as $x) {
             $h = trim($x[1] . ' ' . $x[2] . (trim($x[3]) !== '' ? ' — ' . trim($x[3]) : ''));
             $heads[] = mb_substr($h, 0, 90);
@@ -153,7 +164,8 @@ if ($sys === 'both' || $sys === 'B') {
         $text = proto_clean_gutenberg($src['text']);
         $words = str_word_count(strip_tags($text));
         $chapters = proto_detect_chapters($text);
-        sse('status', ['sys' => 'B', 'msg' => 'Metin alındı: ' . number_format($words) . ' kelime · kaynak: ' . $src['source'] . ' · ' . count($chapters) . ' bölüm']);
+        $rawkb = round(($src['raw_len'] ?? mb_strlen($src['text'])) / 1024);
+        sse('status', ['sys' => 'B', 'msg' => 'Tam metin alındı: ' . number_format($words) . ' kelime (' . $rawkb . ' KB ham) · kaynak: ' . $src['source'] . ' · ' . count($chapters) . ' bölüm/başlık']);
 
         $chunks = proto_chunks($text);
         $notes = [];
