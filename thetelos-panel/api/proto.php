@@ -39,17 +39,18 @@ $author = trim($_GET['author'] ?? '');
 $sys    = $_GET['sys'] ?? 'both';
 if ($book === '') { sse('error', ['error' => 'Kitap adı gerekli']); exit; }
 
-/* ── Ham metin indir (JSON değil) — retry'li ───────────────────────────── */
-function proto_fetch_text($url, $tries = 3) {
+/* ── Ham metin indir (JSON değil) — retry'li; $info'ya code/bytes/err yazar ─ */
+function proto_fetch_text($url, $tries = 3, &$info = null) {
     for ($i = 1; $i <= $tries; $i++) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 45, CURLOPT_CONNECTTIMEOUT => 12,
-            CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5,
+            CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5, CURLOPT_ENCODING => '',
             CURLOPT_HTTPHEADER => ['User-Agent: Mozilla/5.0 (compatible; thetelos-research/1.0)', 'Accept: text/plain,*/*'],
         ]);
         $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); $err = curl_error($ch);
         curl_close($ch);
+        $info = ['code' => $c, 'bytes' => strlen((string) $r), 'err' => $err];
         if ($c === 200 && $r !== false && $r !== '') return (string) $r;
         if ($i < $tries && ($c === 429 || $c >= 500 || $c === 0 || $err !== '')) { usleep(500000 * $i); continue; }
         return '';
@@ -64,6 +65,7 @@ function proto_gutenberg($book, $author) {
     $q = trim($book . ' ' . $author);
     $j = tls_fetch_json('https://gutendex.com/books/?search=' . rawurlencode($q), 'thetelos.org/1.0', 20, 3);
     $results = $j['results'] ?? [];
+    $debug = ['gutendex_results' => count($results), 'tried' => []];
     foreach ($results as $r) {
         // Yazar teyidi (yanlış kitabı almamak için).
         $ok_auth = ($surname === '');
@@ -87,17 +89,21 @@ function proto_gutenberg($book, $author) {
         }
         $cands = array_values(array_unique($cands));
 
+        $debug['match'] = ['id' => $id, 'title' => (string) ($r['title'] ?? '')];
         $best = ''; $best_url = '';
         foreach ($cands as $u) {
-            $t = proto_fetch_text($u);
+            $inf = null;
+            $t = proto_fetch_text($u, 3, $inf);
+            $debug['tried'][] = ['url' => $u, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0, 'err' => $inf['err'] ?? ''];
             if (mb_strlen($t) > mb_strlen($best)) { $best = $t; $best_url = $u; }
             if (mb_strlen($best) > 150000) break;   // yeterince büyük → dur
         }
-        if (mb_strlen($best) < 5000) continue;      // bu adayda düzgün tam metin yok
+        $debug['sample'] = mb_substr(trim($best), 0, 240);
+        if (mb_strlen($best) < 5000) { $debug['note'] = 'en büyük aday < 5000 karakter'; continue; }
         return ['found' => true, 'url' => $best_url, 'title' => (string) ($r['title'] ?? $book),
-                'source' => 'Project Gutenberg', 'text' => $best, 'raw_len' => mb_strlen($best)];
+                'source' => 'Project Gutenberg', 'text' => $best, 'raw_len' => mb_strlen($best), 'debug' => $debug];
     }
-    return ['found' => false];
+    return ['found' => false, 'debug' => $debug];
 }
 
 /* ── Gutenberg başlık/altbilgisini temizle ─────────────────────────────── */
@@ -153,6 +159,7 @@ if ($sys === 'both' || $sys === 'B') {
     sse('status', ['sys' => 'B', 'msg' => 'Gerçek tam metin aranıyor (Project Gutenberg)…']);
     $src = proto_gutenberg($book, $author);
     $beat();
+    if (!empty($src['debug'])) sse('debug', $src['debug']);
 
     if (empty($src['found'])) {
         sse('resultB', [

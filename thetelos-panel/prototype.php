@@ -102,6 +102,15 @@ $('#run').onclick = () => {
 
   es.addEventListener('status', e => { const d=JSON.parse(e.data); logln('['+(d.sys||'-')+'] '+d.msg); });
 
+  es.addEventListener('debug', e => {
+    const d=JSON.parse(e.data);
+    logln('— GUTENBERG DEBUG —');
+    logln('  gutendex sonuç: '+d.gutendex_results+(d.match?(' · eşleşen: #'+d.match.id+' '+d.match.title):''));
+    (d.tried||[]).forEach(t => logln('  ['+t.code+'] '+t.bytes+' bayt  '+t.url+(t.err?(' ERR:'+t.err):'')));
+    if(d.note) logln('  not: '+d.note);
+    if(d.sample) logln('  örnek: '+d.sample.slice(0,160));
+  });
+
   es.addEventListener('resultB', e => {
     const d=JSON.parse(e.data);
     if(d.state==='SOURCE_NOT_FOUND'){ $('#sB').innerHTML='<div class="snf">SOURCE_NOT_FOUND<br><span style="font-weight:400;font-size:13px">'+d.msg+'</span></div>'; $('#mB').innerHTML='<b>süre:</b> '+d.time+'s'; return; }
