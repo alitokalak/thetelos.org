@@ -78,28 +78,50 @@ function proto_gutenberg($book, $author) {
         // tüm kitap), sonra ebook .txt, sonra gutendex'in verdiği text/plain'ler.
         // Hepsini dener, EN BÜYÜK metni seçer (kısa/robot sayfası eleme).
         $id = (int) ($r['id'] ?? 0);
+        // README bir kitap DEĞİL; asla aday sayma (#28801'de tek açılan oydu →
+        // 755 kelime çöp özet). Gerçek metni bul.
+        $is_book = fn($u) => stripos((string) $u, 'readme') === false && stripos((string) $u, '.zip') === false;
         $cands = [];
+        foreach (($r['formats'] ?? []) as $mime => $u) {
+            if (stripos($mime, 'text/plain') !== false && $is_book($u)) $cands[] = (string) $u;
+        }
         if ($id) {
             $cands[] = "https://www.gutenberg.org/cache/epub/{$id}/pg{$id}.txt";
-            $cands[] = "https://www.gutenberg.org/files/{$id}/{$id}-0.txt";
+            foreach (['-0.txt', '-8.txt', '.txt'] as $suf) $cands[] = "https://www.gutenberg.org/files/{$id}/{$id}{$suf}";
             $cands[] = "https://www.gutenberg.org/ebooks/{$id}.txt.utf-8";
         }
-        foreach (($r['formats'] ?? []) as $mime => $u) {
-            if (stripos($mime, 'text/plain') !== false && stripos((string) $u, '.zip') === false) $cands[] = (string) $u;
-        }
-        $cands = array_values(array_unique($cands));
+        $cands = array_values(array_unique(array_filter($cands, $is_book)));
 
         $debug['match'] = ['id' => $id, 'title' => (string) ($r['title'] ?? '')];
         $best = ''; $best_url = '';
-        foreach ($cands as $u) {
+        $try_url = function ($u) use (&$best, &$best_url, &$debug, $is_book) {
+            if (!$is_book($u)) return;
             $inf = null;
-            $t = proto_fetch_text($u, 3, $inf);
+            $t = proto_fetch_text($u, 2, $inf);
             $debug['tried'][] = ['url' => $u, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0, 'err' => $inf['err'] ?? ''];
             if (mb_strlen($t) > mb_strlen($best)) { $best = $t; $best_url = $u; }
-            if (mb_strlen($best) > 150000) break;   // yeterince büyük → dur
+        };
+        foreach ($cands as $u) { $try_url($u); if (mb_strlen($best) > 150000) break; }
+
+        // FALLBACK: standart adlar 404 ise /files/{id}/ dizin listesini ayrıştır
+        // ve README dışındaki en büyük .txt'yi al (eski/standart-dışı kayıtlar).
+        if (mb_strlen($best) < 20000 && $id) {
+            $dir = "https://www.gutenberg.org/files/{$id}/";
+            $listing = proto_fetch_text($dir, 2);
+            if ($listing !== '' && preg_match_all('/href="([^"?]+\.txt)"/i', $listing, $mm)) {
+                $seen = [];
+                foreach ($mm[1] as $href) {
+                    $fn = basename($href);
+                    if (!$is_book($fn) || isset($seen[$fn])) continue;
+                    $seen[$fn] = 1;
+                    $try_url($dir . $fn);
+                    if (mb_strlen($best) > 150000) break;
+                }
+            }
         }
+
         $debug['sample'] = mb_substr(trim($best), 0, 240);
-        if (mb_strlen($best) < 5000) { $debug['note'] = 'en büyük aday < 5000 karakter'; continue; }
+        if (mb_strlen($best) < 5000) { $debug['note'] = 'gerçek tam metin bulunamadı (yalnız README/404)'; continue; }
         return ['found' => true, 'url' => $best_url, 'title' => (string) ($r['title'] ?? $book),
                 'source' => 'Project Gutenberg', 'text' => $best, 'raw_len' => mb_strlen($best), 'debug' => $debug];
     }
