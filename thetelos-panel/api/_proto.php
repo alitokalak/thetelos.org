@@ -169,19 +169,61 @@ function proto_systemA_prompt($book, $author) {
         . "covering its structure, main arguments, key concepts, themes, and conclusions. Aim for depth.";
 }
 
-/* ── Metin üretimi — GEMINI ile (bloklu, güvenilir) ────────────────────────
-   NEDEN GEMINI: sunucudan api.deepseek.com'a bağlantı "connection timed out"
-   (IP-throttle/rota) veriyordu; ayrıca DeepSeek kalitesine güvenmiyoruz. Gemini
-   çalışıyor, ucuz ve daha iyi. $ping (varsa) tls_gemini'nin on_beat'iyle
-   uzun çağrı boyunca job'ı canlı tutar. */
+/* ── OpenRouter anahtarı (DeepSeek'i erişilebilir kapıdan kullanmak için) ── */
+function proto_openrouter_key() {
+    foreach (['OPENROUTER_KEY', 'OPENROUTER_API_KEY', 'OPENROUTER'] as $c) {
+        if (defined($c) && constant($c)) return (string) constant($c);
+    }
+    return '';
+}
+
+/* ── OpenRouter üzerinden DeepSeek (bloklu, OpenAI-uyumlu) ──────────────────
+   Sunucu api.deepseek.com'a (AWS IP) bağlanamıyor; OpenRouter (Cloudflare,
+   erişilebilir) DeepSeek'e bizim yerimize gidip cevabı getirir. Model varsayılan
+   deepseek/deepseek-chat — DeepSeek'in ucuz V3'ü. */
+function proto_openrouter($prompt, $max_tokens, &$diag = null) {
+    $key = proto_openrouter_key();
+    $model = (defined('OPENROUTER_MODEL') && OPENROUTER_MODEL) ? OPENROUTER_MODEL : 'deepseek/deepseek-chat';
+    $body = json_encode(['model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)),
+        'temperature' => 0.3, 'messages' => [['role' => 'user', 'content' => $prompt]]], JSON_UNESCAPED_UNICODE);
+    for ($try = 1; $try <= 3; $try++) {
+        $ch = curl_init('https://openrouter.ai/api/v1/chat/completions');
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 20, CURLOPT_TIMEOUT => 280,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $key,
+                'HTTP-Referer: https://thetelos.org', 'X-Title: The Telos'],
+            CURLOPT_POSTFIELDS => $body,
+        ]);
+        $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
+        curl_close($ch);
+        $j = json_decode((string) $r, true);
+        $txt = trim((string) ($j['choices'][0]['message']['content'] ?? ''));
+        if ($txt !== '') { $diag = 'openrouter[' . $model . '] http=' . $code . ' chars=' . mb_strlen($txt); return $txt; }
+        if ($try < 3 && ($code === 429 || $code >= 500 || $code === 0 || $err !== '')) { sleep(2 * $try); continue; }
+        $msg = $j['error']['message'] ?? ($err ?: 'boş');
+        $diag = 'openrouter[' . $model . '] http=' . $code . ' err=' . mb_substr((string) $msg, 0, 160);
+        return '';
+    }
+    return '';
+}
+
+/* ── Metin üretimi — SAĞLAYICI SEÇİMİ ──────────────────────────────────────
+   1) OPENROUTER_KEY varsa → DeepSeek (OpenRouter üzerinden, ucuz + erişilebilir)
+   2) yoksa → Gemini (çalışan yedek)
+   api.deepseek.com'a DOĞRUDAN bağlantı bu sunucuda engelli olduğu için doğrudan
+   DeepSeek kullanılmıyor. */
 function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280, &$diag = null) {
+    if (is_callable($ping)) $ping();   // uzun çağrı öncesi job'ı canlı tut
+    if (proto_openrouter_key() !== '') {
+        $t = proto_openrouter($prompt, $max_tokens, $diag);
+        if ($t !== '') return $t;
+        // OpenRouter başarısızsa Gemini'ye düş (kesinti olmasın).
+    }
     require_once __DIR__ . '/_gemini.php';
-    if (!tls_gemini_ready()) { $diag = 'GEMINI_KEY yok'; return ''; }
+    if (!tls_gemini_ready()) { if (empty($diag)) $diag = 'ne OpenRouter ne Gemini anahtarı var'; return ''; }
     $r = tls_gemini('', $prompt, [
         'max_tokens'  => max(500, min(24000, (int) $max_tokens * 2)),
-        'temperature' => 0.3,
-        'timeout'     => $timeout,
-        'retries'     => 2,
+        'temperature' => 0.3, 'timeout' => $timeout, 'retries' => 2,
         'on_beat'     => is_callable($ping) ? $ping : null,
     ]);
     $diag = 'gemini http=' . ($r['http'] ?? '?') . ' ' . (!empty($r['ok']) ? ('chars=' . mb_strlen((string) $r['text'])) : ('err=' . ($r['error'] ?? '?')));
