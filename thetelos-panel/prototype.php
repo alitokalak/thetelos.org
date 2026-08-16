@@ -88,50 +88,65 @@ const $ = s => document.querySelector(s);
 document.querySelectorAll('.preset').forEach(p => p.onclick = () => {
   $('#book').value = p.dataset.b; $('#author').value = p.dataset.a;
 });
-let es = null;
-function logln(t){ const l=$('#log'); l.style.display='block'; l.textContent += t+'\n'; l.scrollTop=l.scrollHeight; }
+let poll = null, lastLog = 0, shownDebug = false, shownA = false, shownB = false;
+function setLog(lines){ const l=$('#log'); l.style.display='block'; l.textContent = lines.join('\n'); l.scrollTop=l.scrollHeight; }
 
-$('#run').onclick = () => {
+function renderDebug(d){
+  if(!d || shownDebug) return; shownDebug = true;
+  const l=$('#log'); let s='\n— KAYNAK DEBUG —\n';
+  const g=d.gutenberg, a=d.archive;
+  if(g){ s+='Gutenberg: '+g.gutendex_results+' sonuç'+(g.match?(' · #'+g.match.id+' '+g.match.title):'')+'\n';
+    (g.tried||[]).forEach(t=> s+='  ['+t.code+'] '+t.bytes+' bayt '+t.url+'\n'); if(g.note) s+='  '+g.note+'\n'; }
+  if(a){ s+='Archive: '+a.ia_results+' sonuç\n'; (a.tried||[]).forEach(t=> s+='  ['+(t.code||'-')+'] '+(t.bytes||0)+' bayt '+(t.file||t.note||'')+'\n'); }
+  l.textContent += s; l.scrollTop=l.scrollHeight;
+}
+function renderB(d){
+  if(!d || shownB) return; shownB = true;
+  if(d.state==='SOURCE_NOT_FOUND'){ $('#sB').innerHTML='<div class="snf">SOURCE_NOT_FOUND<br><span style="font-weight:400;font-size:13px">'+d.msg+'</span></div>'; $('#mB').textContent='tam metin yok'; return; }
+  let m='<b>kaynak:</b> '+d.source+(d.url?' · <a href="'+d.url+'" target="_blank">metin</a>':'')+'<br>';
+  m+='<b>kitap:</b> '+Number(d.book_words||0).toLocaleString()+' kelime · <b>parça:</b> '+d.chunks+' · <b>tespit edilen bölüm:</b> '+((d.chapters&&d.chapters.length)||0)+'<br>';
+  m+='<b>ÖZET:</b> '+Number(d.summary_words||0).toLocaleString()+' kelime';
+  $('#mB').innerHTML=m;
+  let h=d.summary_html||'(boş)';
+  if(d.chapters&&d.chapters.length) h+='<div class="chapters"><b>Tespit edilen bölümler:</b><br>'+d.chapters.join(' · ')+'</div>';
+  $('#sB').innerHTML=h;
+}
+function renderA(d){
+  if(!d || shownA) return; shownA = true;
+  $('#mA').innerHTML='<b>ÖZET:</b> '+Number(d.summary_words||0).toLocaleString()+' kelime · <span style="color:var(--red)">kaynak yok — doğrulanmadı</span>';
+  $('#sA').innerHTML=d.summary_html||'(boş)';
+}
+
+$('#run').onclick = async () => {
   const book = $('#book').value.trim(); if(!book){ alert('Kitap adı gir'); return; }
   const author=$('#author').value.trim(), sys=$('#sys').value;
   $('#run').disabled=true; $('#log').textContent=''; $('#log').style.display='block';
   $('#mA').textContent='—'; $('#sA').innerHTML=''; $('#mB').textContent='—'; $('#sB').innerHTML='';
-  if(es) es.close();
-  const qs = new URLSearchParams({book,author,lang:$('#lang').value,year:$('#year').value,sys});
-  es = new EventSource('api/proto.php?'+qs.toString());
+  shownDebug=shownA=shownB=false;
+  if(poll){ clearInterval(poll); poll=null; }
 
-  es.addEventListener('status', e => { const d=JSON.parse(e.data); logln('['+(d.sys||'-')+'] '+d.msg); });
+  let id;
+  try {
+    const fd=new FormData(); fd.append('book',book); fd.append('author',author); fd.append('sys',sys);
+    const r=await fetch('api/proto-start.php',{method:'POST',body:fd}); const d=await r.json();
+    if(!d.ok){ setLog(['HATA: '+(d.error||'başlatılamadı')]); $('#run').disabled=false; return; }
+    id=d.id; setLog(['kuyruğa alındı — işleniyor…']);
+  } catch(e){ setLog(['HATA: '+e.message]); $('#run').disabled=false; return; }
 
-  es.addEventListener('debug', e => {
-    const d=JSON.parse(e.data);
-    logln('— GUTENBERG DEBUG —');
-    logln('  gutendex sonuç: '+d.gutendex_results+(d.match?(' · eşleşen: #'+d.match.id+' '+d.match.title):''));
-    (d.tried||[]).forEach(t => logln('  ['+t.code+'] '+t.bytes+' bayt  '+t.url+(t.err?(' ERR:'+t.err):'')));
-    if(d.note) logln('  not: '+d.note);
-    if(d.sample) logln('  örnek: '+d.sample.slice(0,160));
-  });
-
-  es.addEventListener('resultB', e => {
-    const d=JSON.parse(e.data);
-    if(d.state==='SOURCE_NOT_FOUND'){ $('#sB').innerHTML='<div class="snf">SOURCE_NOT_FOUND<br><span style="font-weight:400;font-size:13px">'+d.msg+'</span></div>'; $('#mB').innerHTML='<b>süre:</b> '+d.time+'s'; return; }
-    let m='<b>kaynak:</b> '+d.source+' · <a href="'+d.url+'" target="_blank">metin</a><br>';
-    m+='<b>kitap:</b> '+Number(d.book_words).toLocaleString()+' kelime · <b>parça:</b> '+d.chunks+' · <b>tespit edilen bölüm:</b> '+(d.chapters?d.chapters.length:0)+'<br>';
-    m+='<b>ÖZET:</b> '+Number(d.summary_words).toLocaleString()+' kelime · <b>süre:</b> '+d.time+'s';
-    $('#mB').innerHTML=m;
-    let h=d.summary_html||'';
-    if(d.chapters&&d.chapters.length) h+='<div class="chapters"><b>Tespit edilen bölümler:</b><br>'+d.chapters.join(' · ')+'</div>';
-    $('#sB').innerHTML=h;
-  });
-
-  es.addEventListener('resultA', e => {
-    const d=JSON.parse(e.data);
-    $('#mA').innerHTML='<b>ÖZET:</b> '+Number(d.summary_words).toLocaleString()+' kelime · <b>süre:</b> '+d.time+'s · <span style="color:var(--red)">kaynak yok — doğrulanmadı</span>';
-    $('#sA').innerHTML=d.summary_html||'(boş)';
-  });
-
-  es.addEventListener('error', e => { try{const d=JSON.parse(e.data);logln('HATA: '+d.error);}catch(_){ logln('HATA: bağlantı kesildi'); } });
-  es.addEventListener('done', e => { logln('✔ bitti'); $('#run').disabled=false; es.close(); });
-  es.onerror = () => { logln('⚠ bağlantı kapandı'); $('#run').disabled=false; if(es) es.close(); };
+  poll = setInterval(async () => {
+    try {
+      const r=await fetch('api/proto-status.php?id='+id); const d=await r.json();
+      if(!d.ok){ return; }
+      setLog(d.log||[]);
+      renderDebug(d.debug);
+      if(d.resultB) renderB(d.resultB);
+      if(d.resultA) renderA(d.resultA);
+      if(d.status==='done'){ clearInterval(poll); poll=null; $('#run').disabled=false;
+        const l=$('#log'); l.textContent+='\n✔ bitti'; l.scrollTop=l.scrollHeight;
+        renderDebug(d.debug); renderB(d.resultB); renderA(d.resultA);
+      }
+    } catch(e){ /* geçici — yoklamaya devam */ }
+  }, 2000);
 };
 </script>
 </body>
