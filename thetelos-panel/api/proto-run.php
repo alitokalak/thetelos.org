@@ -21,6 +21,12 @@ header('Content-Type: application/json');
 $file = proto_job_file($_REQUEST['id'] ?? '');
 if ($file === '' || !file_exists($file)) { echo json_encode(['status' => 'no_job']); exit; }
 
+/* TEK WORKER: aynı işe paralel worker'lar çakışıp adımları tekrarlıyordu.
+   Özel (exclusive) non-blocking kilit — alamayan worker hemen çıkar. */
+$lockf = fopen($file . '.lock', 'c');
+if (!$lockf || !flock($lockf, LOCK_EX | LOCK_NB)) { echo json_encode(['status' => 'busy']); exit; }
+
+$ping = function () use ($file) { $j = proto_job_read($file); if ($j) proto_job_write($file, $j); };
 $budget = time() + 45;
 while (time() < $budget) {
     $j = proto_job_read($file);
@@ -55,8 +61,7 @@ while (time() < $budget) {
         if ($ci < $tot) {
             proto_job_log($j, 'Parça ' . ($ci + 1) . '/' . $tot . ' analiz ediliyor (gerçek metinden)…');
             proto_job_write($file, $j);
-            $r = tv_ask(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, 220, 'deepseek');
-            $t = !empty($r['ok']) ? trim($r['text']) : '';
+            $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280);
             $j = proto_job_read($file) ?: $j;
             if ($t !== '' && stripos($t, 'no substantive content') === false) $j['notes'][] = '[Part ' . ($ci + 1) . "]\n" . $t;
             $j['ci'] = $ci + 1;
@@ -71,8 +76,7 @@ while (time() < $budget) {
         } else {
             proto_job_log($j, 'Parça özetleri kapsamlı özete birleştiriliyor…');
             proto_job_write($file, $j);
-            $r = tv_ask(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $j['notes'])), 8000, 280, 'deepseek');
-            $sum = !empty($r['ok']) ? trim($r['text']) : '';
+            $sum = proto_ds(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $j['notes'])), 8000, $ping, 300);
             $html = $sum !== '' ? bw_md2html($sum) : '';
             $j = proto_job_read($file) ?: $j;
             $j['resultB'] = [
@@ -88,8 +92,7 @@ while (time() < $budget) {
     if ($phase === 'systemA') {
         proto_job_log($j, 'Sistem A: başlık → DeepSeek (kaynaksız)…');
         proto_job_write($file, $j);
-        $r = tv_ask(proto_systemA_prompt($j['book'], $j['author']), 6000, 240, 'deepseek');
-        $as = !empty($r['ok']) ? trim($r['text']) : '';
+        $as = proto_ds(proto_systemA_prompt($j['book'], $j['author']), 6000, $ping, 280);
         $ah = $as !== '' ? bw_md2html($as) : '';
         $j = proto_job_read($file) ?: $j;
         $j['resultA'] = ['state' => $as !== '' ? 'OK' : 'ERROR', 'summary_html' => $ah, 'summary_words' => str_word_count(strip_tags($ah))];
@@ -101,9 +104,11 @@ while (time() < $budget) {
     $j['status'] = 'done'; proto_job_write($file, $j); break;
 }
 
-// Bütçe bitti ama iş sürüyorsa halefi çağır (30 sn içinde bir kez).
+// Bütçe bitti ama iş sürüyorsa: ÖNCE kilidi bırak, SONRA halefi çağır
+// (yoksa halef kilidi alamaz). İş bittiyse sadece kilidi bırak.
 $j = proto_job_read($file);
-if ($j && ($j['status'] ?? '') !== 'done') {
-    if (time() - (int) ($j['spawned'] ?? 0) > 25) { $j['spawned'] = time(); proto_job_write($file, $j); proto_spawn($_REQUEST['id']); }
-}
+$need_successor = ($j && ($j['status'] ?? '') !== 'done');
+if ($need_successor) { $j['spawned'] = time(); proto_job_write($file, $j); }
+flock($lockf, LOCK_UN); fclose($lockf);
+if ($need_successor) proto_spawn($_REQUEST['id']);
 echo json_encode(['ok' => true]);

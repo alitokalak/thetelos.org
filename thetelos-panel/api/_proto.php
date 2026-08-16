@@ -169,6 +169,47 @@ function proto_systemA_prompt($book, $author) {
         . "covering its structure, main arguments, key concepts, themes, and conclusions. Aim for depth.";
 }
 
+/* ── DeepSeek STREAMING çağrı — bloklu tv_ask bu bağlamda boş dönüyordu;
+   streaming güvenilir çalışıyor. $ping (varsa) canlılık için periyodik çağrılır. */
+function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280) {
+    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) return '';
+    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
+           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+    $full = ''; $buf = ''; $last = time();
+    $cb = function ($ch, $chunk) use (&$full, &$buf, &$last, $ping) {
+        $buf .= $chunk;
+        while (($p = strpos($buf, "\n")) !== false) {
+            $line = trim(substr($buf, 0, $p)); $buf = substr($buf, $p + 1);
+            if (strpos($line, 'data:') !== 0) continue;
+            $d = trim(substr($line, 5));
+            if ($d === '' || $d === '[DONE]') continue;
+            $j = json_decode($d, true);
+            $t = $j['choices'][0]['delta']['content'] ?? '';
+            if ($t === '') $t = $j['choices'][0]['delta']['reasoning_content'] ?? '';
+            if ($t !== '') $full .= $t;
+        }
+        if ($ping && time() - $last >= 5) { $ping(); $last = time(); }
+        return strlen($chunk);
+    };
+    $do = function ($payload) use ($cb, $timeout) {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_WRITEFUNCTION => $cb,
+        ]);
+        $ok = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        return $code;
+    };
+    $payload = ['model' => $model, 'max_tokens' => $max_tokens, 'temperature' => 0.3, 'stream' => true,
+                'thinking' => ['type' => 'disabled'], 'messages' => [['role' => 'user', 'content' => $prompt]]];
+    $code = $do($payload);
+    // thinking parametresi reddedilirse (400) parametresiz bir kez daha dene.
+    if ($full === '' && $code === 400) { unset($payload['thinking']); $do($payload); }
+    return trim($full);
+}
+
 /* ── Worker'ı fire-and-forget tetikle (batch deseniyle aynı) ────────────── */
 function proto_token() { return hash('sha256', WP_APP_PASS . '|tls-proto'); }
 function proto_spawn($id) {
