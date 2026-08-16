@@ -198,7 +198,11 @@ function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280, &$diag = n
                 'messages' => [['role' => 'user', 'content' => $prompt]]];
     $ch = curl_init(DEEPSEEK_API_URL);
     curl_setopt_array($ch, [
-        CURLOPT_POST => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_POST => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 30,
+        // IPv4'e zorla: sunucunun kırık IPv6 rotası DeepSeek'e bağlanmayı 15 sn
+        // askıda bırakıp zaman aşımına düşürüyordu (Gutenberg IPv4 olduğundan
+        // sorunsuzdu). Gerçek örneklerde de güvenli.
+        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
         CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
         CURLOPT_WRITEFUNCTION => $cb,
