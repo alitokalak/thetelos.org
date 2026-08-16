@@ -207,26 +207,64 @@ function proto_openrouter($prompt, $max_tokens, &$diag = null) {
     return '';
 }
 
+/* ── DeepSeek'e TCP bağlanabiliyor muyuz? (iş başına BİR kez ölçülür) ──────
+   Engelliyken her parçada 10 sn boşa beklememek için. Bağlantı kurulursa true. */
+function proto_deepseek_reachable() {
+    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) return false;
+    $ch = curl_init(DEEPSEEK_API_URL);
+    curl_setopt_array($ch, [CURLOPT_NOBODY => true, CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_TIMEOUT => 10]);
+    curl_exec($ch);
+    $ct = (float) curl_getinfo($ch, CURLINFO_CONNECT_TIME);
+    $err = curl_error($ch);
+    curl_close($ch);
+    return ($ct > 0 && $err === '');   // TCP el sıkışması gerçekleşti
+}
+
+/* ── Doğrudan DeepSeek (ucuz; engel kalkınca OTOMATİK kullanılır) ─────────── */
+function proto_deepseek_direct($prompt, $max_tokens, &$diag = null) {
+    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
+           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+    $body = json_encode(['model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)),
+        'temperature' => 0.3, 'messages' => [['role' => 'user', 'content' => $prompt]]], JSON_UNESCAPED_UNICODE);
+    $ch = curl_init(DEEPSEEK_API_URL);
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 280, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+        CURLOPT_POSTFIELDS => $body]);
+    $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
+    curl_close($ch);
+    $j = json_decode((string) $r, true);
+    $txt = trim((string) ($j['choices'][0]['message']['content'] ?? ''));
+    if ($txt === '') $txt = trim((string) ($j['choices'][0]['message']['reasoning_content'] ?? ''));
+    $diag = 'deepseek http=' . $code . ($err ? ' err=' . $err : '') . ' chars=' . mb_strlen($txt);
+    return $txt;
+}
+
 /* ── Metin üretimi — SAĞLAYICI SEÇİMİ ──────────────────────────────────────
-   1) OPENROUTER_KEY varsa → DeepSeek (OpenRouter üzerinden, ucuz + erişilebilir)
-   2) yoksa → Gemini (çalışan yedek)
-   api.deepseek.com'a DOĞRUDAN bağlantı bu sunucuda engelli olduğu için doğrudan
-   DeepSeek kullanılmıyor. */
-function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280, &$diag = null) {
-    if (is_callable($ping)) $ping();   // uzun çağrı öncesi job'ı canlı tut
-    if (proto_openrouter_key() !== '') {
-        $t = proto_openrouter($prompt, $max_tokens, $diag);
-        if ($t !== '') return $t;
-        // OpenRouter başarısızsa Gemini'ye düş (kesinti olmasın).
+   Öncelik: DeepSeek (ucuz, senin istediğin). Sunucu ↔ DeepSeek şu an engelli;
+   engel kalkınca hiçbir ayar değişmeden OTOMATİK DeepSeek'e döner. Erişilemezse
+   Gemini yedeği devreye girer, iş HİÇ durmaz.
+   $provider: 'gemini' → DeepSeek denemeyi atla (iş başına tek ölçümle karar
+   verilir, boşuna beklememek için). OPENROUTER_KEY tanımlıysa DeepSeek'i onun
+   üzerinden dener (opsiyonel, gerekmez). */
+function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280, &$diag = null, $provider = 'auto') {
+    if (is_callable($ping)) $ping();
+    if ($provider !== 'gemini') {
+        // 1) OpenRouter (yalnız anahtar eklenmişse)
+        if (proto_openrouter_key() !== '') { $t = proto_openrouter($prompt, $max_tokens, $diag); if ($t !== '') return $t; }
+        // 2) Doğrudan DeepSeek
+        $t = proto_deepseek_direct($prompt, $max_tokens, $diag); if ($t !== '') return $t;
     }
+    // 3) Gemini yedeği
     require_once __DIR__ . '/_gemini.php';
-    if (!tls_gemini_ready()) { if (empty($diag)) $diag = 'ne OpenRouter ne Gemini anahtarı var'; return ''; }
+    if (!tls_gemini_ready()) { if (empty($diag)) $diag = 'Gemini anahtarı yok'; return ''; }
     $r = tls_gemini('', $prompt, [
         'max_tokens'  => max(500, min(24000, (int) $max_tokens * 2)),
         'temperature' => 0.3, 'timeout' => $timeout, 'retries' => 2,
         'on_beat'     => is_callable($ping) ? $ping : null,
     ]);
-    $diag = 'gemini http=' . ($r['http'] ?? '?') . ' ' . (!empty($r['ok']) ? ('chars=' . mb_strlen((string) $r['text'])) : ('err=' . ($r['error'] ?? '?')));
+    $g = 'gemini http=' . ($r['http'] ?? '?') . ' ' . (!empty($r['ok']) ? ('chars=' . mb_strlen((string) $r['text'])) : ('err=' . ($r['error'] ?? '?')));
+    $diag = ($diag ? $diag . ' → ' : '') . $g;
     return !empty($r['ok']) ? trim((string) $r['text']) : '';
 }
 

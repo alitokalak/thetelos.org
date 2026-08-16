@@ -52,6 +52,11 @@ while (time() < $budget) {
         $j['chapters'] = proto_detect_chapters($text);
         $j['chunks'] = $chunks; $j['ci'] = 0; $j['notes'] = [];
         proto_job_log($j, 'Tam metin: ' . number_format($j['book_words']) . ' kelime · ' . $src['source'] . ' · ' . count($chunks) . ' parça');
+        // Model: DeepSeek'e bağlanabiliyorsak onu kullan (ucuz), yoksa Gemini.
+        // İş başına bir kez ölçülür; engel kalkınca sonraki çalıştırmada otomatik döner.
+        if (proto_openrouter_key() !== '') { $j['prov'] = 'auto'; proto_job_log($j, 'Model: DeepSeek (OpenRouter üzerinden)'); }
+        elseif (proto_deepseek_reachable()) { $j['prov'] = 'auto'; proto_job_log($j, 'Model: DeepSeek (doğrudan) ✓ erişilebilir'); }
+        else { $j['prov'] = 'gemini'; proto_job_log($j, 'Model: DeepSeek şu an erişilemiyor → Gemini kullanılıyor (engel kalkınca otomatik döner)'); }
         $j['phase'] = 'chunk';
         proto_job_write($file, $j); continue;
     }
@@ -62,7 +67,7 @@ while (time() < $budget) {
             proto_job_log($j, 'Parça ' . ($ci + 1) . '/' . $tot . ' analiz ediliyor (gerçek metinden)…');
             proto_job_write($file, $j);
             $diag = '';
-            $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280, $diag);
+            $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280, $diag, $j['prov'] ?? 'auto');
             $j = proto_job_read($file) ?: $j;
             if ($t !== '' && stripos($t, 'no substantive content') === false) $j['notes'][] = '[Part ' . ($ci + 1) . "]\n" . $t;
             elseif ($t === '') proto_job_log($j, '  ⚠ parça ' . ($ci + 1) . ' boş döndü — model ' . $diag);
@@ -78,7 +83,7 @@ while (time() < $budget) {
         } else {
             proto_job_log($j, 'Parça özetleri kapsamlı özete birleştiriliyor…');
             proto_job_write($file, $j);
-            $sum = proto_ds(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $j['notes'])), 8000, $ping, 300);
+            $sum = proto_ds(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $j['notes'])), 8000, $ping, 300, $dd, $j['prov'] ?? 'auto');
             $html = $sum !== '' ? bw_md2html($sum) : '';
             $j = proto_job_read($file) ?: $j;
             $j['resultB'] = [
@@ -94,7 +99,7 @@ while (time() < $budget) {
     if ($phase === 'systemA') {
         proto_job_log($j, 'Sistem A: başlık → Gemini (kaynaksız)…');
         proto_job_write($file, $j);
-        $as = proto_ds(proto_systemA_prompt($j['book'], $j['author']), 6000, $ping, 280);
+        $as = proto_ds(proto_systemA_prompt($j['book'], $j['author']), 6000, $ping, 280, $da, $j['prov'] ?? 'auto');
         $ah = $as !== '' ? bw_md2html($as) : '';
         $j = proto_job_read($file) ?: $j;
         $j['resultA'] = ['state' => $as !== '' ? 'OK' : 'ERROR', 'summary_html' => $ah, 'summary_words' => str_word_count(strip_tags($ah))];
