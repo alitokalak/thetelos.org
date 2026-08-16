@@ -34,6 +34,43 @@ function sse($event, $data) {
 }
 $beat = function () { echo ": ping\n\n"; @ob_flush(); @flush(); };
 
+/* ── DeepSeek STREAMING çağrı — token geldikçe nabız atar (Cloudflare kesmesin).
+   Bloklu tv_ask uzun girdilerde 100+ sn sessiz kalıp bağlantıyı düşürüyordu. */
+function proto_ds_stream($prompt, $max_tokens, $ping, $timeout = 280) {
+    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) return '';
+    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
+           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+    $full = ''; $buf = ''; $last = time();
+    $cb = function ($ch, $chunk) use (&$full, &$buf, &$last, $ping) {
+        $buf .= $chunk;
+        while (($p = strpos($buf, "\n")) !== false) {
+            $line = trim(substr($buf, 0, $p)); $buf = substr($buf, $p + 1);
+            if (strpos($line, 'data:') !== 0) continue;
+            $d = trim(substr($line, 5));
+            if ($d === '' || $d === '[DONE]') continue;
+            $j = json_decode($d, true);
+            $t = $j['choices'][0]['delta']['content'] ?? '';
+            if ($t === '') $t = $j['choices'][0]['delta']['reasoning_content'] ?? '';
+            if ($t !== '') $full .= $t;
+        }
+        if (time() - $last >= 5) { $ping(); $last = time(); }   // canlılık
+        return strlen($chunk);
+    };
+    $ch = curl_init(DEEPSEEK_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+        CURLOPT_POSTFIELDS => json_encode([
+            'model' => $model, 'max_tokens' => $max_tokens, 'temperature' => 0.3, 'stream' => true,
+            'thinking' => ['type' => 'disabled'],
+            'messages' => [['role' => 'user', 'content' => $prompt]],
+        ], JSON_UNESCAPED_UNICODE),
+        CURLOPT_WRITEFUNCTION => $cb,
+    ]);
+    curl_exec($ch); curl_close($ch);
+    return trim($full);
+}
+
 $book   = trim($_GET['book']   ?? '');
 $author = trim($_GET['author'] ?? '');
 $sys    = $_GET['sys'] ?? 'both';
@@ -258,9 +295,8 @@ if ($sys === 'both' || $sys === 'B') {
                 . "If the excerpt is front-matter/index/notes with no substance, reply exactly: (no substantive content).\n"
                 . "Write 150-280 words of dense, faithful notes.\n\n=== EXCERPT ===\n"
                 . mb_substr($ch, 0, 48000);
-            $r = tv_ask($cp, 900, 180, 'deepseek');
+            $t = proto_ds_stream($cp, 900, $beat, 280);
             $beat();
-            $t = !empty($r['ok']) ? trim($r['text']) : '';
             if ($t !== '' && stripos($t, 'no substantive content') === false) $notes[] = "[Part {$k}]\n" . $t;
         }
 
@@ -277,9 +313,8 @@ if ($sys === 'both' || $sys === 'B') {
                 . "## About the Work\n## Context\n## Structure of the Book\n## Detailed Section-by-Section Summary\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
                 . "RULES: Base every statement on the notes (i.e. on the real text). Do NOT invent chapter titles, quotations, examples, or claims not in the notes. Separate the book's actual content from outside/biographical context. Be comprehensive but do NOT pad or repeat to inflate length. Write in clear, engaged prose, third person.\n\n"
                 . "=== NOTES FROM THE REAL TEXT ===\n" . $joined . "\n=== END NOTES ===";
-            $fr = tv_ask($rp, 8000, 300, 'deepseek');
+            $summary = proto_ds_stream($rp, 8000, $beat, 300);
             $beat();
-            $summary = !empty($fr['ok']) ? trim($fr['text']) : '';
             $html = $summary !== '' ? bw_md2html($summary) : '';
             $B = [
                 'state'    => $summary !== '' ? 'OK' : 'ERROR',
@@ -304,9 +339,8 @@ if ($sys === 'both' || $sys === 'A') {
     sse('status', ['sys' => 'A', 'msg' => 'Sistem A: başlık → DeepSeek (kaynaksız)…']);
     $ap = "Write a comprehensive summary of the book \"{$book}\"" . ($author ? " by {$author}" : '') . " in English, "
         . "covering its structure, main arguments, key concepts, themes, and conclusions. Aim for depth.";
-    $ar = tv_ask($ap, 6000, 240, 'deepseek');
+    $asum = proto_ds_stream($ap, 6000, $beat, 280);
     $beat();
-    $asum = !empty($ar['ok']) ? trim($ar['text']) : '';
     $ahtml = $asum !== '' ? bw_md2html($asum) : '';
     sse('resultA', [
         'state' => $asum !== '' ? 'OK' : 'ERROR',

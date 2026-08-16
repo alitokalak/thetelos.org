@@ -131,7 +131,7 @@ $('#run').onclick = () => {
 
   es.addEventListener('error', e => { try{const d=JSON.parse(e.data);logln('HATA: '+d.error);}catch(_){ logln('HATA: bağlantı kesildi'); } });
   es.addEventListener('done', e => { logln('✔ bitti'); $('#run').disabled=false; es.close(); });
-  es.onerror = () => { $('#run').disabled=false; };
+  es.onerror = () => { logln('⚠ bağlantı kapandı'); $('#run').disabled=false; if(es) es.close(); };
 };
 </script>
 </body>
