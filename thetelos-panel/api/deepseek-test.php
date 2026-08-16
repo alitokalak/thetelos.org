@@ -80,6 +80,27 @@ foreach ([0, 4] as $mode) {
     $msg = $j['error']['message'] ?? trim(mb_substr(preg_replace('/\s+/', ' ', strip_tags((string) $r)), 0, 200));
     printf("  %-10s HTTP=%-3d %s  (%dms)\n", ($mode ? 'IPv4' : 'varsayılan'), $code, ($err ? 'ERR: ' . $err : ($msg ?: 'boş')), $dt);
 }
+/* 4) AYIRT ETME: sorun AWS geneli mi, yalnız DeepSeek mi + OpenRouter açık mı? */
+echo "\n4) BAŞKA HEDEFLER (nedeni ayırmak için)\n";
+function ds_reach($label, $url) {
+    $t0 = microtime(true);
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_NOBODY => true,
+        CURLOPT_CONNECTTIMEOUT => 15, CURLOPT_TIMEOUT => 20, CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER => ['User-Agent: thetelos/1.0']]);
+    curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $ip = curl_getinfo($ch, CURLINFO_PRIMARY_IP); $err = curl_error($ch);
+    curl_close($ch);
+    printf("  %-22s HTTP=%-3d ip=%-16s %s (%dms)\n", $label, $code, $ip ?: '-',
+        $err ? 'ERR: ' . $err : 'bağlandı', round((microtime(true) - $t0) * 1000));
+}
+ds_reach('s3.amazonaws.com (AWS)', 'https://s3.amazonaws.com');
+ds_reach('aws.amazon.com (AWS)',   'https://aws.amazon.com');
+ds_reach('openrouter.ai',          'https://openrouter.ai/api/v1/models');
+ds_reach('api.openai.com',         'https://api.openai.com');
+
 echo "\n— YORUM —\n";
-echo "  connect başarısız/timeout → sunucu→DeepSeek AĞ engeli (IP throttle/firewall)\n";
-echo "  HTTP 401 → anahtar geçersiz · 402 → bakiye bitti · 404 → endpoint değişti · 200 → çalışıyor\n";
+echo "  DeepSeek connect timeout AMA s3/aws da timeout  → HOST tüm AWS çıkışını blokluyor\n";
+echo "  DeepSeek connect timeout AMA s3/aws BAĞLANIYOR  → DeepSeek senin IP'ni engellemiş\n";
+echo "  openrouter.ai bağlanıyorsa → DeepSeek'i OpenRouter üzerinden (ucuz) kullanabiliriz\n";
+echo "  HTTP 401 → anahtar · 402 → bakiye · 404 → endpoint · 200 → çalışıyor\n";
