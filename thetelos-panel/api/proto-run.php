@@ -61,9 +61,11 @@ while (time() < $budget) {
         if ($ci < $tot) {
             proto_job_log($j, 'Parça ' . ($ci + 1) . '/' . $tot . ' analiz ediliyor (gerçek metinden)…');
             proto_job_write($file, $j);
-            $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280);
+            $diag = '';
+            $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280, $diag);
             $j = proto_job_read($file) ?: $j;
             if ($t !== '' && stripos($t, 'no substantive content') === false) $j['notes'][] = '[Part ' . ($ci + 1) . "]\n" . $t;
+            elseif ($t === '') proto_job_log($j, '  ⚠ parça ' . ($ci + 1) . ' boş döndü — DeepSeek ' . $diag);
             $j['ci'] = $ci + 1;
             proto_job_write($file, $j); continue;
         }

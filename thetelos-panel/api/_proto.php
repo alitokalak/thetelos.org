@@ -171,8 +171,8 @@ function proto_systemA_prompt($book, $author) {
 
 /* ── DeepSeek STREAMING çağrı — bloklu tv_ask bu bağlamda boş dönüyordu;
    streaming güvenilir çalışıyor. $ping (varsa) canlılık için periyodik çağrılır. */
-function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280) {
-    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) return '';
+function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280, &$diag = null) {
+    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) { $diag = 'DEEPSEEK_KEY yok'; return ''; }
     $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
            ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
     $full = ''; $buf = ''; $last = time();
@@ -191,22 +191,21 @@ function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280) {
         if ($ping && time() - $last >= 5) { $ping(); $last = time(); }
         return strlen($chunk);
     };
-    $do = function ($payload) use ($cb, $timeout) {
-        $ch = curl_init(DEEPSEEK_API_URL);
-        curl_setopt_array($ch, [
-            CURLOPT_POST => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
-            CURLOPT_WRITEFUNCTION => $cb,
-        ]);
-        $ok = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-        return $code;
-    };
+    // NOT: 'thinking:disabled' parametresi streaming uç noktasında boş yanıta
+    // yol açıyordu; çalışan örnekler (generate.php, batch-worker) onu HİÇ
+    // göndermiyor. reasoning_content yedeği zaten parser'da var.
     $payload = ['model' => $model, 'max_tokens' => $max_tokens, 'temperature' => 0.3, 'stream' => true,
-                'thinking' => ['type' => 'disabled'], 'messages' => [['role' => 'user', 'content' => $prompt]]];
-    $code = $do($payload);
-    // thinking parametresi reddedilirse (400) parametresiz bir kez daha dene.
-    if ($full === '' && $code === 400) { unset($payload['thinking']); $do($payload); }
+                'messages' => [['role' => 'user', 'content' => $prompt]]];
+    $ch = curl_init(DEEPSEEK_API_URL);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        CURLOPT_WRITEFUNCTION => $cb,
+    ]);
+    $raw = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
+    curl_close($ch);
+    $diag = 'code=' . $code . ($err ? ' err=' . $err : '') . ' chars=' . mb_strlen($full);
     return trim($full);
 }
 
