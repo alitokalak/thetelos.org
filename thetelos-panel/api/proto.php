@@ -155,6 +155,48 @@ function proto_detect_chapters($t) {
     return $heads;
 }
 
+/* ── Internet Archive'de tam metin bul (taranmış/OCR — _djvu.txt) ───────── */
+function proto_archive($book, $author) {
+    $surname = '';
+    if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
+    $qparts = ['mediatype:texts', 'title:(' . $book . ')'];
+    if ($author !== '') $qparts[] = 'creator:(' . $author . ')';
+    $url = 'https://archive.org/advancedsearch.php?q=' . rawurlencode(implode(' AND ', $qparts))
+         . '&fl[]=identifier&fl[]=title&fl[]=creator&rows=6&output=json&sort[]=downloads+desc';
+    $j = tls_fetch_json($url, 'thetelos.org/1.0', 20, 3);
+    $docs = $j['response']['docs'] ?? [];
+    $debug = ['ia_results' => count($docs), 'tried' => []];
+    foreach ($docs as $d) {
+        $id = (string) ($d['identifier'] ?? ''); if ($id === '') continue;
+        $cr = is_array($d['creator'] ?? '') ? implode(' ', $d['creator']) : (string) ($d['creator'] ?? '');
+        $tt = (string) ($d['title'] ?? '');
+        if ($surname !== '' && mb_stripos($cr, $surname) === false && mb_stripos($tt, $book) === false) continue;
+        $meta = tls_fetch_json('https://archive.org/metadata/' . rawurlencode($id), 'thetelos.org/1.0', 15, 2);
+        $files = $meta['files'] ?? [];
+        $txt = '';
+        foreach ($files as $f) { if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; } }
+        if ($txt === '') foreach ($files as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
+        if ($txt === '') { $debug['tried'][] = ['id' => $id, 'note' => 'txt yok']; continue; }
+        $u = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt);
+        $inf = null; $t = proto_fetch_text($u, 2, $inf);
+        $debug['tried'][] = ['id' => $id, 'file' => $txt, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0];
+        if (mb_strlen($t) > 5000) {
+            return ['found' => true, 'url' => $u, 'title' => ($tt ?: $book),
+                    'source' => 'Internet Archive', 'text' => $t, 'raw_len' => mb_strlen($t), 'debug' => $debug];
+        }
+    }
+    return ['found' => false, 'debug' => $debug];
+}
+
+/* ── OCR/Archive metnini kabaca temizle (sayfa no, form-feed, tekil satırlar) */
+function proto_clean_ocr($t) {
+    $t = str_replace(["\r\n", "\r", "\x0c"], ["\n", "\n", "\n"], $t);
+    $t = preg_replace('/\n[ \t]*\d{1,4}[ \t]*\n/', "\n", $t);   // yalnız sayfa numarası olan satırlar
+    $t = preg_replace('/[ \t]+/', ' ', $t);
+    $t = preg_replace('/\n{3,}/', "\n\n", $t);
+    return trim($t);
+}
+
 /* ── Metni ≤N büyük parçaya böl (bölüm sınırına yakın) ──────────────────── */
 function proto_chunks($t, $max_chunks = 14, $target = 45000) {
     $len = mb_strlen($t);
@@ -178,19 +220,27 @@ function proto_chunks($t, $max_chunks = 14, $target = 45000) {
 $B = null;
 if ($sys === 'both' || $sys === 'B') {
     $tB0 = microtime(true);
-    sse('status', ['sys' => 'B', 'msg' => 'Gerçek tam metin aranıyor (Project Gutenberg)…']);
+    // Sırayla dene: Project Gutenberg (temiz) → Internet Archive (taranmış/OCR).
+    sse('status', ['sys' => 'B', 'msg' => 'Gerçek tam metin aranıyor: Project Gutenberg…']);
     $src = proto_gutenberg($book, $author);
     $beat();
-    if (!empty($src['debug'])) sse('debug', $src['debug']);
+    if (!empty($src['debug'])) sse('debug', ['source' => 'Project Gutenberg'] + $src['debug']);
+
+    if (empty($src['found'])) {
+        sse('status', ['sys' => 'B', 'msg' => 'Gutenberg\'de yok → Internet Archive deneniyor…']);
+        $src = proto_archive($book, $author);
+        $beat();
+        if (!empty($src['debug'])) sse('debug', ['source' => 'Internet Archive'] + $src['debug']);
+    }
 
     if (empty($src['found'])) {
         sse('resultB', [
             'state' => 'SOURCE_NOT_FOUND',
-            'msg'   => 'Bu eserin yasal/erişilebilir tam metni bulunamadı (Project Gutenberg). Uydurma yapılmadı.',
+            'msg'   => 'Bu eserin yasal/erişilebilir tam metni bulunamadı (Project Gutenberg + Internet Archive). Uydurma yapılmadı.',
             'time'  => round(microtime(true) - $tB0, 1),
         ]);
     } else {
-        $text = proto_clean_gutenberg($src['text']);
+        $text = ($src['source'] === 'Internet Archive') ? proto_clean_ocr($src['text']) : proto_clean_gutenberg($src['text']);
         $words = str_word_count(strip_tags($text));
         $chapters = proto_detect_chapters($text);
         $rawkb = round(($src['raw_len'] ?? mb_strlen($src['text'])) / 1024);
