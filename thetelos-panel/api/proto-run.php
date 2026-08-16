@@ -65,7 +65,7 @@ while (time() < $budget) {
             $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280, $diag);
             $j = proto_job_read($file) ?: $j;
             if ($t !== '' && stripos($t, 'no substantive content') === false) $j['notes'][] = '[Part ' . ($ci + 1) . "]\n" . $t;
-            elseif ($t === '') proto_job_log($j, '  ⚠ parça ' . ($ci + 1) . ' boş döndü — DeepSeek ' . $diag);
+            elseif ($t === '') proto_job_log($j, '  ⚠ parça ' . ($ci + 1) . ' boş döndü — model ' . $diag);
             $j['ci'] = $ci + 1;
             proto_job_write($file, $j); continue;
         }
@@ -92,7 +92,7 @@ while (time() < $budget) {
     }
 
     if ($phase === 'systemA') {
-        proto_job_log($j, 'Sistem A: başlık → DeepSeek (kaynaksız)…');
+        proto_job_log($j, 'Sistem A: başlık → Gemini (kaynaksız)…');
         proto_job_write($file, $j);
         $as = proto_ds(proto_systemA_prompt($j['book'], $j['author']), 6000, $ping, 280);
         $ah = $as !== '' ? bw_md2html($as) : '';

@@ -169,48 +169,23 @@ function proto_systemA_prompt($book, $author) {
         . "covering its structure, main arguments, key concepts, themes, and conclusions. Aim for depth.";
 }
 
-/* ── DeepSeek STREAMING çağrı — bloklu tv_ask bu bağlamda boş dönüyordu;
-   streaming güvenilir çalışıyor. $ping (varsa) canlılık için periyodik çağrılır. */
+/* ── Metin üretimi — GEMINI ile (bloklu, güvenilir) ────────────────────────
+   NEDEN GEMINI: sunucudan api.deepseek.com'a bağlantı "connection timed out"
+   (IP-throttle/rota) veriyordu; ayrıca DeepSeek kalitesine güvenmiyoruz. Gemini
+   çalışıyor, ucuz ve daha iyi. $ping (varsa) tls_gemini'nin on_beat'iyle
+   uzun çağrı boyunca job'ı canlı tutar. */
 function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280, &$diag = null) {
-    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) { $diag = 'DEEPSEEK_KEY yok'; return ''; }
-    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
-           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
-    $full = ''; $buf = ''; $last = time();
-    $cb = function ($ch, $chunk) use (&$full, &$buf, &$last, $ping) {
-        $buf .= $chunk;
-        while (($p = strpos($buf, "\n")) !== false) {
-            $line = trim(substr($buf, 0, $p)); $buf = substr($buf, $p + 1);
-            if (strpos($line, 'data:') !== 0) continue;
-            $d = trim(substr($line, 5));
-            if ($d === '' || $d === '[DONE]') continue;
-            $j = json_decode($d, true);
-            $t = $j['choices'][0]['delta']['content'] ?? '';
-            if ($t === '') $t = $j['choices'][0]['delta']['reasoning_content'] ?? '';
-            if ($t !== '') $full .= $t;
-        }
-        if ($ping && time() - $last >= 5) { $ping(); $last = time(); }
-        return strlen($chunk);
-    };
-    // NOT: 'thinking:disabled' parametresi streaming uç noktasında boş yanıta
-    // yol açıyordu; çalışan örnekler (generate.php, batch-worker) onu HİÇ
-    // göndermiyor. reasoning_content yedeği zaten parser'da var.
-    $payload = ['model' => $model, 'max_tokens' => $max_tokens, 'temperature' => 0.3, 'stream' => true,
-                'messages' => [['role' => 'user', 'content' => $prompt]]];
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true, CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 30,
-        // IPv4'e zorla: sunucunun kırık IPv6 rotası DeepSeek'e bağlanmayı 15 sn
-        // askıda bırakıp zaman aşımına düşürüyordu (Gutenberg IPv4 olduğundan
-        // sorunsuzdu). Gerçek örneklerde de güvenli.
-        CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
-        CURLOPT_WRITEFUNCTION => $cb,
+    require_once __DIR__ . '/_gemini.php';
+    if (!tls_gemini_ready()) { $diag = 'GEMINI_KEY yok'; return ''; }
+    $r = tls_gemini('', $prompt, [
+        'max_tokens'  => max(500, min(24000, (int) $max_tokens * 2)),
+        'temperature' => 0.3,
+        'timeout'     => $timeout,
+        'retries'     => 2,
+        'on_beat'     => is_callable($ping) ? $ping : null,
     ]);
-    $raw = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
-    curl_close($ch);
-    $diag = 'code=' . $code . ($err ? ' err=' . $err : '') . ' chars=' . mb_strlen($full);
-    return trim($full);
+    $diag = 'gemini http=' . ($r['http'] ?? '?') . ' ' . (!empty($r['ok']) ? ('chars=' . mb_strlen((string) $r['text'])) : ('err=' . ($r['error'] ?? '?')));
+    return !empty($r['ok']) ? trim((string) $r['text']) : '';
 }
 
 /* ── Worker'ı fire-and-forget tetikle (batch deseniyle aynı) ────────────── */
