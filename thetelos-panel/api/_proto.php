@@ -225,18 +225,28 @@ function proto_deepseek_reachable() {
 function proto_deepseek_direct($prompt, $max_tokens, &$diag = null) {
     $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
            ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
-    $body = json_encode(['model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)),
-        'temperature' => 0.3, 'messages' => [['role' => 'user', 'content' => $prompt]]], JSON_UNESCAPED_UNICODE);
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 280, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS => $body]);
-    $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
-    curl_close($ch);
+    // thinking:disabled → yanıt doğrudan content'e (temiz); v4-flash aksi halde
+    // reasoning_content'e koyuyor. Model reddederse (400) parametresiz tekrar.
+    $mk = fn($think) => json_encode(array_filter([
+        'model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)), 'temperature' => 0.3,
+        'thinking' => $think ? ['type' => 'disabled'] : null,
+        'messages' => [['role' => 'user', 'content' => $prompt]],
+    ], fn($v) => $v !== null), JSON_UNESCAPED_UNICODE);
+    $do = function ($body) use (&$code, &$err) {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 280, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => $body]);
+        $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
+        curl_close($ch);
+        return $r;
+    };
+    $r = $do($mk(true));
+    if ((int) $code === 400) $r = $do($mk(false));   // thinking desteklenmiyorsa
     $j = json_decode((string) $r, true);
     $txt = trim((string) ($j['choices'][0]['message']['content'] ?? ''));
     if ($txt === '') $txt = trim((string) ($j['choices'][0]['message']['reasoning_content'] ?? ''));
-    $diag = 'deepseek http=' . $code . ($err ? ' err=' . $err : '') . ' chars=' . mb_strlen($txt);
+    $diag = 'deepseek http=' . (int) $code . ($err ? ' err=' . $err : '') . ' chars=' . mb_strlen($txt);
     return $txt;
 }
 
