@@ -15,6 +15,10 @@ session_start();
 require_once dirname(__DIR__) . '/config.php';
 if (empty($_SESSION['tls_auth'])) { http_response_code(401); echo 'auth'; exit; }
 header('Content-Type: text/plain; charset=utf-8');
+header('X-Accel-Buffering: no');
+@ini_set('zlib.output_compression', '0');
+while (ob_get_level() > 0) @ob_end_flush();
+ob_implicit_flush(true);
 
 $url  = defined('DEEPSEEK_API_URL') ? DEEPSEEK_API_URL : '(DEEPSEEK_API_URL tanımsız)';
 $host = parse_url($url, PHP_URL_HOST) ?: 'api.deepseek.com';
@@ -37,11 +41,10 @@ echo "  AAAA (IPv6): " . ($a6 ? implode(', ', array_map(fn($r) => $r['ipv6'] ?? 
 function ds_conn($url, $ipmode) {
     $t0 = microtime(true);
     $ch = curl_init($url);
-    $o = [CURLOPT_NOBODY => false, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 20,
-          CURLOPT_TIMEOUT => 25, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_POST => true,
+    $o = [CURLOPT_NOBODY => false, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 6,
+          CURLOPT_TIMEOUT => 8, CURLOPT_SSL_VERIFYPEER => true, CURLOPT_POST => true,
           CURLOPT_POSTFIELDS => '{}', CURLOPT_HTTPHEADER => ['Content-Type: application/json']];
     if ($ipmode === 4) $o[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
-    if ($ipmode === 6) $o[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V6;
     curl_setopt_array($ch, $o);
     $r = curl_exec($ch);
     $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
@@ -50,54 +53,51 @@ function ds_conn($url, $ipmode) {
     $err  = curl_error($ch);
     curl_close($ch);
     $dt = round((microtime(true) - $t0) * 1000);
-    printf("  %-10s HTTP=%-3d connect=%.2fs ip=%-24s %s\n",
+    printf("  %-10s HTTP=%-3d connect=%.2fs ip=%-18s %s\n",
         ($ipmode ? 'IPv' . $ipmode : 'varsayılan'), $code, $ct, $ip ?: '-',
-        ($err ? 'ERR: ' . $err : 'bağlandı') . " (toplam {$dt}ms)");
+        ($err ? 'ERR: ' . $err : 'bağlandı') . " ({$dt}ms)");
+    @flush();
     return $code;
 }
-echo "2) HAM BAĞLANTI (boş gövde; 200 beklenmez, amaç BAĞLANABİLMEK)\n";
+echo "2) HAM BAĞLANTI (kısa timeout; amaç BAĞLANABİLMEK)\n";
 ds_conn($url, 0);
 ds_conn($url, 4);
-ds_conn($url, 6);
-echo "\n";
+echo "\n"; @flush();
 
 /* 3) Gerçek mini API çağrısı — anahtarla, kısa istek → HTTP kodu + mesaj */
 echo "3) GERÇEK API ÇAĞRISI (anahtarla, 5 token)\n";
-if (!$key) { echo "  anahtar yok → atlandı\n"; exit; }
-$model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true)) ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
-$body = json_encode(['model' => $model, 'max_tokens' => 5, 'messages' => [['role' => 'user', 'content' => 'Reply with: OK']]]);
-foreach ([0, 4] as $mode) {
+if ($key) {
+    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true)) ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+    $body = json_encode(['model' => $model, 'max_tokens' => 5, 'messages' => [['role' => 'user', 'content' => 'Reply with: OK']]]);
     $t0 = microtime(true);
     $ch = curl_init($url);
-    $o = [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 20, CURLOPT_TIMEOUT => 40,
-          CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $key], CURLOPT_POSTFIELDS => $body];
-    if ($mode === 4) $o[CURLOPT_IPRESOLVE] = CURL_IPRESOLVE_V4;
-    curl_setopt_array($ch, $o);
+    curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 6, CURLOPT_TIMEOUT => 12,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . $key], CURLOPT_POSTFIELDS => $body]);
     $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
     curl_close($ch);
-    $dt = round((microtime(true) - $t0) * 1000);
     $j = json_decode((string) $r, true);
     $msg = $j['error']['message'] ?? trim(mb_substr(preg_replace('/\s+/', ' ', strip_tags((string) $r)), 0, 200));
-    printf("  %-10s HTTP=%-3d %s  (%dms)\n", ($mode ? 'IPv4' : 'varsayılan'), $code, ($err ? 'ERR: ' . $err : ($msg ?: 'boş')), $dt);
-}
+    printf("  HTTP=%-3d %s  (%dms)\n", $code, ($err ? 'ERR: ' . $err : ($msg ?: 'boş')), round((microtime(true) - $t0) * 1000));
+    @flush();
+} else { echo "  anahtar yok → atlandı\n"; }
 /* 4) AYIRT ETME: sorun AWS geneli mi, yalnız DeepSeek mi + OpenRouter açık mı? */
 echo "\n4) BAŞKA HEDEFLER (nedeni ayırmak için)\n";
 function ds_reach($label, $url) {
     $t0 = microtime(true);
     $ch = curl_init($url);
     curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_NOBODY => true,
-        CURLOPT_CONNECTTIMEOUT => 15, CURLOPT_TIMEOUT => 20, CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_CONNECTTIMEOUT => 6, CURLOPT_TIMEOUT => 8, CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTPHEADER => ['User-Agent: thetelos/1.0']]);
     curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     $ip = curl_getinfo($ch, CURLINFO_PRIMARY_IP); $err = curl_error($ch);
     curl_close($ch);
-    printf("  %-22s HTTP=%-3d ip=%-16s %s (%dms)\n", $label, $code, $ip ?: '-',
+    printf("  %-24s HTTP=%-3d ip=%-16s %s (%dms)\n", $label, $code, $ip ?: '-',
         $err ? 'ERR: ' . $err : 'bağlandı', round((microtime(true) - $t0) * 1000));
+    @flush();
 }
-ds_reach('s3.amazonaws.com (AWS)', 'https://s3.amazonaws.com');
-ds_reach('aws.amazon.com (AWS)',   'https://aws.amazon.com');
-ds_reach('openrouter.ai',          'https://openrouter.ai/api/v1/models');
-ds_reach('api.openai.com',         'https://api.openai.com');
+ds_reach('s3.amazonaws.com (AWS)',  'https://s3.amazonaws.com');
+ds_reach('checkip.amazonaws.com',   'https://checkip.amazonaws.com');
+ds_reach('openrouter.ai (CF)',      'https://openrouter.ai/api/v1/models');
 
 echo "\n— YORUM —\n";
 echo "  DeepSeek connect timeout AMA s3/aws da timeout  → HOST tüm AWS çıkışını blokluyor\n";
