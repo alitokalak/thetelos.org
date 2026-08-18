@@ -31,6 +31,7 @@ function pr_label($code) {
         case 'shortnote':   return 'kaynaksız kısa not (yayında — zenginleştirilebilir)';
         case 'placeholder': return 'model tanımadı → yer tutucu (yayında)';
         case 'referee':     return 'hakem uydurma buldu → yer tutucu (yayında)';
+        case 'source_fallback': return 'tam metin yok → Bilgi Metni ile yazıldı (kısa olabilir)';
         case 'unpublished': return 'yayından kaldırıldı (eski davranış)';
         case 'unknown':     return 'doğrulanamadı (model tanımadı)';
         case 'refused':     return 'model reddetti (uydurma önlendi)';

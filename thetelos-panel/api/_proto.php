@@ -169,18 +169,44 @@ function proto_systemA_prompt($book, $author) {
         . "covering its structure, main arguments, key concepts, themes, and conclusions. Aim for depth.";
 }
 
+/* ── Devam (expand) istemi — YALNIZ notlardan daha fazla derinlik ──────────
+   Tek reduce çağrısı 6000 kelime yazmıyor; hedefe ulaşmak için notlardan
+   ek bölüm/detay ekletiriz. Uydurma yok (notlar = gerçek metin), tekrar yok. */
+function proto_continue_prompt($book, $author, $md, $notes) {
+    return "You are EXTENDING a source-based summary of the book \"{$book}\"" . ($author ? " by {$author}" : '') . ".\n"
+        . "Below is the SUMMARY SO FAR, then the ORDERED NOTES taken from the book's ACTUAL TEXT.\n"
+        . "Continue the summary with MORE depth and detail DERIVED ONLY FROM THE NOTES — especially expand the section-by-section coverage, the main arguments, and the key concepts with specifics that are in the text but not yet written.\n"
+        . "HARD RULES: Use ONLY the notes (the real text). Do NOT repeat or lightly rephrase anything already written. Do NOT invent quotations, chapter titles, examples, dates, or claims not in the notes. Do NOT write a concluding restatement. Output ONLY the NEW continuation (further ## / ### sections or developed paragraphs).\n"
+        . "If the notes contain nothing substantial left to add, output EXACTLY: DONE\n\n"
+        . "=== SUMMARY SO FAR ===\n" . mb_substr($md, 0, 30000) . "\n\n=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
+}
+function proto_expand($md, $notes, $book, $author, $target_words, $prov, $beat, $max_pass = 4) {
+    for ($i = 0; $i < $max_pass; $i++) {
+        $w = str_word_count(strip_tags(bw_md2html($md)));
+        if ($w >= $target_words * 0.85) break;   // hedefe ulaşıldı
+        $beat();
+        $d = '';
+        $cont = trim(proto_ds(proto_continue_prompt($book, $author, $md, $notes), 8000, $beat, 300, $d, $prov));
+        if ($cont === '' || preg_match('/^\s*DONE\b/i', $cont)) break;     // eklenecek şey yok
+        $cont = trim(preg_replace('/\n*\bDONE\b\s*$/i', '', $cont));
+        if (str_word_count(strip_tags(bw_md2html($cont))) < 50) break;
+        $md = rtrim($md) . "\n\n" . $cont;
+    }
+    return $md;
+}
+
 /* ── TEK ÇAĞRIDA kaynak-temelli özet üretimi (batch + içerik düzeltme kullanır)
    Uzunluk: 'kisa' | 'standart' | 'kapsamli'. on_beat heartbeat.
-   Dönüş: ['found'=>bool, 'insufficient'=>bool, 'md'=>string, 'source'=>..,
-           'url'=>.., 'book_words'=>int, 'chunks'=>int, 'chapters'=>[..],
-           'model'=>'deepseek'|'gemini', 'debug'=>..] */
+   Dönüş: found/insufficient/md/source/url/book_words/chunks/chapters/model/trace */
 function proto_generate($book, $author, $opts = []) {
     $len = in_array($opts['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $opts['length'] : 'standart';
     $beat = is_callable($opts['on_beat'] ?? null) ? $opts['on_beat'] : function () {};
+    // ctarget: parça başına hedef karakter (küçük = daha çok/granüler parça).
+    // words: özet hedef kelime; reduce+expand buna ulaşmaya çalışır.
     $cfg = [
-        'kisa'     => ['max' => 6,  'notes' => '110-170', 'target' => 'a focused summary of about 1200-1800 words'],
-        'standart' => ['max' => 12, 'notes' => '150-260', 'target' => 'a thorough summary of about 2500-3800 words'],
-        'kapsamli' => ['max' => 18, 'notes' => '220-340', 'target' => 'as comprehensive a summary as the material supports (5000+ words for a long book), fully developing every section'],
+        'kisa'     => ['max' => 6,  'ctarget' => 60000, 'notes' => '110-170', 'rtar' => 'a focused summary of about 1200-1800 words',   'words' => 1500],
+        'standart' => ['max' => 12, 'ctarget' => 40000, 'notes' => '150-260', 'rtar' => 'a thorough summary of about 2500-3800 words',   'words' => 3000],
+        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '240-360', 'rtar' => 'a very comprehensive, in-depth summary that fully develops every section', 'words' => 6000],
     ][$len];
 
     // Sağlayıcı: DeepSeek erişilebiliyorsa onu (ucuz), yoksa Gemini. İş başına bir kez.
@@ -190,27 +216,39 @@ function proto_generate($book, $author, $opts = []) {
 
     $src = proto_acquire($book, $author);
     $beat();
-    if (empty($src['found'])) return ['found' => false, 'insufficient' => true, 'debug' => $src['debug'] ?? null];
+    if (empty($src['found'])) {
+        $g = $src['debug']['gutenberg']['gutendex_results'] ?? '?';
+        return ['found' => false, 'insufficient' => true, 'debug' => $src['debug'] ?? null,
+                'trace' => "tam metin YOK (gutendex sonuç=$g) → Bilgi Metni'ne düşülecek"];
+    }
 
     $text   = proto_clean($src['source'], $src['text']);
-    $chunks = proto_chunks($text, $cfg['max']);
-    $notes  = [];
+    $bw     = str_word_count(strip_tags($text));
+    $chunks = proto_chunks($text, $cfg['max'], $cfg['ctarget']);
+    $notes  = []; $lastdg = '';
     foreach ($chunks as $i => $ch) {
         $beat();
         $dg = '';
         $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, count($chunks), $ch, $cfg['notes']), 1200, $beat, 280, $dg, $prov);
+        $lastdg = $dg;
         if ($t !== '' && stripos($t, 'no substantive content') === false) $notes[] = '[Part ' . ($i + 1) . "]\n" . $t;
     }
-    if (!$notes) return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label];
+    if (!$notes) return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label,
+        'trace' => $src['source'] . " {$bw}w, " . count($chunks) . " parça, 0 not (model boş: {$lastdg}) → Bilgi Metni'ne düşülecek"];
 
     $beat();
     $dg2 = '';
-    $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['target']), 8000, $beat, 300, $dg2, $prov);
-    if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2];
+    $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar']), 8000, $beat, 300, $dg2, $prov);
+    if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,
+        'trace' => $src['source'] . " {$bw}w, reduce BOŞ ({$dg2}) → Bilgi Metni'ne düşülecek"];
+
+    // Hedef uzunluğa kadar genişlet (notlardan; uydurma yok).
+    $md = proto_expand($md, implode("\n\n", $notes), $book, $author, $cfg['words'], $prov, $beat);
+    $fw = str_word_count(strip_tags(bw_md2html($md)));
 
     return ['found' => true, 'insufficient' => false, 'md' => $md, 'source' => $src['source'], 'url' => $src['url'],
-            'book_words' => str_word_count(strip_tags($text)), 'chunks' => count($chunks),
-            'chapters' => proto_detect_chapters($text), 'model' => $model_label];
+            'book_words' => $bw, 'chunks' => count($chunks), 'chapters' => proto_detect_chapters($text), 'model' => $model_label,
+            'trace' => $src['source'] . " {$bw}w → " . count($chunks) . ' parça/' . count($notes) . " not → özet {$fw}w ({$model_label})"];
 }
 
 /* ── OpenRouter anahtarı (DeepSeek'i erişilebilir kapıdan kullanmak için) ── */

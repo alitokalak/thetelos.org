@@ -582,10 +582,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'provider'=> 'auto',
             'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
         ]);
+        $sr_trace = (string) ($sr['trace'] ?? '');
         if (!empty($sr['found']) && empty($sr['insufficient']) && trim((string)($sr['md'] ?? '')) !== '') {
             $content = bw_clean_content($sr['md']);   // tam metinden kapsamlı özet
         } else {
-            // Tam metin yok → Wikipedia-temelli Bilgi Metni'ne düş.
+            // Tam metin yok / yetersiz → Wikipedia-temelli Bilgi Metni'ne düş.
+            // NEDENİNİ sorunlu listeye yaz (Relativity'nin neden 2 dk çıktığını böyle görürüz).
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
             $info_prov = (proto_deepseek_reachable()) ? 'deepseek' : 'gemini';
             $ir = tls_info_generate($search_book, $author, [
                 'provider' => $info_prov,
@@ -597,11 +600,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 if ($rewrite && $update_pid) {
                     $ph = bw_placeholder_html($book, $author);
                     [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
-                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok (tam metin + Wikipedia yok)', $update_pid, 'rewrite');
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok · ' . $sr_trace, $update_pid, 'rewrite');
                     bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)']);
                     return;
                 }
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok (kaynak-temelli özet)', 0, 'create');
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok · ' . $sr_trace, 0, 'create');
                 bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: tam metin ve Wikipedia bulunamadı']);
                 return;
             }
