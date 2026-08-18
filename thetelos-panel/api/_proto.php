@@ -148,25 +148,69 @@ function proto_chunks($t, $max_chunks = 14, $target = 45000) {
 }
 
 /* ── İstemler ──────────────────────────────────────────────────────────── */
-function proto_chunk_prompt($book, $author, $k, $n, $excerpt) {
+function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150-280') {
     return "Below is an excerpt (part {$k} of {$n}) from the ACTUAL TEXT of the book \"{$book}\""
         . ($author ? " by {$author}" : '') . ".\n"
         . "Summarize the key content, ideas, arguments, reasoning, key concepts, and concrete examples ACTUALLY PRESENT in THIS excerpt. "
         . "Use ONLY what this text says — do NOT add outside knowledge, do NOT infer beyond the text. "
         . "If it is front-matter/index/notes with no substance, reply exactly: (no substantive content).\n"
-        . "Write 150-280 words of dense, faithful notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
+        . "Write {$note_words} words of dense, faithful notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
 }
-function proto_reduce_prompt($book, $author, $notes) {
-    return "You are writing a COMPREHENSIVE, faithful book summary for a books website, in English.\n"
+function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summary') {
+    return "You are writing a faithful, source-based book summary for a books website, in English.\n"
         . "Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
-        . "Using ONLY these notes (from the real text), write a thorough summary with these ## sections, omitting any you lack material for:\n"
+        . "Using ONLY these notes (from the real text), write {$target} with these ## sections, omitting any you lack material for:\n"
         . "## About the Work\n## Context\n## Structure of the Book\n## Detailed Section-by-Section Summary\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
-        . "RULES: Base every statement on the notes (the real text). Do NOT invent chapter titles, quotations, examples, or claims not in the notes. Separate the book's actual content from outside/biographical context. Be comprehensive but do NOT pad or repeat to inflate length. Clear, engaged prose, third person.\n\n"
-        . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 40000) . "\n=== END NOTES ===";
+        . "RULES: Base every statement on the notes (the real text). Do NOT invent chapter titles, quotations, examples, or claims not in the notes. Separate the book's actual content from outside/biographical context. Be comprehensive but do NOT pad or repeat to inflate length. Clear, engaged prose, third person. Do NOT restate the title as an H1; start with the ## sections.\n\n"
+        . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
 function proto_systemA_prompt($book, $author) {
     return "Write a comprehensive summary of the book \"{$book}\"" . ($author ? " by {$author}" : '') . " in English, "
         . "covering its structure, main arguments, key concepts, themes, and conclusions. Aim for depth.";
+}
+
+/* ── TEK ÇAĞRIDA kaynak-temelli özet üretimi (batch + içerik düzeltme kullanır)
+   Uzunluk: 'kisa' | 'standart' | 'kapsamli'. on_beat heartbeat.
+   Dönüş: ['found'=>bool, 'insufficient'=>bool, 'md'=>string, 'source'=>..,
+           'url'=>.., 'book_words'=>int, 'chunks'=>int, 'chapters'=>[..],
+           'model'=>'deepseek'|'gemini', 'debug'=>..] */
+function proto_generate($book, $author, $opts = []) {
+    $len = in_array($opts['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $opts['length'] : 'standart';
+    $beat = is_callable($opts['on_beat'] ?? null) ? $opts['on_beat'] : function () {};
+    $cfg = [
+        'kisa'     => ['max' => 6,  'notes' => '110-170', 'target' => 'a focused summary of about 1200-1800 words'],
+        'standart' => ['max' => 12, 'notes' => '150-260', 'target' => 'a thorough summary of about 2500-3800 words'],
+        'kapsamli' => ['max' => 18, 'notes' => '220-340', 'target' => 'as comprehensive a summary as the material supports (5000+ words for a long book), fully developing every section'],
+    ][$len];
+
+    // Sağlayıcı: DeepSeek erişilebiliyorsa onu (ucuz), yoksa Gemini. İş başına bir kez.
+    $prov = ($opts['provider'] ?? 'auto');
+    if ($prov === 'auto') $prov = (proto_openrouter_key() !== '' || proto_deepseek_reachable()) ? 'auto' : 'gemini';
+    $model_label = ($prov === 'gemini') ? 'gemini' : 'deepseek';
+
+    $src = proto_acquire($book, $author);
+    $beat();
+    if (empty($src['found'])) return ['found' => false, 'insufficient' => true, 'debug' => $src['debug'] ?? null];
+
+    $text   = proto_clean($src['source'], $src['text']);
+    $chunks = proto_chunks($text, $cfg['max']);
+    $notes  = [];
+    foreach ($chunks as $i => $ch) {
+        $beat();
+        $dg = '';
+        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, count($chunks), $ch, $cfg['notes']), 1200, $beat, 280, $dg, $prov);
+        if ($t !== '' && stripos($t, 'no substantive content') === false) $notes[] = '[Part ' . ($i + 1) . "]\n" . $t;
+    }
+    if (!$notes) return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label];
+
+    $beat();
+    $dg2 = '';
+    $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['target']), 8000, $beat, 300, $dg2, $prov);
+    if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2];
+
+    return ['found' => true, 'insufficient' => false, 'md' => $md, 'source' => $src['source'], 'url' => $src['url'],
+            'book_words' => str_word_count(strip_tags($text)), 'chunks' => count($chunks),
+            'chapters' => proto_detect_chapters($text), 'model' => $model_label];
 }
 
 /* ── OpenRouter anahtarı (DeepSeek'i erişilebilir kapıdan kullanmak için) ── */
@@ -222,7 +266,7 @@ function proto_deepseek_reachable() {
 }
 
 /* ── Doğrudan DeepSeek (ucuz; engel kalkınca OTOMATİK kullanılır) ─────────── */
-function proto_deepseek_direct($prompt, $max_tokens, &$diag = null) {
+function proto_deepseek_direct($prompt, $max_tokens, &$diag = null, $ping = null) {
     $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
            ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
     // thinking:disabled → yanıt doğrudan content'e (temiz); v4-flash aksi halde
@@ -232,11 +276,19 @@ function proto_deepseek_direct($prompt, $max_tokens, &$diag = null) {
         'thinking' => $think ? ['type' => 'disabled'] : null,
         'messages' => [['role' => 'user', 'content' => $prompt]],
     ], fn($v) => $v !== null), JSON_UNESCAPED_UNICODE);
-    $do = function ($body) use (&$code, &$err) {
+    $last = time();
+    $do = function ($body) use (&$code, &$err, $ping, &$last) {
         $ch = curl_init(DEEPSEEK_API_URL);
-        curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10,
+        $o = [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10,
             CURLOPT_TIMEOUT => 280, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS => $body]);
+            CURLOPT_POSTFIELDS => $body];
+        // Bloklu çağrı boyunca heartbeat: yoksa uzun reduce'ta kitap "ölü" sanılıp
+        // başka worker'a geçebiliyordu (180 sn eşik). XFERINFOFUNCTION düzenli çağrılır.
+        if (is_callable($ping)) {
+            $o[CURLOPT_NOPROGRESS] = false;
+            $o[CURLOPT_XFERINFOFUNCTION] = function () use ($ping, &$last) { if (time() - $last >= 5) { $ping(); $last = time(); } return 0; };
+        }
+        curl_setopt_array($ch, $o);
         $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); $err = curl_error($ch);
         curl_close($ch);
         return $r;
@@ -262,8 +314,8 @@ function proto_ds($prompt, $max_tokens, $ping = null, $timeout = 280, &$diag = n
     if ($provider !== 'gemini') {
         // 1) OpenRouter (yalnız anahtar eklenmişse)
         if (proto_openrouter_key() !== '') { $t = proto_openrouter($prompt, $max_tokens, $diag); if ($t !== '') return $t; }
-        // 2) Doğrudan DeepSeek
-        $t = proto_deepseek_direct($prompt, $max_tokens, $diag); if ($t !== '') return $t;
+        // 2) Doğrudan DeepSeek (çağrı boyunca heartbeat için $ping geçilir)
+        $t = proto_deepseek_direct($prompt, $max_tokens, $diag, $ping); if ($t !== '') return $t;
     }
     // 3) Gemini yedeği
     require_once __DIR__ . '/_gemini.php';

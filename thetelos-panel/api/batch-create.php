@@ -83,6 +83,8 @@ $batch = [
     // Kademeli hakem (Gemini denetler, şüphede Claude): üretilen bilgi metnini
     // kaynaklarla kıyaslar; uydurma bulursa yayınlamaz. '0' → kapat. Vars. açık.
     'referee'      => (($_POST['referee'] ?? '1') !== '0') ? '1' : '0',
+    // Kaynak-temelli özet (source) uzunluğu: kisa | standart | kapsamli
+    'length'       => in_array($_POST['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $_POST['length'] : 'standart',
     'total'        => count($books),
     'done'         => 0,
     'ok'           => 0,

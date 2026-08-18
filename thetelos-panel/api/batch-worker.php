@@ -566,11 +566,52 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $gen_error = '';
     $part_warn = '';      // parça eksik kaldıysa uyarı (yayınlanır ama işaretlenir)
 
-    /* ── BİLGİ METNİ TİPİ (info) ─────────────────────────────────────────
-       Walkthrough YOK. Wikipedia + Google Books + Open Library'den GERÇEK veri
-       toplanır (tls_info_generate), model yalnız buna dayanarak kendi sesiyle
-       yazar. Kaynak yoksa uydurmaz → yer tutucu/atla. */
-    if ($type === 'info') {
+    /* ── KAYNAK-TEMELLİ ÖZET TİPİ (source) ───────────────────────────────
+       Kitabın GERÇEK TAM METNİNİ bul (Project Gutenberg / Internet Archive),
+       parçala, her parçayı yalnız o metinden özetle, kapsamlı özete birleştir.
+       AKILLI KADEME (uydurma YOK, kapsamı en üst düzeyde tut):
+         1) tam metin var  → kapsamlı, bölüm-bölüm özet
+         2) tam metin yok  → Wikipedia-temelli Bilgi Metni'ne düş (tls_info_generate)
+         3) o da yok        → yer tutucu (rewrite) / atla (create). */
+    if ($type === 'source') {
+        require_once __DIR__ . '/_proto.php';
+        require_once __DIR__ . '/_info.php';
+        bw_touch_hb($batch_file, $idx);
+        $sr = proto_generate($search_book, $author, [
+            'length'  => in_array($batch['length'] ?? 'standart', ['kisa','standart','kapsamli'], true) ? $batch['length'] : 'standart',
+            'provider'=> 'auto',
+            'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+        ]);
+        if (!empty($sr['found']) && empty($sr['insufficient']) && trim((string)($sr['md'] ?? '')) !== '') {
+            $content = bw_clean_content($sr['md']);   // tam metinden kapsamlı özet
+        } else {
+            // Tam metin yok → Wikipedia-temelli Bilgi Metni'ne düş.
+            $info_prov = (proto_deepseek_reachable()) ? 'deepseek' : 'gemini';
+            $ir = tls_info_generate($search_book, $author, [
+                'provider' => $info_prov,
+                'referee'  => (($batch['referee'] ?? '1') !== '0'),
+                'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+            ]);
+            if (!empty($ir['insufficient'])) {
+                // Ne tam metin ne Wikipedia → UYDURMA YOK.
+                if ($rewrite && $update_pid) {
+                    $ph = bw_placeholder_html($book, $author);
+                    [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok (tam metin + Wikipedia yok)', $update_pid, 'rewrite');
+                    bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)']);
+                    return;
+                }
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok (kaynak-temelli özet)', 0, 'create');
+                bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: tam metin ve Wikipedia bulunamadı']);
+                return;
+            }
+            if (empty($ir['ok']) || trim((string)$ir['md']) === '') { $gen_error = 'kaynak-temelli özet üretilemedi: ' . ($ir['error'] ?? 'boş'); }
+            else {
+                $content = bw_clean_content($ir['md']);
+                if (!empty($ir['shortnote'])) bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynaksız kısa not (tam metin yok, Wikipedia zayıf)', $update_pid, $rewrite ? 'rewrite' : 'create');
+            }
+        }
+    } elseif ($type === 'info') {
         require_once __DIR__ . '/_info.php';
         require_once __DIR__ . '/_anthropic.php';   // model id yardımcıları
         bw_touch_hb($batch_file, $idx);

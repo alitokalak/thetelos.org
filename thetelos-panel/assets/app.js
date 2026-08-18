@@ -959,7 +959,8 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   if (!batchBooks.length) { notify('bulk-notif','Önce dosya yükleyin.','err'); return; }
   if (batchRunning) return;
 
-  const type        = document.querySelector('input[name=bulk_type]:checked')?.value || 'summary';
+  const type        = document.querySelector('input[name=bulk_type]:checked')?.value || 'source';
+  const length      = document.getElementById('bulk_length')?.value || 'standart';
   const status      = document.getElementById('bulk_post_status')?.value || 'draft';
   const tokens      = document.getElementById('bulk-token-slider').value;
   const workerCount = parseInt(document.getElementById('bulk_workers')?.value || '1');
@@ -974,6 +975,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   const res = await postData(API('batch-create.php'), {
     books:        JSON.stringify(batchBooks),
     type,
+    length,
     post_status:  status,
     max_tokens:   tokens,
     api_provider: activeProvider,
@@ -2492,13 +2494,17 @@ document.getElementById('btn-drafts-puball')?.addEventListener('click', async ()
 /* Bilgi Metni tipi seçilince: açıklama notunu göster, kelime + parça ayarlarını
    GİZLE (bu tipte uzunluk kaynağa göre değişkendir, bu ayarlar kullanılmaz). */
 function updateBulkTypeUI() {
-  const isInfo = !!document.getElementById('bt-info')?.checked;
-  const note = document.getElementById('bulk-info-note');
-  if (note) note.style.display = isInfo ? '' : 'none';
-  const tc = document.getElementById('bulk-token-control');
-  if (tc) tc.style.display = isInfo ? 'none' : '';
-  const pr = document.getElementById('bulk-parts-row');
-  if (pr) pr.style.display = isInfo ? 'none' : '';
+  const t = document.querySelector('input[name=bulk_type]:checked')?.value || 'source';
+  const isSource = t === 'source';
+  const isInfo   = t === 'info';
+  // source/info kaynak-temelli → kelime/parça ayarları anlamsız, gizle.
+  const srcLike = isSource || isInfo;
+  const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
+  show('bulk-source-note', isSource);
+  show('bulk-info-note',   isInfo);
+  show('bulk-length-row',  isSource);   // uzunluk seçici yalnız kaynak-temelli özet
+  show('bulk-token-control', !srcLike);
+  show('bulk-parts-row',     !srcLike);
 }
 document.querySelectorAll('input[name=bulk_type]').forEach(r => {
   r.addEventListener('change', updateBulkTypeUI);

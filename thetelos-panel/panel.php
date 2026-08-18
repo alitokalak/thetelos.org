@@ -225,18 +225,32 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <div class="card">
         <div class="card-title">Batch Ayarları</div>
         <div class="type-toggle">
-          <input type="radio" name="bulk_type" id="bt-summary"  value="summary"  checked>
-          <label for="bt-summary">📄 Özet</label>
-          <input type="radio" name="bulk_type" id="bt-analysis" value="analysis">
-          <label for="bt-analysis">🔍 Derin Analiz</label>
+          <input type="radio" name="bulk_type" id="bt-source" value="source" checked>
+          <label for="bt-source">📖 Kaynak-Temelli Özet</label>
           <input type="radio" name="bulk_type" id="bt-info" value="info">
           <label for="bt-info">📚 Bilgi Metni</label>
+          <input type="radio" name="bulk_type" id="bt-summary"  value="summary">
+          <label for="bt-summary">📄 Kaynaksız Özet</label>
+          <input type="radio" name="bulk_type" id="bt-analysis" value="analysis">
+          <label for="bt-analysis">🔍 Analiz</label>
+        </div>
+        <div id="bulk-source-note" style="font-size:12px;color:#7fb37f;line-height:1.5;margin:-4px 0 12px;border:1px solid rgba(90,170,90,.35);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.06)">
+          📖 <b>Kaynak-Temelli Özet (önerilen):</b> kitabın <b>GERÇEK tam metnini</b> (Project Gutenberg /
+          Internet Archive) bulur, parça parça okuyup <b>yalnız metne dayalı</b> kapsamlı özet yazar.
+          Tam metin yoksa → Wikipedia-temelli Bilgi Metni'ne düşer; o da yoksa yer tutucu. <b>Hiçbir aşamada
+          uydurma yok.</b> DeepSeek erişilebilirse onu (ucuz), değilse Gemini kullanır.
         </div>
         <div id="bulk-info-note" style="display:none;font-size:12px;color:#7fb37f;line-height:1.5;margin:-4px 0 12px;border:1px solid rgba(90,170,90,.35);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.06)">
-          📚 <b>Bilgi Metni (önerilen):</b> kitap hakkında Wikipedia + Google Books + Open Library'den
-          GERÇEK veri toplanır, model yalnız buna dayanarak kendi sesiyle yazar. <b>Uydurma yok, kaynağa
-          sadık.</b> Uzunluk kaynağa göre değişir. Kaynak yoksa yer tutucu konur. (Kelime/parça ayarları
-          bu tipte kullanılmaz.)
+          📚 <b>Bilgi Metni:</b> kitap hakkında Wikipedia + Google Books + Open Library'den GERÇEK veri
+          toplanır, model yalnız buna dayanarak yazar. <b>Uydurma yok.</b> (Kelime/parça ayarları kullanılmaz.)
+        </div>
+        <div id="bulk-length-row" style="margin:0 0 12px">
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Özet uzunluğu (kaynak-temelli)</label>
+          <select id="bulk_length" style="max-width:340px">
+            <option value="kisa">Kısa (~1.500 kelime)</option>
+            <option value="standart" selected>Standart (~3.000 kelime)</option>
+            <option value="kapsamli">Kapsamlı (~6.000+ kelime)</option>
+          </select>
         </div>
 
         <div class="token-control" id="bulk-token-control" style="margin-bottom:16px">
