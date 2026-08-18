@@ -454,6 +454,82 @@ function runGenerateStream(params, onLive, label) {
   });
 }
 
+/* ── KAYNAK-TEMELLİ tekli üretim: 1 kitaplık batch + ilerleme yoklama ────────
+   Kaynak-temelli üretim dakikalarca süren arka-plan işi (tüm kitap okunuyor);
+   canlı SSE'ye uymaz (Cloudflare keser). Bu yüzden 1 kitaplık batch açıp
+   ilerlemeyi yokluyoruz — batch sistemi üretim+yayın+kademe+kapıyı zaten yapar. */
+async function runSingleSource(book, author) {
+  const length = document.getElementById('single_length')?.value || 'standart';
+  const status = document.getElementById('post_status')?.value || 'publish';
+  const btn = document.getElementById('btn-generate');
+  setLoading(btn, true, 'Kaynak aranıyor...');
+  document.getElementById('publish-result').innerHTML = '';
+  document.getElementById('gen-notif')?.classList.remove('show');
+  const cc = document.getElementById('cover-card'); if (cc) cc.style.display = 'none';
+  document.getElementById('single-result').style.display = '';
+  document.getElementById('gen-stats').innerHTML = '';
+  const preview = document.getElementById('preview-content');
+  preview.innerHTML = '<div class="loading-row"><span class="loader"></span> <span id="src-status">Kaynak-temelli özet başlatılıyor…</span></div>';
+
+  let res;
+  try {
+    res = await postData(API('batch-create.php'), {
+      books: JSON.stringify([{ book_title: book, author_name: author }]),
+      type: 'source', length: length, post_status: status, rewrite: '0',
+      workers: '1', api_provider: activeProvider,
+    });
+  } catch (e) { res = { ok: false, error: e.message }; }
+  if (!res || !res.ok) {
+    preview.innerHTML = '<div style="color:var(--red);padding:14px">HATA: ' + ((res && res.error) || 'başlatılamadı') + '</div>';
+    setLoading(btn, false); return;
+  }
+  const id = res.batch_id;
+  _fireWorkersFor(id, 1);
+
+  const t0 = Date.now();
+  const poll = setInterval(async () => {
+    let d;
+    try {
+      const r = await fetch(API('batch-status.php') + '?batch_id=' + encodeURIComponent(id));
+      d = await r.json();
+    } catch (e) { return; }
+    if (!d || !d.ok) return;
+    const b = (d.books && d.books[0]) || {};
+    const sec = Math.round((Date.now() - t0) / 1000);
+    const st = document.getElementById('src-status');
+    if (st) st.textContent = 'İşleniyor… (' + sec + ' sn) · durum: ' + (b.status || '…') + ' — tam kitap okunuyor, birkaç dakika sürebilir';
+    if (b.status === 'done' || b.status === 'error') {
+      clearInterval(poll); setLoading(btn, false);
+      if (b.status === 'done' && b.post_url) {
+        preview.innerHTML =
+          '<div style="padding:16px;border:1px solid rgba(90,170,90,.4);border-radius:10px;background:rgba(90,170,90,.07)">'
+          + '<div style="color:#7fb37f;font-weight:600;margin-bottom:6px">✓ Kaynak-temelli özet yayınlandı</div>'
+          + (b.error ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + b.error + '</div>' : '')
+          + '<a href="' + b.post_url + '" target="_blank" style="color:var(--gold)">Yazıyı gör →</a>'
+          + (b.edit_url ? ' &nbsp;·&nbsp; <a href="' + b.edit_url + '" target="_blank" style="color:var(--muted)">Düzenle</a>' : '')
+          + '</div>';
+        notify('gen-notif', '✓ Yayınlandı.', 'ok');
+      } else {
+        preview.innerHTML =
+          '<div style="padding:16px;border:1px solid rgba(230,102,102,.45);border-radius:10px;background:rgba(230,102,102,.08);color:#e06666">'
+          + '⚠ ' + (b.error || 'İçerik üretilemedi (kaynak bulunamamış olabilir)') + '</div>';
+      }
+    }
+  }, 3000);
+}
+
+function updateSingleTypeUI() {
+  const t = document.querySelector('input[name=type]:checked')?.value || 'source';
+  const isSource = t === 'source';
+  const show = (id, on) => { const e = document.getElementById(id); if (e) e.style.display = on ? '' : 'none'; };
+  show('single-source-note', isSource);
+  show('single-length-row', isSource);
+  show('single-token-control', !isSource);
+  show('single-parts-col', !isSource);
+}
+document.querySelectorAll('input[name=type]').forEach(r => r.addEventListener('change', updateSingleTypeUI));
+updateSingleTypeUI();
+
 document.getElementById('btn-generate')?.addEventListener('click', async () => {
   const book   = document.getElementById('book_title').value.trim();
   const author = document.getElementById('author_name').value.trim();
@@ -461,6 +537,9 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   const tokens = document.getElementById('token-slider').value;
 
   if (!book || !author) { notify('gen-notif','Kitap adı ve yazar adı zorunludur.','err'); return; }
+
+  // KAYNAK-TEMELLİ: canlı SSE yerine arka-plan işi (tam kitap okunuyor) + ilerleme.
+  if (type === 'source') { runSingleSource(book, author); return; }
 
   const btn = document.getElementById('btn-generate');
   setLoading(btn, true, 'Üretiliyor...');

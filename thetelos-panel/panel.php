@@ -95,10 +95,25 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <div class="card">
         <div class="card-title">İçerik Tipi & Kitap Bilgisi</div>
         <div class="type-toggle">
-          <input type="radio" name="type" id="t-summary"  value="summary"  checked>
-          <label for="t-summary">📄 Özet</label>
+          <input type="radio" name="type" id="t-source" value="source" checked>
+          <label for="t-source">📖 Kaynak-Temelli</label>
+          <input type="radio" name="type" id="t-summary"  value="summary">
+          <label for="t-summary">📄 Kaynaksız Özet</label>
           <input type="radio" name="type" id="t-analysis" value="analysis">
           <label for="t-analysis">🔍 Analiz</label>
+        </div>
+        <div id="single-source-note" style="font-size:12px;color:#7fb37f;line-height:1.5;margin:0 0 12px;border:1px solid rgba(90,170,90,.35);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.06)">
+          📖 <b>Kaynak-Temelli:</b> kitabın <b>gerçek tam metnini</b> (Project Gutenberg / Internet Archive)
+          bulup ondan kapsamlı özet yazar. <b>Uydurma yok.</b> Bu bir arka-plan işidir; canlı önizleme yerine
+          ilerleme gösterilir, bitince yazı doğrudan yayınlanır. Tam metin yoksa Bilgi Metni'ne düşer / atlar.
+        </div>
+        <div id="single-length-row" style="margin:0 0 12px">
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Özet uzunluğu</label>
+          <select id="single_length" style="max-width:340px">
+            <option value="kisa">Kısa (~1.500 kelime)</option>
+            <option value="standart" selected>Standart (~3.000 kelime)</option>
+            <option value="kapsamli">Kapsamlı (~6.000+ kelime)</option>
+          </select>
         </div>
         <div class="form-row">
           <div>
@@ -111,7 +126,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           </div>
         </div>
 
-        <div class="token-control">
+        <div class="token-control" id="single-token-control">
           <div class="token-header">
             <label>Kaç kelime yazılsın?</label>
             <span id="token-display" class="token-val">3.000 kelime</span>
@@ -131,7 +146,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <option value="publish">Direkt yayınla</option>
             </select>
           </div>
-          <div>
+          <div id="single-parts-col">
             <label for="parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek — en az)</span></label>
             <select id="parts-select" onchange="updateTokenDisplay(document.getElementById('token-slider').value)">
               <option value="2" selected>2 parça</option>
