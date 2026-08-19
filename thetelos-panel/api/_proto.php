@@ -103,12 +103,44 @@ function proto_archive($book, $author) {
     return ['found' => false, 'debug' => $debug];
 }
 
-/* ── Sıralı edinim: Gutenberg → Internet Archive ───────────────────────── */
+/* ── Wikisource tam metin (tek sayfalık kamu-malı eserler) ──────────────────
+   Gutenberg'de olmayan ama Wikisource'ta düz metin olarak bulunan eserler için.
+   Çok-alt-sayfalı eserlerde yalnız içindekiler döner (kısa) → eşik geçilmez,
+   Internet Archive'e düşülür. Kısmi/yanlış metin gelse bile chunk aşamasındaki
+   ERKEN DURMA korur (ilk parçalardan not çıkmazsa iş anında durur). */
+function proto_wikisource($book, $author) {
+    $debug = ['ws_results' => 0, 'tried' => []];
+    $s = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=5&format=json&srsearch='
+        . rawurlencode(trim($book . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
+    $hits = $s['query']['search'] ?? [];
+    $debug['ws_results'] = count($hits);
+    $surname = '';
+    if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
+    foreach ($hits as $h) {
+        $title = (string) ($h['title'] ?? ''); if ($title === '') continue;
+        $p = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&prop=extracts&explaintext=1&exlimit=1&redirects=1&format=json&titles='
+            . rawurlencode($title), 'thetelos.org/1.0', 25, 2);
+        $pages = $p['query']['pages'] ?? [];
+        $txt = '';
+        foreach ($pages as $pg) { $txt = (string) ($pg['extract'] ?? ''); break; }
+        $len = mb_strlen(trim($txt));
+        $debug['tried'][] = ['title' => $title, 'chars' => $len];
+        if ($len > 15000) {   // tek sayfalık gerçek tam metin (içindekiler değil)
+            return ['found' => true, 'title' => $title, 'source' => 'Wikisource', 'text' => $txt, 'raw_len' => $len,
+                'url' => 'https://en.wikisource.org/wiki/' . rawurlencode(str_replace(' ', '_', $title)), 'debug' => $debug];
+        }
+    }
+    return ['found' => false, 'debug' => $debug];
+}
+
+/* ── Sıralı edinim: Gutenberg → Wikisource → Internet Archive ───────────── */
 function proto_acquire($book, $author) {
     $g = proto_gutenberg($book, $author);
     if (!empty($g['found'])) { $g['debug'] = ['gutenberg' => $g['debug']]; return $g; }
+    $w = proto_wikisource($book, $author);
+    if (!empty($w['found'])) { $w['debug'] = ['gutenberg' => $g['debug'] ?? null, 'wikisource' => $w['debug'] ?? null]; return $w; }
     $a = proto_archive($book, $author);
-    $a['debug'] = ['gutenberg' => $g['debug'] ?? null, 'archive' => $a['debug'] ?? null];
+    $a['debug'] = ['gutenberg' => $g['debug'] ?? null, 'wikisource' => $w['debug'] ?? null, 'archive' => $a['debug'] ?? null];
     return $a;
 }
 
@@ -225,16 +257,29 @@ function proto_generate($book, $author, $opts = []) {
     $text   = proto_clean($src['source'], $src['text']);
     $bw     = str_word_count(strip_tags($text));
     $chunks = proto_chunks($text, $cfg['max'], $cfg['ctarget']);
-    $notes  = []; $lastdg = '';
+    $ncnt   = count($chunks);
+    $notes  = []; $lastdg = ''; $empty = 0; $nosub = 0; $done = 0;
+    // ERKEN DURMA eşiği: ilk birkaç parça hiç not vermezse (yanlış/dev eşleşme,
+    // sağlayıcı boş dönüyor ya da metin bu kitaba ait değil) 12-22 parçayı
+    // öğütmek yerine hemen dur → Bilgi Metni'ne düş. Takılmayı bu bitirir.
+    $probe = min($ncnt, 3);
     foreach ($chunks as $i => $ch) {
         $beat();
         $dg = '';
-        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, count($chunks), $ch, $cfg['notes']), 1200, $beat, 280, $dg, $prov);
-        $lastdg = $dg;
-        if ($t !== '' && stripos($t, 'no substantive content') === false) $notes[] = '[Part ' . ($i + 1) . "]\n" . $t;
+        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, $ncnt, $ch, $cfg['notes']), 1200, $beat, 280, $dg, $prov);
+        $lastdg = $dg; $done = $i + 1;
+        if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) {
+            $notes[] = '[Part ' . ($i + 1) . "]\n" . $t;    // gerçek not
+        } elseif ($t === '') {
+            $empty++;   // sağlayıcı boş döndü (flake/hata)
+        } else {
+            $nosub++;   // model "içerik yok" dedi (metin bu kitaba ait değil olabilir)
+        }
+        if ($done >= $probe && !$notes) break;   // ilk $probe parçadan not yok → dur
     }
     if (!$notes) return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label,
-        'trace' => $src['source'] . " {$bw}w, " . count($chunks) . " parça, 0 not (model boş: {$lastdg}) → Bilgi Metni'ne düşülecek"];
+        'trace' => $src['source'] . " {$bw}w, {$ncnt} parça (işlenen {$done}: boş={$empty}, içeriksiz={$nosub}), 0 not"
+                 . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
 
     $beat();
     $dg2 = '';

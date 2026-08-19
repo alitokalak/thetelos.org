@@ -94,9 +94,10 @@ function setLog(lines){ const l=$('#log'); l.style.display='block'; l.textConten
 function renderDebug(d){
   if(!d || shownDebug) return; shownDebug = true;
   const l=$('#log'); let s='\n— KAYNAK DEBUG —\n';
-  const g=d.gutenberg, a=d.archive;
+  const g=d.gutenberg, w=d.wikisource, a=d.archive;
   if(g){ s+='Gutenberg: '+g.gutendex_results+' sonuç'+(g.match?(' · #'+g.match.id+' '+g.match.title):'')+'\n';
     (g.tried||[]).forEach(t=> s+='  ['+t.code+'] '+t.bytes+' bayt '+t.url+'\n'); if(g.note) s+='  '+g.note+'\n'; }
+  if(w){ s+='Wikisource: '+w.ws_results+' sonuç\n'; (w.tried||[]).forEach(t=> s+='  '+(t.chars||0)+' karakter '+(t.title||'')+'\n'); }
   if(a){ s+='Archive: '+a.ia_results+' sonuç\n'; (a.tried||[]).forEach(t=> s+='  ['+(t.code||'-')+'] '+(t.bytes||0)+' bayt '+(t.file||t.note||'')+'\n'); }
   l.textContent += s; l.scrollTop=l.scrollHeight;
 }

@@ -69,9 +69,19 @@ while (time() < $budget) {
             $diag = '';
             $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280, $diag, $j['prov'] ?? 'auto');
             $j = proto_job_read($file) ?: $j;
-            if ($t !== '' && stripos($t, 'no substantive content') === false) $j['notes'][] = '[Part ' . ($ci + 1) . "]\n" . $t;
-            elseif ($t === '') proto_job_log($j, '  ⚠ parça ' . ($ci + 1) . ' boş döndü — model ' . $diag);
+            if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) {
+                $j['notes'][] = '[Part ' . ($ci + 1) . "]\n" . $t;   // gerçek not
+            } elseif ($t === '') {
+                proto_job_log($j, '  ⚠ parça ' . ($ci + 1) . ' boş döndü — sağlayıcı ' . $diag);
+            } else {
+                proto_job_log($j, '  — parça ' . ($ci + 1) . ' içerik yok (metin bu kitaba ait olmayabilir)');
+            }
             $j['ci'] = $ci + 1;
+            // ERKEN DURMA: ilk 3 parça hiç not vermediyse boşuna 14 parçayı öğütme.
+            if ($j['ci'] >= min($tot, 3) && empty($j['notes'])) {
+                proto_job_log($j, '⏹ İlk ' . $j['ci'] . ' parçadan analiz edilebilir not çıkmadı → durduruldu (yanlış/uygunsuz eşleşme).');
+                $j['phase'] = 'reduce';
+            }
             proto_job_write($file, $j); continue;
         }
         $j['phase'] = 'reduce'; proto_job_write($file, $j); continue;
@@ -79,7 +89,9 @@ while (time() < $budget) {
 
     if ($phase === 'reduce') {
         if (empty($j['notes'])) {
-            $j['resultB'] = ['state' => 'SOURCE_NOT_FOUND', 'msg' => 'Tam metin alındı ama analiz edilebilir içerik çıkarılamadı.'];
+            $j['resultB'] = ['state' => 'SOURCE_NOT_FOUND',
+                'msg' => ($j['source'] ?? 'Kaynak') . ' metni alındı ama bu kitaba ait analiz edilebilir içerik çıkarılamadı '
+                       . '(muhtemelen yanlış eşleşme). Uydurma yapılmadı → Bilgi Metni gerekiyor.'];
         } else {
             proto_job_log($j, 'Parça özetleri kapsamlı özete birleştiriliyor…');
             proto_job_write($file, $j);
