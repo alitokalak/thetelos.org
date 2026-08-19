@@ -258,21 +258,22 @@ function proto_generate($book, $author, $opts = []) {
     $bw     = str_word_count(strip_tags($text));
     $chunks = proto_chunks($text, $cfg['max'], $cfg['ctarget']);
     $ncnt   = count($chunks);
-    $notes  = []; $lastdg = ''; $empty = 0; $nosub = 0; $done = 0;
-    // Parçaları SIRAYLA işle (içerik seyrek/erken olabilir — yoklama ıskalıyordu).
-    // ÇÖP EŞLEŞME koruması: ilk 6 parçadan HİÇ not çıkmadıysa dur (409k Mill gibi
-    // gerçekten alakasız metin). Bir kez bile not gelirse tüm parçaları işle.
-    $guard = min($ncnt, 6);
+    $notes = []; $lastdg = ''; $empty = 0; $nosub = 0;
+    // Parça istemlerini hazırla ve HEPSİNİ PARALEL gönder (curl_multi). 22 parça
+    // sırayla ~15-25 dk sürüp host süreç limitinde ölüyordu; paralel ~birkaç dk.
+    $prompts = [];
+    foreach ($chunks as $i => $ch) $prompts[$i] = proto_chunk_prompt($book, $author, $i + 1, $ncnt, $ch, $cfg['notes']);
+    $texts = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 1200, $beat, 8) : [];
     foreach ($chunks as $i => $ch) {
-        $beat(); $dg = '';
-        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, $ncnt, $ch, $cfg['notes']), 1200, $beat, 280, $dg, $prov);
-        $lastdg = $dg; $done = $i + 1;
+        $t = $texts[$i] ?? '';
+        if ($t === '') {   // paralelde boş/başarısız → sıralı telafi (Gemini yedeği dahil)
+            $dg = ''; $t = proto_ds($prompts[$i], 1200, $beat, 280, $dg, $prov); $lastdg = $dg;
+        }
         if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) $notes[] = '[Part ' . ($i + 1) . "]\n" . $t;
         else { if ($t === '') $empty++; else $nosub++; }
-        if ($done >= $guard && !$notes) break;   // ilk 6 parça tamamen boş → çöp eşleşme
     }
     if (!$notes) return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label,
-        'trace' => $src['source'] . " {$bw}w, {$ncnt} parça (işlenen {$done}: boş={$empty}, içeriksiz={$nosub}), 0 not"
+        'trace' => $src['source'] . " {$bw}w, {$ncnt} parça (boş={$empty}, içeriksiz={$nosub}), 0 not"
                  . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
 
     $beat();
@@ -377,6 +378,56 @@ function proto_deepseek_direct($prompt, $max_tokens, &$diag = null, $ping = null
     if ($txt === '') $txt = trim((string) ($j['choices'][0]['message']['reasoning_content'] ?? ''));
     $diag = 'deepseek http=' . (int) $code . ($err ? ' err=' . $err : '') . ' chars=' . mb_strlen($txt);
     return $txt;
+}
+
+/* ── PARALEL DeepSeek — çok sayıda parçayı AYNI ANDA gönder (curl_multi) ────
+   Takılma/yavaşlığın asıl çözümü: 22 parça sırayla ~11-22 dk yerine, aynı
+   anda (en çok $conc tanesi uçuşta) ~birkaç dk'da biter; host süreç limitine
+   takılmaz. Yalnız doğrudan DeepSeek için. Dönüş: [index => text]. Boş/başarısız
+   kalanları çağıran taraf sıralı proto_ds (Gemini yedeği) ile telafi eder.
+   $beat düzenli çağrılır → worker "ölü" sanılmaz. */
+function proto_deepseek_multi($prompts, $max_tokens, $beat = null, $conc = 8) {
+    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY || !$prompts) return [];
+    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
+           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+    $mkbody = function ($prompt) use ($model, $max_tokens) {
+        return json_encode([
+            'model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)), 'temperature' => 0.3,
+            'thinking' => ['type' => 'disabled'],
+            'messages' => [['role' => 'user', 'content' => $prompt]],
+        ], JSON_UNESCAPED_UNICODE);
+    };
+    $hid = fn($ch) => is_object($ch) ? spl_object_id($ch) : (int) $ch;
+    $keys = array_keys($prompts); $n = count($keys); $pos = 0;
+    $out = []; $map = [];
+    $mh = curl_multi_init();
+    $add = function ($k) use ($mh, $mkbody, $prompts, &$map, $hid) {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 12, CURLOPT_TIMEOUT => 280,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => $mkbody($prompts[$k]),
+        ]);
+        curl_multi_add_handle($mh, $ch); $map[$hid($ch)] = $k;
+    };
+    while ($pos < $n && count($map) < $conc) $add($keys[$pos++]);
+    do {
+        curl_multi_exec($mh, $running);
+        if (is_callable($beat)) $beat();
+        while ($info = curl_multi_info_read($mh)) {
+            $ch = $info['handle']; $k = $map[$hid($ch)] ?? null;
+            $body = curl_multi_getcontent($ch);
+            $j = json_decode((string) $body, true);
+            $txt = trim((string) ($j['choices'][0]['message']['content'] ?? ''));
+            if ($txt === '') $txt = trim((string) ($j['choices'][0]['message']['reasoning_content'] ?? ''));
+            if ($k !== null) $out[$k] = $txt;
+            curl_multi_remove_handle($mh, $ch); curl_close($ch); unset($map[$hid($ch)]);
+            if ($pos < $n) $add($keys[$pos++]);
+        }
+        if ($running && curl_multi_select($mh, 1.0) === -1) usleep(100000);
+    } while ($running || $map || $pos < $n);
+    curl_multi_close($mh);
+    return $out;
 }
 
 /* ── Metin üretimi — SAĞLAYICI SEÇİMİ ──────────────────────────────────────
