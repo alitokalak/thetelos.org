@@ -206,8 +206,9 @@ function proto_systemA_prompt($book, $author) {
 function proto_continue_prompt($book, $author, $md, $notes) {
     return "You are EXTENDING a source-based summary of the book \"{$book}\"" . ($author ? " by {$author}" : '') . ".\n"
         . "Below is the SUMMARY SO FAR, then the ORDERED NOTES taken from the book's ACTUAL TEXT.\n"
-        . "Continue the summary with MORE depth and detail DERIVED ONLY FROM THE NOTES — especially expand the section-by-section coverage, the main arguments, and the key concepts with specifics that are in the text but not yet written.\n"
-        . "HARD RULES: Use ONLY the notes (the real text). Do NOT repeat or lightly rephrase anything already written. Do NOT invent quotations, chapter titles, examples, dates, or claims not in the notes. Do NOT write a concluding restatement. Output ONLY the NEW continuation (further ## / ### sections or developed paragraphs).\n"
+        . "Continue the summary with MORE depth and detail DERIVED ONLY FROM THE NOTES — go deeper into the section-by-section coverage, the main arguments, and the key concepts with specifics that are in the text but not yet written.\n"
+        . "HARD RULES: Use ONLY the notes (the real text). Do NOT repeat or lightly rephrase anything already written. Do NOT invent quotations, chapter titles, examples, dates, or claims not in the notes. Do NOT write a concluding restatement.\n"
+        . "STRUCTURE: Do NOT reuse any of the ## section headings that already appear in the summary so far (e.g. do NOT write another '## Main Arguments' or '## Key Concepts'). Instead add depth under NEW, SPECIFIC ### subsection titles (e.g. '### Book IV — The Tripartite Soul', '### The Argument from Function') or as developed paragraphs. Output ONLY the NEW continuation.\n"
         . "If the notes contain nothing substantial left to add, output EXACTLY: DONE\n\n"
         . "=== SUMMARY SO FAR ===\n" . mb_substr($md, 0, 30000) . "\n\n=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }

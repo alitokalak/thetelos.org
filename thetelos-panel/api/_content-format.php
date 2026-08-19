@@ -31,6 +31,12 @@ function bw_dedup_sections($text) {
         $h = mb_strtolower(trim($h), 'UTF-8');
         return trim(preg_replace('/[^a-z0-9]+/', ' ', $h));
     };
+    // Bir bloğun gövdesini (başlık hariç) karşılaştırma için normalize et.
+    $bodynorm = function ($lines) {
+        $body = implode(' ', array_slice($lines, 1));           // başlık satırını atla
+        $body = mb_strtolower(strip_tags($body), 'UTF-8');
+        return trim(preg_replace('/[^a-z0-9]+/', ' ', $body));
+    };
     $lines  = explode("\n", str_replace(["\r\n", "\r"], "\n", $text));
     $blocks = [];
     $cur    = ['key' => null, 'lines' => []];
@@ -46,12 +52,25 @@ function bw_dedup_sections($text) {
     $seen = []; $out = []; $removed = 0;
     foreach ($blocks as $b) {
         if ($b['key'] !== null && $b['key'] !== '') {
-            if (isset($seen[$b['key']])) { $removed++; continue; }   // kopya → at
-            $seen[$b['key']] = true;
+            $body = $bodynorm($b['lines']);
+            if (isset($seen[$b['key']])) {
+                // Aynı başlık. Yalnız GÖVDE de büyük ölçüde örtüşüyorsa gerçek kopya
+                // → at (çok kademeli üretimin aynı bölümü ikinci kez yazması). Gövde
+                // farklıysa özgün genişletme → başlığı 'X (continued)' yapıp KORU;
+                // böylece hem içerik kaybolmaz hem iki aynı başlık yan yana durmaz.
+                $prev = $seen[$b['key']];
+                $pct = 0.0;
+                if ($body === '' || $prev === '') { $pct = 100.0; }
+                else { similar_text(mb_substr($prev, 0, 1500), mb_substr($body, 0, 1500), $pct); }
+                if ($pct >= 55) { $removed++; continue; }          // gerçek tekrar → at
+                $b['lines'][0] = rtrim($b['lines'][0]) . ' (continued)';   // özgün → koru
+            } else {
+                $seen[$b['key']] = $body;
+            }
         }
         $out[] = implode("\n", $b['lines']);
     }
-    if ($removed === 0) return $text;   // tekrar yok → dokunma
+    if ($removed === 0) return $text;   // gerçek tekrar yok → dokunma
     return preg_replace('/\n{4,}/', "\n\n\n", implode("\n", $out));
 }
 
