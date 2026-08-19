@@ -50,13 +50,10 @@ while (time() < $budget) {
         $j['source'] = $src['source']; $j['url'] = $src['url'];
         $j['book_words'] = str_word_count(strip_tags($text));
         $j['chapters'] = proto_detect_chapters($text);
-        // İşleme SIRASI: önce kitabın farklı yerlerinden (baş/orta/son) yokla —
-        // dev baskılarda ön-madde uzun olur, gerçek içerik ortada/sonda başlar.
-        // Yoklamada hiç not yoksa erken dur; biri bile içerik verirse kalanları işle.
+        // Parçaları SIRAYLA işle (içerik seyrek/erken olabilir). ÇÖP EŞLEŞME
+        // koruması: ilk 6 parça tamamen boşsa dur (409k Mill gibi alakasız metin).
         $nc = count($chunks);
-        $pb = array_values(array_unique(array_filter([0, intdiv($nc, 2), intdiv($nc * 4, 5), $nc - 1], fn($x) => $x >= 0 && $x < $nc)));
-        $rest = array_values(array_diff(range(0, max(0, $nc - 1)), $pb));
-        $j['chunks'] = $chunks; $j['order'] = array_merge($pb, $rest); $j['probe_n'] = count($pb); $j['pi'] = 0; $j['notes'] = [];
+        $j['chunks'] = $chunks; $j['order'] = range(0, max(0, $nc - 1)); $j['probe_n'] = min($nc, 6); $j['pi'] = 0; $j['notes'] = [];
         proto_job_log($j, 'Tam metin: ' . number_format($j['book_words']) . ' kelime · ' . $src['source'] . ' · ' . count($chunks) . ' parça');
         // Model: DeepSeek'e bağlanabiliyorsak onu kullan (ucuz), yoksa Gemini.
         // İş başına bir kez ölçülür; engel kalkınca sonraki çalıştırmada otomatik döner.
@@ -85,9 +82,9 @@ while (time() < $budget) {
                 proto_job_log($j, '  — parça ' . ($idx + 1) . ' içerik yok (metin bu kitaba ait olmayabilir)');
             }
             $j['pi'] = $pi + 1;
-            // ERKEN DURMA: yoklama (baş/orta/son) bitti ve hiç not yoksa dur.
+            // ÇÖP EŞLEŞME koruması: ilk 6 parça tamamen boşsa dur.
             if ($j['pi'] >= (int) ($j['probe_n'] ?? $tot) && empty($j['notes'])) {
-                proto_job_log($j, '⏹ Yoklanan parçalarda (baş/orta/son) analiz edilebilir not yok → durduruldu (alakasız/çöp eşleşme).');
+                proto_job_log($j, '⏹ İlk ' . $j['pi'] . ' parçadan analiz edilebilir not çıkmadı → durduruldu (alakasız/çöp eşleşme).');
                 $j['phase'] = 'reduce';
             }
             proto_job_write($file, $j); continue;

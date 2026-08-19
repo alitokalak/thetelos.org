@@ -181,14 +181,11 @@ function proto_chunks($t, $max_chunks = 14, $target = 45000) {
 
 /* ── İstemler ──────────────────────────────────────────────────────────── */
 function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150-280') {
-    return "Below is an excerpt (part {$k} of {$n}) from a public-domain edition of \"{$book}\""
-        . ($author ? " by {$author}" : '') . ".\n"
-        . "Summarize the key content, ideas, arguments, reasoning, key concepts, and concrete examples ACTUALLY PRESENT in THIS excerpt. "
-        . "Use ONLY what this text says — do NOT add outside knowledge, do NOT infer beyond the text.\n"
-        . "IMPORTANT: This edition may include an editor's or translator's INTRODUCTION, ANALYSIS, preface, or commentary as well as the main text. "
-        . "ALL of that is valid material — summarize whatever prose is here (main text AND any editorial introduction/analysis), noting when something is editorial context vs the work itself.\n"
-        . "Reply with the skip marker ONLY if this excerpt is pure boilerplate with no readable prose at all — i.e. a title page, copyright/license/Project Gutenberg notice, a bare table of contents, an index, or page-number/running-header noise. In that case reply EXACTLY: (no substantive content).\n"
-        . "Otherwise you MUST extract notes. Write {$note_words} words of dense, faithful notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
+    return "The following is an excerpt (part {$k} of {$n}) from a REAL public-domain edition of the book \"{$book}\""
+        . ($author ? " by {$author}" : '') . ". It is genuinely from that edition — it may be the main text, OR the edition's introduction, the translator's/editor's analysis, a preface, footnotes, or appendices.\n"
+        . "TASK: Write {$note_words} words of dense, faithful notes on the ideas, arguments, reasoning, concepts, examples, and points ACTUALLY MADE in THIS passage. Use ONLY what this passage says — add no outside knowledge.\n"
+        . "DO NOT judge whether the passage 'belongs' to the book — it does. DO NOT refuse. Summarize whatever readable prose is present, whether it is the work itself or editorial discussion OF the work (when it is editorial context rather than the work's own words, just note that).\n"
+        . "The ONLY case where you may skip: the passage contains NO readable sentences at all — i.e. it is purely a title page, a copyright/license/Project Gutenberg notice, a bare table of contents, or a page-number index. In that single case reply EXACTLY: (no substantive content). In EVERY other case you MUST produce notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
 }
 function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summary') {
     return "You are writing a faithful, source-based book summary for a books website, in English.\n"
@@ -260,33 +257,22 @@ function proto_generate($book, $author, $opts = []) {
     $bw     = str_word_count(strip_tags($text));
     $chunks = proto_chunks($text, $cfg['max'], $cfg['ctarget']);
     $ncnt   = count($chunks);
-    $slot   = array_fill(0, $ncnt, null);   // null=yapılmadı, ''=içeriksiz, metin=not
-    $lastdg = ''; $empty = 0; $nosub = 0;
-    $analyze = function ($i) use (&$slot, &$empty, &$nosub, &$lastdg, $chunks, $ncnt, $book, $author, $cfg, $beat, $prov) {
-        if ($slot[$i] !== null) return;
+    $notes  = []; $lastdg = ''; $empty = 0; $nosub = 0; $done = 0;
+    // Parçaları SIRAYLA işle (içerik seyrek/erken olabilir — yoklama ıskalıyordu).
+    // ÇÖP EŞLEŞME koruması: ilk 6 parçadan HİÇ not çıkmadıysa dur (409k Mill gibi
+    // gerçekten alakasız metin). Bir kez bile not gelirse tüm parçaları işle.
+    $guard = min($ncnt, 6);
+    foreach ($chunks as $i => $ch) {
         $beat(); $dg = '';
-        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, $ncnt, $chunks[$i], $cfg['notes']), 1200, $beat, 280, $dg, $prov);
-        $lastdg = $dg;
-        if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) $slot[$i] = '[Part ' . ($i + 1) . "]\n" . $t;
-        else { $slot[$i] = ''; if ($t === '') $empty++; else $nosub++; }
-    };
-    // YOKLAMA: kitabın farklı yerlerinden (baş/orta/son) birkaç parça dene.
-    // Dev baskılarda ön-madde uzun olur (künye+lisans+editör önsözü); gerçek
-    // içerik ortada/sonda başlar. Yoklanan yerlerin HİÇBİRİNDE içerik yoksa
-    // gerçekten alakasız/çöp eşleşme → hemen dur (409k Mill böyleydi). Biri bile
-    // içerik verirse tüm parçaları işle (Republic'in ortasındaki diyalog gibi).
-    $probe = array_values(array_unique(array_filter(
-        [0, intdiv($ncnt, 2), intdiv($ncnt * 4, 5), $ncnt - 1],
-        fn($x) => $x >= 0 && $x < $ncnt
-    )));
-    foreach ($probe as $i) $analyze($i);
-    if (!array_filter($slot, fn($x) => is_string($x) && $x !== '')) {
-        return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label,
-            'trace' => $src['source'] . " {$bw}w, {$ncnt} parça · yoklama(" . count($probe) . " yer) içeriksiz (boş={$empty}, içeriksiz={$nosub})"
-                     . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
+        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, $ncnt, $ch, $cfg['notes']), 1200, $beat, 280, $dg, $prov);
+        $lastdg = $dg; $done = $i + 1;
+        if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) $notes[] = '[Part ' . ($i + 1) . "]\n" . $t;
+        else { if ($t === '') $empty++; else $nosub++; }
+        if ($done >= $guard && !$notes) break;   // ilk 6 parça tamamen boş → çöp eşleşme
     }
-    for ($i = 0; $i < $ncnt; $i++) $analyze($i);   // içerik var → tüm parçaları işle
-    $notes = array_values(array_filter($slot, fn($x) => is_string($x) && $x !== ''));
+    if (!$notes) return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label,
+        'trace' => $src['source'] . " {$bw}w, {$ncnt} parça (işlenen {$done}: boş={$empty}, içeriksiz={$nosub}), 0 not"
+                 . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
 
     $beat();
     $dg2 = '';
