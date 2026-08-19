@@ -260,28 +260,33 @@ function proto_generate($book, $author, $opts = []) {
     $bw     = str_word_count(strip_tags($text));
     $chunks = proto_chunks($text, $cfg['max'], $cfg['ctarget']);
     $ncnt   = count($chunks);
-    $notes  = []; $lastdg = ''; $empty = 0; $nosub = 0; $done = 0;
-    // ERKEN DURMA eşiği: ilk birkaç parça hiç not vermezse (yanlış/dev eşleşme,
-    // sağlayıcı boş dönüyor ya da metin bu kitaba ait değil) 12-22 parçayı
-    // öğütmek yerine hemen dur → Bilgi Metni'ne düş. Takılmayı bu bitirir.
-    $probe = min($ncnt, 3);
-    foreach ($chunks as $i => $ch) {
-        $beat();
-        $dg = '';
-        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, $ncnt, $ch, $cfg['notes']), 1200, $beat, 280, $dg, $prov);
-        $lastdg = $dg; $done = $i + 1;
-        if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) {
-            $notes[] = '[Part ' . ($i + 1) . "]\n" . $t;    // gerçek not
-        } elseif ($t === '') {
-            $empty++;   // sağlayıcı boş döndü (flake/hata)
-        } else {
-            $nosub++;   // model "içerik yok" dedi (metin bu kitaba ait değil olabilir)
-        }
-        if ($done >= $probe && !$notes) break;   // ilk $probe parçadan not yok → dur
+    $slot   = array_fill(0, $ncnt, null);   // null=yapılmadı, ''=içeriksiz, metin=not
+    $lastdg = ''; $empty = 0; $nosub = 0;
+    $analyze = function ($i) use (&$slot, &$empty, &$nosub, &$lastdg, $chunks, $ncnt, $book, $author, $cfg, $beat, $prov) {
+        if ($slot[$i] !== null) return;
+        $beat(); $dg = '';
+        $t = proto_ds(proto_chunk_prompt($book, $author, $i + 1, $ncnt, $chunks[$i], $cfg['notes']), 1200, $beat, 280, $dg, $prov);
+        $lastdg = $dg;
+        if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) $slot[$i] = '[Part ' . ($i + 1) . "]\n" . $t;
+        else { $slot[$i] = ''; if ($t === '') $empty++; else $nosub++; }
+    };
+    // YOKLAMA: kitabın farklı yerlerinden (baş/orta/son) birkaç parça dene.
+    // Dev baskılarda ön-madde uzun olur (künye+lisans+editör önsözü); gerçek
+    // içerik ortada/sonda başlar. Yoklanan yerlerin HİÇBİRİNDE içerik yoksa
+    // gerçekten alakasız/çöp eşleşme → hemen dur (409k Mill böyleydi). Biri bile
+    // içerik verirse tüm parçaları işle (Republic'in ortasındaki diyalog gibi).
+    $probe = array_values(array_unique(array_filter(
+        [0, intdiv($ncnt, 2), intdiv($ncnt * 4, 5), $ncnt - 1],
+        fn($x) => $x >= 0 && $x < $ncnt
+    )));
+    foreach ($probe as $i) $analyze($i);
+    if (!array_filter($slot, fn($x) => is_string($x) && $x !== '')) {
+        return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label,
+            'trace' => $src['source'] . " {$bw}w, {$ncnt} parça · yoklama(" . count($probe) . " yer) içeriksiz (boş={$empty}, içeriksiz={$nosub})"
+                     . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
     }
-    if (!$notes) return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label,
-        'trace' => $src['source'] . " {$bw}w, {$ncnt} parça (işlenen {$done}: boş={$empty}, içeriksiz={$nosub}), 0 not"
-                 . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
+    for ($i = 0; $i < $ncnt; $i++) $analyze($i);   // içerik var → tüm parçaları işle
+    $notes = array_values(array_filter($slot, fn($x) => is_string($x) && $x !== ''));
 
     $beat();
     $dg2 = '';

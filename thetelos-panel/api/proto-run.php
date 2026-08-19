@@ -50,7 +50,13 @@ while (time() < $budget) {
         $j['source'] = $src['source']; $j['url'] = $src['url'];
         $j['book_words'] = str_word_count(strip_tags($text));
         $j['chapters'] = proto_detect_chapters($text);
-        $j['chunks'] = $chunks; $j['ci'] = 0; $j['notes'] = [];
+        // İşleme SIRASI: önce kitabın farklı yerlerinden (baş/orta/son) yokla —
+        // dev baskılarda ön-madde uzun olur, gerçek içerik ortada/sonda başlar.
+        // Yoklamada hiç not yoksa erken dur; biri bile içerik verirse kalanları işle.
+        $nc = count($chunks);
+        $pb = array_values(array_unique(array_filter([0, intdiv($nc, 2), intdiv($nc * 4, 5), $nc - 1], fn($x) => $x >= 0 && $x < $nc)));
+        $rest = array_values(array_diff(range(0, max(0, $nc - 1)), $pb));
+        $j['chunks'] = $chunks; $j['order'] = array_merge($pb, $rest); $j['probe_n'] = count($pb); $j['pi'] = 0; $j['notes'] = [];
         proto_job_log($j, 'Tam metin: ' . number_format($j['book_words']) . ' kelime · ' . $src['source'] . ' · ' . count($chunks) . ' parça');
         // Model: DeepSeek'e bağlanabiliyorsak onu kullan (ucuz), yoksa Gemini.
         // İş başına bir kez ölçülür; engel kalkınca sonraki çalıştırmada otomatik döner.
@@ -62,24 +68,26 @@ while (time() < $budget) {
     }
 
     if ($phase === 'chunk') {
-        $ci = (int) ($j['ci'] ?? 0); $tot = count($j['chunks'] ?? []);
-        if ($ci < $tot) {
-            proto_job_log($j, 'Parça ' . ($ci + 1) . '/' . $tot . ' analiz ediliyor (gerçek metinden)…');
+        $order = $j['order'] ?? array_keys($j['chunks'] ?? []); $tot = count($order);
+        $pi = (int) ($j['pi'] ?? 0);
+        if ($pi < $tot) {
+            $idx = (int) $order[$pi];
+            proto_job_log($j, 'Parça ' . ($idx + 1) . '/' . $tot . ' analiz ediliyor (gerçek metinden)…');
             proto_job_write($file, $j);
             $diag = '';
-            $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $ci + 1, $tot, $j['chunks'][$ci]), 900, $ping, 280, $diag, $j['prov'] ?? 'auto');
+            $t = proto_ds(proto_chunk_prompt($j['book'], $j['author'], $idx + 1, $tot, $j['chunks'][$idx]), 900, $ping, 280, $diag, $j['prov'] ?? 'auto');
             $j = proto_job_read($file) ?: $j;
             if ($t !== '' && !preg_match('/^\W{0,4}no substantive content/i', ltrim($t))) {
-                $j['notes'][] = '[Part ' . ($ci + 1) . "]\n" . $t;   // gerçek not
+                $j['notes'][(string) $idx] = '[Part ' . ($idx + 1) . "]\n" . $t;   // gerçek not
             } elseif ($t === '') {
-                proto_job_log($j, '  ⚠ parça ' . ($ci + 1) . ' boş döndü — sağlayıcı ' . $diag);
+                proto_job_log($j, '  ⚠ parça ' . ($idx + 1) . ' boş döndü — sağlayıcı ' . $diag);
             } else {
-                proto_job_log($j, '  — parça ' . ($ci + 1) . ' içerik yok (metin bu kitaba ait olmayabilir)');
+                proto_job_log($j, '  — parça ' . ($idx + 1) . ' içerik yok (metin bu kitaba ait olmayabilir)');
             }
-            $j['ci'] = $ci + 1;
-            // ERKEN DURMA: ilk 3 parça hiç not vermediyse boşuna 14 parçayı öğütme.
-            if ($j['ci'] >= min($tot, 3) && empty($j['notes'])) {
-                proto_job_log($j, '⏹ İlk ' . $j['ci'] . ' parçadan analiz edilebilir not çıkmadı → durduruldu (yanlış/uygunsuz eşleşme).');
+            $j['pi'] = $pi + 1;
+            // ERKEN DURMA: yoklama (baş/orta/son) bitti ve hiç not yoksa dur.
+            if ($j['pi'] >= (int) ($j['probe_n'] ?? $tot) && empty($j['notes'])) {
+                proto_job_log($j, '⏹ Yoklanan parçalarda (baş/orta/son) analiz edilebilir not yok → durduruldu (alakasız/çöp eşleşme).');
                 $j['phase'] = 'reduce';
             }
             proto_job_write($file, $j); continue;
@@ -95,7 +103,8 @@ while (time() < $budget) {
         } else {
             proto_job_log($j, 'Parça özetleri kapsamlı özete birleştiriliyor…');
             proto_job_write($file, $j);
-            $sum = proto_ds(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $j['notes'])), 8000, $ping, 300, $dd, $j['prov'] ?? 'auto');
+            $ordered = $j['notes']; ksort($ordered, SORT_NUMERIC);   // parça sırasına diz
+            $sum = proto_ds(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $ordered)), 8000, $ping, 300, $dd, $j['prov'] ?? 'auto');
             $html = $sum !== '' ? bw_md2html($sum) : '';
             $j = proto_job_read($file) ?: $j;
             $j['resultB'] = [
