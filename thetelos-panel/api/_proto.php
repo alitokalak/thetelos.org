@@ -181,12 +181,14 @@ function proto_chunks($t, $max_chunks = 14, $target = 45000) {
 
 /* ── İstemler ──────────────────────────────────────────────────────────── */
 function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150-280') {
-    return "Below is an excerpt (part {$k} of {$n}) from the ACTUAL TEXT of the book \"{$book}\""
+    return "Below is an excerpt (part {$k} of {$n}) from a public-domain edition of \"{$book}\""
         . ($author ? " by {$author}" : '') . ".\n"
         . "Summarize the key content, ideas, arguments, reasoning, key concepts, and concrete examples ACTUALLY PRESENT in THIS excerpt. "
-        . "Use ONLY what this text says — do NOT add outside knowledge, do NOT infer beyond the text. "
-        . "If it is front-matter/index/notes with no substance, reply exactly: (no substantive content).\n"
-        . "Write {$note_words} words of dense, faithful notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
+        . "Use ONLY what this text says — do NOT add outside knowledge, do NOT infer beyond the text.\n"
+        . "IMPORTANT: This edition may include an editor's or translator's INTRODUCTION, ANALYSIS, preface, or commentary as well as the main text. "
+        . "ALL of that is valid material — summarize whatever prose is here (main text AND any editorial introduction/analysis), noting when something is editorial context vs the work itself.\n"
+        . "Reply with the skip marker ONLY if this excerpt is pure boilerplate with no readable prose at all — i.e. a title page, copyright/license/Project Gutenberg notice, a bare table of contents, an index, or page-number/running-header noise. In that case reply EXACTLY: (no substantive content).\n"
+        . "Otherwise you MUST extract notes. Write {$note_words} words of dense, faithful notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
 }
 function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summary') {
     return "You are writing a faithful, source-based book summary for a books website, in English.\n"
