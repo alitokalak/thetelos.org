@@ -495,7 +495,10 @@ async function runSingleSource(book, author) {
       d = await r.json();
     } catch (e) { return; }
     if (!d || !d.ok) return;
-    const b = (d.books && d.books[0]) || {};
+    // batch-status.php yanıtı { ok, batch: { books:[...] } } döndürür → d.batch.books.
+    // Eskiden burada d.books okunuyordu (yanlış alan); worker bitse bile status hiç
+    // görünmeyip panel sonsuza kadar dönüyordu. ASIL "çalışmıyor" hatası buydu.
+    const b = (d.batch && d.batch.books && d.batch.books[0]) || {};
     const sec = Math.round((Date.now() - t0) / 1000);
     const st = document.getElementById('src-status');
     if (st) {
