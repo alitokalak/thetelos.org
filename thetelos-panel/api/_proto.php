@@ -287,10 +287,14 @@ function proto_generate($book, $author, $opts = []) {
     if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,
         'trace' => $src['source'] . " {$bw}w, reduce BOŞ ({$dg2}) → Bilgi Metni'ne düşülecek"];
 
-    // Hedef uzunluğa kadar genişlet (notlardan; uydurma yok). Batch'te süreyi
-    // sınırlamak için en çok 2 kademe (her kademe uzun bir üretim çağrısı).
-    $stage("özet genişletiliyor (hedef ~" . number_format($cfg['words']) . " kelime)…");
-    $md = proto_expand($md, implode("\n\n", $notes), $book, $author, $cfg['words'], $prov, $beat, 2, $stage);
+    // Reduce zaten kapsamlı özet üretiyor (Republic prototipinde tek reduce = 4.623
+    // kelime). Genişletme yalnız reduce KISA kaldıysa ve en çok 1 kademe — çok
+    // kademeli expand host süreç limitini zorluyordu. Süre/güvenilirlik önce.
+    $rw = str_word_count(strip_tags(bw_md2html($md)));
+    if ($rw < $cfg['words'] * 0.7) {
+        $stage("özet genişletiliyor ({$rw}/" . number_format($cfg['words']) . " kelime)…");
+        $md = proto_expand($md, implode("\n\n", $notes), $book, $author, $cfg['words'], $prov, $beat, 1, $stage);
+    }
     $fw = str_word_count(strip_tags(bw_md2html($md)));
 
     return ['found' => true, 'insufficient' => false, 'md' => $md, 'source' => $src['source'], 'url' => $src['url'],
@@ -418,7 +422,9 @@ function proto_deepseek_multi($prompts, $max_tokens, $beat = null, $conc = 8) {
         curl_multi_add_handle($mh, $ch); $map[$hid($ch)] = $k;
     };
     while ($pos < $n && count($map) < $conc) $add($keys[$pos++]);
+    $deadline = time() + 200;   // GÜVENLİK: bütün paralel faz en çok ~200 sn; asla sonsuza takılma
     do {
+        if (time() > $deadline) break;   // süre doldu → elde olanı dön, kalanı sıralı telafi eder
         curl_multi_exec($mh, $running);
         if (is_callable($beat)) $beat();
         while ($info = curl_multi_info_read($mh)) {
