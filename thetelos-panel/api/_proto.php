@@ -189,7 +189,8 @@ function proto_chunks($t, $max_chunks = 14, $target = 45000) {
 function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150-280') {
     return "The following is an excerpt (part {$k} of {$n}) from a REAL public-domain edition of the book \"{$book}\""
         . ($author ? " by {$author}" : '') . ". It is genuinely from that edition — it may be the main text, OR the edition's introduction, the translator's/editor's analysis, a preface, footnotes, or appendices.\n"
-        . "TASK: Write {$note_words} words of dense, faithful notes on the ideas, arguments, reasoning, concepts, examples, and points ACTUALLY MADE in THIS passage. Use ONLY what this passage says — add no outside knowledge.\n"
+        . "TASK: Write {$note_words} words of dense, faithful notes IN ENGLISH on the ideas, arguments, reasoning, concepts, events, and points ACTUALLY MADE in THIS passage. Use ONLY what this passage says — add no outside knowledge.\n"
+        . "PRECISION: Preserve exact character/person names and place names as they appear in the text. Keep events in the ORDER they occur in this passage. Attribute each action to the correct character; never merge two people or two events into one.\n"
         . "DO NOT judge whether the passage 'belongs' to the book — it does. DO NOT refuse. Summarize whatever readable prose is present, whether it is the work itself or editorial discussion OF the work (when it is editorial context rather than the work's own words, just note that).\n"
         . "The ONLY case where you may skip: the passage contains NO readable sentences at all — i.e. it is purely a title page, a copyright/license/Project Gutenberg notice, a bare table of contents, or a page-number index. In that single case reply EXACTLY: (no substantive content). In EVERY other case you MUST produce notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
 }
@@ -198,7 +199,12 @@ function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summa
         . "Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
         . "Using ONLY these notes (from the real text), write {$target} with these ## sections, omitting any you lack material for:\n"
         . "## About the Work\n## Context\n## Structure of the Book\n## Detailed Section-by-Section Summary\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
-        . "RULES: Base every statement on the notes (the real text). Do NOT invent chapter titles, quotations, examples, or claims not in the notes. Separate the book's actual content from outside/biographical context. Be comprehensive but do NOT pad or repeat to inflate length. Clear, engaged prose, third person. Do NOT restate the title as an H1; start with the ## sections.\n\n"
+        . "RULES:\n"
+        . "1. Base EVERY statement only on the notes (the real text). Do NOT invent or infer chapter titles, quotations, examples, dates, or names not in the notes.\n"
+        . "2. CHRONOLOGY: In the Section-by-Section Summary, follow the ACTUAL order of the book as reflected in the ordered notes (Part 1 → last part). Do not reorder events or jump around.\n"
+        . "3. NO CONFLATION: Keep characters and events distinct — attribute each action to the correct person; never merge two characters or two events into one. If the notes are unclear about who did what, stay general rather than guessing.\n"
+        . "4. INTERPRETATION: State themes, meaning, and the author's stance AS interpretations grounded in specific text — not as absolute facts. Do NOT reduce the whole work to a single sweeping thesis.\n"
+        . "5. Separate the book's actual content from outside/biographical context. Be comprehensive but do NOT pad or repeat to inflate length. Clear, engaged prose, third person, in English. Do NOT restate the title as an H1; start with the ## sections.\n\n"
         . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
 function proto_systemA_prompt($book, $author) {
