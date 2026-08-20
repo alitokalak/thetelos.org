@@ -98,6 +98,9 @@ function bw_clean_content($text) {
         . 'let me know if you|i hope this (?:helps|summary)|word count:?)[^\n]*$/im',
         '', $text);
 
+    // Başıboş/boş başlık satırlarını at (yalnız "##" olup metni olmayan).
+    $text = preg_replace('/^[ \t]*#{1,6}[ \t]*$/m', '', $text);
+
     // Tekrarlanan bölümleri at (çok kademeli üretim kopyaları).
     $text = bw_dedup_sections($text);
 
@@ -110,6 +113,9 @@ function bw_md2html($text) {
     $text = preg_replace_callback('/\*\*(.+?)\*\*/s', function($m) {
         return strpos($m[1], "\n") === false ? '<strong>'.$m[1].'</strong>' : $m[1];
     }, $text);
+    // Tek yıldız italik: **kalın** yukarıda tüketildi; kalan *...* italiğe çevrilir
+    // (yoksa "*Peter Camenzind*" sayfada yıldızlarıyla düz görünüyordu).
+    $text = preg_replace('/(?<!\*)\*(?!\s)([^*\n]+?)(?<!\s)\*(?!\*)/', '<em>$1</em>', $text);
     // ÖNEMLİ: h4/h5 ve yatay çizgi de dönüştürülür. Eskiden yalnız h1-h3 vardı;
     // model "#### Alt Başlık" veya "---" yazdığında bunlar HTML'e çevrilmeden
     // sayfada düz metin olarak görünüyordu ("#### T", "---").

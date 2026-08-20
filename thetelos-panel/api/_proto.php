@@ -230,7 +230,9 @@ function proto_sbs_prompt($book, $author, $notes, $g, $G) {
     return "You are writing the DETAILED SECTION-BY-SECTION narrative of a faithful, source-based summary of \"{$book}\"" . ($author ? " by {$author}" : '') . ", in English.\n"
         . "Below are ORDERED notes from the ACTUAL TEXT covering ONE consecutive segment of the book (segment {$g} of {$G}).\n"
         . "The notes are labelled [Part 1], [Part 2]… — these are OUR internal processing segments, NOT the book's real divisions. NEVER mention 'Part N' or reproduce those labels, and do NOT claim the book 'is divided into N parts'. Follow the book's OWN natural flow.\n"
-        . "Write a SYNTHESIZED narrative of THIS segment as a sequence of ### subsections that follow the story's real progression. SYNTHESIZE — do NOT retell or quote; compress descriptive detail (physical descriptions, catalogues of objects/scenery) to its essence; a few sentences per beat, conveying what happens and what it means for the protagonist's development. Use ONLY these notes; invent nothing. Title each ### by what actually happens — a real chapter name if the notes give one, otherwise a short descriptive phrase (e.g. '### Assisi and Annunziata Nardini').\n"
+        . "Write a SYNTHESIZED narrative of THIS segment as a sequence of ### subsections that follow the story's real progression. SYNTHESIZE HARD — do NOT retell or quote; compress descriptive detail (physical descriptions, catalogues of objects/scenery) to its essence; a few sentences per beat, conveying what happens and what it means for the protagonist's development. Use ONLY these notes; invent nothing. Title each ### by what actually happens — a real chapter name if the notes give one, otherwise a short descriptive phrase (e.g. '### Assisi and Annunziata Nardini').\n"
+        . "COMPLETENESS OVER DETAIL: you MUST cover EVERY event in these notes THROUGH THE VERY LAST ONE. Do NOT run long on the early beats and get cut off before the end of this segment — if space is tight, shorten every beat evenly so you still reach the final event in these notes.\n"
+        . ($g >= $G ? "THIS IS THE FINAL SEGMENT: you MUST narrate the book's actual ENDING — its last events and how the story truly concludes (do not stop before the real final scene).\n" : "")
         . "Output ONLY the ### subsections for this segment — no About/Context/Themes/Conclusions, no overall intro. Start directly with the first ###. END on a complete sentence.\n\n"
         . "=== NOTES (this segment, ordered) ===\n" . mb_substr($notes, 0, 50000) . "\n=== END NOTES ===";
 }
@@ -251,7 +253,9 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
         . "1. Base every statement only on the notes. Invent nothing (no quotes, dates, names, chapter titles not in the notes).\n"
         . "2. Keep 'About the Work' NEUTRAL and descriptive (what the book is, its form, when/where). Put literary-critical labels/readings (e.g. 'spiritual autobiography', 'crisis of modernity') in 'Themes', framed as interpretation grounded in the text — not as fact.\n"
         . "3. In 'Structure of the Book', describe the book's REAL structure (its chapters/narrative arc). The notes are labelled [Part N] — those are OUR internal processing segments, NOT the book's divisions; NEVER say the book 'is divided into N parts' based on them.\n"
-        . "4. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Clear prose, third person, in English. Start with the ## sections. END on a complete sentence.\n\n"
+        . "4. ENDING: read the LAST notes carefully and state the book's TRUE ending (its final events and how/where it actually concludes). Do NOT mistake a mid-book episode or location for the ending. If 'Structure' or 'The Author's Conclusions' describe how the book closes, they MUST match the real final scene in the last notes.\n"
+        . "5. DISTINCT SECTIONS: keep 'Main Arguments', 'Key Concepts', and 'Themes' genuinely different — do NOT repeat the same points (e.g. nature, homesickness, love) across all three. Arguments = what the work claims/shows; Key Concepts = specific named ideas/motifs; Themes = the deeper recurring meanings. If a section would just repeat another, omit it.\n"
+        . "6. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Clear prose, third person, in English. Start with the ## sections. END on a complete sentence.\n\n"
         . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
 
@@ -260,17 +264,17 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
    ### bölümlerini üretir; sonuçlar sırayla birleştirilir. Tek grup varsa null
    döner (çağıran eski tek-reduce yolunu kullanır). */
 function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage) {
-    $groups = array_chunk($notes, 5);
+    $groups = array_chunk($notes, 4);   // küçük grup = her segment bütçesine sığar, sonu kesmez
     $G = count($groups);
     if ($G <= 1) return null;
     $stage("bölüm-bölüm özet {$G} segmentte üretiliyor…");
     $prompts = [];
     foreach ($groups as $i => $gn) $prompts[$i] = proto_sbs_prompt($book, $author, implode("\n\n", $gn), $i + 1, $G);
-    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 4000, $beat, 6) : [];
+    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 4500, $beat, 6) : [];
     $parts = [];
     for ($i = 0; $i < $G; $i++) {
         $t = $out[$i] ?? '';
-        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], 4000, $beat, 280, $dg, $prov); }
+        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], 4500, $beat, 280, $dg, $prov); }
         $t = proto_trim_incomplete(trim($t));
         if ($t !== '') $parts[] = $t;
     }
