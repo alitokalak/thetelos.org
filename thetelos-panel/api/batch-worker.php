@@ -932,12 +932,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         if (tv_settings()['gate']) {
             $g = tv_gate($book, $author, $rw_html, ['min_words' => ($type === 'info' ? 120 : 300), 'skip_factcheck' => true]);
             if (!$g['pass']) {
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', 'içerik kusurlu geldi (kapı)', $update_pid, 'rewrite');
+                $why = implode(' | ', $g['reasons'] ?? []);   // HANGİ kontrol tetiklendi → görünür yap
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', 'içerik kusurlu (kapı): ' . $why, $update_pid, 'rewrite');
                 bw_update_book($batch_file, $idx, [
                     'status'   => 'done',
                     'post_id'  => $update_pid,
                     'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-                    'error'    => 'içerik kusurlu geldi → mevcut yazı korundu (yeniden dene)',
+                    'error'    => 'içerik kusurlu → mevcut korundu: ' . ($why ?: 'bilinmiyor') . ' (yeniden dene)',
                 ]);
                 return;
             }

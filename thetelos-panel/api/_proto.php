@@ -197,8 +197,10 @@ function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150
 function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summary', $chapters = []) {
     $chap_block = '';
     if (!empty($chapters)) {
-        $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text — use THESE real divisions; do NOT invent generic 'Part 1 / Part 2' labels) ===\n"
-            . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\n";
+        $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text) ===\n"
+            . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\n"
+            . "Use these REAL divisions instead of inventing generic 'Part 1 / Part 2' labels. "
+            . "Mention each chapter heading AT MOST ONCE (as a ### subheading inside the Section-by-Section Summary); in 'Structure of the Book' describe the arrangement in prose. NEVER output the same chapter heading twice.\n";
     }
     return "You are writing a faithful, source-based book summary for a books website, in English.\n"
         . "Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
