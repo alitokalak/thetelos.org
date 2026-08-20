@@ -248,6 +248,17 @@ function proto_expand($md, $notes, $book, $author, $target_words, $prov, $beat, 
     return $md;
 }
 
+/* ── Çıktı token sınırına (8000) dayanıp cümle ortasında kesilirse, son TAM
+   cümleye geri kır. Kapının 'cümle ortasında kesilmiş' kontrolü böylece geçer;
+   birkaç kelimelik yarım kuyruk atılır, içerik kaybı ihmal edilebilir. */
+function proto_trim_incomplete($md) {
+    $s = rtrim((string) $md);
+    if ($s === '') return $s;
+    if (preg_match('/[.!?…"”’)\]]\s*$/u', $s)) return $s;            // zaten düzgün bitiyor
+    if (preg_match('/^(.*[.!?…"”’)\]])[^.!?…]*$/su', $s, $m) && trim($m[1]) !== '') return rtrim($m[1]);
+    return $s;
+}
+
 /* ── TEK ÇAĞRIDA kaynak-temelli özet üretimi (batch + içerik düzeltme kullanır)
    Uzunluk: 'kisa' | 'standart' | 'kapsamli'. on_beat heartbeat.
    Dönüş: found/insufficient/md/source/url/book_words/chunks/chapters/model/trace */
@@ -261,7 +272,7 @@ function proto_generate($book, $author, $opts = []) {
     $cfg = [
         'kisa'     => ['max' => 6,  'ctarget' => 60000, 'notes' => '130-200', 'rtar' => 'a focused summary of about 1200-1800 words',   'words' => 1500],
         'standart' => ['max' => 12, 'ctarget' => 40000, 'notes' => '180-300', 'rtar' => 'a thorough summary of about 2500-3800 words',   'words' => 3000],
-        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '320-480', 'rtar' => 'a very comprehensive, in-depth summary that fully develops every section', 'words' => 6000],
+        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '320-480', 'rtar' => 'a very comprehensive, in-depth summary of about 4500-5200 words that develops every section; you MUST finish on a complete sentence within that budget (do not get cut off mid-sentence)', 'words' => 5200],
     ][$len];
 
     // Sağlayıcı: DeepSeek erişilebiliyorsa onu (ucuz), yoksa Gemini. İş başına bir kez.
@@ -317,6 +328,7 @@ function proto_generate($book, $author, $opts = []) {
         $stage("özet genişletiliyor ({$rw}/" . number_format($cfg['words']) . " kelime)…");
         $md = proto_expand($md, implode("\n\n", $notes), $book, $author, $cfg['words'], $prov, $beat, 1, $stage);
     }
+    $md = proto_trim_incomplete($md);   // token sınırında yarım kalan son cümleyi at → kapı geçsin
     $fw = str_word_count(strip_tags(bw_md2html($md)));
 
     return ['found' => true, 'insufficient' => false, 'md' => $md, 'source' => $src['source'], 'url' => $src['url'],
