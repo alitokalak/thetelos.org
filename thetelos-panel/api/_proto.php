@@ -222,6 +222,73 @@ function proto_systemA_prompt($book, $author) {
         . "covering its structure, main arguments, key concepts, themes, and conclusions. Aim for depth.";
 }
 
+/* ── SEGMENT bölüm-bölüm istemi: kitabın ARDIŞIK bir dilimini kapsar ─────────
+   Tek reduce 15 parçayı kapsayamıyordu (son parçalar düşüyordu). Bu yüzden
+   section-by-section'ı parça-gruplarına bölüp her grubu AYRI çağrıda üretiyoruz;
+   her grup kendi bütçesini aldığı için tüm kitap garanti kapsanır. */
+function proto_sbs_prompt($book, $author, $notes, $g, $G) {
+    return "You are writing the DETAILED SECTION-BY-SECTION narrative of a faithful, source-based summary of \"{$book}\"" . ($author ? " by {$author}" : '') . ", in English.\n"
+        . "Below are ORDERED notes from the ACTUAL TEXT covering ONE consecutive segment of the book (segment {$g} of {$G}).\n"
+        . "The notes are labelled [Part 1], [Part 2]… — these are OUR internal processing segments, NOT the book's real divisions. NEVER mention 'Part N' or reproduce those labels, and do NOT claim the book 'is divided into N parts'. Follow the book's OWN natural flow.\n"
+        . "Write a SYNTHESIZED narrative of THIS segment as a sequence of ### subsections that follow the story's real progression. SYNTHESIZE — do NOT retell or quote; compress descriptive detail (physical descriptions, catalogues of objects/scenery) to its essence; a few sentences per beat, conveying what happens and what it means for the protagonist's development. Use ONLY these notes; invent nothing. Title each ### by what actually happens — a real chapter name if the notes give one, otherwise a short descriptive phrase (e.g. '### Assisi and Annunziata Nardini').\n"
+        . "Output ONLY the ### subsections for this segment — no About/Context/Themes/Conclusions, no overall intro. Start directly with the first ###. END on a complete sentence.\n\n"
+        . "=== NOTES (this segment, ordered) ===\n" . mb_substr($notes, 0, 50000) . "\n=== END NOTES ===";
+}
+
+/* ── ÇERÇEVE istemi: section-by-section HARİÇ tüm bölümler (tüm nottan) ─────── */
+function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summary', $chapters = []) {
+    $chap_block = '';
+    if (!empty($chapters)) {
+        $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text) ===\n"
+            . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\nUse these REAL divisions when describing structure; do NOT invent generic 'Part 1/2' labels.\n";
+    }
+    return "You are writing the FRAMING sections of a faithful, source-based book summary for a books website, in English.\n"
+        . "Below are ORDERED notes from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ".\n"
+        . $chap_block
+        . "Using ONLY these notes, write {$target}, but ONLY these ## sections (the blow-by-blow narrative is produced separately — do NOT write a section-by-section retelling here), omitting any you lack material for:\n"
+        . "## About the Work\n## Context\n## Structure of the Book\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
+        . "RULES:\n"
+        . "1. Base every statement only on the notes. Invent nothing (no quotes, dates, names, chapter titles not in the notes).\n"
+        . "2. Keep 'About the Work' NEUTRAL and descriptive (what the book is, its form, when/where). Put literary-critical labels/readings (e.g. 'spiritual autobiography', 'crisis of modernity') in 'Themes', framed as interpretation grounded in the text — not as fact.\n"
+        . "3. In 'Structure of the Book', describe the book's REAL structure (its chapters/narrative arc). The notes are labelled [Part N] — those are OUR internal processing segments, NOT the book's divisions; NEVER say the book 'is divided into N parts' based on them.\n"
+        . "4. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Clear prose, third person, in English. Start with the ## sections. END on a complete sentence.\n\n"
+        . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
+}
+
+/* ── Section-by-section'ı parça-gruplarında üret (tüm kitap garanti kapsanır) ─
+   Notlar 5'erli gruplara bölünür; her grup AYRI (paralel) çağrıda kendi
+   ### bölümlerini üretir; sonuçlar sırayla birleştirilir. Tek grup varsa null
+   döner (çağıran eski tek-reduce yolunu kullanır). */
+function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage) {
+    $groups = array_chunk($notes, 5);
+    $G = count($groups);
+    if ($G <= 1) return null;
+    $stage("bölüm-bölüm özet {$G} segmentte üretiliyor…");
+    $prompts = [];
+    foreach ($groups as $i => $gn) $prompts[$i] = proto_sbs_prompt($book, $author, implode("\n\n", $gn), $i + 1, $G);
+    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 4000, $beat, 6) : [];
+    $parts = [];
+    for ($i = 0; $i < $G; $i++) {
+        $t = $out[$i] ?? '';
+        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], 4000, $beat, 280, $dg, $prov); }
+        $t = proto_trim_incomplete(trim($t));
+        if ($t !== '') $parts[] = $t;
+    }
+    return $parts ? implode("\n\n", $parts) : null;
+}
+
+/* ── Çerçeve + section-by-section'ı doğru yapısal sıraya diz ─────────────────
+   Section-by-section, 'Main Arguments'tan ÖNCE (Structure'dan sonra) yerleşir. */
+function proto_assemble($frame, $sbs) {
+    if (trim((string) $sbs) === '') return $frame;
+    $block = "## Detailed Section-by-Section Summary\n\n" . trim($sbs) . "\n\n";
+    if (preg_match('/^##\s+Main Arguments/mi', $frame, $m, PREG_OFFSET_CAPTURE)) {
+        $pos = $m[0][1];
+        return rtrim(mb_substr($frame, 0, $pos)) . "\n\n" . $block . mb_substr($frame, $pos);
+    }
+    return rtrim($frame) . "\n\n" . $block;
+}
+
 /* ── Devam (expand) istemi — YALNIZ notlardan daha fazla derinlik ──────────
    Tek reduce çağrısı 6000 kelime yazmıyor; hedefe ulaşmak için notlardan
    ek bölüm/detay ekletiriz. Uydurma yok (notlar = gerçek metin), tekrar yok. */
@@ -315,21 +382,23 @@ function proto_generate($book, $author, $opts = []) {
         'trace' => $src['source'] . " {$bw}w, {$ncnt} parça (boş={$empty}, içeriksiz={$nosub}), 0 not"
                  . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
 
-    $stage(count($notes) . " parça notu kapsamlı özete birleştiriliyor…");
+    $stage(count($notes) . " parça notu birleştiriliyor…");
     $beat();
     $dg2 = '';
-    $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), 8000, $beat, 300, $dg2, $prov);
+    // HİYERARŞİK: section-by-section'ı parça-gruplarında üret (tüm kitap garanti
+    // kapsanır — tek reduce son parçaları düşürüyordu), çerçeve bölümlerini ayrı
+    // yaz, birleştir. Tek grup (kısa kitap) → eski tek-reduce yolu.
+    $sbs = proto_build_sbs($notes, $book, $author, $prov, $beat, $stage);
+    if ($sbs === null) {
+        $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), 8000, $beat, 300, $dg2, $prov);
+    } else {
+        $stage("çerçeve bölümleri (About/Context/Themes…) yazılıyor…");
+        $frame = proto_ds(proto_frame_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), 8000, $beat, 300, $dg2, $prov);
+        $md = proto_assemble($frame, $sbs);
+    }
     if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,
         'trace' => $src['source'] . " {$bw}w, reduce BOŞ ({$dg2}) → Bilgi Metni'ne düşülecek"];
 
-    // Reduce zaten kapsamlı özet üretiyor (Republic prototipinde tek reduce = 4.623
-    // kelime). Genişletme yalnız reduce KISA kaldıysa ve en çok 1 kademe — çok
-    // kademeli expand host süreç limitini zorluyordu. Süre/güvenilirlik önce.
-    $rw = str_word_count(strip_tags(bw_md2html($md)));
-    if ($rw < $cfg['words'] * 0.7) {
-        $stage("özet genişletiliyor ({$rw}/" . number_format($cfg['words']) . " kelime)…");
-        $md = proto_expand($md, implode("\n\n", $notes), $book, $author, $cfg['words'], $prov, $beat, 1, $stage);
-    }
     $md = proto_trim_incomplete($md);   // token sınırında yarım kalan son cümleyi at → kapı geçsin
     $fw = str_word_count(strip_tags(bw_md2html($md)));
 
