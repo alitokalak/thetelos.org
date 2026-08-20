@@ -115,6 +115,12 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <option value="kapsamli">Kapsamlı (~6.000+ kelime)</option>
           </select>
         </div>
+        <div id="single-rewrite-row" style="margin:0 0 12px">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" id="single_rewrite" style="width:auto">
+            <span>Kitap sitede zaten varsa <b>mevcut yazıyı yeniden yaz</b> (kopya oluşturma; başlık/kapak/kategori korunur, gövde yenilenir). İşaretsizse yeni yazı oluşturulur.</span>
+          </label>
+        </div>
         <div class="form-row">
           <div>
             <label for="book_title">Kitap Adı</label>

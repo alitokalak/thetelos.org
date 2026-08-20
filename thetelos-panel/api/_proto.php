@@ -212,10 +212,11 @@ function proto_continue_prompt($book, $author, $md, $notes) {
         . "If the notes contain nothing substantial left to add, output EXACTLY: DONE\n\n"
         . "=== SUMMARY SO FAR ===\n" . mb_substr($md, 0, 30000) . "\n\n=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
-function proto_expand($md, $notes, $book, $author, $target_words, $prov, $beat, $max_pass = 4) {
+function proto_expand($md, $notes, $book, $author, $target_words, $prov, $beat, $max_pass = 4, $stage = null) {
     for ($i = 0; $i < $max_pass; $i++) {
         $w = str_word_count(strip_tags(bw_md2html($md)));
         if ($w >= $target_words * 0.85) break;   // hedefe ulaşıldı
+        if (is_callable($stage)) $stage("özet genişletiliyor ({$w}/" . number_format($target_words) . " kelime)…");
         $beat();
         $d = '';
         $cont = trim(proto_ds(proto_continue_prompt($book, $author, $md, $notes), 8000, $beat, 300, $d, $prov));
@@ -233,6 +234,8 @@ function proto_expand($md, $notes, $book, $author, $target_words, $prov, $beat, 
 function proto_generate($book, $author, $opts = []) {
     $len = in_array($opts['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $opts['length'] : 'standart';
     $beat = is_callable($opts['on_beat'] ?? null) ? $opts['on_beat'] : function () {};
+    // Canlı aşama bildirimi (panelde görünür — nerede olduğumuzu göster).
+    $stage = is_callable($opts['on_stage'] ?? null) ? $opts['on_stage'] : function ($m) {};
     // ctarget: parça başına hedef karakter (küçük = daha çok/granüler parça).
     // words: özet hedef kelime; reduce+expand buna ulaşmaya çalışır.
     $cfg = [
@@ -261,6 +264,7 @@ function proto_generate($book, $author, $opts = []) {
     $notes = []; $lastdg = ''; $empty = 0; $nosub = 0;
     // Parça istemlerini hazırla ve HEPSİNİ PARALEL gönder (curl_multi). 22 parça
     // sırayla ~15-25 dk sürüp host süreç limitinde ölüyordu; paralel ~birkaç dk.
+    $stage("kaynak bulundu: {$src['source']} · " . number_format($bw) . " kelime · {$ncnt} parça — parçalar paralel okunuyor…");
     $prompts = [];
     foreach ($chunks as $i => $ch) $prompts[$i] = proto_chunk_prompt($book, $author, $i + 1, $ncnt, $ch, $cfg['notes']);
     $texts = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 1200, $beat, 8) : [];
@@ -276,14 +280,17 @@ function proto_generate($book, $author, $opts = []) {
         'trace' => $src['source'] . " {$bw}w, {$ncnt} parça (boş={$empty}, içeriksiz={$nosub}), 0 not"
                  . ($empty > 0 ? " · son sağlayıcı diag: {$lastdg}" : '') . " → Bilgi Metni'ne düşülecek"];
 
+    $stage(count($notes) . " parça notu kapsamlı özete birleştiriliyor…");
     $beat();
     $dg2 = '';
     $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar']), 8000, $beat, 300, $dg2, $prov);
     if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,
         'trace' => $src['source'] . " {$bw}w, reduce BOŞ ({$dg2}) → Bilgi Metni'ne düşülecek"];
 
-    // Hedef uzunluğa kadar genişlet (notlardan; uydurma yok).
-    $md = proto_expand($md, implode("\n\n", $notes), $book, $author, $cfg['words'], $prov, $beat);
+    // Hedef uzunluğa kadar genişlet (notlardan; uydurma yok). Batch'te süreyi
+    // sınırlamak için en çok 2 kademe (her kademe uzun bir üretim çağrısı).
+    $stage("özet genişletiliyor (hedef ~" . number_format($cfg['words']) . " kelime)…");
+    $md = proto_expand($md, implode("\n\n", $notes), $book, $author, $cfg['words'], $prov, $beat, 2, $stage);
     $fw = str_word_count(strip_tags(bw_md2html($md)));
 
     return ['found' => true, 'insufficient' => false, 'md' => $md, 'source' => $src['source'], 'url' => $src['url'],

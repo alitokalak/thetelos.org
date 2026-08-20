@@ -72,8 +72,15 @@ function bw_touch_hb($batch_file, $idx) {
     @touch(bw_hb_path($batch_file, $idx));
     if ($g_worker_hb) @touch($g_worker_hb);   // worker'ı da canlı tut
 }
+function bw_stage_path($batch_file, $idx) {
+    return preg_replace('/\.json$/', '', $batch_file) . ".stage.$idx";
+}
+function bw_set_stage($batch_file, $idx, $msg) {
+    @file_put_contents(bw_stage_path($batch_file, $idx), (string) $msg);
+}
 function bw_clear_hb($batch_file, $idx) {
     @unlink(bw_hb_path($batch_file, $idx));
+    @unlink(bw_stage_path($batch_file, $idx));
 }
 /* Bir "processing" kitabın worker'ı ölmüş mü? hb dosyası yoksa ya da
    mtime'ı eşikten eskiyse ölü say. Eşik: 180sn. Üretim artık streaming
@@ -581,6 +588,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'length'  => in_array($batch['length'] ?? 'standart', ['kisa','standart','kapsamli'], true) ? $batch['length'] : 'standart',
             'provider'=> 'auto',
             'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+            'on_stage'=> function ($m) use ($batch_file, $idx) { bw_set_stage($batch_file, $idx, $m); bw_touch_hb($batch_file, $idx); },
         ]);
         $sr_trace = (string) ($sr['trace'] ?? '');
         if (!empty($sr['found']) && empty($sr['insufficient']) && trim((string)($sr['md'] ?? '')) !== '') {

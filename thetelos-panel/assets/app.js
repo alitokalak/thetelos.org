@@ -475,7 +475,8 @@ async function runSingleSource(book, author) {
   try {
     res = await postData(API('batch-create.php'), {
       books: JSON.stringify([{ book_title: book, author_name: author }]),
-      type: 'source', length: length, post_status: status, rewrite: '0',
+      type: 'source', length: length, post_status: status,
+      rewrite: (document.getElementById('single_rewrite')?.checked ? '1' : '0'),
       workers: '1', api_provider: activeProvider,
     });
   } catch (e) { res = { ok: false, error: e.message }; }
@@ -497,7 +498,10 @@ async function runSingleSource(book, author) {
     const b = (d.books && d.books[0]) || {};
     const sec = Math.round((Date.now() - t0) / 1000);
     const st = document.getElementById('src-status');
-    if (st) st.textContent = 'İşleniyor… (' + sec + ' sn) · durum: ' + (b.status || '…') + ' — tam kitap okunuyor, birkaç dakika sürebilir';
+    if (st) {
+      const alive = (b.hb_age == null) ? '' : (b.hb_age <= 30 ? ' · ✓ canlı' : ' · ⚠ ' + b.hb_age + ' sn yanıt yok');
+      st.textContent = 'İşleniyor… (' + sec + ' sn)' + alive + (b.stage ? ' · ' + b.stage : ' · durum: ' + (b.status || '…') + ' — tam kitap okunuyor');
+    }
     if (b.status === 'done' || b.status === 'error') {
       clearInterval(poll); setLoading(btn, false);
       if (b.status === 'done' && b.post_url) {
