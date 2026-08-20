@@ -101,7 +101,7 @@ while (time() < $budget) {
             proto_job_log($j, 'Parça özetleri kapsamlı özete birleştiriliyor…');
             proto_job_write($file, $j);
             $ordered = $j['notes']; ksort($ordered, SORT_NUMERIC);   // parça sırasına diz
-            $sum = proto_ds(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $ordered)), 8000, $ping, 300, $dd, $j['prov'] ?? 'auto');
+            $sum = proto_ds(proto_reduce_prompt($j['book'], $j['author'], implode("\n\n", $ordered), 'a thorough summary', $j['chapters'] ?? []), 8000, $ping, 300, $dd, $j['prov'] ?? 'auto');
             $html = $sum !== '' ? bw_md2html($sum) : '';
             $j = proto_job_read($file) ?: $j;
             $j['resultB'] = [

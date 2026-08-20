@@ -194,9 +194,15 @@ function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150
         . "DO NOT judge whether the passage 'belongs' to the book — it does. DO NOT refuse. Summarize whatever readable prose is present, whether it is the work itself or editorial discussion OF the work (when it is editorial context rather than the work's own words, just note that).\n"
         . "The ONLY case where you may skip: the passage contains NO readable sentences at all — i.e. it is purely a title page, a copyright/license/Project Gutenberg notice, a bare table of contents, or a page-number index. In that single case reply EXACTLY: (no substantive content). In EVERY other case you MUST produce notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
 }
-function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summary') {
+function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summary', $chapters = []) {
+    $chap_block = '';
+    if (!empty($chapters)) {
+        $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text — use THESE real divisions; do NOT invent generic 'Part 1 / Part 2' labels) ===\n"
+            . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\n";
+    }
     return "You are writing a faithful, source-based book summary for a books website, in English.\n"
         . "Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
+        . $chap_block
         . "Using ONLY these notes (from the real text), write {$target} with these ## sections, omitting any you lack material for:\n"
         . "## About the Work\n## Context\n## Structure of the Book\n## Detailed Section-by-Section Summary\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
         . "RULES:\n"
@@ -251,9 +257,9 @@ function proto_generate($book, $author, $opts = []) {
     // ctarget: parça başına hedef karakter (küçük = daha çok/granüler parça).
     // words: özet hedef kelime; reduce+expand buna ulaşmaya çalışır.
     $cfg = [
-        'kisa'     => ['max' => 6,  'ctarget' => 60000, 'notes' => '110-170', 'rtar' => 'a focused summary of about 1200-1800 words',   'words' => 1500],
-        'standart' => ['max' => 12, 'ctarget' => 40000, 'notes' => '150-260', 'rtar' => 'a thorough summary of about 2500-3800 words',   'words' => 3000],
-        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '240-360', 'rtar' => 'a very comprehensive, in-depth summary that fully develops every section', 'words' => 6000],
+        'kisa'     => ['max' => 6,  'ctarget' => 60000, 'notes' => '130-200', 'rtar' => 'a focused summary of about 1200-1800 words',   'words' => 1500],
+        'standart' => ['max' => 12, 'ctarget' => 40000, 'notes' => '180-300', 'rtar' => 'a thorough summary of about 2500-3800 words',   'words' => 3000],
+        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '320-480', 'rtar' => 'a very comprehensive, in-depth summary that fully develops every section', 'words' => 6000],
     ][$len];
 
     // Sağlayıcı: DeepSeek erişilebiliyorsa onu (ucuz), yoksa Gemini. İş başına bir kez.
@@ -272,6 +278,7 @@ function proto_generate($book, $author, $opts = []) {
 
     $text   = proto_clean($src['source'], $src['text']);
     $bw     = str_word_count(strip_tags($text));
+    $chapters = proto_detect_chapters($text);   // GERÇEK bölüm başlıkları → reduce'a verilir (uydurma Part 1/2 yerine)
     $chunks = proto_chunks($text, $cfg['max'], $cfg['ctarget']);
     $ncnt   = count($chunks);
     $notes = []; $lastdg = ''; $empty = 0; $nosub = 0;
@@ -296,7 +303,7 @@ function proto_generate($book, $author, $opts = []) {
     $stage(count($notes) . " parça notu kapsamlı özete birleştiriliyor…");
     $beat();
     $dg2 = '';
-    $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar']), 8000, $beat, 300, $dg2, $prov);
+    $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), 8000, $beat, 300, $dg2, $prov);
     if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,
         'trace' => $src['source'] . " {$bw}w, reduce BOŞ ({$dg2}) → Bilgi Metni'ne düşülecek"];
 
@@ -311,7 +318,7 @@ function proto_generate($book, $author, $opts = []) {
     $fw = str_word_count(strip_tags(bw_md2html($md)));
 
     return ['found' => true, 'insufficient' => false, 'md' => $md, 'source' => $src['source'], 'url' => $src['url'],
-            'book_words' => $bw, 'chunks' => count($chunks), 'chapters' => proto_detect_chapters($text), 'model' => $model_label,
+            'book_words' => $bw, 'chunks' => count($chunks), 'chapters' => $chapters, 'model' => $model_label,
             'trace' => $src['source'] . " {$bw}w → " . count($chunks) . ' parça/' . count($notes) . " not → özet {$fw}w ({$model_label})"];
 }
 
