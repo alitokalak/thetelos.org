@@ -30,7 +30,8 @@ function proto_fetch_text($url, $tries = 3, &$info = null) {
 }
 
 /* ── Project Gutenberg tam metin (gutendex) ────────────────────────────── */
-function proto_gutenberg($book, $author) {
+function proto_gutenberg($book, $author, $beat = null) {
+    if (is_callable($beat)) $beat();
     $surname = '';
     if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
     $j = tls_fetch_json('https://gutendex.com/books/?search=' . rawurlencode(trim($book . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
@@ -54,8 +55,9 @@ function proto_gutenberg($book, $author) {
         $cands = array_values(array_unique(array_filter($cands, $is_book)));
         $debug['match'] = ['id' => $id, 'title' => (string) ($r['title'] ?? '')];
         $best = ''; $best_url = '';
-        $try = function ($u) use (&$best, &$best_url, &$debug, $is_book) {
+        $try = function ($u) use (&$best, &$best_url, &$debug, $is_book, $beat) {
             if (!$is_book($u)) return;
+            if (is_callable($beat)) $beat();   // indirme uzun sürebilir → worker ölü sanılmasın
             $inf = null; $t = proto_fetch_text($u, 2, $inf);
             $debug['tried'][] = ['url' => $u, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0];
             if (mb_strlen($t) > mb_strlen($best)) { $best = $t; $best_url = $u; }
@@ -76,7 +78,8 @@ function proto_gutenberg($book, $author) {
 }
 
 /* ── Internet Archive tam metin (taranmış/OCR — _djvu.txt) ──────────────── */
-function proto_archive($book, $author) {
+function proto_archive($book, $author, $beat = null) {
+    if (is_callable($beat)) $beat();
     $surname = '';
     if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
     $qp = ['mediatype:texts', 'title:(' . $book . ')'];
@@ -95,6 +98,7 @@ function proto_archive($book, $author) {
         foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; }
         if ($txt === '') foreach (($meta['files'] ?? []) as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
         if ($txt === '') { $debug['tried'][] = ['id' => $id, 'note' => 'txt yok']; continue; }
+        if (is_callable($beat)) $beat();
         $u = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt);
         $inf = null; $t = proto_fetch_text($u, 2, $inf);
         $debug['tried'][] = ['id' => $id, 'file' => $txt, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0];
@@ -108,7 +112,8 @@ function proto_archive($book, $author) {
    Çok-alt-sayfalı eserlerde yalnız içindekiler döner (kısa) → eşik geçilmez,
    Internet Archive'e düşülür. Kısmi/yanlış metin gelse bile chunk aşamasındaki
    ERKEN DURMA korur (ilk parçalardan not çıkmazsa iş anında durur). */
-function proto_wikisource($book, $author) {
+function proto_wikisource($book, $author, $beat = null) {
+    if (is_callable($beat)) $beat();
     $debug = ['ws_results' => 0, 'tried' => []];
     $s = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=5&format=json&srsearch='
         . rawurlencode(trim($book . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
@@ -118,6 +123,7 @@ function proto_wikisource($book, $author) {
     if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
     foreach ($hits as $h) {
         $title = (string) ($h['title'] ?? ''); if ($title === '') continue;
+        if (is_callable($beat)) $beat();
         $p = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&prop=extracts&explaintext=1&exlimit=1&redirects=1&format=json&titles='
             . rawurlencode($title), 'thetelos.org/1.0', 25, 2);
         $pages = $p['query']['pages'] ?? [];
@@ -134,12 +140,12 @@ function proto_wikisource($book, $author) {
 }
 
 /* ── Sıralı edinim: Gutenberg → Wikisource → Internet Archive ───────────── */
-function proto_acquire($book, $author) {
-    $g = proto_gutenberg($book, $author);
+function proto_acquire($book, $author, $beat = null) {
+    $g = proto_gutenberg($book, $author, $beat);
     if (!empty($g['found'])) { $g['debug'] = ['gutenberg' => $g['debug']]; return $g; }
-    $w = proto_wikisource($book, $author);
+    $w = proto_wikisource($book, $author, $beat);
     if (!empty($w['found'])) { $w['debug'] = ['gutenberg' => $g['debug'] ?? null, 'wikisource' => $w['debug'] ?? null]; return $w; }
-    $a = proto_archive($book, $author);
+    $a = proto_archive($book, $author, $beat);
     $a['debug'] = ['gutenberg' => $g['debug'] ?? null, 'wikisource' => $w['debug'] ?? null, 'archive' => $a['debug'] ?? null];
     return $a;
 }
@@ -249,7 +255,8 @@ function proto_generate($book, $author, $opts = []) {
     if ($prov === 'auto') $prov = (proto_openrouter_key() !== '' || proto_deepseek_reachable()) ? 'auto' : 'gemini';
     $model_label = ($prov === 'gemini') ? 'gemini' : 'deepseek';
 
-    $src = proto_acquire($book, $author);
+    $stage("kaynak metni indiriliyor (Gutenberg → Wikisource → Internet Archive)…");
+    $src = proto_acquire($book, $author, $beat);
     $beat();
     if (empty($src['found'])) {
         $g = $src['debug']['gutenberg']['gutendex_results'] ?? '?';
