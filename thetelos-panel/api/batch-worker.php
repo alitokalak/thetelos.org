@@ -503,15 +503,17 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             return;
         }
         // Bulunan tipe göre prompt tipini düzelt: mevcut yazı özetse özet, analizse analiz.
-        // AMA 'info' (bilgi metni) tipini KORU — o endpoint'ten bağımsız kendi motoruyla üretir.
-        if ($type !== 'info') $type = ($ep === 'analysis') ? 'analysis' : 'summary';
+        // AMA 'info' ve 'source' tiplerini KORU — bunlar prompts.json kullanmaz, kendi
+        // motorlarıyla üretir (info → _info.php, source → proto_generate). Aksi halde
+        // rewrite'ta 'source' 'summary'ye dönüşüp "Prompt boş" hatası veriyordu.
+        if ($type !== 'info' && $type !== 'source') $type = ($ep === 'analysis') ? 'analysis' : 'summary';
     }
 
     // ── Prompt ────────────────────────────────────────────────────
     // Bilgi metni (info) tipi prompts.json kullanmaz — kendi motoru var (_info.php).
     $prompts  = file_exists(PROMPTS_FILE) ? json_decode(file_get_contents(PROMPTS_FILE), true) : [];
     $template = trim($prompts[$type] ?? '');
-    if (!$template && $type !== 'info') {
+    if (!$template && $type !== 'info' && $type !== 'source') {   // info/source kendi motoru; prompt gerekmez
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'Prompt boş']);
         return;
     }
