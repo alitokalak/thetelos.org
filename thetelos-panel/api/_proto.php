@@ -209,10 +209,12 @@ function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summa
         . "## About the Work\n## Context\n## Structure of the Book\n## Detailed Section-by-Section Summary\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
         . "RULES:\n"
         . "1. Base EVERY statement only on the notes (the real text). Do NOT invent or infer chapter titles, quotations, examples, dates, or names not in the notes.\n"
-        . "2. CHRONOLOGY: In the Section-by-Section Summary, follow the ACTUAL order of the book as reflected in the ordered notes (Part 1 → last part). Do not reorder events or jump around.\n"
-        . "3. NO CONFLATION: Keep characters and events distinct — attribute each action to the correct person; never merge two characters or two events into one. If the notes are unclear about who did what, stay general rather than guessing.\n"
-        . "4. INTERPRETATION: State themes, meaning, and the author's stance AS interpretations grounded in specific text — not as absolute facts. Do NOT reduce the whole work to a single sweeping thesis.\n"
-        . "5. Separate the book's actual content from outside/biographical context. Be comprehensive but do NOT pad or repeat to inflate length. Clear, engaged prose, third person, in English. Do NOT restate the title as an H1; start with the ## sections.\n\n"
+        . "2. COVER THE WHOLE BOOK. The Section-by-Section Summary MUST run from the FIRST part through the LAST part in the notes — beginning to end. Budget your length so EVERY part is represented; do NOT lavish detail on the early parts and then run out of room, leaving the later parts thin or missing. Reaching the book's actual ending is more important than fully detailing the opening. If space is tight, shorten every part evenly rather than dropping the final parts.\n"
+        . "3. SYNTHESIZE — do NOT retell. Compress events and descriptions to their essence; give the substance of each part in a few sentences. Do NOT quote long passages or reproduce the text's descriptive catalogues (e.g. long lists of cloud shapes or scenery). Convey what happens and why it matters, not a paragraph-by-paragraph re-narration.\n"
+        . "4. CHRONOLOGY: follow the ACTUAL order of the book as reflected in the ordered notes (Part 1 → last part). Do not reorder or jump around.\n"
+        . "5. NO CONFLATION: keep characters and events distinct — attribute each action to the correct person; never merge two characters or two events into one. If the notes are unclear about who did what, stay general rather than guessing.\n"
+        . "6. INTERPRETATION PLACEMENT: keep 'About the Work' neutral and descriptive (what the book is, its form, when/where). Put literary-critical labels and readings (e.g. 'spiritual autobiography', 'crisis of modernity', 'Romantic nature mysticism') in 'Themes', framed as interpretation grounded in specific text — not as fact, and not in the opening.\n"
+        . "7. Separate the book's content from outside/biographical context. Clear, engaged prose, third person, in English. Do NOT pad or repeat. Do NOT restate the title as an H1; start with the ## sections. END on a complete sentence.\n\n"
         . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
 function proto_systemA_prompt($book, $author) {
@@ -272,7 +274,7 @@ function proto_generate($book, $author, $opts = []) {
     $cfg = [
         'kisa'     => ['max' => 6,  'ctarget' => 60000, 'notes' => '130-200', 'rtar' => 'a focused summary of about 1200-1800 words',   'words' => 1500],
         'standart' => ['max' => 12, 'ctarget' => 40000, 'notes' => '180-300', 'rtar' => 'a thorough summary of about 2500-3800 words',   'words' => 3000],
-        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '320-480', 'rtar' => 'a very comprehensive, in-depth summary of about 4500-5200 words that develops every section; you MUST finish on a complete sentence within that budget (do not get cut off mid-sentence)', 'words' => 5200],
+        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '320-480', 'rtar' => 'a thorough, SYNTHESIZED summary of about 4500-5200 words that covers the ENTIRE book from the first part to the LAST part (do not stop halfway) and finishes on a complete sentence', 'words' => 5200],
     ][$len];
 
     // Sağlayıcı: DeepSeek erişilebiliyorsa onu (ucuz), yoksa Gemini. İş başına bir kez.
