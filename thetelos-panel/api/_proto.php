@@ -252,6 +252,7 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
         . "RULES:\n"
         . "1. Base every statement only on the notes. Invent nothing (no quotes, dates, names, chapter titles not in the notes).\n"
         . "2. Keep 'About the Work' NEUTRAL and descriptive (what the book is, its form, when/where). Put literary-critical labels/readings (e.g. 'spiritual autobiography', 'crisis of modernity') in 'Themes', framed as interpretation grounded in the text — not as fact.\n"
+        . "2b. BIBLIOGRAPHY: do NOT state a precise first-publication year, edition number, or publisher taken from the source's own title/imprint page. An imprint like 'fifty-eighth edition ... 1911' is a LATER REPRINT, not the first edition — presenting it as the first publication is an error. If you are not certain of the true first-publication facts, describe the period generally (e.g. 'an early-twentieth-century novel') rather than a precise but possibly wrong date/edition.\n"
         . "3. In 'Structure of the Book', describe the book's REAL structure (its chapters/narrative arc). The notes are labelled [Part N] — those are OUR internal processing segments, NOT the book's divisions; NEVER say the book 'is divided into N parts' based on them.\n"
         . "4. ENDING: read the LAST notes carefully and state the book's TRUE ending (its final events and how/where it actually concludes). Do NOT mistake a mid-book episode or location for the ending. If 'Structure' or 'The Author's Conclusions' describe how the book closes, they MUST match the real final scene in the last notes.\n"
         . "5. DISTINCT SECTIONS: keep 'Main Arguments', 'Key Concepts', and 'Themes' genuinely different — do NOT repeat the same points (e.g. nature, homesickness, love) across all three. Arguments = what the work claims/shows; Key Concepts = specific named ideas/motifs; Themes = the deeper recurring meanings. If a section would just repeat another, omit it.\n"
@@ -270,11 +271,11 @@ function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage) {
     $stage("bölüm-bölüm özet {$G} segmentte üretiliyor…");
     $prompts = [];
     foreach ($groups as $i => $gn) $prompts[$i] = proto_sbs_prompt($book, $author, implode("\n\n", $gn), $i + 1, $G);
-    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 4500, $beat, 6) : [];
+    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 6000, $beat, 6) : [];
     $parts = [];
     for ($i = 0; $i < $G; $i++) {
         $t = $out[$i] ?? '';
-        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], 4500, $beat, 280, $dg, $prov); }
+        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], 6000, $beat, 280, $dg, $prov); }
         $t = proto_trim_incomplete(trim($t));
         if ($t !== '') $parts[] = $t;
     }
@@ -286,9 +287,12 @@ function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage) {
 function proto_assemble($frame, $sbs) {
     if (trim((string) $sbs) === '') return $frame;
     $block = "## Detailed Section-by-Section Summary\n\n" . trim($sbs) . "\n\n";
-    if (preg_match('/^##\s+Main Arguments/mi', $frame, $m, PREG_OFFSET_CAPTURE)) {
+    // NOT: PREG_OFFSET_CAPTURE ofseti BAYT cinsindendir → substr (bayt) kullan.
+    // mb_substr (karakter) kullanınca em-dash gibi çok-baytlı karakterlerde
+    // ofset kayıp "Main Arguments" başlığını "Ma"+"in Arguments" diye bölüyordu.
+    if (preg_match('/^##[ \t]+Main Arguments/mi', $frame, $m, PREG_OFFSET_CAPTURE)) {
         $pos = $m[0][1];
-        return rtrim(mb_substr($frame, 0, $pos)) . "\n\n" . $block . mb_substr($frame, $pos);
+        return rtrim(substr($frame, 0, $pos)) . "\n\n" . $block . substr($frame, $pos);
     }
     return rtrim($frame) . "\n\n" . $block;
 }
