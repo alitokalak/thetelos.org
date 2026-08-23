@@ -521,6 +521,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             //    ilk 4 anlamlı kelimeyle tekrar dene (uzun/yabancı başlıklarda WP
             //    araması boş dönebiliyor). per_page=100.
             $do_search = function ($q) use ($wp_api, $try_ep, $auth) {
+                // ÖNEMLİ: WP araması KESME İŞARETLİ terimleri bulamıyor ("Ma'navi" → 0
+                // sonuç; "Manavi" → bulur). Sorgudan tüm kesme işaretlerini AT.
+                $q = preg_replace('/[\x{2018}\x{2019}\x{02BC}\x{0027}\x{0060}]/u', '', (string) $q);
                 [$r, $c] = bw_wp("$wp_api/$try_ep?search=" . rawurlencode($q) . '&status=any&per_page=100&_fields=id,title', 'GET', [], $auth, 20);
                 return [$c, (is_array($r) ? $r : [])];
             };
