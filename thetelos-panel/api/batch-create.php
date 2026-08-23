@@ -83,8 +83,10 @@ $batch = [
     // Kademeli hakem (Gemini denetler, şüphede Claude): üretilen bilgi metnini
     // kaynaklarla kıyaslar; uydurma bulursa yayınlamaz. '0' → kapat. Vars. açık.
     'referee'      => (($_POST['referee'] ?? '1') !== '0') ? '1' : '0',
-    // Kaynak-temelli özet (source) uzunluğu: kisa | standart | kapsamli
+    // Kaynak-temelli özet (source) uzunluğu: kisa | standart | kapsamli (geriye dönük)
     'length'       => in_array($_POST['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $_POST['length'] : 'standart',
+    // Serbest hedef kelime (kaydırıcı) — verilirse 'length' ön-ayarını geçersiz kılar.
+    'source_words' => max(1000, min(8000, (int) ($_POST['source_words'] ?? 0))),
     'total'        => count($books),
     'done'         => 0,
     'ok'           => 0,

@@ -265,13 +265,21 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           📚 <b>Bilgi Metni:</b> kitap hakkında Wikipedia + Google Books + Open Library'den GERÇEK veri
           toplanır, model yalnız buna dayanarak yazar. <b>Uydurma yok.</b> (Kelime/parça ayarları kullanılmaz.)
         </div>
-        <div id="bulk-length-row" style="margin:0 0 12px">
-          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Özet uzunluğu (kaynak-temelli)</label>
-          <select id="bulk_length" style="max-width:340px">
-            <option value="kisa">Kısa (~1.500 kelime)</option>
-            <option value="standart" selected>Standart (~3.000 kelime)</option>
-            <option value="kapsamli">Kapsamlı (~6.000+ kelime)</option>
-          </select>
+        <div id="bulk-length-row" class="token-control" style="margin:0 0 16px">
+          <div class="token-header">
+            <label>Özet uzunluğu (kaynak-temelli) — istediğin kelimeyi seç</label>
+            <span id="bulk-source-words-display" class="token-val">3.500 kelime · ~18 dk</span>
+          </div>
+          <input type="range" id="bulk-source-words" min="1500" max="8000" step="250" value="3500"
+            oninput="updateBulkSourceWords(this.value)">
+          <div class="token-marks">
+            <span>1.5K</span><span>3K</span><span>4.5K</span><span>6K</span><span>8K</span>
+          </div>
+          <p style="font-size:11px;color:var(--muted);margin:6px 0 0;line-height:1.5">
+            Hedef kelime arttıkça kitap daha derin okunur ve özet uzar. Yaklaşık okuma süresi
+            ~200 kelime/dk üzerinden gösterilir. Not: kaynak-temelli motor bütçeyi tüm özete
+            paylaştırır — 3.500–4.500 arası çoğu roman için dengeli sonuç verir.
+          </p>
         </div>
 
         <div class="token-control" id="bulk-token-control" style="margin-bottom:16px">

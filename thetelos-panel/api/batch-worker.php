@@ -233,15 +233,17 @@ function bw_update_book($batch_file, $idx, $updates) {
     $batch = json_decode((string)@file_get_contents($batch_file), true);
     if ($batch) {
         foreach ($updates as $k => $v) $batch['books'][$idx][$k] = $v;
-        $done = $ok = $failed = 0;
+        $done = $ok = $failed = $placeholder = 0;
         foreach ($batch['books'] as $b) {
             if (in_array($b['status'], ['done','error'])) $done++;
-            if ($b['status'] === 'done')  $ok++;
+            if ($b['status'] === 'done' && !empty($b['placeholder'])) $placeholder++;   // yayında ama içerik yok
+            elseif ($b['status'] === 'done')  $ok++;
             if ($b['status'] === 'error') $failed++;
         }
-        $batch['done']   = $done;
-        $batch['ok']     = $ok;
-        $batch['failed'] = $failed;
+        $batch['done']        = $done;
+        $batch['ok']          = $ok;
+        $batch['placeholder'] = $placeholder;
+        $batch['failed']      = $failed;
         $batch['last_activity'] = time();   // görünürlük: "en son ne zaman ilerledi"
         if ($done >= $batch['total'] && ($batch['status'] ?? '') !== 'cancelled') $batch['status'] = 'done';
         bw_write_atomic($batch_file, $batch);
@@ -551,6 +553,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                         'post_url' => $rp['link'] ?? '',
                         'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                         'error'    => 'model tanımadı → yer tutucu kondu (yayında)',
+                        'placeholder' => 1,
                     ]);
                     return;
                 }
@@ -588,6 +591,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_touch_hb($batch_file, $idx);
         $sr = proto_generate($search_book, $author, [
             'length'  => in_array($batch['length'] ?? 'standart', ['kisa','standart','kapsamli'], true) ? $batch['length'] : 'standart',
+            'words'   => (int) ($batch['source_words'] ?? 0),   // serbest hedef kelime (kaydırıcı); 0 → 'length' ön-ayarı
             'provider'=> 'auto',
             'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
             'on_stage'=> function ($m) use ($batch_file, $idx) { bw_set_stage($batch_file, $idx, $m); bw_touch_hb($batch_file, $idx); },
@@ -611,7 +615,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     $ph = bw_placeholder_html($book, $author);
                     [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
                     bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok · ' . $sr_trace, $update_pid, 'rewrite');
-                    bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)']);
+                    bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)','placeholder'=>1]);
                     return;
                 }
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok · ' . $sr_trace, 0, 'create');
@@ -655,6 +659,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
                     'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                     'error' => ($ref_fab ? 'hakem uydurma buldu → yer tutucu (yayında)' : 'kaynak yetersiz → yer tutucu (yayında)'),
+                    'placeholder' => 1,
                 ]);
                 return;
             }
@@ -897,6 +902,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 'post_url' => $rp['link'] ?? '',
                 'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                 'error'    => 'model tanımadı → yer tutucu kondu (yayında)',
+                'placeholder' => 1,
             ]);
             return;
         }

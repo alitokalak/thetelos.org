@@ -141,6 +141,19 @@ function updateBulkTokenDisplay(val) {
     `linear-gradient(90deg, var(--gold) ${pct}%, var(--border) ${pct}%)`;
 }
 
+// Kaynak-temelli toplu özet: serbest hedef kelime kaydırıcısı (kaynaksız kısımdaki gibi)
+function updateBulkSourceWords(val) {
+  const el = document.getElementById('bulk-source-words-display');
+  if (!el) return;
+  const w = parseInt(val) || 0;
+  const mins = Math.max(1, Math.round(w / 200));   // ~200 kelime/dk okuma
+  el.textContent = w.toLocaleString('tr') + ' kelime · ~' + mins + ' dk';
+  el.style.color = w <= 5500 ? 'var(--green)' : 'var(--gold)';   // 5.5K üstü uzun/pahalı → altın uyarı
+  const pct = ((w - 1500) / (8000 - 1500)) * 100;
+  const s = document.getElementById('bulk-source-words');
+  if (s) s.style.background = `linear-gradient(90deg, var(--gold) ${pct}%, var(--border) ${pct}%)`;
+}
+
 /* ── Mod Geçişi ───────────────────────────────────── */
 const modeTitles = {
   single:  ['Tek Kitap',     'Kitap adı ve yazar girerek özet veya analiz üretin'],
@@ -1046,7 +1059,9 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   if (batchRunning) return;
 
   const type        = document.querySelector('input[name=bulk_type]:checked')?.value || 'source';
-  const length      = document.getElementById('bulk_length')?.value || 'standart';
+  const sourceWords = parseInt(document.getElementById('bulk-source-words')?.value || '3500');
+  // Geriye dönük 'length' ön-ayarı: kaydırıcıdan en yakın kovaya eşle (motor asıl source_words'ü kullanır)
+  const length      = sourceWords <= 2200 ? 'kisa' : sourceWords >= 5500 ? 'kapsamli' : 'standart';
   const status      = document.getElementById('bulk_post_status')?.value || 'draft';
   const tokens      = document.getElementById('bulk-token-slider').value;
   const workerCount = parseInt(document.getElementById('bulk_workers')?.value || '1');
@@ -1062,6 +1077,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
     books:        JSON.stringify(batchBooks),
     type,
     length,
+    source_words: sourceWords,
     post_status:  status,
     max_tokens:   tokens,
     api_provider: activeProvider,
@@ -1264,6 +1280,7 @@ function renderBatchStatus(b) {
 
   document.getElementById('bulk-summary').innerHTML =
     `<span class="badge badge-green">✓ ${b.ok} başarılı</span>&nbsp;`
+    + ((b.placeholder|0) > 0 ? `<span class="badge" style="background:rgba(224,168,0,.18);color:#e0a800;border:1px solid rgba(224,168,0,.4)">⚠ ${b.placeholder} yer tutucu (içerik yok)</span>&nbsp;` : '')
     + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
     + (b.total - b.done > 0 ? `<span class="badge badge-gray">⏳ ${(b.total-b.done).toLocaleString('tr')} bekliyor</span>` : '');
 
@@ -1284,16 +1301,21 @@ function renderBatchStatus(b) {
       if (dead) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
       else { procLabel = `İşleniyor... ${t}`; }
     }
-    const cls = st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
+    // Yer tutucu: yayında ama içerik YOK → yeşil değil, amber uyarı ("sorunsuz" görünmesin)
+    const isPlaceholder = st==='done' && bk.placeholder;
+    const cls = isPlaceholder?'warn':st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
     // Tamamlandı ama bir parçası eksik kaldıysa ⚠ ile göster (içerik kısa olabilir)
-    const partial = st==='done' && bk.error && bk.error !== 'duplicate_skipped';
+    const partial = st==='done' && !isPlaceholder && bk.error && bk.error !== 'duplicate_skipped';
     // Bağlantı: düzenleme linki yoksa ön-yüz linkine düş; ikisi de yoksa düz #id
     // (asla href="null" üretme → /thetelos-panel/null 404'u buradan geliyordu).
     const link = bk.edit_url || bk.post_url || '';
     const idHtml = link
       ? `<a href="${link}" target="_blank">#${bk.post_id}</a>`
       : `#${bk.post_id}`;
-    const lbl = st==='done'
+    const lbl = isPlaceholder
+      ? `⚠ ${idHtml} yer tutucu — içerik yok`
+        + `<span title="${String(bk.error||'kaynak bulunamadı').replace(/"/g,'&quot;')}" style="color:#e0a800"></span>`
+      : st==='done'
       ? `✓ ${idHtml}${bk.cover_set?' 🖼':''}`
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
@@ -1325,7 +1347,7 @@ function renderBatchStatus(b) {
 function setRowStatus(idx, st, html, bookData) {
   const cell = document.querySelector(`#brow-${idx} .status-cell`);
   if (!cell) return;
-  const cls = st==='ok'?'badge-green':st==='err'?'badge-red':st==='working'?'badge-gold':'badge-gray';
+  const cls = st==='ok'?'badge-green':st==='err'?'badge-red':st==='warn'?'badge-warn':st==='working'?'badge-gold':'badge-gray';
   const retryBtn = bookData
     ? ` <button class="btn-retry-single" title="Tekrar dene"
           onclick="retryBooks([${JSON.stringify(bookData).replace(/"/g,'&quot;')}])"
@@ -2596,3 +2618,4 @@ document.querySelectorAll('input[name=bulk_type]').forEach(r => {
   r.addEventListener('change', updateBulkTypeUI);
 });
 updateBulkTypeUI();   // sayfa açılışında da uygula
+updateBulkSourceWords(document.getElementById('bulk-source-words')?.value || 3500);   // kaydırıcı görselini/etiketini kur

@@ -226,10 +226,14 @@ function proto_systemA_prompt($book, $author) {
    Tek reduce 15 parçayı kapsayamıyordu (son parçalar düşüyordu). Bu yüzden
    section-by-section'ı parça-gruplarına bölüp her grubu AYRI çağrıda üretiyoruz;
    her grup kendi bütçesini aldığı için tüm kitap garanti kapsanır. */
-function proto_sbs_prompt($book, $author, $notes, $g, $G) {
+function proto_sbs_prompt($book, $author, $notes, $g, $G, $seg_words = 0) {
+    $budget = $seg_words > 0
+        ? "LENGTH BUDGET: write about {$seg_words} words for THIS segment (a hard ceiling — do not exceed it). Spend the words evenly across the whole segment so you reach its final event.\n"
+        : '';
     return "You are writing the DETAILED SECTION-BY-SECTION narrative of a faithful, source-based summary of \"{$book}\"" . ($author ? " by {$author}" : '') . ", in English.\n"
         . "Below are ORDERED notes from the ACTUAL TEXT covering ONE consecutive segment of the book (segment {$g} of {$G}).\n"
         . "The notes are labelled [Part 1], [Part 2]… — these are OUR internal processing segments, NOT the book's real divisions. NEVER mention 'Part N' or reproduce those labels, and do NOT claim the book 'is divided into N parts'. Follow the book's OWN natural flow.\n"
+        . $budget
         . "Write a SYNTHESIZED narrative of THIS segment as a sequence of ### subsections that follow the story's real progression. SYNTHESIZE HARD — do NOT retell or quote; compress descriptive detail (physical descriptions, catalogues of objects/scenery) to its essence; a few sentences per beat, conveying what happens and what it means for the protagonist's development. Use ONLY these notes; invent nothing. Title each ### by what actually happens — a real chapter name if the notes give one, otherwise a short descriptive phrase (e.g. '### Assisi and Annunziata Nardini').\n"
         . "COMPLETENESS OVER DETAIL: you MUST cover EVERY event in these notes THROUGH THE VERY LAST ONE. Do NOT run long on the early beats and get cut off before the end of this segment — if space is tight, shorten every beat evenly so you still reach the final event in these notes.\n"
         . ($g >= $G ? "THIS IS THE FINAL SEGMENT: you MUST narrate the book's actual ENDING — its last events and how the story truly concludes (do not stop before the real final scene).\n" : "")
@@ -264,18 +268,23 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
    Notlar 5'erli gruplara bölünür; her grup AYRI (paralel) çağrıda kendi
    ### bölümlerini üretir; sonuçlar sırayla birleştirilir. Tek grup varsa null
    döner (çağıran eski tek-reduce yolunu kullanır). */
-function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage) {
+function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_words = 0) {
     $groups = array_chunk($notes, 4);   // küçük grup = her segment bütçesine sığar, sonu kesmez
     $G = count($groups);
     if ($G <= 1) return null;
-    $stage("bölüm-bölüm özet {$G} segmentte üretiliyor…");
+    // Segment başına kelime bütçesi → uzunluk seçici gerçekten çıktıyı belirlesin
+    // (eskiden her segment 6000 token yazıp 60 dk'lık özet çıkıyordu). max_tokens'ı
+    // da bütçeye göre kıs → hem uzunluk kontrolü hem TOKEN MALİYETİ düşer.
+    $seg_words = $sbs_words > 0 ? max(180, (int) round($sbs_words / $G)) : 0;
+    $seg_max   = $seg_words > 0 ? max(900, min(6000, (int) round($seg_words * 2.2))) : 6000;
+    $stage("bölüm-bölüm özet {$G} segmentte üretiliyor" . ($seg_words ? " (~{$seg_words} kelime/segment)" : '') . "…");
     $prompts = [];
-    foreach ($groups as $i => $gn) $prompts[$i] = proto_sbs_prompt($book, $author, implode("\n\n", $gn), $i + 1, $G);
-    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, 6000, $beat, 6) : [];
+    foreach ($groups as $i => $gn) $prompts[$i] = proto_sbs_prompt($book, $author, implode("\n\n", $gn), $i + 1, $G, $seg_words);
+    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, $seg_max, $beat, 6) : [];
     $parts = [];
     for ($i = 0; $i < $G; $i++) {
         $t = $out[$i] ?? '';
-        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], 6000, $beat, 280, $dg, $prov); }
+        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], $seg_max, $beat, 280, $dg, $prov); }
         $t = proto_trim_incomplete(trim($t));
         if ($t !== '') $parts[] = $t;
     }
@@ -344,13 +353,27 @@ function proto_generate($book, $author, $opts = []) {
     $beat = is_callable($opts['on_beat'] ?? null) ? $opts['on_beat'] : function () {};
     // Canlı aşama bildirimi (panelde görünür — nerede olduğumuzu göster).
     $stage = is_callable($opts['on_stage'] ?? null) ? $opts['on_stage'] : function ($m) {};
+
+    // HEDEF KELİME: panelden serbest seçilebilir (kaynaksız kısımdaki gibi bir kaydırıcı).
+    // Sayısal 'words' verilirse onu kullan; yoksa eski ön-ayar (kisa/standart/kapsamli).
+    $preset_words = ['kisa' => 1500, 'standart' => 3000, 'kapsamli' => 5200][$len];
+    $W = isset($opts['words']) && (int) $opts['words'] > 0
+        ? max(1000, min(8000, (int) $opts['words']))
+        : $preset_words;
+
     // ctarget: parça başına hedef karakter (küçük = daha çok/granüler parça).
-    // words: özet hedef kelime; reduce+expand buna ulaşmaya çalışır.
-    $cfg = [
-        'kisa'     => ['max' => 6,  'ctarget' => 60000, 'notes' => '130-200', 'rtar' => 'a focused summary of about 1200-1800 words',   'words' => 1500],
-        'standart' => ['max' => 12, 'ctarget' => 40000, 'notes' => '180-300', 'rtar' => 'a thorough summary of about 2500-3800 words',   'words' => 3000],
-        'kapsamli' => ['max' => 22, 'ctarget' => 20000, 'notes' => '320-480', 'rtar' => 'a thorough, SYNTHESIZED summary of about 4500-5200 words that covers the ENTIRE book from the first part to the LAST part (do not stop halfway) and finishes on a complete sentence', 'words' => 5200],
-    ][$len];
+    // OKUMA DERİNLİĞİ (kaç parça okunur) hedef uzunlukla orantılı ölçeklenir —
+    // böylece kısa hedefte gereksiz parça okumayız (TOKEN MALİYETİ düşer), uzun
+    // hedefte tüm kitabı granüler okuruz. 'words' = özet hedef kelime.
+    if     ($W <= 2000) { $max = 8;  $ctarget = 50000; $notes = '140-220'; }
+    elseif ($W <= 3500) { $max = 12; $ctarget = 38000; $notes = '200-320'; }
+    elseif ($W <= 5500) { $max = 18; $ctarget = 26000; $notes = '280-420'; }
+    else                { $max = 24; $ctarget = 20000; $notes = '340-500'; }
+    $lo = (int) round($W * 0.9); $hi = (int) round($W * 1.1);
+    $rtar = "a thorough, SYNTHESIZED summary of about {$lo}-{$hi} words that covers the ENTIRE book from the first part to the LAST part (do not stop halfway), does not pad or repeat, and finishes on a complete sentence";
+    // SBS (bölüm-bölüm anlatı) toplam bütçenin ~%72'si; çerçeve (About/Themes…) kalanı.
+    $sbs_words = (int) round($W * 0.72);
+    $cfg = ['max' => $max, 'ctarget' => $ctarget, 'notes' => $notes, 'rtar' => $rtar, 'words' => $W];
 
     // Sağlayıcı: DeepSeek erişilebiliyorsa onu (ucuz), yoksa Gemini. İş başına bir kez.
     $prov = ($opts['provider'] ?? 'auto');
@@ -396,12 +419,16 @@ function proto_generate($book, $author, $opts = []) {
     // HİYERARŞİK: section-by-section'ı parça-gruplarında üret (tüm kitap garanti
     // kapsanır — tek reduce son parçaları düşürüyordu), çerçeve bölümlerini ayrı
     // yaz, birleştir. Tek grup (kısa kitap) → eski tek-reduce yolu.
-    $sbs = proto_build_sbs($notes, $book, $author, $prov, $beat, $stage);
+    $sbs = proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_words);
     if ($sbs === null) {
-        $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), 8000, $beat, 300, $dg2, $prov);
+        // Tek grup (kısa kitap): tüm özeti tek reduce yazar → hedefe göre token kıs.
+        $one_max = max(1500, min(8000, (int) round($W * 2.2)));
+        $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), $one_max, $beat, 300, $dg2, $prov);
     } else {
         $stage("çerçeve bölümleri (About/Context/Themes…) yazılıyor…");
-        $frame = proto_ds(proto_frame_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), 8000, $beat, 300, $dg2, $prov);
+        // Çerçeve yalnız About/Themes… yazar (anlatı ayrı) → bütçenin kalanı kadar token.
+        $frame_max = max(1500, min(8000, (int) round(($W - $sbs_words) * 2.6) + 1200));
+        $frame = proto_ds(proto_frame_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), $frame_max, $beat, 300, $dg2, $prov);
         $md = proto_assemble($frame, $sbs);
     }
     if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,
