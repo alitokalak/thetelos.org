@@ -233,6 +233,15 @@ function bw_update_book($batch_file, $idx, $updates) {
     $batch = json_decode((string)@file_get_contents($batch_file), true);
     if ($batch) {
         foreach ($updates as $k => $v) $batch['books'][$idx][$k] = $v;
+        // Terminal duruma (done/error) geçişte bayrakları NORMALİZE et: güncelleme
+        // açıkça 'kept'/'placeholder' vermiyorsa eski turdan kalanı SIFIRLA. Yoksa
+        // önce kapıdan geçemeyip 'kept' işaretlenen bir kitap, sonra gerçekten
+        // yeniden yazılıp yeşile döndüğünde bayat 'kept=1' üstünde kalıp panelde
+        // yanlış (amber) görünüyordu. Böylece renk HER ZAMAN son gerçeği yansıtır.
+        if (isset($updates['status']) && in_array($updates['status'], ['done', 'error'], true)) {
+            if (!array_key_exists('placeholder', $updates)) $batch['books'][$idx]['placeholder'] = 0;
+            if (!array_key_exists('kept', $updates))        $batch['books'][$idx]['kept'] = 0;
+        }
         $done = $ok = $failed = $placeholder = $kept = 0;
         foreach ($batch['books'] as $b) {
             if (in_array($b['status'], ['done','error'])) $done++;
