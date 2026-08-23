@@ -463,6 +463,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
            tutmuyordu; "bulunamadı"nın sebebi buydu. */
         $mkslug = function ($s) {
             $s = mb_strtolower(trim((string) $s), 'UTF-8');
+            // ÖNEMLİ: kesme işaretlerini ASCII translit'ten ÖNCE at (WP böyle yapıyor).
+            // "l'homme" → WP slug'ı "lhomme"; oysa eski akış önce translit edip sonra
+            // [^a-z0-9]→'-' yaptığı için "l-homme" üretiyor, sitedeki "lhomme" ile
+            // tutmuyordu. Tüm Fransızca/İtalyanca/… (aksan+kesme) başlıklar bu yüzden
+            // "bulunamadı" düşüyordu (The Rebel, The Stranger, Suicide, …).
+            $s = preg_replace('/[\x{2018}\x{2019}\x{02BC}\x{0027}\x{0060}]/u', '', $s);
             $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
             if ($x !== false && $x !== '') $s = $x;
             $s = preg_replace('/[^a-z0-9]+/', '-', $s);
