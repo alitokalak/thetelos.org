@@ -453,7 +453,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $rt_title = $author ? "$book - $author" : $book;
         // Normalize: küçük harf, diakritik→ascii, parantez içi at, noktalama→boşluk.
         $nrm = function ($s) {
-            $s = mb_strtolower(trim((string) $s), 'UTF-8');
+            // WP REST 'title.rendered' HTML-ENTITY kodlu döner: kıvrık apostrof →
+            // "&#8217;", en-dash → "&#8211;", "&" → "&amp;". Bunları çözMEZsek
+            // normalize "&#8217;" → "8217" rakamına dönüp eşleşmeyi bozuyordu
+            // ("masnavi i ma 8217 navi..."). ÖNCE entity'leri gerçek karaktere çevir.
+            $s = html_entity_decode((string) $s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $s = mb_strtolower(trim($s), 'UTF-8');
             // KESME İŞARETLERİNİ (düz ' ve kıvrık ' dahil) TAMAMEN SİL — boşluğa
             // ÇEVİRME. Yoksa "Ma'navi" → "ma navi" (bölünür) olurken sitedeki kıvrık
             // apostrof farklı işlenip "manavi" oluyor ve karşılaştırma tutmuyordu.
