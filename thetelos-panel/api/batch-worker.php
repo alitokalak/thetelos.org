@@ -388,18 +388,23 @@ function bw_norm_sentence($text, $max = 155) {
  * ÜRETİM HİÇ BAŞLAMAZ (API çağrısı yapılmaz → maliyet de doğmaz) ve kitap
  * 'blocked_adult' işaretiyle atlanır. Panelde neden görünür. */
 function bw_adult_terms() {
-    return ['erotic','erotica','erotique','porn','pornograph','kama sutra','kamasutra',
-            'sex ','sex,','sexual','sexuality','sexology','nude','nudity','naked',
-            'fetish','bdsm','sadomasochism','orgasm','aphrodisiac','lust ','libertine',
-            'obscene','obscenity','brothel','prostitut','courtesan','harem','concubine',
-            'perfumed garden','ananga ranga','fanny hill','venus in furs','justine','juliette',
+    // YALNIZ pornografik/erotik-özgü terimler. "sex", "sexual", "sexuality",
+    // "nude", "naked", "lust" gibi ÇIPLAK kelimeler bilerek YOK — akademik/bilim
+    // eserlerinde masum geçiyor (Darwin "…in Relation to Sex", Foucault "History
+    // of Sexuality", sanat tarihinde "The Nude") ve boşuna blokluyordu.
+    return ['erotica','erotic','erotique','pornography','pornographic','porn',
+            'kama sutra','kamasutra','sexology','fetish','bdsm','sadomasochism',
+            'aphrodisiac','obscene','obscenity','brothel','courtesan',
+            'perfumed garden','ananga ranga','fanny hill','venus in furs',
             '120 days of sodom','delta of venus','lady chatterley'];
 }
 function bw_is_adult($text) {
     $t = ' ' . mb_strtolower((string)$text, 'UTF-8') . ' ';
     $t = preg_replace('/[^a-z0-9 ]+/u', ' ', $t);
+    $t = preg_replace('/\s+/', ' ', $t);
     foreach (bw_adult_terms() as $kw) {
-        if (strpos($t, trim($kw)) !== false) return true;
+        // TAM KELİME/İFADE eşleşmesi (kelime-parçası değil): boşlukla çevrele.
+        if (strpos($t, ' ' . trim($kw) . ' ') !== false) return true;
     }
     return false;
 }
