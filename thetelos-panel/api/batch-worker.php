@@ -1101,6 +1101,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'error'    => '',
             'method'   => $gen_method,
             'source'   => $gen_source,
+            'words'    => str_word_count(strip_tags($rw_html)),   // yazılan özetin kelime sayısı (okuma süresi)
         ]);
         return;
     }
@@ -1478,6 +1479,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         'cover_set' => $cover_set,
         'method'    => $gen_method,
         'source'    => $gen_source,
+        'words'     => str_word_count(strip_tags($body_html)),   // yazılan özetin kelime sayısı
+
         // Kapı blokladıysa bu kitap YAYINDA DEĞİL. Sessizce "done" yazmak
         // "yayınlandı" sanmaya yol açardı; sebep kuyrukta görünür.
         'gated'     => $gate_reasons ? 1 : 0,

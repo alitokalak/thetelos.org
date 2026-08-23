@@ -154,6 +154,19 @@ function updateBulkSourceWords(val) {
   if (s) s.style.background = `linear-gradient(90deg, var(--gold) ${pct}%, var(--border) ${pct}%)`;
 }
 
+// Tekli kaynak-temelli özet: serbest hedef kelime kaydırıcısı (toplu ile aynı)
+function updateSingleSourceWords(val) {
+  const el = document.getElementById('single-source-words-display');
+  if (!el) return;
+  const w = parseInt(val) || 0;
+  const mins = Math.max(1, Math.round(w / 200));
+  el.textContent = w.toLocaleString('tr') + ' kelime · ~' + mins + ' dk';
+  el.style.color = w <= 5500 ? 'var(--green)' : 'var(--gold)';
+  const pct = ((w - 1500) / (8000 - 1500)) * 100;
+  const s = document.getElementById('single-source-words');
+  if (s) s.style.background = `linear-gradient(90deg, var(--gold) ${pct}%, var(--border) ${pct}%)`;
+}
+
 /* ── Mod Geçişi ───────────────────────────────────── */
 const modeTitles = {
   single:  ['Tek Kitap',     'Kitap adı ve yazar girerek özet veya analiz üretin'],
@@ -472,7 +485,8 @@ function runGenerateStream(params, onLive, label) {
    canlı SSE'ye uymaz (Cloudflare keser). Bu yüzden 1 kitaplık batch açıp
    ilerlemeyi yokluyoruz — batch sistemi üretim+yayın+kademe+kapıyı zaten yapar. */
 async function runSingleSource(book, author) {
-  const length = document.getElementById('single_length')?.value || 'standart';
+  const sourceWords = parseInt(document.getElementById('single-source-words')?.value || '3500');
+  const length = sourceWords <= 2200 ? 'kisa' : sourceWords >= 5500 ? 'kapsamli' : 'standart';
   const status = document.getElementById('post_status')?.value || 'publish';
   const btn = document.getElementById('btn-generate');
   setLoading(btn, true, 'Kaynak aranıyor...');
@@ -488,7 +502,7 @@ async function runSingleSource(book, author) {
   try {
     res = await postData(API('batch-create.php'), {
       books: JSON.stringify([{ book_title: book, author_name: author }]),
-      type: 'source', length: length, post_status: status,
+      type: 'source', length: length, source_words: sourceWords, post_status: status,
       rewrite: (document.getElementById('single_rewrite')?.checked ? '1' : '0'),
       workers: '1', api_provider: activeProvider,
     });
@@ -521,14 +535,27 @@ async function runSingleSource(book, author) {
     if (b.status === 'done' || b.status === 'error') {
       clearInterval(poll); setLoading(btn, false);
       if (b.status === 'done' && b.post_url) {
+        // DÜRÜST: gerçekten kaynak-temelli mi yoksa bilgi-metnine mi düştü? Kısa
+        // çıktının sebebi genelde budur — 6.000 seçsen de bilgi-metni kısadır.
+        const isSrc = b.method === 'kaynak-temelli';
+        const mins  = b.words ? Math.max(1, Math.round(b.words / 200)) : 0;
+        const head  = b.placeholder ? '⚠ Yer tutucu kondu — içerik yok'
+                    : isSrc         ? '✓ Kaynak-temelli özet yayınlandı'
+                    : (b.method === 'bilgi-metni') ? '📚 Bilgi metni yayınlandı (tam metin bulunamadı)'
+                    :                 '✓ Özet yayınlandı';
+        const note  = (!isSrc && !b.placeholder && b.method === 'bilgi-metni')
+          ? '<div style="font-size:12px;color:#e0a800;margin-bottom:8px">Bu eserin indirilebilir tam metni bulunamadığı için Wikipedia/katalog temelli KISA bilgi metni yazıldı — seçtiğin kelime hedefi yalnız kaynak-temelli özette geçerlidir.</div>'
+          : '';
         preview.innerHTML =
           '<div style="padding:16px;border:1px solid rgba(90,170,90,.4);border-radius:10px;background:rgba(90,170,90,.07)">'
-          + '<div style="color:#7fb37f;font-weight:600;margin-bottom:6px">✓ Kaynak-temelli özet yayınlandı</div>'
+          + '<div style="color:#7fb37f;font-weight:600;margin-bottom:6px">' + head + '</div>'
+          + (b.words ? '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">' + b.words.toLocaleString('tr') + ' kelime · ~' + mins + ' dk okuma' + (b.source ? ' · kaynak: ' + b.source : '') + '</div>' : '')
+          + note
           + (b.error ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + b.error + '</div>' : '')
           + '<a href="' + b.post_url + '" target="_blank" style="color:var(--gold)">Yazıyı gör →</a>'
           + (b.edit_url ? ' &nbsp;·&nbsp; <a href="' + b.edit_url + '" target="_blank" style="color:var(--muted)">Düzenle</a>' : '')
           + '</div>';
-        notify('gen-notif', '✓ Yayınlandı.', 'ok');
+        notify('gen-notif', isSrc ? '✓ Kaynak-temelli yayınlandı.' : '✓ Yayınlandı (bilgi metni).', 'ok');
       } else {
         preview.innerHTML =
           '<div style="padding:16px;border:1px solid rgba(230,102,102,.45);border-radius:10px;background:rgba(230,102,102,.08);color:#e06666">'
@@ -549,6 +576,7 @@ function updateSingleTypeUI() {
 }
 document.querySelectorAll('input[name=type]').forEach(r => r.addEventListener('change', updateSingleTypeUI));
 updateSingleTypeUI();
+updateSingleSourceWords(document.getElementById('single-source-words')?.value || 3500);
 
 document.getElementById('btn-generate')?.addEventListener('click', async () => {
   const book   = document.getElementById('book_title').value.trim();

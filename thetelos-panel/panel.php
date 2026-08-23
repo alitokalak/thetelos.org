@@ -107,13 +107,18 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           bulup ondan kapsamlı özet yazar. <b>Uydurma yok.</b> Bu bir arka-plan işidir; canlı önizleme yerine
           ilerleme gösterilir, bitince yazı doğrudan yayınlanır. Tam metin yoksa Bilgi Metni'ne düşer / atlar.
         </div>
-        <div id="single-length-row" style="margin:0 0 12px">
-          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Özet uzunluğu</label>
-          <select id="single_length" style="max-width:340px">
-            <option value="kisa">Kısa (~1.500 kelime)</option>
-            <option value="standart" selected>Standart (~3.000 kelime)</option>
-            <option value="kapsamli">Kapsamlı (~6.000+ kelime)</option>
-          </select>
+        <div id="single-length-row" class="token-control" style="margin:0 0 16px">
+          <div class="token-header">
+            <label>Özet uzunluğu — istediğin kelimeyi seç</label>
+            <span id="single-source-words-display" class="token-val">3.500 kelime · ~18 dk</span>
+          </div>
+          <input type="range" id="single-source-words" min="1500" max="8000" step="250" value="3500"
+            oninput="updateSingleSourceWords(this.value)">
+          <div class="token-marks"><span>1.5K</span><span>3K</span><span>4.5K</span><span>6K</span><span>8K</span></div>
+          <p style="font-size:11px;color:var(--muted);margin:6px 0 0;line-height:1.5">
+            Bu hedef yalnız <b>kaynak-temelli</b> özette (tam metin bulunursa) geçerlidir.
+            Tam metin yoksa Bilgi Metni'ne düşer ve kısa olur — sonuç kutusunda hangisi olduğu yazar.
+          </p>
         </div>
         <div id="single-rewrite-row" style="margin:0 0 12px">
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
