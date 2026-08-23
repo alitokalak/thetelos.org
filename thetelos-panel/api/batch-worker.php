@@ -496,15 +496,31 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         ])));
 
         /* HER İKİ TİPTE DE ARA: özet (posts) VE analiz (analysis). */
+        $atoks = $author ? array_values(array_filter(explode(' ', $nrm($author)))) : [];
+        $alast = $atoks ? end($atoks) : '';
+        preg_match_all('/\b\d{4}\b/', $tgt_b, $ym); $years = $ym[0];
+        $dbg_slug_http = []; $dbg_search_n = []; // TEŞHİS: neden bulunamadığını görünür kıl
         foreach (['posts', 'analysis'] as $try_ep) {
             // 1) Slug adaylarını sırayla dene (en güvenilir yol)
             foreach ($slug_cands as $cand_slug) {
                 if ($cand_slug === '') continue;
-                [$sp, $sc] = bw_wp("$wp_api/$try_ep?slug=" . urlencode($cand_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+                [$sp, $sc] = bw_wp("$wp_api/$try_ep?slug=" . rawurlencode($cand_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+                $dbg_slug_http[$try_ep] = $sc;
                 if ($sc === 200 && !empty($sp[0]['id'])) { $update_pid = (int) $sp[0]['id']; $ep = $try_ep; break 2; }
             }
-            // 2) Başlık araması (yedek) — parantezsiz sade terimle daha iyi eşleşir.
-            [$srch, $scc] = bw_wp("$wp_api/$try_ep?search=" . rawurlencode($search_book) . '&status=any&per_page=50&_fields=id,title', 'GET', [], $auth, 20);
+            // 2) Başlık araması (yedek). ÖNCE tam parantezsiz terim; 0 sonuç dönerse
+            //    ilk 4 anlamlı kelimeyle tekrar dene (uzun/yabancı başlıklarda WP
+            //    araması boş dönebiliyor). per_page=100.
+            $do_search = function ($q) use ($wp_api, $try_ep, $auth) {
+                [$r, $c] = bw_wp("$wp_api/$try_ep?search=" . rawurlencode($q) . '&status=any&per_page=100&_fields=id,title', 'GET', [], $auth, 20);
+                return [$c, (is_array($r) ? $r : [])];
+            };
+            [$scc, $srch] = $do_search($search_book);
+            if ($scc === 200 && !$srch) {
+                $words4 = implode(' ', array_slice(array_filter(explode(' ', $nrm($search_book))), 0, 4));
+                if ($words4 !== '' && $words4 !== $nrm($search_book)) [$scc, $srch] = $do_search($words4);
+            }
+            $dbg_search_n[$try_ep] = ($scc === 200) ? count($srch) : "http$scc";
             if ($scc === 200 && is_array($srch)) {
                 foreach ($srch as $cand) {
                     $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
@@ -516,9 +532,6 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 //    (a) yazar verildiyse aday başlıkta yazar SOYADI geçmeli,
                 //    (b) hedefteki 4-hane yıl(lar) adayda AYNEN bulunmalı,
                 //    (c) benzerlik (similar_text) ≥ %86.
-                $atoks   = $author ? array_values(array_filter(explode(' ', $nrm($author)))) : [];
-                $alast   = $atoks ? end($atoks) : '';
-                preg_match_all('/\b\d{4}\b/', $tgt_b, $ym); $years = $ym[0];
                 foreach ($srch as $cand) {
                     $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
                     if ($ct === '') continue;
@@ -531,10 +544,36 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     if (max($p1, $p2) >= 86) { $update_pid = (int) $cand['id']; $ep = $try_ep; break 2; }
                 }
             }
+            // 4) YAZARLA ARA (EN SAĞLAM): yazar adı ASCII (ör. "Mahatma Gandhi"),
+            //    yabancı/non-Latin başlık slug'ından tamamen bağımsız. Yazarın tüm
+            //    yazıları (az sayıda) gelir; normalize başlıkla eşleştiririz. Devanagari/
+            //    Çince/Arapça başlıklı eserler bu yüzden "bulunamıyordu".
+            if ($author) {
+                [$acc, $asr] = $do_search($author);
+                $dbg_search_n[$try_ep . '/yazar'] = ($acc === 200) ? count($asr) : "http$acc";
+                if ($acc === 200 && is_array($asr)) {
+                    foreach ($asr as $cand) {
+                        $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
+                        if ($ct === '') continue;
+                        // Tam (normalize) eşleşme: başlık+yazar VEYA sadece başlık.
+                        if ($ct === $tgt || $ct === $tgt_b) { $update_pid = (int) $cand['id']; $ep = $try_ep; break 2; }
+                        // Güvenli bulanık: yıl(lar) tutmalı + benzerlik ≥ %88 (yazar zaten kesin).
+                        $ok_years = true; foreach ($years ?? [] as $y) if (strpos($ct, $y) === false) { $ok_years = false; break; }
+                        if ($ok_years) {
+                            similar_text($tgt, $ct, $q1); similar_text($tgt_b, $ct, $q2);
+                            if (max($q1, $q2) >= 88) { $update_pid = (int) $cand['id']; $ep = $try_ep; break 2; }
+                        }
+                    }
+                }
+            }
         }
         if (!$update_pid) {
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'not_found', 'sitede eşleşen yazı bulunamadı');
-            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: sitede eşleşen yazı bulunamadı (atlandı)']);
+            // TEŞHİS: hangi slug denendi, aramada kaç sonuç döndü, HTTP durumu.
+            $c0 = $slug_cands[0] ?? '';
+            $diag = 'slug[' . mb_substr($c0, 0, 60) . '] http=' . json_encode($dbg_slug_http)
+                  . ' · arama=' . json_encode($dbg_search_n, JSON_UNESCAPED_UNICODE);
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'not_found', 'bulunamadı · ' . $diag);
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: bulunamadı · ' . $diag]);
             return;
         }
         // Bulunan tipe göre prompt tipini düzelt: mevcut yazı özetse özet, analizse analiz.
