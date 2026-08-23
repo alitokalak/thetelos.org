@@ -454,6 +454,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         // Normalize: küçük harf, diakritik→ascii, parantez içi at, noktalama→boşluk.
         $nrm = function ($s) {
             $s = mb_strtolower(trim((string) $s), 'UTF-8');
+            // KESME İŞARETLERİNİ (düz ' ve kıvrık ' dahil) TAMAMEN SİL — boşluğa
+            // ÇEVİRME. Yoksa "Ma'navi" → "ma navi" (bölünür) olurken sitedeki kıvrık
+            // apostrof farklı işlenip "manavi" oluyor ve karşılaştırma tutmuyordu.
+            // ÖNCE iconv translit'ten (aksan→ascii) önce yapılmalı ki her iki
+            // apostrof türü de aynı şekilde ('' olarak) elensin.
+            $s = preg_replace('/[\x{2018}\x{2019}\x{02BC}\x{0027}\x{0060}]/u', '', $s);
             $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
             if ($x !== false && $x !== '') $s = $x;
             $s = preg_replace('/\([^()]*\)/', ' ', $s);
