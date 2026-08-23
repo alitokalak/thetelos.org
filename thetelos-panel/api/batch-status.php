@@ -39,6 +39,7 @@ foreach ($batch['books'] as $i => $b) {
         'cover_set'        => $b['cover_set'],
         'placeholder'      => !empty($b['placeholder']) ? 1 : 0,
         'kept'             => !empty($b['kept']) ? 1 : 0,
+        'method'           => $b['method'] ?? '',
         'error'            => $b['error'],
         'processing_since' => (int)($b['processing_since'] ?? 0),
         'hb_age'           => $hb_age,

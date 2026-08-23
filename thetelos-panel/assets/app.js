@@ -1322,6 +1322,7 @@ function renderBatchStatus(b) {
       ? `⚠ ${idHtml} eski içerik korundu — yenilenmedi`
       : st==='done'
       ? `✓ ${idHtml}${bk.cover_set?' 🖼':''}`
+        + (bk.method ? ` <span style="font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:6px;padding:0 4px">${bk.method==='kaynak-temelli'?'📖 kaynak':bk.method==='bilgi-metni'?'📚 bilgi':bk.method}</span>` : '')
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
@@ -1999,6 +2000,7 @@ async function loadQueueList() {
             <div style="display:flex;gap:8px;flex-wrap:wrap">
               ${pending > b.failed ? `<button class="btn btn-primary btn-sm" onclick="resumeBatch('${b.id}')">▶ Kaldığı Yerden Devam Et</button>` : ''}
               ${b.failed > 0 ? `<button class="btn btn-ghost btn-sm" style="color:var(--gold)" onclick="retryBatchErrors('${b.id}')">↺ ${b.failed} hatayı tekrar dene</button>` : ''}
+              <a class="btn btn-ghost btn-sm" style="color:var(--green);text-decoration:none" href="api/batch-results.php?batch_id=${encodeURIComponent(b.id)}" title="Her kitabın yöntemi: kaynak-temelli / bilgi-metni / yer-tutucu / eski-korundu / hata — 'Sorunlu?' sütunuyla süz">⬇ Tüm sonuçlar (yöntemli CSV)</a>
             </div>
           </div>`;
         }).join('')}

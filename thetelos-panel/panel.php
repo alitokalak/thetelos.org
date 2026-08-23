@@ -758,6 +758,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <a class="btn btn-ghost btn-sm" style="color:var(--green);text-decoration:none" href="api/export-errors.php?batch_id=<?= urlencode($bid) ?>">&#8595; Hataları CSV indir</a>
             <a class="btn btn-ghost btn-sm" style="color:var(--red);text-decoration:none" href="api/error-reasons.php?batch_id=<?= urlencode($bid) ?>" target="_blank">&#9888; Hata sebepleri</a>
             <?php endif; ?>
+            <a class="btn btn-ghost btn-sm" style="color:var(--green);text-decoration:none" href="api/batch-results.php?batch_id=<?= urlencode($bid) ?>" title="Her kitabın yöntemi: kaynak-temelli / bilgi-metni / yer-tutucu / eski-korundu / hata — 'Sorunlu?' sütunuyla süz">&#8595; Tüm sonuçlar (yöntemli CSV)</a>
             <button class="btn btn-ghost btn-sm" style="color:var(--red);margin-left:auto" onclick="tlsDeleteBatch('<?= $bid ?>',this)">&#10005; Sil</button>
           </div>
           <div data-bc-hint style="font-size:12px;color:var(--muted);margin-top:8px;<?= ($bstat ?? '') === 'paused' ? '' : 'display:none' ?>">

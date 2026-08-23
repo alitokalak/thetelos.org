@@ -634,7 +634,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                         'post_url' => $rp['link'] ?? '',
                         'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                         'error'    => 'model tanımadı → yer tutucu kondu (yayında)',
-                        'placeholder' => 1,
+                        'placeholder' => 1, 'method' => 'yer-tutucu',
                     ]);
                     return;
                 }
@@ -658,6 +658,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $content   = '';
     $gen_error = '';
     $part_warn = '';      // parça eksik kaldıysa uyarı (yayınlanır ama işaretlenir)
+    // YÖNTEM damgası: her kitabın nasıl yazıldığı (bitiş CSV'sinde görünür).
+    // kaynak-temelli = gerçek tam metinden · bilgi-metni = Wikipedia/katalog ·
+    // kaynaksız = prompt'tan (summary/analysis). Yer-tutucu/eski-korundu ayrı işaretlenir.
+    $gen_method = ($type === 'source' || $type === 'info') ? 'bilgi-metni' : 'kaynaksız';
+    $gen_source = '';     // bulunan kaynağın adı (Gutenberg/Archive) — kaynak-temelliyse
 
     /* ── KAYNAK-TEMELLİ ÖZET TİPİ (source) ───────────────────────────────
        Kitabın GERÇEK TAM METNİNİ bul (Project Gutenberg / Internet Archive),
@@ -680,6 +685,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $sr_trace = (string) ($sr['trace'] ?? '');
         if (!empty($sr['found']) && empty($sr['insufficient']) && trim((string)($sr['md'] ?? '')) !== '') {
             $content = bw_clean_content($sr['md']);   // tam metinden kapsamlı özet
+            $gen_method = 'kaynak-temelli';           // GERÇEK tam metinden yazıldı
+            $gen_source = (string) ($sr['source'] ?? '');
         } else {
             // Tam metin yok / yetersiz → Wikipedia-temelli Bilgi Metni'ne düş.
             // NEDENİNİ sorunlu listeye yaz (Relativity'nin neden 2 dk çıktığını böyle görürüz).
@@ -696,7 +703,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     $ph = bw_placeholder_html($book, $author);
                     [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
                     bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok · ' . $sr_trace, $update_pid, 'rewrite');
-                    bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)','placeholder'=>1]);
+                    bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)','placeholder'=>1,'method'=>'yer-tutucu']);
                     return;
                 }
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok · ' . $sr_trace, 0, 'create');
@@ -740,7 +747,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
                     'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                     'error' => ($ref_fab ? 'hakem uydurma buldu → yer tutucu (yayında)' : 'kaynak yetersiz → yer tutucu (yayında)'),
-                    'placeholder' => 1,
+                    'placeholder' => 1, 'method' => 'yer-tutucu',
                 ]);
                 return;
             }
@@ -983,7 +990,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 'post_url' => $rp['link'] ?? '',
                 'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                 'error'    => 'model tanımadı → yer tutucu kondu (yayında)',
-                'placeholder' => 1,
+                'placeholder' => 1, 'method' => 'yer-tutucu',
             ]);
             return;
         }
@@ -1026,7 +1033,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     'post_id'  => $update_pid,
                     'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                     'error'    => 'içerik kusurlu → mevcut korundu: ' . ($why ?: 'bilinmiyor') . ' (yeniden dene)',
-                    'kept'     => 1,   // yeni içerik yazılMADI, eski gövde korundu → yeşil "başarılı" sayma
+                    'kept'     => 1, 'method' => 'eski-korundu',   // yeni içerik yazılMADI, eski gövde korundu → yeşil "başarılı" sayma
                 ]);
                 return;
             }
@@ -1071,13 +1078,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
 
         // Temiz yayınlandı: varsa önceki 'sorunlu' kaydını GEÇERSİZ kıl (liste kendini onarır).
-        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'ok', 'yeniden yazıldı, yayında', $update_pid, 'rewrite');
+        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'ok', 'yeniden yazıldı (' . $gen_method . ($gen_source ? " · $gen_source" : '') . ')', $update_pid, 'rewrite');
         bw_update_book($batch_file, $idx, [
             'status'   => 'done',
             'post_id'  => $update_pid,
             'post_url' => $rw_post['link'] ?? '',
             'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
             'error'    => '',
+            'method'   => $gen_method,
+            'source'   => $gen_source,
         ]);
         return;
     }
@@ -1453,6 +1462,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         'post_url'  => $post['link'] ?? '',
         'edit_url'  => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
         'cover_set' => $cover_set,
+        'method'    => $gen_method,
+        'source'    => $gen_source,
         // Kapı blokladıysa bu kitap YAYINDA DEĞİL. Sessizce "done" yazmak
         // "yayınlandı" sanmaya yol açardı; sebep kuyrukta görünür.
         'gated'     => $gate_reasons ? 1 : 0,
