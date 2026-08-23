@@ -233,16 +233,18 @@ function bw_update_book($batch_file, $idx, $updates) {
     $batch = json_decode((string)@file_get_contents($batch_file), true);
     if ($batch) {
         foreach ($updates as $k => $v) $batch['books'][$idx][$k] = $v;
-        $done = $ok = $failed = $placeholder = 0;
+        $done = $ok = $failed = $placeholder = $kept = 0;
         foreach ($batch['books'] as $b) {
             if (in_array($b['status'], ['done','error'])) $done++;
             if ($b['status'] === 'done' && !empty($b['placeholder'])) $placeholder++;   // yayında ama içerik yok
-            elseif ($b['status'] === 'done')  $ok++;
+            elseif ($b['status'] === 'done' && !empty($b['kept'])) $kept++;             // yeni içerik yazılmadı, eski korundu
+            elseif ($b['status'] === 'done')  $ok++;                                     // taze iyi içerik yazıldı
             if ($b['status'] === 'error') $failed++;
         }
         $batch['done']        = $done;
         $batch['ok']          = $ok;
         $batch['placeholder'] = $placeholder;
+        $batch['kept']        = $kept;
         $batch['failed']      = $failed;
         $batch['last_activity'] = time();   // görünürlük: "en son ne zaman ilerledi"
         if ($done >= $batch['total'] && ($batch['status'] ?? '') !== 'cancelled') $batch['status'] = 'done';
@@ -945,6 +947,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     'post_id'  => $update_pid,
                     'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
                     'error'    => 'içerik kusurlu → mevcut korundu: ' . ($why ?: 'bilinmiyor') . ' (yeniden dene)',
+                    'kept'     => 1,   // yeni içerik yazılMADI, eski gövde korundu → yeşil "başarılı" sayma
                 ]);
                 return;
             }

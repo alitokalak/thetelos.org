@@ -98,6 +98,20 @@ function bw_clean_content($text) {
         . 'let me know if you|i hope this (?:helps|summary)|word count:?)[^\n]*$/im',
         '', $text);
 
+    // "Part N" BAŞLIK ARTIĞI: model, iç işleme segmentlerimizi ([Part 1]…[Part N])
+    // ya da kafasına göre "Part 1 / Part Two" diye BAŞLIĞA basıyor — kullanıcı bunu
+    // istemiyor (kitabın gerçek akışı izlenmeli). Başlıklardan bu ön-eki mekanik at:
+    //  "### Part 3"            → başlığı tamamen sil (altındaki metin akışta kalır)
+    //  "### Part 3: The Absurd"→ "### The Absurd" (gerçek başlığı koru)
+    // Gövde cümlelerine ("In Part 1…") DOKUNMAYIZ — yalnız başlık satırları.
+    $text = preg_replace_callback('/^(#{2,6})[ \t]+(.+?)[ \t]*$/m', function ($m) {
+        $t = preg_replace(
+            '/^part\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*[:.\-–—]*\s*/i',
+            '', $m[2]);
+        $t = trim($t);
+        return $t === '' ? '' : $m[1] . ' ' . $t;   // yalnız "Part N" ise satırı düşür
+    }, $text);
+
     // Başıboş/boş başlık satırlarını at (yalnız "##" olup metni olmayan).
     $text = preg_replace('/^[ \t]*#{1,6}[ \t]*$/m', '', $text);
 
@@ -124,9 +138,11 @@ function bw_md2html($text) {
          '/^#{4} \*\*(.+?)\*\*/m','/^#{5,6} \*\*(.+?)\*\*/m',
          '/^# (.+)/m','/^## (.+)/m','/^### (.+)/m','/^#### (.+)/m','/^#{5,6} (.+)/m',
          '/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/m'],
-        ['<h1><strong>$1</strong></h1>','<h2><strong>$1</strong></h2>','<h3><strong>$1</strong></h3>',
+        // NOT: Gövdede H1 YOK — sayfa başlığı (post title) zaten tek H1. Model tek '#'
+        // yazınca dev H1 çıkıyordu; içerik başlıklarını en fazla H2'den başlat.
+        ['<h2><strong>$1</strong></h2>','<h2><strong>$1</strong></h2>','<h3><strong>$1</strong></h3>',
          '<h4><strong>$1</strong></h4>','<h5><strong>$1</strong></h5>',
-         '<h1>$1</h1>','<h2>$1</h2>','<h3>$1</h3>','<h4>$1</h4>','<h5>$1</h5>',
+         '<h2>$1</h2>','<h2>$1</h2>','<h3>$1</h3>','<h4>$1</h4>','<h5>$1</h5>',
          '<hr>'],
         $text
     );

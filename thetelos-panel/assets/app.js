@@ -1279,8 +1279,9 @@ function renderBatchStatus(b) {
     `${b.done.toLocaleString('tr')} / ${b.total.toLocaleString('tr')} — %${pct}`;
 
   document.getElementById('bulk-summary').innerHTML =
-    `<span class="badge badge-green">✓ ${b.ok} başarılı</span>&nbsp;`
-    + ((b.placeholder|0) > 0 ? `<span class="badge" style="background:rgba(224,168,0,.18);color:#e0a800;border:1px solid rgba(224,168,0,.4)">⚠ ${b.placeholder} yer tutucu (içerik yok)</span>&nbsp;` : '')
+    `<span class="badge badge-green">✓ ${b.ok} taze içerik</span>&nbsp;`
+    + ((b.placeholder|0) > 0 ? `<span class="badge badge-warn">⚠ ${b.placeholder} yer tutucu (içerik yok)</span>&nbsp;` : '')
+    + ((b.kept|0) > 0 ? `<span class="badge badge-warn">⚠ ${b.kept} eski korundu (yenilenmedi)</span>&nbsp;` : '')
     + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
     + (b.total - b.done > 0 ? `<span class="badge badge-gray">⏳ ${(b.total-b.done).toLocaleString('tr')} bekliyor</span>` : '');
 
@@ -1301,11 +1302,14 @@ function renderBatchStatus(b) {
       if (dead) { procLabel = `⚠ ${t} takılı`; procCls = 'err'; }
       else { procLabel = `İşleniyor... ${t}`; }
     }
-    // Yer tutucu: yayında ama içerik YOK → yeşil değil, amber uyarı ("sorunsuz" görünmesin)
+    // Yeşil "başarılı" YALNIZ bu turda TAZE iyi içerik yazılan kitaplar içindir.
+    // Yer tutucu (içerik yok) ve "eski korundu" (yeni yazılmadı) → amber uyarı,
+    // "sorunsuz" görünmesin (kullanıcının bildirdiği "yeşil ama boş/kısa" sorunu).
     const isPlaceholder = st==='done' && bk.placeholder;
-    const cls = isPlaceholder?'warn':st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
+    const isKept        = st==='done' && !bk.placeholder && bk.kept;
+    const cls = (isPlaceholder||isKept)?'warn':st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
     // Tamamlandı ama bir parçası eksik kaldıysa ⚠ ile göster (içerik kısa olabilir)
-    const partial = st==='done' && !isPlaceholder && bk.error && bk.error !== 'duplicate_skipped';
+    const partial = st==='done' && !isPlaceholder && !isKept && bk.error && bk.error !== 'duplicate_skipped';
     // Bağlantı: düzenleme linki yoksa ön-yüz linkine düş; ikisi de yoksa düz #id
     // (asla href="null" üretme → /thetelos-panel/null 404'u buradan geliyordu).
     const link = bk.edit_url || bk.post_url || '';
@@ -1314,7 +1318,8 @@ function renderBatchStatus(b) {
       : `#${bk.post_id}`;
     const lbl = isPlaceholder
       ? `⚠ ${idHtml} yer tutucu — içerik yok`
-        + `<span title="${String(bk.error||'kaynak bulunamadı').replace(/"/g,'&quot;')}" style="color:#e0a800"></span>`
+      : isKept
+      ? `⚠ ${idHtml} eski içerik korundu — yenilenmedi`
       : st==='done'
       ? `✓ ${idHtml}${bk.cover_set?' 🖼':''}`
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
