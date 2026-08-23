@@ -504,6 +504,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
                     if ($ct !== '' && ($ct === $tgt || $ct === $tgt_b)) { $update_pid = (int) $cand['id']; $ep = $try_ep; break 2; }
                 }
+                // 3) GÜVENLİ BULANIK EŞLEŞME: birebir tutmayan ama AYNI eser olan
+                //    format farklarını (başlık/parantez/çeviri sapması) yakala.
+                //    Yanlış yazının üstüne yazma riskine karşı SIKI korumalar:
+                //    (a) yazar verildiyse aday başlıkta yazar SOYADI geçmeli,
+                //    (b) hedefteki 4-hane yıl(lar) adayda AYNEN bulunmalı,
+                //    (c) benzerlik (similar_text) ≥ %86.
+                $atoks   = $author ? array_values(array_filter(explode(' ', $nrm($author)))) : [];
+                $alast   = $atoks ? end($atoks) : '';
+                preg_match_all('/\b\d{4}\b/', $tgt_b, $ym); $years = $ym[0];
+                foreach ($srch as $cand) {
+                    $ct = $nrm($cand['title']['rendered'] ?? ($cand['title'] ?? ''));
+                    if ($ct === '') continue;
+                    if ($alast !== '' && strpos(' ' . $ct . ' ', ' ' . $alast . ' ') === false) continue;
+                    $ok_years = true;
+                    foreach ($years as $y) if (strpos($ct, $y) === false) { $ok_years = false; break; }
+                    if (!$ok_years) continue;
+                    similar_text($tgt,   $ct, $p1);
+                    similar_text($tgt_b, $ct, $p2);
+                    if (max($p1, $p2) >= 86) { $update_pid = (int) $cand['id']; $ep = $try_ep; break 2; }
+                }
             }
         }
         if (!$update_pid) {
