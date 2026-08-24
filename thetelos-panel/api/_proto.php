@@ -112,26 +112,59 @@ function proto_archive($book, $author, $beat = null) {
    Çok-alt-sayfalı eserlerde yalnız içindekiler döner (kısa) → eşik geçilmez,
    Internet Archive'e düşülür. Kısmi/yanlış metin gelse bile chunk aşamasındaki
    ERKEN DURMA korur (ilk parçalardan not çıkmazsa iş anında durur). */
+/* Wikisource sayfasının GERÇEK gövdesini al. prop=extracts, Wikisource'un
+   <pages> transclusion'lı sayfalarında çoğu zaman NEREDEYSE BOŞ dönüyor (asıl
+   metin başka sayfalardan aktarılıyor) → eser "bulundu ama kısa" diye eleniyordu.
+   REST HTML uç noktası transclusion'ları RENDER eder → gerçek tam metni verir.
+   HTML'i düz metne indirger, kaynak/dipnot/nav artıklarını kırpar. */
+function proto_ws_fetch_text($title, $beat = null) {
+    if (is_callable($beat)) $beat();
+    $t = str_replace(' ', '_', trim($title));
+    $html = proto_fetch_text('https://en.wikisource.org/api/rest_v1/page/html/' . rawurlencode($t), 2);
+    if (mb_strlen($html) < 2000) return '';
+    // <style>/<script>/<table> (gezinme, lisans) at; <sup> dipnot işaretlerini at.
+    $html = preg_replace('#<(script|style|table|figure)[^>]*>.*?</\1>#is', ' ', $html);
+    $html = preg_replace('#<sup[^>]*>.*?</sup>#is', '', $html);
+    $txt  = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $txt  = preg_replace('/[ \t]+/', ' ', $txt);
+    $txt  = preg_replace('/\n{3,}/', "\n\n", $txt);
+    return trim($txt);
+}
 function proto_wikisource($book, $author, $beat = null) {
     if (is_callable($beat)) $beat();
     $debug = ['ws_results' => 0, 'tried' => []];
-    $s = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=5&format=json&srsearch='
-        . rawurlencode(trim($book . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
+    // Parantezli orijinal başlığı at: "Of the Geometrical Spirit (De l'ésprit…)" → sade.
+    $btitle = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book));
+    if ($btitle === '') $btitle = $book;
+
+    // PRATİK ZEKA: sadece aramaya güvenme; Wikisource'un yaygın kanonik yollarını
+    // DOĞRUDAN dene — özellikle "Yazar/Başlık" alt-sayfa yapısı (asıl kaçırılan buydu).
+    $cands = [];
+    if ($author !== '') { $cands[] = "$author/$btitle"; }
+    $cands[] = $btitle;
+    // Arama sonuçları da aday havuzuna (WS'nin döndürdüğü tam sayfa adları).
+    $s = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=6&format=json&srsearch='
+        . rawurlencode(trim($btitle . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
     $hits = $s['query']['search'] ?? [];
     $debug['ws_results'] = count($hits);
-    $surname = '';
-    if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
-    foreach ($hits as $h) {
-        $title = (string) ($h['title'] ?? ''); if ($title === '') continue;
+    foreach ($hits as $h) { $t = (string) ($h['title'] ?? ''); if ($t !== '') $cands[] = $t; }
+    $cands = array_values(array_unique(array_filter($cands)));
+
+    foreach ($cands as $title) {
         if (is_callable($beat)) $beat();
-        $p = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&prop=extracts&explaintext=1&exlimit=1&redirects=1&format=json&titles='
-            . rawurlencode($title), 'thetelos.org/1.0', 25, 2);
-        $pages = $p['query']['pages'] ?? [];
-        $txt = '';
-        foreach ($pages as $pg) { $txt = (string) ($pg['extract'] ?? ''); break; }
+        // 1) Gerçek gövde (transclusion render): REST HTML.
+        $txt = proto_ws_fetch_text($title, $beat);
+        // 2) Yedek: düz-metin extract (bazı sayfalarda yeterli olur).
+        if (mb_strlen($txt) < 6000) {
+            $p = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&prop=extracts&explaintext=1&exlimit=1&redirects=1&format=json&titles='
+                . rawurlencode($title), 'thetelos.org/1.0', 25, 2);
+            foreach (($p['query']['pages'] ?? []) as $pg) { $ex = (string) ($pg['extract'] ?? ''); if (mb_strlen($ex) > mb_strlen($txt)) $txt = $ex; break; }
+        }
         $len = mb_strlen(trim($txt));
         $debug['tried'][] = ['title' => $title, 'chars' => $len];
-        if ($len > 15000) {   // tek sayfalık gerçek tam metin (içindekiler değil)
+        // Eşik 15k→5k: felsefe denemeleri (bu Pascal metni gibi) kısa olabilir; ama
+        // stub/içindekiler değil GERÇEK düzyazı olsun diye asgari cümle yoğunluğu iste.
+        if ($len >= 5000 && substr_count($txt, '. ') >= 20) {
             return ['found' => true, 'title' => $title, 'source' => 'Wikisource', 'text' => $txt, 'raw_len' => $len,
                 'url' => 'https://en.wikisource.org/wiki/' . rawurlencode(str_replace(' ', '_', $title)), 'debug' => $debug];
         }
