@@ -206,6 +206,15 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 </div>
 
                 <!-- Action buttons -->
+                <?php
+                // YER-TUTUCU tespiti: gövdesi "… is being prepared …" olan (henüz
+                // içeriği yazılmamış) yazılarda Print / Save PDF gösterme — basacak
+                // gerçek içerik yok, aldatıcı olmasın.
+                $tls_is_placeholder = ( strpos(
+                    (string) get_post_field( 'post_content', get_the_ID() ),
+                    'is being prepared and will be published here soon'
+                ) !== false );
+                ?>
                 <div class="tls-post-actions">
                     <?php if ( $analysis ) : ?>
                     <a class="tls-analysis-btn" id="analysis-trigger"
@@ -218,17 +227,19 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </a>
                     <?php endif; ?>
 
-                    <!-- Print post (her zaman görünür, POST içeriğini basar) -->
+                    <?php if ( ! $tls_is_placeholder ) : ?>
+                    <!-- Print post (POST içeriğini basar) — yer-tutucuda gizli -->
                     <button class="tls-status-btn" id="tls-print-post" type="button" title="Print this summary">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
                         Print
                     </button>
 
-                    <!-- PDF indir (her zaman görünür, POST içeriğini basar) -->
+                    <!-- PDF indir (POST içeriğini basar) — yer-tutucuda gizli -->
                     <button class="tls-status-btn" id="tls-pdf-post" type="button" title="Save as PDF">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"/></svg>
                         Save PDF
                     </button>
+                    <?php endif; ?>
 
                     <?php
                     // ── Affiliate CTA: Buy dropdown (Amazon / Kindle / Audible) ──
