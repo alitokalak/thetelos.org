@@ -775,6 +775,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           /* ── Kitap listesi — açılır, canlı güncellenen ──────────────── */
           $st_map = [
             'done'       => ['#1f7a3d', '✓'],
+            'placeholder'=> ['#b8860b', '⚠'],   // yayında ama içerik yok
+            'kept'       => ['#b8860b', '⚠'],   // eski içerik korundu, yenilenmedi
             'processing' => ['#b8860b', '⚙'],
             'stale'      => ['#cc4400', '!'],
             'error'      => ['#a33',    '✕'],
@@ -800,7 +802,13 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
                 $elapsed = $psince > 0 ? ($now_ts - $psince) : 0;
                 // 7 dk+ processing ve post_id yoksa stale göster
                 $effective = ($bs === 'processing' && empty($bk['post_id']) && $elapsed > $stale_secs) ? 'stale' : $bs;
+                // done olsa da içerik yazılmadıysa yeşil DEĞİL amber göster (yer-tutucu / eski korundu)
+                if ($effective === 'done' && !empty($bk['placeholder'])) $effective = 'placeholder';
+                elseif ($effective === 'done' && !empty($bk['kept']))    $effective = 'kept';
                 [$bg, $ico] = $st_map[$effective] ?? $st_map['pending'];
+                $row_title = $effective === 'placeholder' ? 'Yer tutucu — içerik yok'
+                           : ($effective === 'kept' ? 'Eski içerik korundu — yenilenmedi'
+                           : ($effective === 'done' && !empty($bk['method']) ? ('Yöntem: ' . $bk['method']) : ''));
                 $bt   = htmlspecialchars(trim($bk['book_title'] ?? ''));
                 $bauth= htmlspecialchars(trim($bk['author_name'] ?? ''));
                 $purl = htmlspecialchars($bk['post_url'] ?? '');
@@ -811,7 +819,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
                 }
               ?>
               <div data-bc-row="<?= $i ?>" data-bc-since="<?= $psince ?>" style="display:flex;align-items:center;gap:8px;padding:5px 8px;font-size:12px;border-bottom:1px solid #222">
-                <span data-bc-ico style="flex:0 0 18px;text-align:center;color:#fff;background:<?= $bg ?>;border-radius:3px;font-size:11px;line-height:18px"><?= $ico ?></span>
+                <span data-bc-ico title="<?= htmlspecialchars($row_title) ?>" style="flex:0 0 18px;text-align:center;color:#fff;background:<?= $bg ?>;border-radius:3px;font-size:11px;line-height:18px"><?= $ico ?></span>
                 <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                   <?php if ($purl): ?><a href="<?= $purl ?>" target="_blank" style="color:#ddd;text-decoration:none"><?= $bt ?></a><?php else: ?><span style="color:#ddd"><?= $bt ?></span><?php endif; ?>
                   <?php if ($bauth): ?><span style="color:#666"> — <?= $bauth ?></span><?php endif; ?>
@@ -946,13 +954,15 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
                 var tim = row.querySelector('[data-bc-timer]');
                 var isStale = (bk.status === 'processing' && !bk.post_id &&
                                bk.processing_since > 0 && (nowSec - bk.processing_since) > _STALE_SECS);
-                var bg, symbol;
-                if      (bk.status === 'done')                    { bg='#1f7a3d'; symbol='✓'; }
+                var bg, symbol, ttl='';
+                if      (bk.status === 'done' && bk.placeholder)  { bg='#b8860b'; symbol='⚠'; ttl='Yer tutucu — içerik yok'; }
+                else if (bk.status === 'done' && bk.kept)         { bg='#b8860b'; symbol='⚠'; ttl='Eski içerik korundu — yenilenmedi'; }
+                else if (bk.status === 'done')                    { bg='#1f7a3d'; symbol='✓'; ttl = bk.method ? ('Yöntem: '+bk.method) : ''; }
                 else if (bk.status === 'error')                   { bg='#a33';    symbol='✕'; }
                 else if (isStale)                                  { bg='#cc4400'; symbol='!'; }
                 else if (bk.status === 'processing')              { bg='#b8860b'; symbol='⚙'; }
                 else                                               { bg='#333';    symbol='…'; }
-                if (ico) { ico.style.background = bg; ico.textContent = symbol; }
+                if (ico) { ico.style.background = bg; ico.textContent = symbol; ico.title = ttl; }
                 // Süre göstergesi (sadece processing için)
                 if (bk.status === 'processing' && bk.processing_since > 0) {
                   var el = _fmtElapsed(nowSec - bk.processing_since);
