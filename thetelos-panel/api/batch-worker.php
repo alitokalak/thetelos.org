@@ -692,6 +692,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $sr = proto_generate($search_book, $author, [
             'length'  => in_array($batch['length'] ?? 'standart', ['kisa','standart','kapsamli'], true) ? $batch['length'] : 'standart',
             'words'   => (int) ($batch['source_words'] ?? 0),   // serbest hedef kelime (kaydırıcı); 0 → 'length' ön-ayarı
+            'url'     => (string) ($batch['source_url'] ?? ''),   // MANUEL kaynak: URL (Wikisource/Archive/.txt/web)
+            'text'    => (string) ($batch['source_text'] ?? ''), // MANUEL kaynak: yapıştırılan metin
             'provider'=> 'auto',
             'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
             'on_stage'=> function ($m) use ($batch_file, $idx) { bw_set_stage($batch_file, $idx, $m); bw_touch_hb($batch_file, $idx); },

@@ -504,6 +504,8 @@ async function runSingleSource(book, author) {
       books: JSON.stringify([{ book_title: book, author_name: author }]),
       type: 'source', length: length, source_words: sourceWords, post_status: status,
       rewrite: (document.getElementById('single_rewrite')?.checked ? '1' : '0'),
+      source_url:  (document.getElementById('single_source_url')?.value || '').trim(),
+      source_text: (document.getElementById('single_source_text')?.value || ''),
       workers: '1', api_provider: activeProvider,
     });
   } catch (e) { res = { ok: false, error: e.message }; }

@@ -87,6 +87,10 @@ $batch = [
     'length'       => in_array($_POST['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $_POST['length'] : 'standart',
     // Serbest hedef kelime (kaydırıcı) — verilirse 'length' ön-ayarını geçersiz kılar.
     'source_words' => max(1000, min(8000, (int) ($_POST['source_words'] ?? 0))),
+    // MANUEL KAYNAK (tekli): kullanıcı URL verir ya da metin yapıştırır → otomatik
+    // edinim atlanır, doğrudan bu kaynaktan özet çıkarılır. (Tek kitaplık işler için.)
+    'source_url'   => trim((string) ($_POST['source_url'] ?? '')),
+    'source_text'  => (string) ($_POST['source_text'] ?? ''),
     'total'        => count($books),
     'done'         => 0,
     'ok'           => 0,

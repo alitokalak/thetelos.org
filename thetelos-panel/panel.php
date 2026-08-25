@@ -127,6 +127,20 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
             <span>Kitap sitede zaten varsa <b>mevcut yazıyı yeniden yaz</b> (kopya oluşturma; başlık/kapak/kategori korunur, gövde yenilenir). İşaretsizse yeni yazı oluşturulur.</span>
           </label>
         </div>
+        <details id="single-manual-source" style="margin:0 0 12px;border:1px solid rgba(90,170,90,.3);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.05)">
+          <summary style="cursor:pointer;font-size:13px;color:#7fb37f;font-weight:600">📎 Manuel kaynak ver (opsiyonel) — motor bulamadıysa sen ver</summary>
+          <p style="font-size:11px;color:var(--muted);margin:8px 0;line-height:1.5">
+            Motor tam metni bulamıyorsa, sen kaynağı ver: bir <b>bağlantı</b> yapıştır
+            (Wikisource sayfası, Internet Archive eseri, ya da düz <b>.txt</b> linki) <b>veya</b>
+            metnin tamamını aşağıya <b>yapıştır</b>. Motor otomatik aramayı atlar, doğrudan
+            bu kaynaktan kaynak-temelli özet çıkarır. <b>Not:</b> doğrudan PDF ikili linki
+            çalışmaz — Archive/Wikisource linki ya da .txt ver, ya da metni yapıştır.
+          </p>
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Kaynak bağlantısı (URL)</label>
+          <input type="text" id="single_source_url" placeholder="https://en.wikisource.org/wiki/…  ·  https://archive.org/details/…  ·  …/kitap.txt" style="width:100%;margin-bottom:8px">
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">…ya da metni buraya yapıştır</label>
+          <textarea id="single_source_text" rows="4" placeholder="Eserin tam metnini buraya yapıştır (URL doldurulmuşsa bu alan gerekmez)" style="width:100%;font-family:monospace;font-size:12px"></textarea>
+        </details>
         <div class="form-row">
           <div>
             <label for="book_title">Kitap Adı</label>

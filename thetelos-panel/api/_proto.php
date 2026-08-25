@@ -239,6 +239,57 @@ function proto_acquire($book, $author, $beat = null) {
     return $a;
 }
 
+/* ── MANUEL KAYNAK: kullanıcının verdiği URL'den metin çıkar ─────────────────
+   Desteklenen: Internet Archive (details/download → _djvu.txt OCR), Wikisource
+   (REST HTML render), düz .txt, ve genel web sayfası (HTML→metin). Doğrudan PDF
+   ikili verisi PHP ile güvenilir çıkarılamaz → kullanıcıya .txt/Archive/Wikisource
+   linki ya da metni yapıştırma önerilir. Dönüş: ['text'=>..., 'source'=>..., 'pdf'=>bool] */
+function proto_fetch_source_url($url, $beat = null) {
+    $url = trim((string) $url);
+    if ($url === '') return ['text' => '', 'source' => ''];
+    if (is_callable($beat)) $beat();
+
+    // Internet Archive → OCR düz metni (_djvu.txt)
+    if (preg_match('~archive\.org/(?:details|download|stream)/([^/?\#]+)~i', $url, $m)) {
+        $id = $m[1];
+        $meta = tls_fetch_json('https://archive.org/metadata/' . rawurlencode($id), 'thetelos.org/1.0', 15, 2);
+        $txt = '';
+        foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = (string) $f['name']; break; }
+        if ($txt === '') foreach (($meta['files'] ?? []) as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
+        if ($txt !== '') {
+            if (is_callable($beat)) $beat();
+            $t = proto_fetch_text('https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt), 2);
+            if (mb_strlen($t) > 1000) return ['text' => proto_clean_ocr($t), 'source' => 'Internet Archive (manuel)'];
+        }
+        return ['text' => '', 'source' => '', 'pdf' => true];   // sadece PDF/görüntü var, metin yok
+    }
+
+    // Wikisource → REST HTML (transclusion render)
+    if (preg_match('~([a-z]+)\.wikisource\.org/wiki/(.+)$~i', $url, $m)) {
+        $lang = strtolower($m[1]); $title = str_replace(' ', '_', rawurldecode($m[2]));
+        if (is_callable($beat)) $beat();
+        $html = proto_fetch_text('https://' . $lang . '.wikisource.org/api/rest_v1/page/html/' . rawurlencode($title), 2);
+        if (mb_strlen($html) > 2000) {
+            $html = preg_replace('#<(script|style|table|figure)[^>]*>.*?</\1>#is', ' ', $html);
+            $html = preg_replace('#<sup[^>]*>.*?</sup>#is', '', $html);
+            $t = trim(preg_replace('/[ \t]+/', ' ', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+            if (mb_strlen($t) > 1000) return ['text' => $t, 'source' => 'Wikisource (manuel)'];
+        }
+        return ['text' => '', 'source' => ''];
+    }
+
+    // Genel URL: indir → PDF mi / HTML mi / düz metin mi?
+    $raw = proto_fetch_text($url, 2);
+    if ($raw === '') return ['text' => '', 'source' => ''];
+    if (strncmp($raw, '%PDF', 4) === 0) return ['text' => '', 'source' => '', 'pdf' => true];   // ikili PDF → çıkaramayız
+    if (stripos($raw, '<html') !== false || stripos($raw, '<!doctype') !== false || substr_count($raw, '<') > 60) {
+        $raw = preg_replace('#<(script|style|nav|header|footer|table|figure)[^>]*>.*?</\1>#is', ' ', $raw);
+        $t = trim(preg_replace('/[ \t]+/', ' ', html_entity_decode(strip_tags($raw), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        return ['text' => $t, 'source' => 'URL (manuel)'];
+    }
+    return ['text' => trim($raw), 'source' => 'URL (manuel)'];
+}
+
 function proto_clean_gutenberg($t) {
     $t = str_replace(["\r\n", "\r"], "\n", $t);
     if (preg_match('/\*\*\*\s*START OF (?:THE|THIS)? ?PROJECT GUTENBERG.*?\*\*\*/is', $t, $m, PREG_OFFSET_CAPTURE)) $t = substr($t, $m[0][1] + strlen($m[0][0]));
@@ -469,8 +520,22 @@ function proto_generate($book, $author, $opts = []) {
     if ($prov === 'auto') $prov = (proto_openrouter_key() !== '' || proto_deepseek_reachable()) ? 'auto' : 'gemini';
     $model_label = ($prov === 'gemini') ? 'gemini' : 'deepseek';
 
-    $stage("kaynak metni indiriliyor (Gutenberg → Wikisource → Internet Archive)…");
-    $src = proto_acquire($book, $author, $beat);
+    // MANUEL KAYNAK: kullanıcı doğrudan metin yapıştırdıysa ya da URL verdiyse
+    // (Wikisource / Internet Archive / .txt / web sayfası) otomatik edinmeyi ATLA.
+    if (trim((string) ($opts['text'] ?? '')) !== '') {
+        $src = ['found' => true, 'source' => 'Yüklenen metin', 'text' => (string) $opts['text'], 'url' => ''];
+    } elseif (trim((string) ($opts['url'] ?? '')) !== '') {
+        $stage("verilen bağlantıdan metin alınıyor…");
+        $f = proto_fetch_source_url((string) $opts['url'], $beat);
+        if (trim((string) ($f['text'] ?? '')) === '') {
+            return ['found' => false, 'insufficient' => true,
+                    'trace' => 'manuel bağlantıdan metin ALINAMADI' . (!empty($f['pdf']) ? ' — bu bir PDF; PHP ile metni çıkaramadım. Wikisource/Archive linki ya da .txt ver, ya da metni yapıştır.' : ' (link erişilemedi veya metin yok)')];
+        }
+        $src = ['found' => true, 'source' => $f['source'], 'text' => $f['text'], 'url' => (string) $opts['url']];
+    } else {
+        $stage("kaynak metni indiriliyor (Gutenberg → Wikisource → Internet Archive)…");
+        $src = proto_acquire($book, $author, $beat);
+    }
     $beat();
     if (empty($src['found'])) {
         $g = $src['debug']['gutenberg']['gutendex_results'] ?? '?';
