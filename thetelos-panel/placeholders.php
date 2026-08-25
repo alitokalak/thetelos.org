@@ -75,7 +75,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <option value="2" selected>2 worker</option>
         <option value="3">3 worker</option>
       </select>
-      <button class="btn" id="btn-rewrite-all" style="display:none;background:var(--tls-gold);color:#111;border:none">⚡ Hepsini kaynak-temelli yeniden yaz</button>
+      <button class="btn btn-primary" id="btn-rewrite-all" style="display:none">⚡ Hepsini kaynak-temelli yeniden yaz</button>
       <span id="ph-status"></span>
     </div>
 
