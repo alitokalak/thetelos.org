@@ -264,6 +264,23 @@ function proto_fetch_source_url($url, $beat = null) {
         return ['text' => '', 'source' => '', 'pdf' => true];   // sadece PDF/görüntü var, metin yok
     }
 
+    // Project Gutenberg → temiz .txt tercih et (HTML sıyırmaktansa). URL'den ebook
+    // id'sini çıkar; pg{id}.txt / cache yollarını dene.
+    if (preg_match('~gutenberg\.org/(?:cache/epub/|ebooks/|files/)(\d+)~i', $url, $m)) {
+        $id = (int) $m[1];
+        foreach ([
+            "https://www.gutenberg.org/cache/epub/{$id}/pg{$id}.txt",
+            "https://www.gutenberg.org/files/{$id}/{$id}-0.txt",
+            "https://www.gutenberg.org/files/{$id}/{$id}-8.txt",
+            "https://www.gutenberg.org/ebooks/{$id}.txt.utf-8",
+        ] as $tu) {
+            if (is_callable($beat)) $beat();
+            $t = proto_fetch_text($tu, 2);
+            if (mb_strlen($t) > 3000) return ['text' => proto_clean_gutenberg($t), 'source' => 'Project Gutenberg (manuel)'];
+        }
+        // .txt bulunamazsa verilen HTML'i sıyırarak dene (aşağıdaki genel yol).
+    }
+
     // Wikisource → REST HTML (transclusion render)
     if (preg_match('~([a-z]+)\.wikisource\.org/wiki/(.+)$~i', $url, $m)) {
         $lang = strtolower($m[1]); $title = str_replace(' ', '_', rawurldecode($m[2]));
