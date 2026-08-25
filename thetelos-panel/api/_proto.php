@@ -82,27 +82,63 @@ function proto_archive($book, $author, $beat = null) {
     if (is_callable($beat)) $beat();
     $surname = '';
     if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
-    $qp = ['mediatype:texts', 'title:(' . $book . ')'];
-    if ($author !== '') $qp[] = 'creator:(' . $author . ')';
-    $url = 'https://archive.org/advancedsearch.php?q=' . rawurlencode(implode(' AND ', $qp)) . '&fl[]=identifier&fl[]=title&fl[]=creator&rows=6&output=json&sort[]=downloads+desc';
-    $j = tls_fetch_json($url, 'thetelos.org/1.0', 20, 3);
-    $docs = $j['response']['docs'] ?? [];
-    $debug = ['ia_results' => count($docs), 'tried' => []];
-    foreach ($docs as $d) {
-        $id = (string) ($d['identifier'] ?? ''); if ($id === '') continue;
-        $cr = is_array($d['creator'] ?? '') ? implode(' ', $d['creator']) : (string) ($d['creator'] ?? '');
-        $tt = (string) ($d['title'] ?? '');
-        if ($surname !== '' && mb_stripos($cr, $surname) === false && mb_stripos($tt, $book) === false) continue;
-        $meta = tls_fetch_json('https://archive.org/metadata/' . rawurlencode($id), 'thetelos.org/1.0', 15, 2);
-        $txt = '';
-        foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; }
-        if ($txt === '') foreach (($meta['files'] ?? []) as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
-        if ($txt === '') { $debug['tried'][] = ['id' => $id, 'note' => 'txt yok']; continue; }
-        if (is_callable($beat)) $beat();
-        $u = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt);
-        $inf = null; $t = proto_fetch_text($u, 2, $inf);
-        $debug['tried'][] = ['id' => $id, 'file' => $txt, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0];
-        if (mb_strlen($t) > 5000) return ['found' => true, 'url' => $u, 'title' => ($tt ?: $book), 'source' => 'Internet Archive', 'text' => $t, 'raw_len' => mb_strlen($t), 'debug' => $debug];
+
+    // Başlık iki dilde olabilir: "İngilizce (Orijinal)". Yabancı taramalar
+    // (ör. "Astronomia instaurata") ORİJİNAL adla indekslenir → her ikisiyle de ara.
+    $eng = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($eng === '') $eng = $book;
+    $orig = '';
+    if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
+    $toks = function ($s) {
+        $s = mb_strtolower((string) $s, 'UTF-8');
+        $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
+        $s = preg_replace('/[^a-z0-9 ]+/', ' ', $s);
+        return array_values(array_unique(array_filter(explode(' ', $s), fn($w) => mb_strlen($w) >= 4)));
+    };
+    $eng_t = $toks($eng); $orig_t = $toks($orig);
+
+    // Arama sorguları: ÖNCE orijinal ad (yabancı kayıt), sonra İngilizce. Yazar
+    // kısıtı 0 sonuç verirse yazarsız tekrar dene (yabancı kayıtta yazar adı farklı yazılabilir).
+    $queries = [];
+    if ($orig !== '') $queries[] = $orig;
+    $queries[] = $eng;
+    $debug = ['tried' => []]; $seen = [];
+    foreach ($queries as $qtitle) {
+        foreach ([true, false] as $with_author) {
+            if ($with_author && $author === '') continue;
+            $qp = ['mediatype:texts', 'title:(' . $qtitle . ')'];
+            if ($with_author) $qp[] = 'creator:(' . $author . ')';
+            $url = 'https://archive.org/advancedsearch.php?q=' . rawurlencode(implode(' AND ', $qp))
+                 . '&fl[]=identifier&fl[]=title&fl[]=creator&rows=8&output=json&sort[]=downloads+desc';
+            $j = tls_fetch_json($url, 'thetelos.org/1.0', 20, 3);
+            $docs = $j['response']['docs'] ?? [];
+            foreach ($docs as $d) {
+                $id = (string) ($d['identifier'] ?? ''); if ($id === '' || isset($seen[$id])) continue;
+                $seen[$id] = 1;
+                $cr = is_array($d['creator'] ?? '') ? implode(' ', $d['creator']) : (string) ($d['creator'] ?? '');
+                $tt = (string) ($d['title'] ?? '');
+                // GÜVENLİ eşleşme: yanlış eser üstüne özet yazmayalım. Aday başlık,
+                // İngilizce VEYA orijinal başlıkla anlamlı örtüşsün (≥%50 token) YA DA
+                // yazar soyadı geçsin.
+                $tt_t = $toks($tt);
+                $ov_e = $eng_t  ? count(array_intersect($eng_t,  $tt_t)) : 0;
+                $ov_o = $orig_t ? count(array_intersect($orig_t, $tt_t)) : 0;
+                $title_ok = ($eng_t  && $ov_e >= max(1, (int) ceil(count($eng_t)  * 0.5)))
+                         || ($orig_t && $ov_o >= max(1, (int) ceil(count($orig_t) * 0.5)));
+                $auth_ok = ($surname !== '' && mb_stripos($cr, $surname) !== false);
+                if (!$title_ok && !$auth_ok) { $debug['tried'][] = ['id' => $id, 'note' => 'başlık/yazar tutmadı']; continue; }
+                $meta = tls_fetch_json('https://archive.org/metadata/' . rawurlencode($id), 'thetelos.org/1.0', 15, 2);
+                $txt = '';
+                foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; }
+                if ($txt === '') foreach (($meta['files'] ?? []) as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
+                if ($txt === '') { $debug['tried'][] = ['id' => $id, 'note' => 'txt yok']; continue; }
+                if (is_callable($beat)) $beat();
+                $u = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt);
+                $inf = null; $t = proto_fetch_text($u, 2, $inf);
+                $debug['tried'][] = ['id' => $id, 'file' => $txt, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0];
+                if (mb_strlen($t) > 5000) return ['found' => true, 'url' => $u, 'title' => ($tt ?: $book), 'source' => 'Internet Archive', 'text' => $t, 'raw_len' => mb_strlen($t), 'debug' => $debug];
+            }
+            if ($docs) break;   // bu başlık sorgusu sonuç verdi → yazarsız tekrara gerek yok
+        }
     }
     return ['found' => false, 'debug' => $debug];
 }
