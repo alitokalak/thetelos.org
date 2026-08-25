@@ -631,7 +631,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        çalışır; yeniden yaz modunda "bilinmiyor" sonucu YAYINDAN ALMAZ, gövdeye
        yer tutucu koyar (yazı yayında kalır). */
     $src = null;                       // grounding kaynağı (varsa)
-    if (tv_settings()['probe'] && ($post_status === 'publish' || $rewrite)) {
+    // KAYNAK-TEMELLİ tipte probe'u ATLA: asıl kapı "tam metin bulunuyor mu"dur.
+    // Probe (model eseri tanıyor mu) obscure ama GERÇEK/metni-olan eserleri —
+    // ve kullanıcının MANUEL verdiği kaynağı — kaynak dalına hiç varmadan yer-tutucuya
+    // düşürüyordu. Kaynak tipinde uydurma riski yok (özet gerçek metne bağlı), o yüzden
+    // gereksiz. Manuel kaynak verildiyse her koşulda atla.
+    $has_manual_source = (trim((string)($batch['source_url'] ?? '')) !== '' || trim((string)($batch['source_text'] ?? '')) !== '');
+    if (tv_settings()['probe'] && ($post_status === 'publish' || $rewrite) && $type !== 'source' && !$has_manual_source) {
         bw_touch_hb($batch_file, $idx);
         $pr = tv_probe($search_book, $author);
         if (!empty($pr['ok'])) {
