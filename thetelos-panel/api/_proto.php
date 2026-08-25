@@ -34,8 +34,28 @@ function proto_gutenberg($book, $author, $beat = null) {
     if (is_callable($beat)) $beat();
     $surname = '';
     if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
-    $j = tls_fetch_json('https://gutendex.com/books/?search=' . rawurlencode(trim($book . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
-    $results = $j['results'] ?? [];
+    // Başlık "İngilizce (Orijinal)" olabilir. Gutenberg tam metni çoğu zaman
+    // ORİJİNAL dilde durur (ör. Hesse "Kurgast", İngilizce çeviri telifli). Bu
+    // yüzden hem tam başlık, hem orijinal (parantez içi), hem İngilizce (parantezsiz)
+    // ile ARA → merge et. Sadece İngilizceyle arayınca Almanca/Fransızca kayıt kaçıyordu.
+    $eng = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($eng === '') $eng = $book;
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
+    $queries = array_values(array_unique(array_filter([
+        trim($book . ' ' . $author),
+        ($orig !== '' ? trim($orig . ' ' . $author) : ''),
+        trim($eng . ' ' . $author),
+    ])));
+    $results = []; $seen_ids = [];
+    foreach ($queries as $qi => $q) {
+        $jj = tls_fetch_json('https://gutendex.com/books/?search=' . rawurlencode($q), 'thetelos.org/1.0', 20, 3);
+        foreach (($jj['results'] ?? []) as $r) {
+            $rid = (int) ($r['id'] ?? 0);
+            if ($rid && isset($seen_ids[$rid])) continue;
+            if ($rid) $seen_ids[$rid] = 1;
+            $results[] = $r;
+        }
+        if (count($results) >= 12) break;   // yeterli aday toplandı
+    }
     $debug = ['gutendex_results' => count($results), 'tried' => []];
     foreach ($results as $r) {
         $ok_auth = ($surname === '');
