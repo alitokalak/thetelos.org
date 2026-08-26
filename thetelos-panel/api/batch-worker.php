@@ -1569,6 +1569,9 @@ function bw_peak_now() {
     if (defined('TLS_DEEPSEEK_SKIP_PEAK') && !TLS_DEEPSEEK_SKIP_PEAK) return false;
     $flag = dirname(__DIR__) . '/jobs/.peak-skip';
     if (file_exists($flag) && trim((string)@file_get_contents($flag)) === '0') return false;
+    // 23.08.2026'dan beri HAFTA SONU (Cmt/Paz, Pekin/UTC+8) TÜM GÜN off-peak → duraklatma yok.
+    $bj_dow = (int) gmdate('N', time() + 8 * 3600);   // 6=Cmt, 7=Paz (Pekin)
+    if ($bj_dow >= 6) return false;
     $h = (int) gmdate('G');
     return ($h >= 1 && $h < 4) || ($h >= 6 && $h < 10);
 }

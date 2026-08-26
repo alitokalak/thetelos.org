@@ -371,7 +371,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         ?>
         <label style="display:flex;align-items:flex-start;gap:8px;margin-top:16px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.5">
           <input type="checkbox" id="cb-peak-skip" style="margin-top:2px" <?= $tls_peak_on ? 'checked' : '' ?>>
-          <span>💤 <b style="color:var(--text)">Yoğun saatlerde tasarruf et</b> — DeepSeek'in 2× fiyatlı saatlerinde (TR 04:00–07:00 &amp; 09:00–13:00) üretimi otomatik duraklatır, uygun saat gelince kaldığı yerden devam eder. Liste oluşturma (ücretsiz) etkilenmez. <span style="font-size:11px">(önerilen: açık)</span></span>
+          <span>💤 <b style="color:var(--text)">Yoğun saatlerde tasarruf et</b> — DeepSeek'in 2× fiyatlı saatlerinde (TR 04:00–07:00 &amp; 09:00–13:00, <b>yalnız hafta içi</b>) üretimi otomatik duraklatır, uygun saat gelince kaldığı yerden devam eder. <b>Hafta sonu (Cmt/Paz) tüm gün ucuz</b> — duraklatmaz. Liste oluşturma (ücretsiz) etkilenmez. <span style="font-size:11px">(önerilen: açık)</span></span>
         </label>
         <span id="peak-skip-msg" style="display:block;margin-top:6px;font-size:12px;color:var(--gold)"></span>
 
@@ -691,7 +691,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       $tls_peak_flag = __DIR__ . '/jobs/.peak-skip';
       $tls_peak_on   = !file_exists($tls_peak_flag) || trim((string) @file_get_contents($tls_peak_flag)) !== '0';
       $tls_h_utc     = (int) gmdate('G');
-      $tls_in_peak   = ($tls_h_utc >= 1 && $tls_h_utc < 4) || ($tls_h_utc >= 6 && $tls_h_utc < 10);
+      $tls_bj_dow    = (int) gmdate('N', time() + 8 * 3600);   // Pekin günü: 6=Cmt, 7=Paz
+      $tls_in_peak   = ($tls_bj_dow < 6) && (($tls_h_utc >= 1 && $tls_h_utc < 4) || ($tls_h_utc >= 6 && $tls_h_utc < 10));
       if ($tls_peak_on && $tls_in_peak):
           $tls_end_utc = ($tls_h_utc < 4) ? 4 : 10;                 // yoğunluğun biteceği UTC saat
           $tls_end_tr  = ($tls_end_utc + 3) % 24;                    // TR = UTC+3

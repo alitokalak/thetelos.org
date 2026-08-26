@@ -161,7 +161,9 @@ $peak_skip = !file_exists($peak_flag) || trim((string) @file_get_contents($peak_
 if (defined('TLS_DEEPSEEK_SKIP_PEAK')) $peak_skip = (bool) TLS_DEEPSEEK_SKIP_PEAK;
 if ($peak_skip && (($_GET['peak'] ?? '') !== 'off')) {
     $h = (int) gmdate('G'); // UTC saati 0–23
-    if (($h >= 1 && $h < 4) || ($h >= 6 && $h < 10)) {
+    // HAFTA SONU (Cmt/Paz, Pekin/UTC+8) tüm gün off-peak → duraklatma yok.
+    $bj_dow = (int) gmdate('N', time() + 8 * 3600);
+    if ($bj_dow < 6 && (($h >= 1 && $h < 4) || ($h >= 6 && $h < 10))) {
         if (!headers_sent()) header('Content-Type: application/json');
         echo json_encode(['ok' => true, 'msg' => 'skipped: DeepSeek peak hour (2x price)', 'utc_hour' => $h]);
         exit;
