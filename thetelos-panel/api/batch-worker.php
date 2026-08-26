@@ -289,6 +289,34 @@ function bw_flag_problem($book, $author, $cover, $year, $reason, $detail = '', $
     @file_put_contents($file, json_encode($rec, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
 }
 
+/* ── KAYNAK ARŞİVİ ───────────────────────────────────────────────────────
+   Kaynak-temelli özet YAZILDIĞINDA, kitabın (thetelos postu) hangi kaynaktan/
+   hangi LİNKTEN yazıldığını kalıcı kaydeder. İki yere:
+   (1) POST META (_tls_source_url / _tls_source_name) → ileride tema "Download
+       source" butonunu OTOMATİK ekleyebilsin (veri postta durur);
+   (2) merkezi indeks (jobs/source-index.jsonl) → panelde liste + CSV/JSON.
+   URL'siz (manuel yapıştırılan) metinlerde ham metin jobs/sources/{pid}.txt'e
+   kaydedilir, url alanı 'local:sources/{pid}.txt' olur (kaybolmasın). */
+function bw_source_archive($post_id, $book, $author, $name, $url, $chars, $wp_api, $ep, $auth, $manual_text = '') {
+    $post_id = (int) $post_id;
+    // URL'siz manuel metin → server'da sakla (kalıcı; deploy jobs/'u silmez).
+    if ($url === '' && $manual_text !== '' && $post_id > 0) {
+        $dir = dirname(__DIR__) . '/jobs/sources';
+        if (!is_dir($dir)) @mkdir($dir, 0775, true);
+        @file_put_contents("$dir/{$post_id}.txt", $manual_text);
+        $url = 'local:sources/' . $post_id . '.txt';
+    }
+    if ($url === '') return;   // kaydedilecek link yok
+    // (1) Post meta — tema ileride doğrudan okur.
+    if ($post_id > 0) {
+        @bw_wp("$wp_api/$ep/$post_id", 'POST', ['meta' => ['_tls_source_url' => $url, '_tls_source_name' => (string) $name]], $auth, 30);
+    }
+    // (2) Merkezi indeks (kitap ↔ post ↔ kaynak).
+    $rec = ['t' => time(), 'pid' => $post_id, 'book' => (string) $book, 'author' => (string) $author,
+            'source' => (string) $name, 'url' => (string) $url, 'chars' => (int) $chars];
+    @file_put_contents(dirname(__DIR__) . '/jobs/source-index.jsonl', json_encode($rec, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+}
+
 /* ── YER-TUTUCU GÖVDE ────────────────────────────────────────────────────
    Model eseri güvenilir tanımıyorsa yazıyı YAYINDAN ALMAYIZ (link ölmesin,
    trafik/Google keşfi sürsün). Bunun yerine gövdeye nazik, dürüst bir
@@ -683,6 +711,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // kaynaksız = prompt'tan (summary/analysis). Yer-tutucu/eski-korundu ayrı işaretlenir.
     $gen_method = ($type === 'source' || $type === 'info') ? 'bilgi-metni' : 'kaynaksız';
     $gen_source = '';     // bulunan kaynağın adı (Gutenberg/Archive) — kaynak-temelliyse
+    $gen_source_url = ''; // bulunan kaynağın linki (kaynak arşivi + post meta)
+    $gen_book_words = 0;  // kaynak metnin kelime sayısı (indeks için)
 
     /* ── KAYNAK-TEMELLİ ÖZET TİPİ (source) ───────────────────────────────
        Kitabın GERÇEK TAM METNİNİ bul (Project Gutenberg / Internet Archive),
@@ -709,6 +739,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $content = bw_clean_content($sr['md']);   // tam metinden kapsamlı özet
             $gen_method = 'kaynak-temelli';           // GERÇEK tam metinden yazıldı
             $gen_source = (string) ($sr['source'] ?? '');
+            $gen_source_url = (string) ($sr['url'] ?? '');   // KAYNAK ARŞİVİ: kitap↔kaynak linki
+            $gen_book_words = (int) ($sr['book_words'] ?? 0);
         } else {
             // Tam metin yok / yetersiz → Wikipedia-temelli Bilgi Metni'ne düş.
             // NEDENİNİ sorunlu listeye yaz (Relativity'nin neden 2 dk çıktığını böyle görürüz).
@@ -1111,6 +1143,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'source'   => $gen_source,
             'words'    => str_word_count(strip_tags($rw_html)),   // yazılan özetin kelime sayısı (okuma süresi)
         ]);
+        // KAYNAK ARŞİVİ: kaynak-temelli yazıldıysa kitap↔kaynak linkini kalıcı kaydet.
+        if ($gen_method === 'kaynak-temelli') {
+            bw_source_archive($update_pid, $book, $author, $gen_source, $gen_source_url, $gen_book_words, $wp_api, $ep, $auth, (string) ($batch['source_text'] ?? ''));
+        }
         return;
     }
 
@@ -1478,6 +1514,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
 
     $gate_reasons = $gate_report['reasons'] ?? [];
+
+    // KAYNAK ARŞİVİ (sıfırdan üretim yolu): kitap↔kaynak linkini kalıcı kaydet.
+    if ($gen_method === 'kaynak-temelli') {
+        bw_source_archive($pid, $book, $author, $gen_source, $gen_source_url, $gen_book_words, $wp_api, $ep, $auth, (string) ($batch['source_text'] ?? ''));
+    }
 
     bw_update_book($batch_file, $idx, [
         'status'    => 'done',
