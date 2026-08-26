@@ -830,6 +830,22 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
                 $bt   = htmlspecialchars(trim($bk['book_title'] ?? ''));
                 $bauth= htmlspecialchars(trim($bk['author_name'] ?? ''));
                 $purl = htmlspecialchars($bk['post_url'] ?? '');
+                // GÖRÜNÜR yöntem etiketi (hover'a gerek yok): kaynaktan mı, Claude
+                // mu, yer tutucu mu — tek bakışta anlaşılsın.
+                $mth = trim((string)($bk['method'] ?? ''));
+                $method_tag = '';
+                if ($effective === 'placeholder')      $method_tag = ['⚠ yer tutucu', '#b8860b'];
+                elseif ($effective === 'kept')         $method_tag = ['⚠ eski korundu', '#b8860b'];
+                elseif ($effective === 'done' && $mth !== '') {
+                    $map_tag = [
+                        'kaynak-temelli' => '📖 kaynak',
+                        'bilgi-metni'    => '📚 bilgi',
+                        'claude-bilgi'   => '🤖 Claude',
+                        'kaynaksız'      => '✍ kaynaksız',
+                        'yer-tutucu'     => '⚠ yer tutucu',
+                    ];
+                    $method_tag = [$map_tag[$mth] ?? $mth, $mth === 'kaynak-temelli' ? '#1f7a3d' : ($mth === 'claude-bilgi' ? '#7a5cff' : '#666')];
+                }
                 $time_label = '';
                 if ($bs === 'processing' && $elapsed > 0) {
                   $m = floor($elapsed / 60); $s = $elapsed % 60;
@@ -842,6 +858,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
                   <?php if ($purl): ?><a href="<?= $purl ?>" target="_blank" style="color:#ddd;text-decoration:none"><?= $bt ?></a><?php else: ?><span style="color:#ddd"><?= $bt ?></span><?php endif; ?>
                   <?php if ($bauth): ?><span style="color:#666"> — <?= $bauth ?></span><?php endif; ?>
                 </span>
+                <?php if ($method_tag): ?><span data-bc-method style="flex:0 0 auto;font-size:10px;color:<?= $method_tag[1] ?>;border:1px solid currentColor;border-radius:6px;padding:0 5px;opacity:.9"><?= htmlspecialchars($method_tag[0]) ?></span><?php endif; ?>
                 <?php if ($time_label): ?><span data-bc-timer style="flex:0 0 auto;color:<?= $effective==='stale'?'#cc4400':'#888' ?>;font-size:11px"><?= $time_label ?></span><?php endif; ?>
               </div>
               <?php endforeach; ?>
@@ -981,6 +998,26 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
                 else if (bk.status === 'processing')              { bg='#b8860b'; symbol='⚙'; }
                 else                                               { bg='#333';    symbol='…'; }
                 if (ico) { ico.style.background = bg; ico.textContent = symbol; ico.title = ttl; }
+                // GÖRÜNÜR yöntem etiketi — kaynaktan mı, Claude mu, yer tutucu mu.
+                var mtag = '', mcol = '#666';
+                if      (bk.status === 'done' && bk.placeholder) { mtag='⚠ yer tutucu'; mcol='#b8860b'; }
+                else if (bk.status === 'done' && bk.kept)        { mtag='⚠ eski korundu'; mcol='#b8860b'; }
+                else if (bk.status === 'done' && bk.method) {
+                  var _mm = {'kaynak-temelli':'📖 kaynak','bilgi-metni':'📚 bilgi','claude-bilgi':'🤖 Claude','kaynaksız':'✍ kaynaksız','yer-tutucu':'⚠ yer tutucu'};
+                  mtag = _mm[bk.method] || bk.method;
+                  mcol = bk.method==='kaynak-temelli' ? '#1f7a3d' : (bk.method==='claude-bilgi' ? '#7a5cff' : '#666');
+                }
+                var mel = row.querySelector('[data-bc-method]');
+                if (mtag) {
+                  if (!mel) {
+                    mel = document.createElement('span');
+                    mel.setAttribute('data-bc-method','');
+                    mel.style.cssText = 'flex:0 0 auto;font-size:10px;border:1px solid currentColor;border-radius:6px;padding:0 5px;opacity:.9';
+                    var _tref = row.querySelector('[data-bc-timer]');
+                    if (_tref) row.insertBefore(mel, _tref); else row.appendChild(mel);
+                  }
+                  mel.textContent = mtag; mel.style.color = mcol;
+                } else if (mel) { mel.remove(); }
                 // Süre göstergesi (sadece processing için)
                 if (bk.status === 'processing' && bk.processing_since > 0) {
                   var el = _fmtElapsed(nowSec - bk.processing_since);
