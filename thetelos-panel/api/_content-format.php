@@ -104,12 +104,22 @@ function bw_clean_content($text) {
     //  "### Part 3"            → başlığı tamamen sil (altındaki metin akışta kalır)
     //  "### Part 3: The Absurd"→ "### The Absurd" (gerçek başlığı koru)
     // Gövde cümlelerine ("In Part 1…") DOKUNMAYIZ — yalnız başlık satırları.
-    $text = preg_replace_callback('/^(#{2,6})[ \t]+(.+?)[ \t]*$/m', function ($m) {
-        $t = preg_replace(
-            '/^part\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b\s*[:.\-–—]*\s*/i',
-            '', $m[2]);
-        $t = trim($t);
-        return $t === '' ? '' : $m[1] . ' ' . $t;   // yalnız "Part N" ise satırı düşür
+    $strip_part = fn($s) => trim(preg_replace(
+        '/^part\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|[ivxlcdm]+)\b\s*[:.\-–—)]*\s*/i',
+        '', $s));
+    // (a) Markdown başlık: "### Part 3: The Absurd" → "### The Absurd"; "### Part 3" → sil.
+    $text = preg_replace_callback('/^(#{2,6})[ \t]+(.+?)[ \t]*$/m', function ($m) use ($strip_part) {
+        $t = $strip_part($m[2]);
+        return $t === '' ? '' : $m[1] . ' ' . $t;
+    }, $text);
+    // (b) KALIN SATIR başlık: "**Part 2: The Manchester Years**" → "**The Manchester
+    //     Years**"; tek başına "**Part 2**" → sil. Model bölüm başlıklarını çoğu zaman
+    //     ### yerine kalın satır olarak yazıyor; bunlar da temizlenmeli.
+    $text = preg_replace_callback('/^[ \t]*\*\*[ \t]*(.+?)[ \t]*\*\*[ \t]*$/m', function ($m) use ($strip_part) {
+        $orig = $m[1];
+        $t = $strip_part($orig);
+        if ($t === $orig) return $m[0];        // "Part" ile başlamıyorsa dokunma
+        return $t === '' ? '' : '**' . $t . '**';
     }, $text);
 
     // Başıboş/boş başlık satırlarını at (yalnız "##" olup metni olmayan).
