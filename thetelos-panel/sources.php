@@ -62,7 +62,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     </div>
 
     <div class="bulk-row">
-      <button class="btn btn-primary" id="btn-load">🔄 Listeyi Yükle</button>
+      <button class="btn btn-primary" id="btn-load">🔄 Arşivi Göster (otomatik toplanır)</button>
       <a class="btn" id="btn-csv" href="api/source-index.php?action=csv" style="display:none">⬇ CSV</a>
       <a class="btn" id="btn-json" href="api/source-index.php?action=json" style="display:none">⬇ JSON</a>
       <span id="src-status"></span>

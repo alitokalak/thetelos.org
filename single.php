@@ -239,6 +239,20 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"/></svg>
                         Save PDF
                     </button>
+
+                    <?php
+                    // KAYNAK İNDİR: özet gerçek bir kaynaktan yazıldıysa, kaynağın
+                    // (Gutenberg/Wikisource/Internet Archive) linki postun meta'sına
+                    // otomatik kaydediliyor. Yalnız halka açık http(s) kaynaklarda göster.
+                    $tls_src_url  = trim( (string) get_post_meta( get_the_ID(), '_tls_source_url', true ) );
+                    $tls_src_name = trim( (string) get_post_meta( get_the_ID(), '_tls_source_name', true ) );
+                    if ( $tls_src_url !== '' && preg_match( '~^https?://~i', $tls_src_url ) ) : ?>
+                    <a class="tls-status-btn" href="<?php echo esc_url( $tls_src_url ); ?>" target="_blank" rel="nofollow noopener"
+                       title="<?php echo esc_attr( $tls_src_name ? 'Source: ' . $tls_src_name : 'Download the source text' ); ?>">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+                        Download source
+                    </a>
+                    <?php endif; ?>
                     <?php endif; ?>
 
                     <?php
