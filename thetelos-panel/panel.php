@@ -665,6 +665,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       if (!is_dir($jobs_dir)) $jobs_dir = dirname(__DIR__) . '/jobs';
       $all_files = glob("$jobs_dir/batch_*.json") ?: [];
       $stuck_batches = [];
+      $done_batches  = [];   // TAMAMLANMIŞ batch'ler (sonuçları görülebilsin)
       foreach ($all_files as $f) {
           $d = json_decode(file_get_contents($f), true);
           if (!$d || empty($d['books']) || !is_array($d['books'])) continue;
@@ -675,15 +676,17 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               $cnt[$s]++;
           }
           $remaining = $cnt['pending'] + $cnt['processing'];
-          // Bekleyen/işlenen veya hatalı kitabı olan her batch'i göster (status fark etmez)
-          if ($remaining <= 0 && $cnt['error'] <= 0) continue;
           $d['_cnt']       = $cnt;
           $d['_remaining'] = $remaining;
           $d['_total']     = count($d['books']);
+          // Bekleyen/işlenen veya hatalı kitabı olan → "yarım kalan"; gerisi → tamamlanmış.
+          if ($remaining <= 0 && $cnt['error'] <= 0) { $done_batches[] = $d; continue; }
           $stuck_batches[] = $d;
       }
       // En yeni önce
       usort($stuck_batches, fn($a,$b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
+      usort($done_batches,  fn($a,$b) => ($b['created_at'] ?? 0) <=> ($a['created_at'] ?? 0));
+      $done_batches = array_slice($done_batches, 0, 15);   // son 15 tamamlanmış
       ?>
       <?php
       /* Yoğun saat durumu: batch "durmuş" görünüyorsa sebebi burada yazsın —
@@ -1071,6 +1074,43 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         await fetch(_tlsPanelBase+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+id+'&action=delete'}).catch(()=>{});
         var card = document.querySelector('[data-batch-card="'+id+'"]');
         if (card) card.remove();
+      }
+      </script>
+      <?php endif; ?>
+
+      <?php if ($done_batches): ?>
+      <div class="card">
+        <div class="card-title" style="color:#7fb37f">&#10003; Son Tamamlanan Batchler</div>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 12px">Biten toplu işler burada kalır — sonuçlarını (yöntemli CSV) buradan indirebilirsin.</p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <?php foreach ($done_batches as $b):
+            $bid = htmlspecialchars($b['id'] ?? '');
+            $c   = $b['_cnt']; $tot = $b['_total'];
+            $ph  = (int)($b['placeholder'] ?? 0); $kept = (int)($b['kept'] ?? 0);
+            $fresh = max(0, ($c['done'] ?? 0) - $ph - $kept);
+            $when = !empty($b['created_at']) ? date('d.m.Y H:i', (int)$b['created_at']) : '';
+            $lbl = ($b['rewrite'] ?? false) ? 'yeniden-yaz' : 'oluştur';
+            $tp  = htmlspecialchars($b['type'] ?? 'source');
+          ?>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:13px">
+            <span style="color:var(--muted);font-size:11px;min-width:110px"><?= $when ?></span>
+            <span style="flex:1;min-width:120px"><b><?= number_format($tot) ?> kitap</b> · <?= $tp ?> · <?= $lbl ?></span>
+            <span class="badge badge-green">✓ <?= $fresh ?> taze</span>
+            <?php if ($ph):  ?><span class="badge badge-warn">⚠ <?= $ph ?> yer-tutucu</span><?php endif; ?>
+            <?php if ($kept):?><span class="badge badge-warn">⚠ <?= $kept ?> eski</span><?php endif; ?>
+            <a class="btn btn-ghost btn-sm" style="color:var(--green);text-decoration:none" href="api/batch-results.php?batch_id=<?= urlencode($bid) ?>">&#8595; Tüm sonuçlar (CSV)</a>
+            <button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="tlsDeleteDoneBatch('<?= $bid ?>',this)">&#10005;</button>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <script>
+      function tlsDeleteDoneBatch(id, btn){
+        if(!confirm('Bu tamamlanmış batch kaydı silinsin mi? (Sitedeki yazılar etkilenmez, sadece bu kuyruk kaydı gider.)')) return;
+        btn.disabled=true; btn.textContent='…';
+        var base=(function(){var p=window.location.pathname;return p.substring(0,p.lastIndexOf('/')+1);})();
+        fetch(base+'api/batch-control.php',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'batch_id='+encodeURIComponent(id)+'&action=delete'})
+          .then(()=>{ var row=btn.closest('div'); if(row) row.remove(); }).catch(()=>{ btn.disabled=false; btn.textContent='✕'; });
       }
       </script>
       <?php endif; ?>
