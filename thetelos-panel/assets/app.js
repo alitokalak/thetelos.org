@@ -1343,9 +1343,9 @@ function renderBatchStatus(b) {
     const cls = (isPlaceholder||isKept)?'warn':st==='done'?'ok':st==='error'?'err':st==='duplicate'?'gray':st==='processing'?procCls:'gray';
     // Tamamlandı ama bir parçası eksik kaldıysa ⚠ ile göster (içerik kısa olabilir)
     const partial = st==='done' && !isPlaceholder && !isKept && bk.error && bk.error !== 'duplicate_skipped';
-    // Bağlantı: düzenleme linki yoksa ön-yüz linkine düş; ikisi de yoksa düz #id
-    // (asla href="null" üretme → /thetelos-panel/null 404'u buradan geliyordu).
-    const link = bk.edit_url || bk.post_url || '';
+    // Bağlantı: ÖNCE sitedeki yayınlanmış yazıya git (post_url); yoksa WP düzenleme
+    // linkine düş; ikisi de yoksa düz #id (asla href="null" üretme → 404).
+    const link = bk.post_url || bk.edit_url || '';
     const idHtml = link
       ? `<a href="${link}" target="_blank">#${bk.post_id}</a>`
       : `#${bk.post_id}`;
