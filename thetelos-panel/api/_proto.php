@@ -502,6 +502,53 @@ function proto_trim_incomplete($md) {
     return $s;
 }
 
+/* ── GERÇEK ALINTI (pull-quote) — SIFIR UYDURMA ────────────────────────────
+   Modelden metinden bir cümle KOPYALAMASINI ister, sonra o cümlenin GÖNDERİLEN
+   METİNDE birebir geçtiğini doğrular (normalize substring). Geçmiyorsa ATAR.
+   Böylece alıntı yalnız kitabın gerçek sözü olabilir; tahmin/uydurma imkânsız. */
+function proto_quote_norm($s) {
+    $s = html_entity_decode((string) $s, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $s = preg_replace('/[\x{2018}\x{2019}\x{201C}\x{201D}\x{2032}\x{2033}\x{00AB}\x{00BB}"\']/u', '', $s); // tırnaklar
+    $s = preg_replace('/[\x{2010}-\x{2015}\-]+/u', ' ', $s);   // tireler → boşluk
+    $s = preg_replace('/\s+/u', ' ', $s);
+    return trim(mb_strtolower((string) $s, 'UTF-8'));
+}
+function proto_extract_quote($text, $prov, $beat = null) {
+    $text = (string) $text;
+    if (mb_strlen($text) < 4000) return '';
+    // Küçük dilim gönder (token'ı düşük tut): baş + orta. Model yalnız bunu görür,
+    // dolayısıyla doğrulama da bu dilime karşı yapılır (yeterli ve güvenli).
+    $sample = mb_substr($text, 0, 6000) . "\n…\n" . mb_substr($text, (int) (mb_strlen($text) / 2), 3000);
+    $prompt = "From the passage below, copy ONE short, striking, self-contained sentence VERBATIM"
+        . " — its EXACT words, between 8 and 30 words. Do NOT paraphrase, translate, shorten, or"
+        . " change any punctuation. Output ONLY that one sentence, nothing else. If nothing"
+        . " suitable exists, output exactly: NONE\n\n=== PASSAGE ===\n" . $sample . "\n=== END ===";
+    $d = ''; $q = trim((string) proto_ds($prompt, 90, $beat, 60, $d, $prov));
+    if ($q === '' || preg_match('/^none\b/i', $q)) return '';
+    $q = trim($q, " \t\r\n\"'“”‘’«»");
+    $wc = str_word_count($q);
+    if ($wc < 6 || $wc > 40 || mb_strlen($q) > 260) return '';
+    // DOĞRULA: gönderilen metinde birebir (normalize) geçiyor mu? Geçmiyorsa uydurmadır → at.
+    if (mb_strpos(proto_quote_norm($sample), proto_quote_norm($q)) === false) return '';
+    return $q;
+}
+/* Doğrulanmış alıntıyı özete ilk düz paragraftan sonra pull-quote olarak yerleştir. */
+function proto_insert_quote($md, $q) {
+    if (trim((string) $q) === '') return $md;
+    $block = '> “' . trim($q) . '”';
+    $lines = explode("\n", (string) $md);
+    $seen_prose = false;
+    foreach ($lines as $i => $l) {
+        $t = trim($l);
+        if ($t !== '' && $t[0] !== '#' && $t[0] !== '>') { $seen_prose = true; continue; }
+        if ($seen_prose && $t === '') {   // ilk düz paragraftan sonraki boş satır
+            array_splice($lines, $i + 1, 0, ['', $block, '']);
+            return implode("\n", $lines);
+        }
+    }
+    return rtrim((string) $md) . "\n\n" . $block . "\n";
+}
+
 /* ── TEK ÇAĞRIDA kaynak-temelli özet üretimi (batch + içerik düzeltme kullanır)
    Uzunluk: 'kisa' | 'standart' | 'kapsamli'. on_beat heartbeat.
    Dönüş: found/insufficient/md/source/url/book_words/chunks/chapters/model/trace */
@@ -606,6 +653,14 @@ function proto_generate($book, $author, $opts = []) {
         'trace' => $src['source'] . " {$bw}w, reduce BOŞ ({$dg2}) → Bilgi Metni'ne düşülecek"];
 
     $md = proto_trim_incomplete($md);   // token sınırında yarım kalan son cümleyi at → kapı geçsin
+
+    // GERÇEK ALINTI: metinden DOĞRULANMIŞ bir cümleyi pull-quote olarak ekle
+    // (uydurma imkânsız — metinde birebir geçmiyorsa eklenmez). Kapalıysa atla.
+    if (($opts['quote'] ?? true) !== false) {
+        $stage("metinden gerçek bir alıntı seçiliyor…");
+        $q = proto_extract_quote($text, $prov, $beat);
+        if ($q !== '') $md = proto_insert_quote($md, $q);
+    }
     $fw = str_word_count(strip_tags(bw_md2html($md)));
 
     return ['found' => true, 'insufficient' => false, 'md' => $md, 'source' => $src['source'], 'url' => $src['url'],
