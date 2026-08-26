@@ -107,7 +107,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div id="single-source-note" style="font-size:12px;color:#7fb37f;line-height:1.5;margin:0 0 12px;border:1px solid rgba(90,170,90,.35);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.06)">
           📖 <b>Kaynak-Temelli:</b> kitabın <b>gerçek tam metnini</b> (Project Gutenberg / Internet Archive)
           bulup ondan kapsamlı özet yazar. <b>Uydurma yok.</b> Bu bir arka-plan işidir; canlı önizleme yerine
-          ilerleme gösterilir, bitince yazı doğrudan yayınlanır. Tam metin yoksa Bilgi Metni'ne düşer / atlar.
+          ilerleme gösterilir, bitince yazı doğrudan yayınlanır. Tam metin yoksa Bilgi Metni'ne, o da yoksa
+          (Claude eseri güvenilir biliyorsa) Claude tanıtımına düşer; hiçbiri olmazsa yer tutucu.
         </div>
         <div id="single-length-row" class="token-control" style="margin:0 0 16px">
           <div class="token-header">
@@ -119,7 +120,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <div class="token-marks"><span>1.5K</span><span>3K</span><span>4.5K</span><span>6K</span><span>8K</span></div>
           <p style="font-size:11px;color:var(--muted);margin:6px 0 0;line-height:1.5">
             Bu hedef yalnız <b>kaynak-temelli</b> özette (tam metin bulunursa) geçerlidir.
-            Tam metin yoksa Bilgi Metni'ne düşer ve kısa olur — sonuç kutusunda hangisi olduğu yazar.
+            Tam metin yoksa Bilgi Metni'ne (o da yoksa Claude tanıtımına) düşer ve kısa olur — sonuç kutusunda hangisi olduğu yazar.
           </p>
         </div>
         <div id="single-rewrite-row" style="margin:0 0 12px">
@@ -279,8 +280,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         <div id="bulk-source-note" style="font-size:12px;color:#7fb37f;line-height:1.5;margin:-4px 0 12px;border:1px solid rgba(90,170,90,.35);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.06)">
           📖 <b>Kaynak-Temelli Özet (önerilen):</b> kitabın <b>GERÇEK tam metnini</b> (Project Gutenberg /
           Internet Archive) bulur, parça parça okuyup <b>yalnız metne dayalı</b> kapsamlı özet yazar.
-          Tam metin yoksa → Wikipedia-temelli Bilgi Metni'ne düşer; o da yoksa yer tutucu. <b>Hiçbir aşamada
-          uydurma yok.</b> DeepSeek erişilebilirse onu (ucuz), değilse Gemini kullanır.
+          Tam metin yoksa → Wikipedia-temelli Bilgi Metni'ne düşer; o da yoksa <b>son çare olarak Claude</b>
+          eseri <b>güvenilir biliyorsa</b> kısa bir tanıtım yazar (bilmiyorsa yer tutucu). <b>Hiçbir aşamada
+          uydurma yok.</b> DeepSeek erişilebilirse onu (ucuz), değilse Gemini kullanır; Claude yalnız son çaredir.
         </div>
         <div id="bulk-info-note" style="display:none;font-size:12px;color:#7fb37f;line-height:1.5;margin:-4px 0 12px;border:1px solid rgba(90,170,90,.35);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.06)">
           📚 <b>Bilgi Metni:</b> kitap hakkında Wikipedia + Google Books + Open Library'den GERÇEK veri
