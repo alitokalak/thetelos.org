@@ -332,6 +332,22 @@ function bw_placeholder_html($book, $author) {
          . " is being prepared and will be published here soon.</p>";
 }
 
+/* ── SON ÇARE: Claude'un kendi bilgisinden tanıtım metni ────────────────────
+   Ne tam metin ne Wikipedia bulunduğunda, yer tutucu koymadan ÖNCE çağrılır.
+   Claude eseri GÜVENİLİR biliyorsa olgusal bir tanıtım döner; bilmiyorsa ''.
+   UYDURMA YOK: model emin değilse UNKNOWN der, biz de boş döneriz.
+   @return string  HTML içerik (bulundu) ya da '' (bilmiyor/kapalı/hata). */
+function bw_claude_last_resort($book, $author, $batch_file, $idx) {
+    require_once __DIR__ . '/_anthropic.php';
+    if (!tls_anthropic_ready()) return '';
+    $r = tls_claude_overview($book, $author, [
+        'model'   => tls_claude_fast_model(),   // ucuz: haiku
+        'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+    ]);
+    if (empty($r['ok']) || !empty($r['unknown']) || trim((string) ($r['md'] ?? '')) === '') return '';
+    return bw_clean_content($r['md']);
+}
+
 /* ── Başlık kök eşleştirme (JS titleTokens/titlesSame ile aynı mantık) ── */
 function bw_title_tokens($s) {
     static $stop = null;
@@ -659,6 +675,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        çalışır; yeniden yaz modunda "bilinmiyor" sonucu YAYINDAN ALMAZ, gövdeye
        yer tutucu koyar (yazı yayında kalır). */
     $src = null;                       // grounding kaynağı (varsa)
+    $skip_generation = false;          // SON ÇARE (Claude) içeriği ürettiyse üretimi atla
     // KAYNAK-TEMELLİ tipte probe'u ATLA: asıl kapı "tam metin bulunuyor mu"dur.
     // Probe (model eseri tanıyor mu) obscure ama GERÇEK/metni-olan eserleri —
     // ve kullanıcının MANUEL verdiği kaynağı — kaynak dalına hiç varmadan yer-tutucuya
@@ -671,7 +688,18 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         if (!empty($pr['ok'])) {
             $src = $pr['src'] ?? null;
             if (empty($pr['known'])) {
-                if ($rewrite && $update_pid) {
+                // SON ÇARE: probe kitabı doğrulayamadı — ama Claude eseri GÜVENİLİR
+                // biliyorsa (kendi kaçışıyla: bilmiyorsa UNKNOWN) tanıtım yazsın.
+                if ($api_provider !== 'anthropic') {
+                    $cl = bw_claude_last_resort($book, $author, $batch_file, $idx);
+                    if ($cl !== '') {
+                        $content = $cl;
+                        $gen_method = 'claude-bilgi';
+                        $skip_generation = true;   // içerik hazır → normal üretimi atla, yayına geç
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'probe bilmiyor → Claude bilgi metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+                    }
+                }
+                if (empty($skip_generation) && $rewrite && $update_pid) {
                     // Yeniden yaz + bilinmiyor: YAYINDAN ALMA — yer tutucu koy, yayında kalsın.
                     $ph = bw_placeholder_html($book, $author);
                     [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
@@ -686,6 +714,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     ]);
                     return;
                 }
+                if (empty($skip_generation)) {
                 // Sıfırdan üretim + bilinmiyor: post oluşturma, atla.
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', (string) $pr['reason'], 0, 'create');
                 bw_update_book($batch_file, $idx, [
@@ -694,6 +723,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                                 mb_substr((string) $pr['reason'], 0, 180),
                 ]);
                 return;
+                }
             }
         }
     }
@@ -703,6 +733,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
 
     // ── İçerik üretimi ────────────────────────────────────────────
+    // SON ÇARE (Claude) probe aşamasında içeriği ürettiyse üretimi tümden atla.
+    if (empty($skip_generation)) {
     $content   = '';
     $gen_error = '';
     $part_warn = '';      // parça eksik kaldıysa uyarı (yayınlanır ama işaretlenir)
@@ -752,18 +784,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
             ]);
             if (!empty($ir['insufficient'])) {
-                // Ne tam metin ne Wikipedia → UYDURMA YOK.
-                if ($rewrite && $update_pid) {
-                    $ph = bw_placeholder_html($book, $author);
-                    [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
-                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok · ' . $sr_trace, $update_pid, 'rewrite');
-                    bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)','placeholder'=>1,'method'=>'yer-tutucu']);
+                // SON ÇARE: Claude eseri güvenilir biliyorsa tanıtım metni yazsın.
+                $cl = bw_claude_last_resort($book, $author, $batch_file, $idx);
+                if ($cl !== '') {
+                    $content = $cl;
+                    $gen_method = 'claude-bilgi';   // Claude'un bilgisinden (kaynak yok) — CSV'de ayrı görünür
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'kaynak yok → Claude bilgi metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+                } else {
+                    // Ne tam metin ne Wikipedia ne de Claude → UYDURMA YOK.
+                    if ($rewrite && $update_pid) {
+                        $ph = bw_placeholder_html($book, $author);
+                        [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok · ' . $sr_trace, $update_pid, 'rewrite');
+                        bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)','placeholder'=>1,'method'=>'yer-tutucu']);
+                        return;
+                    }
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok · ' . $sr_trace, 0, 'create');
+                    bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: tam metin ve Wikipedia bulunamadı']);
                     return;
                 }
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok · ' . $sr_trace, 0, 'create');
-                bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: tam metin ve Wikipedia bulunamadı']);
-                return;
-            }
+            } else
             if (empty($ir['ok']) || trim((string)$ir['md']) === '') { $gen_error = 'kaynak-temelli özet üretilemedi: ' . ($ir['error'] ?? 'boş'); }
             else {
                 $content = bw_clean_content($ir['md']);
@@ -792,23 +832,33 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $pr_reason = $ref_fab
                 ? ('hakem uydurma buldu (' . ($ir['referee']['judge'] ?? '?') . ')' . ($pr_probs ? ': ' . $pr_probs : ''))
                 : 'kaynak yetersiz (bilgi metni)';
-            // Rewrite'ta yer tutucu (yayında kalsın), create'te atla.
-            if ($rewrite && $update_pid) {
-                $ph = bw_placeholder_html($book, $author);
-                [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, ($ref_fab ? 'referee' : 'placeholder'), $pr_reason, $update_pid, 'rewrite');
-                bw_update_book($batch_file, $idx, [
-                    'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
-                    'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-                    'error' => ($ref_fab ? 'hakem uydurma buldu → yer tutucu (yayında)' : 'kaynak yetersiz → yer tutucu (yayında)'),
-                    'placeholder' => 1, 'method' => 'yer-tutucu',
-                ]);
+            // SON ÇARE: Claude eseri güvenilir biliyorsa tanıtım metni yazsın.
+            // (Provider zaten anthropic ise Claude denenmişti → tekrar deneme.)
+            $cl = ($api_provider !== 'anthropic')
+                ? bw_claude_last_resort($book, $author, $batch_file, $idx) : '';
+            if ($cl !== '') {
+                $content = $cl;
+                $gen_method = 'claude-bilgi';   // Claude'un bilgisinden (kaynak yok) — CSV'de ayrı görünür
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'kaynak yok → Claude bilgi metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+            } else {
+                // Rewrite'ta yer tutucu (yayında kalsın), create'te atla.
+                if ($rewrite && $update_pid) {
+                    $ph = bw_placeholder_html($book, $author);
+                    [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, ($ref_fab ? 'referee' : 'placeholder'), $pr_reason, $update_pid, 'rewrite');
+                    bw_update_book($batch_file, $idx, [
+                        'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
+                        'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                        'error' => ($ref_fab ? 'hakem uydurma buldu → yer tutucu (yayında)' : 'kaynak yetersiz → yer tutucu (yayında)'),
+                        'placeholder' => 1, 'method' => 'yer-tutucu',
+                    ]);
+                    return;
+                }
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, ($ref_fab ? 'referee' : 'unknown'), $pr_reason, 0, 'create');
+                bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => ($ref_fab ? ('hakem uydurma buldu: ' . $pr_probs) : 'kaynak yetersiz: güvenilir bilgi bulunamadı (bilgi metni)')]);
                 return;
             }
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, ($ref_fab ? 'referee' : 'unknown'), $pr_reason, 0, 'create');
-            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => ($ref_fab ? ('hakem uydurma buldu: ' . $pr_probs) : 'kaynak yetersiz: güvenilir bilgi bulunamadı (bilgi metni)')]);
-            return;
-        }
+        } else
         if (empty($ir['ok']) || trim((string) $ir['md']) === '') {
             $gen_error = 'bilgi metni üretilemedi: ' . ($ir['error'] ?? 'boş');
         } else {
@@ -1011,6 +1061,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     if ($accumulated !== '') $content = bw_clean_content($accumulated);
     }   // ── /walkthrough (type !== 'info') ──
+    }   // ── /if (empty($skip_generation)) — Claude son-çare içeriği hazırsa üretim atlandı ──
 
     if ($gen_error || !$content) {
         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', $gen_error ?: 'Boş içerik', $update_pid, $rewrite ? 'rewrite' : 'create');

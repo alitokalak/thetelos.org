@@ -155,4 +155,83 @@ function tls_claude($system, $user, $opts = []) {
     return ['ok' => false, 'http' => $lastCode, 'error' => $lastErr ?: 'bilinmeyen hata'];
 }
 
+/**
+ * SON ÇARE — Claude'un KENDİ bilgisinden kitap tanıtım metni.
+ *
+ * NE ZAMAN: Ne tam metin (Gutenberg/Archive) ne de Wikipedia-temelli Bilgi
+ * Metni bulunabildiğinde, yer tutucu koymadan ÖNCE denenir. Amaç: Claude eseri
+ * GERÇEKTEN ve GÜVENİLİR biliyorsa en azından 1 sayfalık olgusal bir tanıtım
+ * yazsın; bilmiyorsa UYDURMASIN.
+ *
+ * UYDURMA KORUMASI (kritik):
+ *   - System yönergesi: emin değilsen TEK KELİME "UNKNOWN" yaz, uydurma.
+ *   - Model UNKNOWN dönerse ['unknown'=>true] → çağıran yer tutucuya düşer.
+ *   - Boş/çok kısa çıktı da unknown sayılır.
+ * Bu bir "son çare"dir: kaynak bulunamayan eserlerin bir kısmını (Claude'un
+ * sağlam bildiği ünlü eserler) kurtarır, gerisini olduğu gibi bırakır.
+ *
+ * @return array ['ok'=>bool,'md'=>string,'unknown'=>bool,'error'=>string,'usage'=>array]
+ */
+function tls_claude_overview($book, $author, $opts = []) {
+    if (!tls_anthropic_ready()) {
+        return ['ok' => false, 'unknown' => true, 'error' => 'ANTHROPIC_KEY yok'];
+    }
+    $book   = trim((string) $book);
+    $author = trim((string) $author);
+    if ($book === '') return ['ok' => false, 'unknown' => true, 'error' => 'kitap adı boş'];
+
+    $who = $author !== '' ? "\"$book\" by $author" : "\"$book\"";
+
+    $system =
+        "You are a careful literary reference writer. You write ONLY about works "
+      . "you genuinely and reliably know. This is a strict anti-fabrication task.\n\n"
+      . "ABSOLUTE RULES:\n"
+      . "1. If you are NOT highly confident that you reliably know THIS SPECIFIC "
+      . "work (its actual content, themes, and context — not a guess from the "
+      . "title, not a different book with a similar name, not a vague inference), "
+      . "then output EXACTLY the single word: UNKNOWN — nothing else.\n"
+      . "2. NEVER invent plot, characters, quotes, dates, chapters, or claims. If "
+      . "you are unsure about a specific fact, omit it rather than guess.\n"
+      . "3. Do NOT pad. Write only what you actually know to be true about this work.\n"
+      . "4. If the author or title looks obscure, unverifiable, or you cannot "
+      . "distinguish it from other works, choose UNKNOWN.\n"
+      . "When in ANY doubt: UNKNOWN.";
+
+    $user =
+        "Write a factual overview (about 400–600 words) of the book $who — but ONLY "
+      . "if you are certain you reliably know this exact work.\n\n"
+      . "If you write it, cover what you actually know: what the work is, its "
+      . "author and historical/intellectual context, its central subject or "
+      . "argument, its main themes, and its significance or influence. Use Markdown "
+      . "with 2–4 short section headings (##). Write in the same language as the "
+      . "book's title/audience where natural, otherwise clear neutral prose.\n\n"
+      . "Do NOT summarize a plot you are reconstructing from the title. Do NOT "
+      . "invent specifics. If you cannot do this reliably for THIS exact work, "
+      . "output exactly: UNKNOWN";
+
+    $r = tls_claude($system, $user, [
+        'model'       => $opts['model'] ?? tls_claude_fast_model(),
+        'max_tokens'  => (int) ($opts['max_tokens'] ?? 2000),
+        'temperature' => 0.2,
+        'timeout'     => (int) ($opts['timeout'] ?? 180),
+        'on_beat'     => $opts['on_beat'] ?? null,
+    ]);
+
+    if (empty($r['ok'])) {
+        return ['ok' => false, 'unknown' => false, 'error' => $r['error'] ?? 'claude hata', 'http' => $r['http'] ?? 0];
+    }
+
+    $md = trim((string) $r['text']);
+    // UNKNOWN kaçışı: tek başına ya da metnin en başında geçiyorsa → bilmiyor.
+    $probe = mb_strtoupper(preg_replace('/[^A-Za-z]/', '', mb_substr($md, 0, 40)));
+    if (strpos($probe, 'UNKNOWN') === 0) {
+        return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
+    }
+    // Çok kısa çıktı da güvenilmez → bilmiyor say.
+    if (str_word_count(strip_tags($md)) < 120) {
+        return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
+    }
+    return ['ok' => true, 'unknown' => false, 'md' => $md, 'usage' => $r['usage'] ?? []];
+}
+
 } // TLS_ANTHROPIC_LOADED

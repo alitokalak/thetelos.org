@@ -544,9 +544,12 @@ async function runSingleSource(book, author) {
         const head  = b.placeholder ? '⚠ Yer tutucu kondu — içerik yok'
                     : isSrc         ? '✓ Kaynak-temelli özet yayınlandı'
                     : (b.method === 'bilgi-metni') ? '📚 Bilgi metni yayınlandı (tam metin bulunamadı)'
+                    : (b.method === 'claude-bilgi') ? '🤖 Claude bilgi metni yayınlandı (kaynak bulunamadı)'
                     :                 '✓ Özet yayınlandı';
         const note  = (!isSrc && !b.placeholder && b.method === 'bilgi-metni')
           ? '<div style="font-size:12px;color:#e0a800;margin-bottom:8px">Bu eserin indirilebilir tam metni bulunamadığı için Wikipedia/katalog temelli KISA bilgi metni yazıldı — seçtiğin kelime hedefi yalnız kaynak-temelli özette geçerlidir.</div>'
+          : (b.method === 'claude-bilgi')
+          ? '<div style="font-size:12px;color:#e0a800;margin-bottom:8px">Bu eserin ne indirilebilir tam metni ne de Wikipedia kaydı bulunabildi. Son çare olarak Claude yalnızca GÜVENİLİR bildiği bilgiyle bir tanıtım metni yazdı (bilmediği yerde uydurmadı). Yine de gözden geçirmen önerilir.</div>'
           : '';
         preview.innerHTML =
           '<div style="padding:16px;border:1px solid rgba(90,170,90,.4);border-radius:10px;background:rgba(90,170,90,.07)">'
@@ -1352,7 +1355,7 @@ function renderBatchStatus(b) {
       ? `⚠ ${idHtml} eski içerik korundu — yenilenmedi`
       : st==='done'
       ? `✓ ${idHtml}${bk.cover_set?' 🖼':''}`
-        + (bk.method ? ` <span style="font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:6px;padding:0 4px">${bk.method==='kaynak-temelli'?'📖 kaynak':bk.method==='bilgi-metni'?'📚 bilgi':bk.method}</span>` : '')
+        + (bk.method ? ` <span style="font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:6px;padding:0 4px">${bk.method==='kaynak-temelli'?'📖 kaynak':bk.method==='bilgi-metni'?'📚 bilgi':bk.method==='claude-bilgi'?'🤖 Claude bilgi':bk.method}</span>` : '')
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
