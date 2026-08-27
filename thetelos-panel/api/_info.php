@@ -196,6 +196,105 @@ function tv_wikidata($book, $author) {
     return ['facts' => ($lines ? implode("\n", $lines) : ''), 'enwiki' => $enwiki, 'label' => $enlabel];
 }
 
+/* ── YAPISAL DOĞRULAMA: (Başlık VE Yazar) bir kitaba mı ait? ─────────────────
+   Kullanıcının ısrarla istediği infobox mantığı: bir kaynağı ancak kaydın
+   YAPISAL alanları teyit ederse kabul et — yani Wikidata'da:
+     • P31 (instance of) = kitap/edebi eser/deneme/… (bir YAZILI ESER), VE
+     • P50 (author) = istenen yazar (etiket soyadı eşleşir), VE
+     • etiket/başlık istenen başlıkla anlamlı örtüşür.
+   Üçü birden tutmazsa verified=false. Kelime tesadüfü yetmez; yazar zorunlu.
+   Dönüş: ['verified'=>bool,'qid'=>..,'label'=>..,'enwiki'=>..,'author'=>..,'year'=>..] */
+function tls_wikidata_verify($book, $author) {
+    $out = ['verified' => false, 'qid' => '', 'label' => '', 'enwiki' => '', 'author' => '', 'year' => ''];
+    $author = trim((string) $author);
+    if (trim((string) $book) === '') return $out;
+    $ua = 'thetelos.org/1.0 (book verify; https://thetelos.org)';
+    $get = function ($url) use ($ua) { return tls_fetch_json($url, $ua, 12, 3); };
+    $norm = function ($s) {
+        $s = mb_strtolower(trim((string) $s), 'UTF-8');
+        $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
+        return trim(preg_replace('/[^a-z0-9 ]+/', ' ', $s));
+    };
+    // İstenen başlığın anlamlı kelimeleri (parantezli orijinali de kat).
+    $btit = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', (string) $book)); if ($btit === '') $btit = (string) $book;
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', (string) $book, $mm)) $orig = trim($mm[1]);
+    $tok = function ($s) use ($norm) { return array_values(array_filter(explode(' ', $norm($s)), fn($w) => mb_strlen($w) >= 4)); };
+    $bt = $tok($btit); $ot = $tok($orig);
+    $surname = '';
+    if ($author !== '') { $ap = preg_split('/\s+/', $author); $surname = $norm(end($ap)); }
+
+    // Yazılı-eser sınıfları (P31 hedefleri). Kitap, edebi eser, yazılı eser,
+    // deneme, şiir, oyun, kısa öykü, roman, felsefi eser, risale…
+    $work_qids = ['Q571','Q7725634','Q47461344','Q7725310','Q49084','Q5185279','Q25379',
+                  'Q8261','Q1372064','Q149537','Q47461344','Q37484','Q3331189','Q838948','Q234460','Q17537576'];
+
+    // Aday varlıkları başlığa göre ara (İngilizce + dilsiz).
+    $cands = [];
+    foreach (array_unique(array_filter([$btit, $orig])) as $q) {
+        foreach (['en', ''] as $lng) {
+            $u = 'https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&type=item&limit=8&search=' . rawurlencode($q)
+               . ($lng ? "&language={$lng}&uselang={$lng}" : '&language=en&uselang=en');
+            $sj = $get($u);
+            foreach (($sj['search'] ?? []) as $c) { $id = (string) ($c['id'] ?? ''); if ($id !== '') $cands[$id] = true; }
+            if (count($cands) >= 12) break 2;
+        }
+    }
+    if (!$cands) return $out;
+
+    $ids = implode('|', array_slice(array_keys($cands), 0, 20));
+    $ej = $get("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=claims|labels|aliases|sitelinks&languages=en&sitefilter=enwiki&ids=" . rawurlencode($ids));
+    $ents = $ej['entities'] ?? [];
+
+    // Yazar Q-id → etiket çözümü için topla
+    foreach ($ents as $qid => $ent) {
+        if (!is_array($ent)) continue;
+        $claims = $ent['claims'] ?? [];
+        // (a) YAZILI ESER Mİ? (P31)
+        $is_work = false;
+        foreach ($claims['P31'] ?? [] as $cl) {
+            $qv = $cl['mainsnak']['datavalue']['value']['id'] ?? '';
+            if ($qv && in_array($qv, $work_qids, true)) { $is_work = true; break; }
+        }
+        if (!$is_work) continue;
+        // (b) BAŞLIK ÖRTÜŞÜR MÜ? (etiket + alias)
+        $label = (string) ($ent['labels']['en']['value'] ?? '');
+        $names = [$label];
+        foreach (($ent['aliases']['en'] ?? []) as $al) $names[] = (string) ($al['value'] ?? '');
+        $title_ok = false;
+        foreach ($names as $nm) {
+            $nt = $tok($nm);
+            $oe = $bt ? count(array_intersect($bt, $nt)) : 0;
+            $oo = $ot ? count(array_intersect($ot, $nt)) : 0;
+            if (($bt && $oe >= max(1, (int) ceil(count($bt) * 0.6))) || ($ot && $oo >= max(1, (int) ceil(count($ot) * 0.6)))) { $title_ok = true; break; }
+        }
+        if (!$title_ok) continue;
+        // (c) YAZAR EŞLEŞİR Mİ? (P50 yazar varlığının etiketi)
+        if ($surname === '') { // yazar bilinmiyorsa başlık+eser sınıfı yeter
+            $out = ['verified' => true, 'qid' => $qid, 'label' => $label,
+                    'enwiki' => (string) ($ent['sitelinks']['enwiki']['title'] ?? ''), 'author' => '', 'year' => ''];
+            return $out;
+        }
+        $author_qids = [];
+        foreach ($claims['P50'] ?? [] as $cl) { $qv = $cl['mainsnak']['datavalue']['value']['id'] ?? ''; if ($qv) $author_qids[] = $qv; }
+        if (!$author_qids) continue;
+        $aj = $get("https://www.wikidata.org/w/api.php?action=wbgetentities&format=json&props=labels|aliases&languages=en&ids=" . rawurlencode(implode('|', array_slice($author_qids, 0, 10))));
+        $author_ok = false; $author_label = '';
+        foreach (($aj['entities'] ?? []) as $aq => $ae) {
+            $al = (string) ($ae['labels']['en']['value'] ?? '');
+            $names2 = [$al];
+            foreach (($ae['aliases']['en'] ?? []) as $x) $names2[] = (string) ($x['value'] ?? '');
+            foreach ($names2 as $nm2) { if ($surname !== '' && strpos($norm($nm2), $surname) !== false) { $author_ok = true; $author_label = $al; break 2; } }
+        }
+        if (!$author_ok) continue;
+        // Yayın yılı (P577)
+        $year = '';
+        foreach ($claims['P577'] ?? [] as $cl) { $t = $cl['mainsnak']['datavalue']['value']['time'] ?? ''; if (preg_match('/(\d{4})/', $t, $m)) { $year = $m[1]; break; } }
+        return ['verified' => true, 'qid' => $qid, 'label' => $label,
+                'enwiki' => (string) ($ent['sitelinks']['enwiki']['title'] ?? ''), 'author' => $author_label, 'year' => $year];
+    }
+    return $out;
+}
+
 /* Belirli bir Wikipedia maddesini TAM ADIYLA çek (arama yok). Wikidata köprüsü
    kanonik madde adını verince (bölgesel/çeviri başlıklar için) bunu kullanırız. */
 function tv_wiki_extract_by_title($lang, $title) {
@@ -223,6 +322,12 @@ function tls_info_dossier($book, $author) {
     $parts = []; $sources = []; $year = null; $subjects = []; $years = [];
     $wiki_ok = false;
 
+    // YAPISAL DOĞRULAMA (infobox mantığı): eser, Wikidata'da P31=yazılı-eser ve
+    // P50=istenen yazar olarak doğrulanıyor mu? Bilgi metni ANCAK bu doğrulama
+    // (ya da yazar-teyitli Wikipedia maddesi) varsa yazılır. Böylece "başlığı
+    // benzeyen ama yanlış/farklı eser" grounding'e sızmaz.
+    $wdv = tls_wikidata_verify($book, $author);
+
     $wk = tv_wikipedia($book, $author);
     if (!empty($wk['found'])) {
         $wiki_ok = true;
@@ -238,12 +343,14 @@ function tls_info_dossier($book, $author) {
     // başlıklarda (ör. Tamilce "Satya Sothanai" → "The Story of My Experiments
     // with Truth") başlıkla bulunamayan eser buradan kanonik maddeye bağlanır.
     $wd = tv_wikidata($book, $author);
-    if (!$wiki_ok && !empty($wd['enwiki'])) {
-        $canon = tv_wiki_extract_by_title('en', $wd['enwiki']);
+    // Köprü için ÖNCE strict doğrulanmış enwiki'yi kullan (yazar-teyitli), yoksa gevşek.
+    $bridge = !empty($wdv['verified']) ? (string) $wdv['enwiki'] : (string) ($wd['enwiki'] ?? '');
+    if (!$wiki_ok && $bridge !== '') {
+        $canon = tv_wiki_extract_by_title('en', $bridge);
         if ($canon !== '') {
             $wiki_ok = true;
             $sources[] = 'Wikipedia';
-            $parts[] = "[Wikipedia — about the book \"{$wd['enwiki']}\" (this is the same work as \"{$book}\")]\n" . $canon;
+            $parts[] = "[Wikipedia — about the book \"{$bridge}\" (this is the same work as \"{$book}\")]\n" . $canon;
         }
     }
 
@@ -279,12 +386,20 @@ function tls_info_dossier($book, $author) {
     if ($subjects) $meta[] = 'Subjects: ' . implode(', ', array_slice($subjects, 0, 12));
     if ($meta) array_unshift($parts, "[Catalog metadata]\n" . implode("\n", $meta));
 
-    // "Yeterli" ölçütü: en az bir GERÇEK açıklama metni (Wikipedia — doğrudan ya
-    // da Wikidata köprüsüyle — veya bir katalog açıklaması).
-    $have = $wiki_ok || (!empty($g['desc'])) || (!empty($o['desc']));
+    // "Yeterli" ölçütü — ARTIK YAPISAL: eser, YAZAR-TEYİTLİ olarak doğrulanmış
+    // olmalı. İki geçerli yol:
+    //   (a) yazar-teyitli Wikipedia maddesi bulundu ($wiki_ok — tv_wikipedia
+    //       zaten yazar doğrular), YA DA
+    //   (b) Wikidata yapısal doğrulaması (P31=yazılı-eser + P50=istenen yazar).
+    // Katalog açıklaması (Google Books / Open Library) TEK BAŞINA yeterli DEĞİL:
+    // yazar teyidi yok, "başlığı benzeyen farklı kitap" olabilir. Doğrulama
+    // yoksa çağıran taraf Claude'un kesin bilgisine / yer tutucuya düşer —
+    // uydurma grounding'den özet çıkmaz.
+    $have = $wiki_ok || !empty($wdv['verified']);
 
     return [
         'have'     => $have,
+        'verified' => (!empty($wdv['verified']) ? 'wikidata' : ($wiki_ok ? 'wikipedia' : '')),
         'text'     => implode("\n\n", $parts),
         'sources'  => array_values(array_unique($sources)),
         'year'     => $year,
