@@ -172,13 +172,69 @@ if ($action === 'scan') {
         if ($f) $findings[] = $f;
     }
 
+    // ── SUNUCUYA KAYDET (tarayıcı kapansa da kaybolmasın, devam edilebilsin) ──
+    // Bulgular jobs/audit-scan.jsonl'e eklenir; ilerleme jobs/audit-scan.json'a.
+    // offset=0 → yeni tarama: eski dosyaları temizle.
+    $jdir = dirname(__DIR__) . '/jobs';
+    if (!is_dir($jdir)) @mkdir($jdir, 0775, true);
+    $fj = $jdir . '/audit-scan.jsonl';
+    $sj = $jdir . '/audit-scan.json';
+    if ($offset === 0) { @file_put_contents($fj, ''); }
+    if ($findings) {
+        $buf = '';
+        foreach ($findings as $f) $buf .= json_encode($f, JSON_UNESCAPED_UNICODE) . "\n";
+        @file_put_contents($fj, $buf, FILE_APPEND | LOCK_EX);
+    }
+    $next = (count($rows) < $limit) ? -1 : $offset + count($rows);
+    // Toplam bulgu sayısı (dosyadaki satır sayısı) — durum kartı için.
+    $found_total = 0;
+    if (is_file($fj)) { $found_total = max(0, count(file($fj, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES))); }
+    @file_put_contents($sj, json_encode([
+        'total'     => $total,
+        'min_words' => $min_words,
+        'offset'    => ($next === -1) ? $offset + count($rows) : $next,
+        'done'      => ($next === -1),
+        'found'     => $found_total,
+        'updated'   => time(),
+    ], JSON_UNESCAPED_UNICODE), LOCK_EX);
+
     echo json_encode([
         'ok'       => true,
         'total'    => $total,
         'scanned'  => count($rows),
-        'next'     => (count($rows) < $limit) ? -1 : $offset + count($rows),
+        'next'     => $next,
         'findings' => $findings,
+        'found'    => $found_total,
     ]);
+    exit;
+}
+
+/* ── TARAMA DURUMU: kaydedilmiş ilerleme + tüm bulguları döndür ──────────────
+   Sayfa açılışında çağrılır; tarayıcı kapanıp açılsa bile son taramanın
+   sonuçları ve nerede kaldığı ekranda görünür (devam edilebilir). */
+if ($action === 'scan_state') {
+    $jdir = dirname(__DIR__) . '/jobs';
+    $fj = $jdir . '/audit-scan.jsonl';
+    $sj = $jdir . '/audit-scan.json';
+    $state = is_file($sj) ? json_decode((string) file_get_contents($sj), true) : null;
+    $findings = [];
+    if (is_file($fj)) {
+        foreach (file($fj, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $ln) {
+            $d = json_decode($ln, true);
+            if (is_array($d)) $findings[] = $d;
+        }
+    }
+    // En ağır bulgular önce (sev desc), sonra kelime azdan çoğa.
+    usort($findings, fn($a, $b) => ($b['sev'] ?? 0) <=> ($a['sev'] ?? 0));
+    echo json_encode(['ok' => true, 'state' => $state, 'findings' => $findings]);
+    exit;
+}
+
+if ($action === 'scan_reset') {
+    $jdir = dirname(__DIR__) . '/jobs';
+    @unlink($jdir . '/audit-scan.jsonl');
+    @unlink($jdir . '/audit-scan.json');
+    echo json_encode(['ok' => true]);
     exit;
 }
 

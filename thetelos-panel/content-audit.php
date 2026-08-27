@@ -75,6 +75,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
     <!-- Üst satır: tarama + durum -->
     <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px">
       <button class="btn btn-primary" id="btn-scan">🩺 Taramayı Başlat</button>
+      <button class="btn" id="btn-scan-resume" style="display:none;color:var(--tls-gold)">▶ Kaldığı yerden devam</button>
       <button class="btn" id="btn-stop" style="display:none">■ Durdur</button>
       <button class="btn" id="btn-kick" style="display:none">⟳ Canlandır</button>
       <label style="font-size:12px;color:var(--muted)">Kısa sınırı:
@@ -500,13 +501,17 @@ function csv(){
   URL.revokeObjectURL(url);
 }
 
-async function scan(){
-  all = []; stop = false; filter = 'all';
+async function scan(startOffset){
+  startOffset = parseInt(startOffset) || 0;
+  // Devam modunda önceki bulguları koru; sıfırdan başlarken temizle.
+  if (startOffset === 0) all = [];
+  stop = false; filter = 'all';
   $('btn-scan').disabled = true; $('btn-stop').style.display = '';
+  const rb = $('btn-scan-resume'); if (rb) rb.style.display = 'none';
   $('prog').style.display = 'block'; $('filters').style.display = 'flex';
   $('btn-csv').style.display = 'none';
   const minw = parseInt($('min-words').value) || 0;
-  let offset = 0, total = 0, scanned = 0, skipped = 0;
+  let offset = startOffset, total = 0, scanned = startOffset, skipped = 0;
 
   while(!stop){
     // Dilim küçük tutulur ve geçici hatada beklenip tekrar denenir: 7500 yazılık
@@ -952,7 +957,40 @@ $('btn-adv').addEventListener('click', () => {
   $('btn-adv').textContent = open ? 'Tek tek işlemler ▾' : 'Tek tek işlemler ▲';
 });
 $('btn-draft').addEventListener('click', draftPosts);
-$('btn-scan').addEventListener('click', scan);
+$('btn-scan').addEventListener('click', () => scan(0));
+$('btn-scan-resume').addEventListener('click', function(){ scan(parseInt(this.dataset.offset) || 0); });
+
+/* ── SAYFA AÇILIŞI: kaydedilmiş taramayı geri yükle ────────────────────────
+   Tarama artık SUNUCUYA kaydediliyor. Tarayıcı kapanıp açılsa bile son
+   taramanın bulguları ve nerede kaldığı burada ekrana gelir; iş yarım
+   kaldıysa "Kaldığı yerden devam" görünür. */
+(async function restoreScan(){
+  let d = null;
+  try { d = await post('action=scan_state', 30000); } catch(e){ return; }
+  if (!d || !d.ok || !d.state) return;
+  const st = d.state;
+  all = d.findings || [];
+  if (!all.length && !st.found) return;
+  if (st.min_words != null && $('min-words')) $('min-words').value = st.min_words;
+  $('prog').style.display = 'block';
+  $('filters').style.display = 'flex';
+  const pct = st.total ? Math.round(Math.min(st.offset, st.total) / st.total * 100) : 0;
+  $('prog').firstElementChild.style.width = pct + '%';
+  const c = counts();
+  $('st-scan').textContent = Math.min(st.offset||0, st.total||0) + (st.total ? ' / ' + st.total : '');
+  $('st-3').textContent = c[0]; $('st-2').textContent = c[1]; $('st-1').textContent = c[2];
+  render();
+  $('btn-csv').style.display = all.length ? '' : 'none';
+  if (st.done) {
+    $('ca-status').textContent = '✓ Son tarama tamamlandı — ' + all.length + ' bulgu (kaydedildi).';
+  } else {
+    const rb = $('btn-scan-resume');
+    rb.dataset.offset = st.offset || 0;
+    rb.style.display = '';
+    $('ca-status').textContent = '⏸ Yarım kalan tarama var: ' + Math.min(st.offset||0, st.total||0) + '/' + (st.total||'?')
+      + ' tarandı, ' + all.length + ' bulgu. "Kaldığı yerden devam"a bas.';
+  }
+})();
 $('btn-autofix').addEventListener('click', autofix);
 $('btn-undo').addEventListener('click', undo);
 $('btn-complete').addEventListener('click', complete);
