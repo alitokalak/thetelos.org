@@ -62,10 +62,12 @@ if ($action === 'csv') {
     header('Content-Disposition: attachment; filename="kaynak-arsivi-' . date('Ymd-Hi') . '.csv"');
     $out = fopen('php://output', 'w');
     fprintf($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['Post ID', 'Kitap', 'Yazar', 'Kaynak', 'Eşleşme', 'Kaynak URL', 'Kelime', 'Thetelos Linki']);
+    // Sütun sırası: Kitap, Yazar, Post ID ÖNCE → İçerik Ekle panelinin yeniden
+    // yazma içe aktarıcısı doğrudan okur ve POST ID ile birebir eşleştirir.
+    fputcsv($out, ['Kitap', 'Yazar', 'Post ID', 'Kaynak', 'Eşleşme', 'Kaynak URL', 'Kelime', 'Thetelos Linki']);
     $ck_lbl = ['suspect' => 'ŞÜPHELİ (yanlış kaynak?)', 'ok' => 'eşleşiyor', '' => 'denetlenemez'];
     foreach ($items as $it) {
-        fputcsv($out, [$it['pid'] ?? '', $it['book'] ?? '', $it['author'] ?? '', $it['source'] ?? '',
+        fputcsv($out, [$it['book'] ?? '', $it['author'] ?? '', $it['pid'] ?? '', $it['source'] ?? '',
                        $ck_lbl[$it['check'] ?? ''] ?? '', $it['url'] ?? '', $it['chars'] ?? '', $it['post_url'] ?? '']);
     }
     fclose($out);

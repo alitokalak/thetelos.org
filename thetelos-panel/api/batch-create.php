@@ -23,8 +23,9 @@ if (!$books || !is_array($books) || count($books) === 0) {
     exit;
 }
 
-// Boş kitapları filtrele
-$books = array_values(array_filter($books, fn($b) => !empty(trim($b['book_title'] ?? ''))));
+// Boş kitapları filtrele — başlık YA DA hedef post_id varsa geçerli
+// (yeniden yazma listesi id ile de eşleşebilir).
+$books = array_values(array_filter($books, fn($b) => trim($b['book_title'] ?? '') !== '' || (int)($b['post_id'] ?? 0) > 0));
 if (count($books) === 0) {
     echo json_encode(['ok'=>false,'error'=>'Geçerli kitap bulunamadı.']);
     exit;
@@ -49,7 +50,10 @@ $seen = [];
 $deduped = [];
 $removed_dupes = 0;
 foreach ($books as $b) {
-    $k = bc_norm_key($b['book_title'] ?? '', $b['author_name'] ?? '');
+    // Hedef post_id varsa tekilleştirmeyi ID üzerinden yap (aynı yazı iki kez
+    // yeniden yazılmasın); yoksa başlık+yazar anahtarı.
+    $pid = (int)($b['post_id'] ?? 0);
+    $k = $pid > 0 ? ('pid:' . $pid) : bc_norm_key($b['book_title'] ?? '', $b['author_name'] ?? '');
     if ($k === '||' || isset($seen[$k])) { if (isset($seen[$k])) $removed_dupes++; continue; }
     $seen[$k] = true;
     $deduped[] = $b;
@@ -101,6 +105,9 @@ $batch = [
         'cover_url'   => trim($b['cover']        ?? ''),
         'pub_year'    => trim((string)($b['year'] ?? '')),
         'status'      => 'pending',
+        // Yeniden yazma HEDEFİ: verilen post id (bulanık başlık aramasına gerek
+        // kalmadan doğrudan bu yazı güncellenir). Sonuç post_id ayrı tutulur.
+        'target_pid'  => ((int)($b['post_id'] ?? 0) > 0) ? (int)$b['post_id'] : null,
         'post_id'     => null,
         'post_url'    => null,
         'edit_url'    => null,

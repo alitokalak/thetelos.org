@@ -520,7 +520,25 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        ÖNCE) buluyoruz: yoksa satır atlanır ve boşuna üretim yapılmaz. */
     $rewrite    = !empty($batch['rewrite']);
     $update_pid = 0;
-    if ($rewrite) {
+    $ep = 'posts';
+    // ── DOĞRUDAN HEDEF (target_pid) ─────────────────────────────────────────
+    // Yeniden yazma listesi POST ID taşıyorsa (Kaynak Arşivi / sonuç / denetim
+    // CSV'si), bulanık başlık aramasına HİÇ girme: o yazıyı doğrudan güncelle.
+    // "bulunamadı" hatasının en büyük kaynağı buydu — artık id ile birebir.
+    $target_pid = (int) ($batch['books'][$idx]['target_pid'] ?? 0);
+    if ($rewrite && $target_pid > 0) {
+        foreach (['posts', 'analysis'] as $try_ep) {
+            [$tp, $tc] = bw_wp("$wp_api/$try_ep/$target_pid?_fields=id", 'GET', [], $auth, 15);
+            if ($tc === 200 && !empty($tp['id'])) { $update_pid = (int) $tp['id']; $ep = $try_ep; break; }
+        }
+        if (!$update_pid) {
+            // Verilen id sitede yok (silinmiş/yanlış) → dürüstçe bildir, uydurma yapma.
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'not_found', 'hedef post id sitede yok: ' . $target_pid);
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: verilen post id (' . $target_pid . ') sitede bulunamadı']);
+            return;
+        }
+    }
+    if ($rewrite && !$update_pid) {
         $rt_title = $author ? "$book - $author" : $book;
         // Normalize: küçük harf, diakritik→ascii, parantez içi at, noktalama→boşluk.
         $nrm = function ($s) {

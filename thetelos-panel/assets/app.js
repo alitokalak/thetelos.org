@@ -1028,7 +1028,9 @@ async function uploadFile(file) {
     } catch(_) {}
   }
 
-  const filteredBooks = res.books.filter(b => !onSiteAuthors.has((b.author_name || '').toLowerCase()));
+  // post_id taşıyan satırlar zaten sitedeki BELİRLİ bir yazıyı yeniden yazmak
+  // içindir → "sitede var" filtresine takılmamalı (asıl amaç onları güncellemek).
+  const filteredBooks = res.books.filter(b => b.post_id || !onSiteAuthors.has((b.author_name || '').toLowerCase()));
   const skippedAuthors = uniqueAuthors.filter(a => onSiteAuthors.has(a.toLowerCase()));
 
   // Listeye ekle (dedup by title+author)
