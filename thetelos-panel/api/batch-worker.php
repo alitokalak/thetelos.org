@@ -348,6 +348,33 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx) {
     return bw_clean_content($r['md']);
 }
 
+/* ── MEKANİK KUSUR TARAMASI (BEDAVA) ────────────────────────────────────────
+   Bir HTML gövdede yayına ASLA çıkmaması gereken makine-artığı kusurları arar:
+   üretim reddi, prompt/şablon dökümü, parça işareti, DÜZENEK ETİKETİ (LOCATE/
+   PRESENT/CLARIFY — kullanıcının bulduğu tam bu), bölüm tekrarı, meta-konuşma,
+   kesik cümle, öksüz başlık. Hem YENİ hem ESKİ gövdeye uygulanır.
+   NEDEN KRİTİK: "eski korundu" kararı eskiden ESKİ gövdeyi HİÇ denetlemeden
+   yayında tutuyordu — oysa eski gövde çoğu zaman tam da temizlemeye çalıştığımız
+   uydurma/scaffold'lu eski nesil içerikti. Artık eski gövde de bu kapıdan geçmek
+   zorunda; geçemezse korunmaz, yer tutucu konur.
+   @return array kusur açıklamaları (boşsa mekanik olarak temiz). */
+function bw_mech_flaws($html) {
+    require_once __DIR__ . '/_checks.php';
+    $html = (string) $html;
+    if (trim($html) === '') return [];
+    $r = [];
+    if (ca_check_refusal($html))       $r[] = 'üretim reddi';
+    if (ca_check_prompt_dump($html))   $r[] = 'prompt şablonu';
+    if (($s = ca_check_part_markers($html)) !== '')  $r[] = 'parça işareti (' . mb_substr($s, 0, 30) . ')';
+    if (function_exists('ca_check_prompt_leak')   && ca_check_prompt_leak($html))   $r[] = 'prompt talimatı';
+    if (function_exists('ca_check_scaffold_leak') && ($s = ca_check_scaffold_leak($html)) !== '') $r[] = 'düzenek etiketi (LOCATE/PRESENT/CLARIFY: ' . mb_substr($s, 0, 40) . ')';
+    if (function_exists('ca_check_dup_chapters')  && ($s = ca_check_dup_chapters($html)) !== '')  $r[] = 'bölüm tekrarı (' . $s . ')';
+    if (ca_check_meta_talk($html))     $r[] = 'meta-konuşma';
+    if (ca_check_truncated($html))     $r[] = 'cümle ortasında kesik';
+    if (ca_check_orphan_heading($html))$r[] = 'öksüz başlık';
+    return $r;
+}
+
 /* ── Başlık kök eşleştirme (JS titleTokens/titlesSame ile aynı mantık) ── */
 function bw_title_tokens($s) {
     static $stop = null;
@@ -1132,12 +1159,39 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $g = tv_gate($book, $author, $rw_html, ['min_words' => ($type === 'info' ? 120 : 300), 'skip_factcheck' => true]);
             if (!$g['pass']) {
                 $why = implode(' | ', $g['reasons'] ?? []);   // HANGİ kontrol tetiklendi → görünür yap
+                /* ── ESKİ GÖVDEYİ DE DENETLE (kritik düzeltme) ──────────────────
+                   "Koru" kararı eskiden ESKİ gövdeyi hiç denetlemeden yayında
+                   tutuyordu. Ama eski gövde çoğu zaman tam da temizlemeye
+                   çalıştığımız eski-nesil içerik: scaffold etiketleri (LOCATE/
+                   PRESENT/CLARIFY), uydurma, parça işaretleri. Onu yayında tutmak
+                   yer tutucudan BETERDİR (okuyucu uydurmayı gerçek sanır).
+                   Kural: eski gövde bu bedava mekanik kapıdan da geçemiyorsa
+                   KORUMA — dürüst yer tutucu koy. Geçiyorsa (mekanik temizse)
+                   koru; yine de sorunlu listede kalır, sonra yeniden denenir. */
+                $og = bw_wp("$wp_api/$ep/$update_pid?_fields=content&context=view", 'GET', [], $auth, 30);
+                $old_html  = is_array($og[0]) ? (string) ($og[0]['content']['rendered'] ?? '') : '';
+                $old_flaws = bw_mech_flaws($old_html);
+                if ($old_flaws) {
+                    // Eski gövde de kusurlu → koruma, yer tutucu koy (dürüst).
+                    $ph = bw_placeholder_html($book, $author);
+                    [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'yeni kusurlu + ESKİ de kusurlu (' . implode(', ', array_slice($old_flaws, 0, 3)) . ') → yer tutucu', $update_pid, 'rewrite');
+                    bw_update_book($batch_file, $idx, [
+                        'status'   => 'done',
+                        'post_id'  => $update_pid,
+                        'post_url' => $rp['link'] ?? '',
+                        'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                        'error'    => 'yeni kusurlu, eski gövde de kusurlu (' . implode(', ', array_slice($old_flaws, 0, 2)) . ') → yer tutucu (yayında)',
+                        'placeholder' => 1, 'method' => 'yer-tutucu',
+                    ]);
+                    return;
+                }
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', 'içerik kusurlu (kapı): ' . $why, $update_pid, 'rewrite');
                 bw_update_book($batch_file, $idx, [
                     'status'   => 'done',
                     'post_id'  => $update_pid,
                     'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
-                    'error'    => 'içerik kusurlu → mevcut korundu: ' . ($why ?: 'bilinmiyor') . ' (yeniden dene)',
+                    'error'    => 'içerik kusurlu → mevcut korundu (eski gövde mekanik temiz): ' . ($why ?: 'bilinmiyor') . ' (yeniden dene)',
                     'kept'     => 1, 'method' => 'eski-korundu',   // yeni içerik yazılMADI, eski gövde korundu → yeşil "başarılı" sayma
                 ]);
                 return;

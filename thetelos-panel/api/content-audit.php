@@ -66,6 +66,10 @@ function ca_finding_for($id, $title, $html, $date, $min_words) {
     $flags = [];
     if ($s = ca_check_prompt_dump($html))    $flags[] = ['code'=>'prompt_dump',   'sev'=>3, 'label'=>'PROMPT ŞABLONU yazıya basılmış','sample'=>$s];
     if ($s = ca_check_part_markers($html))   $flags[] = ['code'=>'part_marker',   'sev'=>3, 'label'=>'Parça işareti sızmış',           'sample'=>$s];
+    if (function_exists('ca_check_scaffold_leak') && ($s = ca_check_scaffold_leak($html)))
+                                             $flags[] = ['code'=>'scaffold_leak', 'sev'=>3, 'label'=>'DÜZENEK ETİKETİ sızmış (LOCATE/PRESENT/CLARIFY)', 'sample'=>$s];
+    if (function_exists('ca_check_dup_chapters') && ($s = ca_check_dup_chapters($html)))
+                                             $flags[] = ['code'=>'dup_chapter',   'sev'=>3, 'label'=>'Bölüm numarası tekrarı (uydurma bölümler)', 'sample'=>$s];
     if ($s = ca_check_meta_talk($html))      $flags[] = ['code'=>'meta_talk',     'sev'=>3, 'label'=>'Model kendi süreciyle konuşmuş', 'sample'=>$s];
     if ($s = ca_check_prompt_leak($html))    $flags[] = ['code'=>'prompt_leak',   'sev'=>3, 'label'=>'Prompt talimatı metne yazılmış', 'sample'=>$s];
     if ($s = ca_check_orphan_heading($html)) $flags[] = ['code'=>'orphan_heading','sev'=>3, 'label'=>'Boş başlıkla bitmiş (onarılabilir)','sample'=>$s];
