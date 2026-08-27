@@ -29,6 +29,63 @@ function proto_fetch_text($url, $tries = 3, &$info = null) {
     return '';
 }
 
+/* ── İkili (binary) indir → dosyaya (epub gibi ZIP tabanlı biçimler için) ── */
+function proto_fetch_binary($url, $dest, $beat = null) {
+    $fp = @fopen($dest, 'wb'); if (!$fp) return false;
+    $ch = curl_init($url);
+    $opts = [
+        CURLOPT_FILE => $fp, CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5,
+        CURLOPT_TIMEOUT => 90, CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_HTTPHEADER => ['User-Agent: Mozilla/5.0 (compatible; thetelos-research/1.0)'],
+    ];
+    if (is_callable($beat)) { $opts[CURLOPT_NOPROGRESS] = false; $opts[CURLOPT_XFERINFOFUNCTION] = function () use ($beat) { $beat(); return 0; }; }
+    curl_setopt_array($ch, $opts);
+    $ok = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch); fclose($fp);
+    if (!$ok || $code < 200 || $code >= 300 || !is_file($dest) || filesize($dest) < 1000) { @unlink($dest); return false; }
+    return true;
+}
+
+/* ── EPUB → düz metin (spine sırasında). Başarısızsa '' (asla bozuk metin) ──
+   EPUB bir ZIP'tir: container.xml → OPF → manifest(id→href) + spine(sıra).
+   Her XHTML'in <body>'si düz metne indirgenir. Standard Ebooks katı biçimli
+   olduğu için burada güvenilir; herhangi bir adım tutmazsa boş döner (defansif). */
+function proto_epub_text($file) {
+    if (!class_exists('ZipArchive')) return '';
+    $z = new ZipArchive();
+    if ($z->open($file) !== true) return '';
+    $cont = $z->getFromName('META-INF/container.xml');
+    $opfPath = '';
+    if ($cont && preg_match('~full-path="([^"]+\.opf)"~i', $cont, $m)) $opfPath = $m[1];
+    if ($opfPath === '') { for ($i = 0; $i < $z->numFiles; $i++) { $n = $z->getNameIndex($i); if (preg_match('/\.opf$/i', $n)) { $opfPath = $n; break; } } }
+    if ($opfPath === '') { $z->close(); return ''; }
+    $opf = $z->getFromName($opfPath);
+    if ($opf === false) { $z->close(); return ''; }
+    $base = (strpos($opfPath, '/') !== false) ? substr($opfPath, 0, strrpos($opfPath, '/') + 1) : '';
+    // manifest: id → href (öznitelik sırası değişebilir → iki yönlü yakala)
+    $man = [];
+    if (preg_match_all('~<item\b[^>]*\bid="([^"]+)"[^>]*\bhref="([^"]+)"[^>]*/?>~i', $opf, $mm, PREG_SET_ORDER)) foreach ($mm as $x) $man[$x[1]] = $x[2];
+    if (preg_match_all('~<item\b[^>]*\bhref="([^"]+)"[^>]*\bid="([^"]+)"[^>]*/?>~i', $opf, $mm, PREG_SET_ORDER)) foreach ($mm as $x) if (!isset($man[$x[2]])) $man[$x[2]] = $x[1];
+    $text = '';
+    if (preg_match_all('~<itemref\b[^>]*\bidref="([^"]+)"~i', $opf, $sm)) {
+        foreach ($sm[1] as $id) {
+            $href = $man[$id] ?? ''; if ($href === '') continue;
+            $href = urldecode($href);
+            $doc = $z->getFromName($base . $href);
+            if ($doc === false) { $doc = $z->getFromName($href); }   // bazı epub'larda kök göreli
+            if ($doc === false || $doc === '') continue;
+            if (preg_match('~<body[^>]*>(.*)</body>~is', $doc, $bm)) $doc = $bm[1];
+            $doc = preg_replace('~<(script|style|svg)[^>]*>.*?</\1>~is', ' ', $doc);
+            $doc = preg_replace('~</(p|div|h[1-6]|li|br)\s*>~i', "\n", $doc);
+            $t = html_entity_decode(strip_tags($doc), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            $text .= "\n" . $t;
+            if (mb_strlen($text) > 2000000) break;   // güvenlik tavanı
+        }
+    }
+    $z->close();
+    $text = preg_replace('/[ \t]+/', ' ', (string) $text);
+    return trim(preg_replace('/\n{3,}/', "\n\n", $text));
+}
+
 /* ── Project Gutenberg tam metin (gutendex) ────────────────────────────── */
 function proto_gutenberg($book, $author, $beat = null) {
     if (is_callable($beat)) $beat();
@@ -261,6 +318,65 @@ function proto_wikisource($book, $author, $beat = null) {
     return ['found' => false, 'debug' => $debug];
 }
 
+/* ── Standard Ebooks tam metin (kamu malı, temiz dijital baskılar) ──────────
+   Standard Ebooks = Gutenberg metinlerinin özenle düzenlenmiş sürümleri; katı
+   biçimli EPUB verir. Arama → kitap sayfası → EPUB indir → düz metin.
+   Aday sayfa yolu "/ebooks/yazar-slug/başlık-slug" biçiminde; yazar slug'ı da
+   ek güvence. Bulunan metin proto_acquire'da proto_author_in_text ile teyit
+   edilir. Herhangi bir adım tutmazsa boş döner (asla bozuk metin). */
+function proto_standardebooks($book, $author, $beat = null) {
+    if (is_callable($beat)) $beat();
+    $eng = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($eng === '') $eng = $book;
+    $debug = ['tried' => []];
+    // Başlık/yazar token'ları (slug eşleştirme için).
+    $slug = function ($s) {
+        $s = mb_strtolower((string) $s, 'UTF-8');
+        $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
+        return array_values(array_filter(explode(' ', preg_replace('/[^a-z0-9 ]+/', ' ', $s)), fn($w) => mb_strlen($w) >= 4));
+    };
+    $bt = $slug($eng);
+    $surname = ''; if (trim((string) $author) !== '') { $ap = preg_split('/\s+/', trim((string) $author)); $surname = mb_strtolower(@iconv('UTF-8','ASCII//TRANSLIT//IGNORE', (string) end($ap)) ?: end($ap), 'UTF-8'); }
+
+    $html = proto_fetch_text('https://standardebooks.org/ebooks/?query=' . rawurlencode(trim($eng . ' ' . $author)), 2);
+    if ($html === '') return ['found' => false, 'debug' => $debug];
+    if (!preg_match_all('~href="(/ebooks/[a-z0-9\-]+/[a-z0-9\-][^"#?]*)"~i', $html, $mm)) return ['found' => false, 'debug' => $debug];
+    // Aday kitap sayfaları — başlık VEYA yazar slug'ı yola uymalı (alakasızı ele).
+    $paths = [];
+    foreach (array_unique($mm[1]) as $p) {
+        $pl = strtolower($p);
+        $seg = explode('/', trim($pl, '/'));           // ['ebooks','author','title',...]
+        if (count($seg) < 3) continue;
+        $auth_seg = $seg[1]; $title_seg = $seg[2];
+        $title_hit = 0; foreach ($bt as $w) if (strpos($title_seg, $w) !== false) $title_hit++;
+        $auth_hit  = ($surname !== '' && strpos($auth_seg, $surname) !== false);
+        // Başlığın anlamlı kelimelerinin çoğu geçmeli VE (yazar biliniyorsa) yazar da tutmalı.
+        if ($bt && $title_hit >= max(1, (int) ceil(count($bt) * 0.6)) && ($surname === '' || $auth_hit)) {
+            $paths['/' . implode('/', array_slice($seg, 0, 3))] = true;
+        }
+    }
+    foreach (array_slice(array_keys($paths), 0, 4) as $p) {
+        if (is_callable($beat)) $beat();
+        $page = proto_fetch_text('https://standardebooks.org' . $p, 2);
+        if ($page === '' || !preg_match_all('~href="([^"]+\.epub)"~i', $page, $em)) { $debug['tried'][] = ['path' => $p, 'note' => 'epub linki yok']; continue; }
+        // "advanced" olmayan (uyumlu) epub'ı tercih et.
+        $epub = ''; foreach ($em[1] as $h) { if (stripos($h, 'advanced') === false) { $epub = $h; break; } }
+        if ($epub === '') $epub = $em[1][0];
+        if (strncmp($epub, 'http', 4) !== 0) $epub = 'https://standardebooks.org' . $epub;
+        $tmp = tempnam(sys_get_temp_dir(), 'tls_se_');
+        if ($tmp === false) continue;
+        $got = proto_fetch_binary($epub, $tmp, $beat);
+        $txt = $got ? proto_epub_text($tmp) : '';
+        @unlink($tmp);
+        $len = mb_strlen(trim($txt));
+        $debug['tried'][] = ['path' => $p, 'epub' => $epub, 'chars' => $len];
+        if ($len >= 5000 && substr_count($txt, '. ') >= 20) {
+            return ['found' => true, 'title' => $eng, 'source' => 'Standard Ebooks', 'text' => $txt, 'raw_len' => $len,
+                    'url' => 'https://standardebooks.org' . $p, 'debug' => $debug];
+        }
+    }
+    return ['found' => false, 'debug' => $debug];
+}
+
 /* ── İNDİRİLEN METNİN YAZARI DOĞRU MU? ("başlık VE yazar" kuralının metne
    uygulanmış hâli) ───────────────────────────────────────────────────────
    Özet YALNIZ gerçek kitabın metninden yazılır. Ama indirdiğimiz metnin
@@ -288,27 +404,34 @@ function proto_author_in_text($author, $text) {
     return strpos($norm(mb_substr($text, 0, 300000)), $sn) !== false;
 }
 
-/* ── Sıralı edinim: Gutenberg → Internet Archive ────────────────────────────
-   NOT: Wikisource ÇIKARILDI. Wikisource'un tam-metin araması yapısal değil;
-   kitabın kendisi yerine ona yazılmış eleştiriyi/dergi makalesini/antolojiyi
-   "kaynak" sanıp yanlış eşleştiriyordu (ör. "The Man versus the State" →
-   "The State versus the Man: A Criticism"). Özet için YALNIZ gerçek kitap
-   metni (Gutenberg/Archive) kullanılır; Wikisource yalnız MANUEL URL verilirse
-   (proto_fetch_source_url) çalışır. Kitap hakkında bilgi için Wikipedia/Wikidata
-   (yapısal, yazar-teyitli) zaten _info.php'de kullanılıyor. */
+/* ── Sıralı edinim: Gutenberg → Standard Ebooks → Internet Archive ──────────
+   HER kaynak, kabul edilmeden önce proto_author_in_text ile TEYİT edilir:
+   indirilen metin istenen yazarın adını taşımıyorsa reddedilir (yanlış kitap
+   riskini kapatır — kullanıcının "TAM OLARAK KİTABIN KENDİSİNİ BULMALI" şartı).
+   NOT: Wikisource ÇIKARILDI (tam-metin araması yapısal değil; kitabı ona
+   yazılmış eleştiriyle karıştırıyordu). Wikisource yalnız MANUEL URL verilirse
+   (proto_fetch_source_url) çalışır. Kitap-hakkında bilgi için Wikipedia/Wikidata
+   (yapısal, yazar-teyitli) _info.php'de kullanılıyor. */
 function proto_acquire($book, $author, $beat = null) {
-    $g = proto_gutenberg($book, $author, $beat);
-    if (!empty($g['found']) && proto_author_in_text($author, $g['text'])) {
-        $g['debug'] = ['gutenberg' => $g['debug']]; return $g;
+    $dbg = [];
+    // Her kaynağı dene; yalnız YAZAR-TEYİTLİ metni kabul et.
+    $sources = [
+        'gutenberg'      => fn() => proto_gutenberg($book, $author, $beat),
+        'standardebooks' => fn() => proto_standardebooks($book, $author, $beat),
+        'archive'        => fn() => proto_archive($book, $author, $beat),
+    ];
+    foreach ($sources as $name => $fetch) {
+        $r = $fetch();
+        $dbg[$name] = $r['debug'] ?? null;
+        if (empty($r['found'])) continue;
+        if (proto_author_in_text($author, $r['text'] ?? '')) {
+            $r['debug'] = $dbg;
+            return $r;
+        }
+        // Metin bulundu ama yazar teyidi geçmedi → yanlış kaynak, atla, sonrakini dene.
+        $dbg[$name . '_author_fail'] = 1;
     }
-    $a = proto_archive($book, $author, $beat);
-    if (!empty($a['found']) && !proto_author_in_text($author, $a['text'])) {
-        // Metin bulundu ama yazar teyidi geçmedi → yanlış kaynak, kabul etme.
-        $a = ['found' => false, 'debug' => ($a['debug'] ?? null), 'note' => 'yazar metinde yok → reddedildi'];
-    }
-    $a['debug'] = ['gutenberg' => $g['debug'] ?? null, 'archive' => $a['debug'] ?? null,
-                   'gutenberg_author_fail' => (!empty($g['found']) && !proto_author_in_text($author, $g['text'])) ? 1 : 0];
-    return $a;
+    return ['found' => false, 'debug' => $dbg];
 }
 
 /* ── MANUEL KAYNAK: kullanıcının verdiği URL'den metin çıkar ─────────────────
@@ -669,7 +792,7 @@ function proto_generate($book, $author, $opts = []) {
         }
         $src = ['found' => true, 'source' => $f['source'], 'text' => $f['text'], 'url' => (string) $opts['url']];
     } else {
-        $stage("kaynak metni indiriliyor (Gutenberg → Internet Archive · yazar teyitli)…");
+        $stage("kaynak metni indiriliyor (Gutenberg → Standard Ebooks → Internet Archive · yazar teyitli)…");
         $src = proto_acquire($book, $author, $beat);
     }
     $beat();
