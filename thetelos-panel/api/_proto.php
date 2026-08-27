@@ -261,14 +261,53 @@ function proto_wikisource($book, $author, $beat = null) {
     return ['found' => false, 'debug' => $debug];
 }
 
-/* ── Sıralı edinim: Gutenberg → Wikisource → Internet Archive ───────────── */
+/* ── İNDİRİLEN METNİN YAZARI DOĞRU MU? ("başlık VE yazar" kuralının metne
+   uygulanmış hâli) ───────────────────────────────────────────────────────
+   Özet YALNIZ gerçek kitabın metninden yazılır. Ama indirdiğimiz metnin
+   GERÇEKTEN o yazarın eseri olduğunu teyit etmezsek, yanlış kitabın metninden
+   "kaynaklı" özet yazma riski var (kelime tesadüfüyle eşleşen kayıtlar).
+   Gerçek kitap dosyaları kapak/başlık sayfasında yazarın adını taşır. Bu yüzden
+   istenen yazarın SOYADI metinde (önce baş kısım, sonra tüm gövde) geçmiyorsa
+   kaynağı REDDEDERİZ → uydurma yerine yer tutucu/bilgi metnine düşülür.
+   Yazar bilinmiyorsa engellemez (true). */
+function proto_author_in_text($author, $text) {
+    $author = trim((string) $author);
+    if ($author === '') return true;
+    $norm = function ($s) {
+        $s = mb_strtolower((string) $s, 'UTF-8');
+        $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
+        return preg_replace('/[^a-z ]+/', ' ', $s);
+    };
+    $ap = preg_split('/\s+/', $author);
+    $surname = (string) end($ap);
+    if (mb_strlen($surname) < 3) $surname = $author;   // "Öz" gibi çok kısa soyadı → tam ad
+    $sn = trim($norm($surname));
+    if ($sn === '' || mb_strlen($sn) < 3) return true;   // güvenli tarafta kal
+    // Kapak/başlık sayfası (baş) → sonra tüm gövde (yazar en az bir kez geçmeli).
+    if (strpos($norm(mb_substr($text, 0, 8000)), $sn) !== false) return true;
+    return strpos($norm(mb_substr($text, 0, 300000)), $sn) !== false;
+}
+
+/* ── Sıralı edinim: Gutenberg → Internet Archive ────────────────────────────
+   NOT: Wikisource ÇIKARILDI. Wikisource'un tam-metin araması yapısal değil;
+   kitabın kendisi yerine ona yazılmış eleştiriyi/dergi makalesini/antolojiyi
+   "kaynak" sanıp yanlış eşleştiriyordu (ör. "The Man versus the State" →
+   "The State versus the Man: A Criticism"). Özet için YALNIZ gerçek kitap
+   metni (Gutenberg/Archive) kullanılır; Wikisource yalnız MANUEL URL verilirse
+   (proto_fetch_source_url) çalışır. Kitap hakkında bilgi için Wikipedia/Wikidata
+   (yapısal, yazar-teyitli) zaten _info.php'de kullanılıyor. */
 function proto_acquire($book, $author, $beat = null) {
     $g = proto_gutenberg($book, $author, $beat);
-    if (!empty($g['found'])) { $g['debug'] = ['gutenberg' => $g['debug']]; return $g; }
-    $w = proto_wikisource($book, $author, $beat);
-    if (!empty($w['found'])) { $w['debug'] = ['gutenberg' => $g['debug'] ?? null, 'wikisource' => $w['debug'] ?? null]; return $w; }
+    if (!empty($g['found']) && proto_author_in_text($author, $g['text'])) {
+        $g['debug'] = ['gutenberg' => $g['debug']]; return $g;
+    }
     $a = proto_archive($book, $author, $beat);
-    $a['debug'] = ['gutenberg' => $g['debug'] ?? null, 'wikisource' => $w['debug'] ?? null, 'archive' => $a['debug'] ?? null];
+    if (!empty($a['found']) && !proto_author_in_text($author, $a['text'])) {
+        // Metin bulundu ama yazar teyidi geçmedi → yanlış kaynak, kabul etme.
+        $a = ['found' => false, 'debug' => ($a['debug'] ?? null), 'note' => 'yazar metinde yok → reddedildi'];
+    }
+    $a['debug'] = ['gutenberg' => $g['debug'] ?? null, 'archive' => $a['debug'] ?? null,
+                   'gutenberg_author_fail' => (!empty($g['found']) && !proto_author_in_text($author, $g['text'])) ? 1 : 0];
     return $a;
 }
 
@@ -630,7 +669,7 @@ function proto_generate($book, $author, $opts = []) {
         }
         $src = ['found' => true, 'source' => $f['source'], 'text' => $f['text'], 'url' => (string) $opts['url']];
     } else {
-        $stage("kaynak metni indiriliyor (Gutenberg → Wikisource → Internet Archive)…");
+        $stage("kaynak metni indiriliyor (Gutenberg → Internet Archive · yazar teyitli)…");
         $src = proto_acquire($book, $author, $beat);
     }
     $beat();
