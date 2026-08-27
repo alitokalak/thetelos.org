@@ -59,18 +59,26 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
     <div class="stats-row">
       <div class="stat-box"><div class="stat-val" id="st-count" style="color:#00ab6b">–</div><div class="stat-lbl">Arşivlenen kaynak</div></div>
+      <div class="stat-box"><div class="stat-val" id="st-suspect" style="color:#e0524d">–</div><div class="stat-lbl">Şüpheli eşleşme (yanlış kaynak?)</div></div>
     </div>
 
     <div class="bulk-row">
       <button class="btn btn-primary" id="btn-load">🔄 Arşivi Göster (otomatik toplanır)</button>
+      <label style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;cursor:pointer">
+        <input type="checkbox" id="only-suspect"> yalnız şüpheliler</label>
       <a class="btn" id="btn-csv" href="api/source-index.php?action=csv" style="display:none">⬇ CSV</a>
+      <a class="btn" id="btn-csv-suspect" href="api/source-index.php?action=csv&only=suspect" style="display:none;color:#e0524d">⬇ Şüpheli CSV</a>
       <a class="btn" id="btn-json" href="api/source-index.php?action=json" style="display:none">⬇ JSON</a>
       <span id="src-status"></span>
     </div>
 
+    <p style="font-size:12px;color:var(--muted);margin:-6px 0 14px;line-height:1.5">
+      <b style="color:#e0524d">Şüpheli eşleşme</b> = Wikisource sayfa başlığı kitap adıyla örtüşmüyor → o yazı büyük olasılıkla <b>yanlış kaynaktan</b> yazılmış (uydurma riski). Bunları yeniden yazdırma kuyruğuna ver. (Gutenberg/Archive linkleri id taşıdığından URL'den denetlenemez → “denetlenemez”.)
+    </p>
+
     <table class="site-table">
-      <thead><tr><th>#</th><th>Kitap</th><th>Yazar</th><th>Kaynak</th><th>Kaynak Linki</th><th>Kelime</th><th>Thetelos</th></tr></thead>
-      <tbody id="src-rows"><tr><td colspan="7" style="color:var(--muted);padding:16px">Yüklemek için "Listeyi Yükle"ye bas.</td></tr></tbody>
+      <thead><tr><th>#</th><th>Kitap</th><th>Yazar</th><th>Kaynak</th><th>Eşleşme</th><th>Kaynak Linki</th><th>Kelime</th><th>Thetelos</th></tr></thead>
+      <tbody id="src-rows"><tr><td colspan="8" style="color:var(--muted);padding:16px">Yüklemek için "Listeyi Yükle"ye bas.</td></tr></tbody>
     </table>
   </main>
 </div>
@@ -87,31 +95,40 @@ async function load() {
     const d = await r.json();
     if (!d || !d.ok) throw new Error(d && d.error || 'okunamadı');
     $('#st-count').textContent = d.count.toLocaleString('tr');
+    $('#st-suspect').textContent = (d.suspect||0).toLocaleString('tr');
+    const onlySus = $('#only-suspect').checked;
+    let items = d.items;
+    if (onlySus) items = items.filter(x => (x.check||'') === 'suspect');
     const rows = $('#src-rows');
-    if (!d.items.length) {
-      rows.innerHTML = '<tr><td colspan="7" style="color:var(--muted);padding:16px">Henüz kayıt yok. Kaynak-temelli özet yazıldıkça burası dolar.</td></tr>';
+    if (!items.length) {
+      rows.innerHTML = '<tr><td colspan="8" style="color:var(--muted);padding:16px">' + (onlySus ? 'Şüpheli eşleşme yok.' : 'Henüz kayıt yok. Kaynak-temelli özet yazıldıkça burası dolar.') + '</td></tr>';
     } else {
-      rows.innerHTML = d.items.map((it,i) => {
+      const ckBadge = { suspect:'<span class="badge" style="background:rgba(224,82,77,.16);color:#e0524d">⚠ ŞÜPHELİ</span>', ok:'<span class="badge">✓ eşleşiyor</span>', '':'<span style="font-size:11px;color:var(--muted)">denetlenemez</span>' };
+      rows.innerHTML = items.map((it,i) => {
         const url = it.url || '';
         const local = url.indexOf('local:') === 0;
+        const sus = (it.check||'') === 'suspect';
         const linkHtml = local
           ? '<span class="badge">yüklenen metin (server)</span>'
           : (url ? `<a class="src-link" href="${esc(url)}" target="_blank">${esc(url.length>52?url.slice(0,52)+'…':url)}</a>` : '—');
         const pl = it.post_url ? `<a class="src-link" href="${esc(it.post_url)}" target="_blank">#${it.pid} aç →</a>` : '';
-        return `<tr><td>${i+1}</td><td style="font-weight:600">${esc(it.book)}</td>`
+        return `<tr${sus?' style="background:rgba(224,82,77,.06)"':''}><td>${i+1}</td><td style="font-weight:600">${esc(it.book)}</td>`
           + `<td style="color:var(--muted)">${esc(it.author||'—')}</td>`
           + `<td><span class="badge">${esc(it.source||'?')}</span></td>`
+          + `<td>${ckBadge[it.check||'']||''}</td>`
           + `<td>${linkHtml}</td>`
           + `<td style="color:var(--muted)">${it.chars?Number(it.chars).toLocaleString('tr'):'—'}</td>`
           + `<td>${pl}</td></tr>`;
       }).join('');
       $('#btn-csv').style.display = ''; $('#btn-json').style.display = '';
+      $('#btn-csv-suspect').style.display = (d.suspect>0) ? '' : 'none';
     }
-    $('#src-status').textContent = `✓ ${d.count.toLocaleString('tr')} kaynak arşivde.`;
+    $('#src-status').textContent = `✓ ${d.count.toLocaleString('tr')} kaynak · ${(d.suspect||0).toLocaleString('tr')} şüpheli.`;
   } catch(e) { $('#src-status').textContent = '✗ ' + e.message; }
   btn.disabled = false; btn.textContent = '🔄 Listeyi Yükle';
 }
 $('#btn-load').addEventListener('click', load);
+$('#only-suspect').addEventListener('change', load);
 load();
 </script>
 </body>
