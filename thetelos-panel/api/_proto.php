@@ -192,9 +192,40 @@ function proto_wikisource($book, $author, $beat = null) {
     // Parantezli orijinal başlığı at: "Of the Geometrical Spirit (De l'ésprit…)" → sade.
     $btitle = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book));
     if ($btitle === '') $btitle = $book;
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
+
+    // ── GÜVENLİ EŞLEŞME (archive ile aynı mantık) ───────────────────────────
+    // Wikisource araması ALAKASIZ ama uzun sayfalar döndürebiliyor ("Stanzas and
+    // Poems" → "The Nature and Elements of Poetry/Melancholia"). Yanlış eser
+    // üstüne "kaynaklı" özet yazmak, uydurmanın ta kendisidir. Bu yüzden aday
+    // sayfa başlığı, kitap başlığıyla anlamlı örtüşmeli (≥%50 token) YA DA yazar
+    // adı/soyadı sayfa yolunda geçmeli. Geçemeyen aday REDDEDİLİR (kaynak yok say).
+    $toks = function ($s) {
+        $s = mb_strtolower((string) $s, 'UTF-8');
+        $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
+        $s = preg_replace('/[^a-z0-9 ]+/', ' ', $s);
+        return array_values(array_unique(array_filter(explode(' ', $s), fn($w) => mb_strlen($w) >= 4)));
+    };
+    $eng_t = $toks($btitle); $orig_t = $toks($orig);
+    $surname = '';
+    if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
+    $matches = function ($title) use ($toks, $eng_t, $orig_t, $author, $surname) {
+        // Sayfa yolunun SON parçasını (asıl başlığı) ve tümünü ayrı değerlendir.
+        $leaf = $title; if (($p = strrpos($title, '/')) !== false) $leaf = substr($title, $p + 1);
+        $tt_t = $toks($leaf);
+        $ov_e = $eng_t  ? count(array_intersect($eng_t,  $tt_t)) : 0;
+        $ov_o = $orig_t ? count(array_intersect($orig_t, $tt_t)) : 0;
+        $title_ok = ($eng_t  && $ov_e >= max(1, (int) ceil(count($eng_t)  * 0.5)))
+                 || ($orig_t && $ov_o >= max(1, (int) ceil(count($orig_t) * 0.5)));
+        // Yazar-alt-sayfa yolu ("Sully Prudhomme/…") de geçerli bir güvencedir.
+        $auth_ok = ($surname !== '' && mb_stripos($title, $surname) !== false)
+                || ($author !== '' && mb_stripos($title, $author) !== false);
+        return $title_ok || $auth_ok;
+    };
 
     // PRATİK ZEKA: sadece aramaya güvenme; Wikisource'un yaygın kanonik yollarını
     // DOĞRUDAN dene — özellikle "Yazar/Başlık" alt-sayfa yapısı (asıl kaçırılan buydu).
+    // Bunlar başlıktan/yazardan İNŞA edildiği için zaten güvenli (eşleşme geçer).
     $cands = [];
     if ($author !== '') { $cands[] = "$author/$btitle"; }
     $cands[] = $btitle;
@@ -208,6 +239,8 @@ function proto_wikisource($book, $author, $beat = null) {
 
     foreach ($cands as $title) {
         if (is_callable($beat)) $beat();
+        // KRİTİK: aday başlık kitapla eşleşmiyorsa metni çekme bile — reddet.
+        if (!$matches($title)) { $debug['tried'][] = ['title' => $title, 'chars' => 0, 'note' => 'başlık/yazar tutmadı → reddedildi']; continue; }
         // 1) Gerçek gövde (transclusion render): REST HTML.
         $txt = proto_ws_fetch_text($title, $beat);
         // 2) Yedek: düz-metin extract (bazı sayfalarda yeterli olur).
