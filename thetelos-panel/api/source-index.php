@@ -31,35 +31,22 @@ usort($items, fn($a, $b) => strcasecmp((string)($a['book'] ?? ''), (string)($b['
    olabilir (ör. "Stanzas and Poems" → ".../The_Nature_and_Elements_of_Poetry/
    Melancholia"). Gutenberg/Archive URL'i id taşır, başlık yok → 'unverifiable'
    (URL'den denetlenemez; ayrı olgu denetimi gerekir). */
-$si_toks = function ($s) {
-    $s = mb_strtolower((string) $s, 'UTF-8');
-    $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
-    $s = preg_replace('/[^a-z0-9 ]+/', ' ', $s);
-    return array_values(array_unique(array_filter(explode(' ', $s), fn($w) => mb_strlen($w) >= 4)));
-};
-$si_check = function ($book, $author, $url) use ($si_toks) {
-    $url = (string) $url;
-    if (!preg_match('~wikisource\.org/wiki/(.+)$~i', $url, $m)) return '';   // denetlenemez
-    $title = str_replace('_', ' ', rawurldecode($m[1]));
-    $leaf  = $title; if (($p = strrpos($title, '/')) !== false) $leaf = substr($title, $p + 1);
-    $btitle = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', (string) $book)); if ($btitle === '') $btitle = (string) $book;
-    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', (string) $book, $mm)) $orig = trim($mm[1]);
-    $eng_t = $si_toks($btitle); $orig_t = $si_toks($orig); $tt = $si_toks($leaf);
-    $ov_e = $eng_t  ? count(array_intersect($eng_t,  $tt)) : 0;
-    $ov_o = $orig_t ? count(array_intersect($orig_t, $tt)) : 0;
-    $title_ok = ($eng_t  && $ov_e >= max(1, (int) ceil(count($eng_t)  * 0.5)))
-             || ($orig_t && $ov_o >= max(1, (int) ceil(count($orig_t) * 0.5)));
-    $surname = '';
-    if (trim((string) $author) !== '') { $ap = preg_split('/\s+/', trim((string) $author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
-    $auth_ok = ($surname !== '' && mb_stripos($title, $surname) !== false)
-            || (trim((string) $author) !== '' && mb_stripos($title, (string) $author) !== false);
-    return ($title_ok || $auth_ok) ? 'ok' : 'suspect';
+$si_check = function ($book, $author, $url, $source) {
+    // POLİTİKA: Wikisource artık ÖZET kaynağı değil (yapısal olmayan tam-metin
+    // araması yanlış eşleştiriyordu; kelime örtüşmesi bir kitabı ona yazılmış
+    // eleştiriden ayıramıyor — "The Man vs the State" ↔ "The State vs the Man").
+    // Bu yüzden kaynağı Wikisource olan TÜM eski özetler ŞÜPHELİdir → yeniden
+    // yazdırılmalı. (Gutenberg/Archive artık yazar-teyitli; onlar için URL'den
+    // denetim yapılamaz → 'unverifiable'.)
+    $url = (string) $url; $source = (string) $source;
+    if (stripos($source, 'wikisource') !== false || preg_match('~wikisource\.org~i', $url)) return 'suspect';
+    return '';   // denetlenemez (Gutenberg/Archive id'li URL)
 };
 
 $site = rtrim(WP_URL, '/');
 foreach ($items as &$it) {
     $it['post_url'] = !empty($it['pid']) ? "$site/?p=" . (int) $it['pid'] : '';
-    $it['check']    = $si_check($it['book'] ?? '', $it['author'] ?? '', $it['url'] ?? '');
+    $it['check']    = $si_check($it['book'] ?? '', $it['author'] ?? '', $it['url'] ?? '', $it['source'] ?? '');
 }
 unset($it);
 

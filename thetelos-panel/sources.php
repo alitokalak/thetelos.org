@@ -73,7 +73,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     </div>
 
     <p style="font-size:12px;color:var(--muted);margin:-6px 0 14px;line-height:1.5">
-      <b style="color:#e0524d">Şüpheli eşleşme</b> = Wikisource sayfa başlığı kitap adıyla örtüşmüyor → o yazı büyük olasılıkla <b>yanlış kaynaktan</b> yazılmış (uydurma riski). Bunları yeniden yazdırma kuyruğuna ver. (Gutenberg/Archive linkleri id taşıdığından URL'den denetlenemez → “denetlenemez”.)
+      <b style="color:#e0524d">Şüpheli</b> = kaynağı <b>Wikisource</b> olan tüm eski özetler. Wikisource artık özet kaynağı değil (yapısal olmayan arama yanlış eşleştiriyordu — bir kitabı ona yazılmış eleştiriden ayıramıyor). Bunların hepsini yeniden yazdırma kuyruğuna ver. (Gutenberg/Archive artık yazar-teyitli; onlar URL'den denetlenemez → “denetlenemez”.)
     </p>
 
     <table class="site-table">
