@@ -1227,6 +1227,24 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     ]);
                     return;
                 }
+                /* ── ŞÜPHELİ REDO: ESKİYİ KORUMA (no_keep) ───────────────────────
+                   Kullanıcı ŞÜPHELİ (yanlış-kaynak) yazıları REPLACE etmek için
+                   yeniden yazdırıyorsa, eski gövde GÜVENİLMEZDİR — mekanik temiz
+                   olsa bile (yanlış kaynaktan yazılmış olabilir). Onu "koru"
+                   demek redo'nun amacını çöpe atar. Bu modda: yeni içerik
+                   olmadıysa eskiyi tutma, DÜRÜST yer tutucu koy. */
+                if (!empty($batch['no_keep'])) {
+                    $ph = bw_placeholder_html($book, $author);
+                    [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'şüpheli redo · yeni kusurlu (' . $why . ') → eski korunmadı, yer tutucu', $update_pid, 'rewrite');
+                    bw_update_book($batch_file, $idx, [
+                        'status'   => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
+                        'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                        'error'    => 'şüpheli redo: yeni içerik üretilemedi → yer tutucu (eski güvenilmez, korunmadı)',
+                        'placeholder' => 1, 'method' => 'yer-tutucu',
+                    ]);
+                    return;
+                }
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gen_error', 'içerik kusurlu (kapı): ' . $why, $update_pid, 'rewrite');
                 bw_update_book($batch_file, $idx, [
                     'status'   => 'done',

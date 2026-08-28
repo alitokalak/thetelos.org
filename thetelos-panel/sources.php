@@ -161,6 +161,7 @@ $('#btn-redo-suspect').addEventListener('click', async () => {
     fd.set('source_words', words);
     fd.set('post_status', 'publish');
     fd.set('rewrite', '1');
+    fd.set('no_keep', '1');   // şüpheli redo: eski (güvenilmez) içeriği KORUMA
     fd.set('workers', String(workers));
     fd.set('api_provider', 'deepseek');
     const r = await fetch('api/batch-create.php', { method: 'POST', credentials: 'same-origin', body: fd });

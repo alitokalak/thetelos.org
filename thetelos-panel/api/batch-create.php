@@ -81,6 +81,9 @@ $batch = [
     'parts'        => $parts,
     'workers'      => $workers,
     'rewrite'      => $rewrite,   // true: mevcut yazıyı güncelle, yoksa atla
+    // Şüpheli redo: eski (güvenilmez) gövdeyi KORUMA. Yeni içerik üretilemezse
+    // eskiyi tutma, yer tutucu koy. (Kaynak Arşivi ⚡ butonu bunu 1 gönderir.)
+    'no_keep'      => (($_POST['no_keep'] ?? '0') === '1') ? '1' : '',
     // Yeniden yaz modunda yeni gövdeden taze excerpt+meta description üret
     // (gövdeye çıpalı, uydurma değil). '0' → dokunma (eski davranış). Vars. açık.
     'rewrite_meta' => (($_POST['rewrite_meta'] ?? '1') !== '0') ? '1' : '0',
