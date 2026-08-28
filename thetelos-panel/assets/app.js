@@ -1107,6 +1107,9 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
 
   // Sunucuda batch oluştur
   const rewrite = document.getElementById('bulk_rewrite')?.checked ? '1' : '0';
+  // Yeniden yazma + "eski içeriği koruma" işaretliyse: yenisi olmazsa eski
+  // (güvenilmez) gövde korunmaz, yer tutucu konur.
+  const noKeep = (rewrite === '1' && document.getElementById('bulk_no_keep')?.checked) ? '1' : '0';
   const claudeModel = document.getElementById('bulk_claude_model')?.value || 'sonnet';
   const res = await postData(API('batch-create.php'), {
     books:        JSON.stringify(batchBooks),
@@ -1120,6 +1123,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
     parts:        parts,
     workers:      workerCount,
     rewrite,
+    no_keep:      noKeep,
   });
 
   if (!res.ok) {
@@ -2677,5 +2681,13 @@ function updateBulkTypeUI() {
 document.querySelectorAll('input[name=bulk_type]').forEach(r => {
   r.addEventListener('change', updateBulkTypeUI);
 });
+// "Eski içeriği koruma" kutusu yalnız Yeniden yaz modu açıkken görünür.
+(function(){
+  const rw = document.getElementById('bulk_rewrite'), row = document.getElementById('bulk-nokeep-row');
+  if (rw && row) {
+    const sync = () => { row.style.display = rw.checked ? 'flex' : 'none'; };
+    rw.addEventListener('change', sync); sync();
+  }
+})();
 updateBulkTypeUI();   // sayfa açılışında da uygula
 updateBulkSourceWords(document.getElementById('bulk-source-words')?.value || 3500);   // kaydırıcı görselini/etiketini kur
