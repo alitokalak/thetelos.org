@@ -193,16 +193,24 @@ function proto_archive($book, $author, $beat = null) {
                 $seen[$id] = 1;
                 $cr = is_array($d['creator'] ?? '') ? implode(' ', $d['creator']) : (string) ($d['creator'] ?? '');
                 $tt = (string) ($d['title'] ?? '');
-                // GÜVENLİ eşleşme: yanlış eser üstüne özet yazmayalım. Aday başlık,
-                // İngilizce VEYA orijinal başlıkla anlamlı örtüşsün (≥%50 token) YA DA
-                // yazar soyadı geçsin.
+                // GÜVENLİ eşleşme (gerçek doğrulama): kaydın KENDİ başlığı ve yazarı
+                // istenen eserle tutmalı — "metinde geçiyor mu" değil, KATALOG kaydı.
+                //  • BAŞLIK ZORUNLU: kayıt başlığı, İngilizce VEYA orijinal başlıkla
+                //    anlamlı örtüşmeli (≥%50 token). Tutmazsa reddet — aynı yazarın
+                //    BAŞKA kitabını (ör. atıf/başka eser) yanlışlıkla almayı önler.
+                //  • YAZAR: kayıtta creator alanı VARSA soyadı da tutmalı. Creator
+                //    boşsa (anonim/kataloglanmamış tarama, ör. Burke'ün ilk baskısı)
+                //    başlık yeterli — indirilen metin ayrıca proto_author_in_text ile
+                //    (başlık kelimeleriyle) teyit edilir.
                 $tt_t = $toks($tt);
                 $ov_e = $eng_t  ? count(array_intersect($eng_t,  $tt_t)) : 0;
                 $ov_o = $orig_t ? count(array_intersect($orig_t, $tt_t)) : 0;
                 $title_ok = ($eng_t  && $ov_e >= max(1, (int) ceil(count($eng_t)  * 0.5)))
                          || ($orig_t && $ov_o >= max(1, (int) ceil(count($orig_t) * 0.5)));
-                $auth_ok = ($surname !== '' && mb_stripos($cr, $surname) !== false);
-                if (!$title_ok && !$auth_ok) { $debug['tried'][] = ['id' => $id, 'note' => 'başlık/yazar tutmadı']; continue; }
+                if (!$title_ok) { $debug['tried'][] = ['id' => $id, 'note' => 'başlık tutmadı → reddedildi']; continue; }
+                if ($surname !== '' && trim($cr) !== '' && mb_stripos($cr, $surname) === false) {
+                    $debug['tried'][] = ['id' => $id, 'note' => 'yazar tutmadı (creator=' . mb_substr($cr, 0, 40) . ') → reddedildi']; continue;
+                }
                 $meta = tls_fetch_json('https://archive.org/metadata/' . rawurlencode($id), 'thetelos.org/1.0', 15, 2);
                 $txt = '';
                 foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; }
