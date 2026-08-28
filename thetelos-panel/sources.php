@@ -69,6 +69,11 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <a class="btn" id="btn-csv" href="api/source-index.php?action=csv" style="display:none">⬇ CSV</a>
       <a class="btn" id="btn-csv-suspect" href="api/source-index.php?action=csv&only=suspect" style="display:none;color:#e0524d">⬇ Şüpheli CSV</a>
       <a class="btn" id="btn-json" href="api/source-index.php?action=json" style="display:none">⬇ JSON</a>
+      <button class="btn btn-primary" id="btn-redo-suspect" style="display:none">⚡ Şüphelileri kaynaklı yeniden yazdır</button>
+      <label style="font-size:12px;color:var(--muted)">kelime
+        <select id="redo-words" style="padding:3px 6px"><option>2500</option><option selected>3500</option><option>5000</option></select></label>
+      <label style="font-size:12px;color:var(--muted)">worker
+        <select id="redo-workers" style="padding:3px 6px"><option>1</option><option selected>2</option><option>3</option></select></label>
       <span id="src-status"></span>
     </div>
 
@@ -86,6 +91,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 <script>
 const $ = s => document.querySelector(s);
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+let lastItems = [];   // son yüklenen kayıtlar (tek-tık redo için)
 
 async function load() {
   const btn = $('#btn-load'); btn.disabled = true; btn.textContent = '⏳ Yükleniyor…';
@@ -96,6 +102,12 @@ async function load() {
     if (!d || !d.ok) throw new Error(d && d.error || 'okunamadı');
     $('#st-count').textContent = d.count.toLocaleString('tr');
     $('#st-suspect').textContent = (d.suspect||0).toLocaleString('tr');
+    lastItems = d.items || [];
+    // Redo butonu: post_id'li şüpheli varsa göster.
+    const susRedo = lastItems.filter(x => (x.check||'') === 'suspect' && x.pid).length;
+    const rbtn = $('#btn-redo-suspect');
+    if (susRedo > 0) { rbtn.style.display = ''; rbtn.textContent = `⚡ Şüphelileri kaynaklı yeniden yazdır (${susRedo.toLocaleString('tr')})`; rbtn.disabled = false; }
+    else { rbtn.style.display = 'none'; }
     const onlySus = $('#only-suspect').checked;
     let items = d.items;
     if (onlySus) items = items.filter(x => (x.check||'') === 'suspect');
@@ -129,6 +141,43 @@ async function load() {
 }
 $('#btn-load').addEventListener('click', load);
 $('#only-suspect').addEventListener('change', load);
+
+/* ── TEK TIK: şüphelileri (Wikisource kaynaklı) kaynaklı yeniden yazdır ──────
+   CSV indir-yükle derdi yok. Her satır POST ID (target_pid) taşır → yeniden
+   yazma birebir eşleşir, "bulunamadı" olmaz. */
+$('#btn-redo-suspect').addEventListener('click', async () => {
+  const sus = (lastItems || []).filter(x => (x.check||'') === 'suspect' && x.pid);
+  if (!sus.length) { $('#src-status').textContent = 'Şüpheli (post_id\'li) kayıt yok.'; return; }
+  const words   = $('#redo-words').value || '3500';
+  const workers = parseInt($('#redo-workers').value || '2');
+  if (!confirm(`${sus.length} şüpheli (Wikisource kaynaklı) yazı KAYNAK-TEMELLİ yeniden yazılacak (${workers} worker). Her biri POST ID ile birebir eşleşir. Kaynak bulunamazsa bilgi metni/yer tutucu kalır. Devam?`)) return;
+  const btn = $('#btn-redo-suspect');
+  btn.disabled = true; btn.textContent = '⏳ Batch kuruluyor…';
+  try {
+    const books = sus.map(it => ({ book_title: it.book, author_name: it.author, post_id: it.pid }));
+    const fd = new URLSearchParams();
+    fd.set('books', JSON.stringify(books));
+    fd.set('type', 'source');
+    fd.set('source_words', words);
+    fd.set('post_status', 'publish');
+    fd.set('rewrite', '1');
+    fd.set('workers', String(workers));
+    fd.set('api_provider', 'deepseek');
+    const r = await fetch('api/batch-create.php', { method: 'POST', credentials: 'same-origin', body: fd });
+    const d = await r.json();
+    if (!d || !d.ok) throw new Error(d && d.error || 'batch kurulamadı');
+    for (let i = 0; i < workers; i++) {
+      fetch('api/batch-worker.php', { method: 'POST', credentials: 'same-origin', body: new URLSearchParams({ batch_id: d.batch_id }) }).catch(() => {});
+    }
+    $('#src-status').innerHTML = `✓ Batch başladı (${(d.total||books.length).toLocaleString('tr')} yazı). İlerleme: <a href="panel.php?mode=queue" style="color:var(--tls-gold)">Kuyruk</a>.`;
+    btn.textContent = '✓ Başladı — Kuyruk\'ta';
+    setTimeout(() => { window.location = 'panel.php?mode=queue'; }, 1500);
+  } catch (e) {
+    $('#src-status').textContent = '✗ ' + e.message;
+    btn.disabled = false; btn.textContent = '⚡ Şüphelileri kaynaklı yeniden yazdır';
+  }
+});
+
 load();
 </script>
 </body>

@@ -1313,8 +1313,26 @@ function renderBatchStatus(b) {
   document.getElementById('bulk-bar-label').textContent =
     `${b.done.toLocaleString('tr')} / ${b.total.toLocaleString('tr')} — %${pct}`;
 
+  // YÖNTEM KIRILIMI: "taze içerik"in kaç kaynak-temelli / bilgi / Claude olduğunu
+  // say → "ne yaptı belli değil" bitsin. Kitap listesindeki method alanından.
+  let mSrc = 0, mInfo = 0, mClaude = 0, mOther = 0;
+  (b.books || []).forEach(bk => {
+    if (bk.status !== 'done' || bk.placeholder || bk.kept) return;
+    const m = bk.method || '';
+    if (m === 'kaynak-temelli') mSrc++;
+    else if (m === 'bilgi-metni') mInfo++;
+    else if (m === 'claude-bilgi') mClaude++;
+    else mOther++;
+  });
+  const brk = [];
+  if (mSrc)    brk.push(`📖 ${mSrc} kaynak`);
+  if (mInfo)   brk.push(`📚 ${mInfo} bilgi`);
+  if (mClaude) brk.push(`🤖 ${mClaude} Claude`);
+  if (mOther)  brk.push(`✍ ${mOther} kaynaksız`);
+  const brkTxt = brk.length ? ` <span style="font-size:11px;opacity:.85">(${brk.join(' · ')})</span>` : '';
+
   document.getElementById('bulk-summary').innerHTML =
-    `<span class="badge badge-green">✓ ${b.ok} taze içerik</span>&nbsp;`
+    `<span class="badge badge-green">✓ ${b.ok} taze içerik</span>${brkTxt}&nbsp;`
     + ((b.placeholder|0) > 0 ? `<span class="badge badge-warn">⚠ ${b.placeholder} yer tutucu (içerik yok)</span>&nbsp;` : '')
     + ((b.kept|0) > 0 ? `<span class="badge badge-warn">⚠ ${b.kept} eski korundu (yenilenmedi)</span>&nbsp;` : '')
     + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
