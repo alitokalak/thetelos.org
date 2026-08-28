@@ -242,6 +242,14 @@ function bw_update_book($batch_file, $idx, $updates) {
             if (!array_key_exists('placeholder', $updates)) $batch['books'][$idx]['placeholder'] = 0;
             if (!array_key_exists('kept', $updates))        $batch['books'][$idx]['kept'] = 0;
         }
+        // Yer tutucu KONDUYSA (içerik değişti) arşiv kaydını güncelle → eski
+        // (Wikisource) kayıt "şüpheli" listesinde bayat kalmasın. Merkezi nokta:
+        // tüm yer-tutucu yolları buradan geçer.
+        if (!empty($updates['placeholder']) && !empty($batch['books'][$idx]['post_id'])) {
+            bw_source_mark((int) $batch['books'][$idx]['post_id'],
+                (string) ($batch['books'][$idx]['book_title'] ?? ''),
+                (string) ($batch['books'][$idx]['author_name'] ?? ''), 'yer-tutucu');
+        }
         $done = $ok = $failed = $placeholder = $kept = 0;
         foreach ($batch['books'] as $b) {
             if (in_array($b['status'], ['done','error'])) $done++;
@@ -314,6 +322,21 @@ function bw_source_archive($post_id, $book, $author, $name, $url, $chars, $wp_ap
     // (2) Merkezi indeks (kitap ↔ post ↔ kaynak).
     $rec = ['t' => time(), 'pid' => $post_id, 'book' => (string) $book, 'author' => (string) $author,
             'source' => (string) $name, 'url' => (string) $url, 'chars' => (int) $chars];
+    @file_put_contents(dirname(__DIR__) . '/jobs/source-index.jsonl', json_encode($rec, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+}
+
+/* ── KAYNAK KAYDINI GÜNCELLE (link'siz sonuçlar) ────────────────────────────
+   Bir yazı Wikisource kaydıyla arşivdeyken YENİDEN yazılıp içeriği DEĞİŞTİYSE
+   (bilgi metni / Claude / yer tutucu) ama yeni gerçek kaynak linki yoksa,
+   arşivdeki ESKİ (Wikisource) kayıt bayat kalıyor ve "şüpheli" listesinde
+   yanlış görünüyordu. Bu, post başına SON kaydı non-Wikisource yapar → düzelen
+   yazı şüpheli listesinden düşer. (İçerik DEĞİŞMEYEN 'eski korundu'da çağrılmaz:
+   orada eski Wikisource içeriği hâlâ yayında → haklı olarak şüpheli kalır.) */
+function bw_source_mark($post_id, $book, $author, $source) {
+    $post_id = (int) $post_id;
+    if ($post_id <= 0) return;
+    $rec = ['t' => time(), 'pid' => $post_id, 'book' => (string) $book, 'author' => (string) $author,
+            'source' => (string) $source, 'url' => '', 'chars' => 0];
     @file_put_contents(dirname(__DIR__) . '/jobs/source-index.jsonl', json_encode($rec, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
 }
 
@@ -1269,6 +1292,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         // KAYNAK ARŞİVİ: kaynak-temelli yazıldıysa kitap↔kaynak linkini kalıcı kaydet.
         if ($gen_method === 'kaynak-temelli') {
             bw_source_archive($update_pid, $book, $author, $gen_source, $gen_source_url, $gen_book_words, $wp_api, $ep, $auth, (string) ($batch['source_text'] ?? ''));
+        } else {
+            // Kaynak-temelli DEĞİL ama içerik DEĞİŞTİ (bilgi/Claude/kaynaksız): arşivdeki
+            // eski (ör. Wikisource) kaydı GÜNCELLE ki "şüpheli" listesinde bayat kalmasın.
+            bw_source_mark($update_pid, $book, $author, $gen_method);
         }
         return;
     }
