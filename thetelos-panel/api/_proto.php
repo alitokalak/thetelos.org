@@ -377,31 +377,54 @@ function proto_standardebooks($book, $author, $beat = null) {
     return ['found' => false, 'debug' => $debug];
 }
 
-/* ── İNDİRİLEN METNİN YAZARI DOĞRU MU? ("başlık VE yazar" kuralının metne
-   uygulanmış hâli) ───────────────────────────────────────────────────────
-   Özet YALNIZ gerçek kitabın metninden yazılır. Ama indirdiğimiz metnin
-   GERÇEKTEN o yazarın eseri olduğunu teyit etmezsek, yanlış kitabın metninden
-   "kaynaklı" özet yazma riski var (kelime tesadüfüyle eşleşen kayıtlar).
-   Gerçek kitap dosyaları kapak/başlık sayfasında yazarın adını taşır. Bu yüzden
-   istenen yazarın SOYADI metinde (önce baş kısım, sonra tüm gövde) geçmiyorsa
-   kaynağı REDDEDERİZ → uydurma yerine yer tutucu/bilgi metnine düşülür.
-   Yazar bilinmiyorsa engellemez (true). */
-function proto_author_in_text($author, $text) {
+/* ── İNDİRİLEN METİN DOĞRU KİTAP MI? (yazar VEYA başlık teyidi) ─────────────
+   Özet YALNIZ gerçek kitabın metninden yazılır. İndirilen metin gerçekten
+   istenen eser mi? İki bağımsız işaret:
+     (a) YAZAR soyadı metinde geçiyor mu (kapak/başlık sayfası), YA DA
+     (b) KİTAP BAŞLIĞININ anlamlı kelimeleri metinde geçiyor mu (başlık sayfası
+         + koşan başlıklar — "On the SUBLIME and BEAUTIFUL" gibi).
+   İkisinden BİRİ tutarsa kabul. NEDEN "veya": birçok eser ANONİM/takma adlı
+   basılmıştır (ör. Burke'ün 'Sublime and Beautiful' ilk baskısında yazar adı
+   YOK) — salt yazar-soyadı şartı bu DOĞRU kaynakları yanlışlıkla reddederdi.
+   Başlık da yazar da bilinmiyorsa engellemez (true). Katalog (Gutenberg creator
+   / Archive title:author) zaten aramada eşleştiği için bu, ikincil bir kapıdır. */
+function proto_author_in_text($author, $text, $book = '') {
     $author = trim((string) $author);
-    if ($author === '') return true;
+    $book   = trim((string) $book);
     $norm = function ($s) {
         $s = mb_strtolower((string) $s, 'UTF-8');
         $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
         return preg_replace('/[^a-z ]+/', ' ', $s);
     };
-    $ap = preg_split('/\s+/', $author);
-    $surname = (string) end($ap);
-    if (mb_strlen($surname) < 3) $surname = $author;   // "Öz" gibi çok kısa soyadı → tam ad
-    $sn = trim($norm($surname));
-    if ($sn === '' || mb_strlen($sn) < 3) return true;   // güvenli tarafta kal
-    // Kapak/başlık sayfası (baş) → sonra tüm gövde (yazar en az bir kez geçmeli).
-    if (strpos($norm(mb_substr($text, 0, 8000)), $sn) !== false) return true;
-    return strpos($norm(mb_substr($text, 0, 300000)), $sn) !== false;
+    $head = $norm(mb_substr($text, 0, 8000));
+    $full = $norm(mb_substr($text, 0, 300000));
+
+    // (a) YAZAR soyadı
+    if ($author !== '') {
+        $ap = preg_split('/\s+/', $author);
+        $surname = (string) end($ap);
+        if (mb_strlen($surname) < 3) $surname = $author;
+        $sn = trim($norm($surname));
+        if ($sn !== '' && mb_strlen($sn) >= 3) {
+            if (strpos($head, $sn) !== false || strpos($full, $sn) !== false) return true;
+        }
+    }
+
+    // (b) KİTAP BAŞLIĞI (anlamlı kelimeler): çoğu metinde geçiyorsa doğru eser.
+    $btitle = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($btitle === '') $btitle = $book;
+    $tt = array_values(array_filter(explode(' ', $norm($btitle)), fn($w) => mb_strlen($w) >= 4
+        && !in_array($w, ['into','from','with','their','ideas','origin','some','being','other','being'], true)));
+    if ($tt) {
+        $hit = 0; foreach ($tt as $w) if (strpos($full, $w) !== false) $hit++;
+        // Başlığın anlamlı kelimelerinin ÇOĞU (≥%60) metinde geçiyorsa kabul.
+        if ($hit >= max(1, (int) ceil(count($tt) * 0.6))) return true;
+    }
+
+    // Ne yazar ne de başlık teyidi var:
+    // - İkisi de biliniyor ama hiçbiri geçmiyorsa → REDDET (yanlış kaynak).
+    // - Hiçbiri bilinmiyorsa → engelleme (true).
+    if ($author === '' && $btitle === '') return true;
+    return false;
 }
 
 /* ── Sıralı edinim: Gutenberg → Standard Ebooks → Internet Archive ──────────
@@ -424,7 +447,7 @@ function proto_acquire($book, $author, $beat = null) {
         $r = $fetch();
         $dbg[$name] = $r['debug'] ?? null;
         if (empty($r['found'])) continue;
-        if (proto_author_in_text($author, $r['text'] ?? '')) {
+        if (proto_author_in_text($author, $r['text'] ?? '', $book)) {
             $r['debug'] = $dbg;
             return $r;
         }
