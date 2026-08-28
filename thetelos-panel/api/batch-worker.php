@@ -749,7 +749,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // ve kullanıcının MANUEL verdiği kaynağı — kaynak dalına hiç varmadan yer-tutucuya
     // düşürüyordu. Kaynak tipinde uydurma riski yok (özet gerçek metne bağlı), o yüzden
     // gereksiz. Manuel kaynak verildiyse her koşulda atla.
-    $has_manual_source = (trim((string)($batch['source_url'] ?? '')) !== '' || trim((string)($batch['source_text'] ?? '')) !== '');
+    // MANUEL KAYNAK — batch geneli VEYA kitaba özel (toplu metin yükleme).
+    // Kitaba özel varsa o kullanılır (her kitabın kendi metni/linki).
+    $bk_src_text = (string) ($batch['books'][$idx]['source_text'] ?? '');
+    $bk_src_url  = (string) ($batch['books'][$idx]['source_url']  ?? '');
+    $eff_src_text = $bk_src_text !== '' ? $bk_src_text : (string) ($batch['source_text'] ?? '');
+    $eff_src_url  = $bk_src_url  !== '' ? $bk_src_url  : (string) ($batch['source_url'] ?? '');
+    $has_manual_source = (trim($eff_src_url) !== '' || trim($eff_src_text) !== '');
     if (tv_settings()['probe'] && ($post_status === 'publish' || $rewrite) && $type !== 'source' && !$has_manual_source) {
         bw_touch_hb($batch_file, $idx);
         $pr = tv_probe($search_book, $author);
@@ -828,8 +834,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $sr = proto_generate($search_book, $author, [
             'length'  => in_array($batch['length'] ?? 'standart', ['kisa','standart','kapsamli'], true) ? $batch['length'] : 'standart',
             'words'   => (int) ($batch['source_words'] ?? 0),   // serbest hedef kelime (kaydırıcı); 0 → 'length' ön-ayarı
-            'url'     => (string) ($batch['source_url'] ?? ''),   // MANUEL kaynak: URL (Wikisource/Archive/.txt/web)
-            'text'    => (string) ($batch['source_text'] ?? ''), // MANUEL kaynak: yapıştırılan metin
+            'url'     => $eff_src_url,    // MANUEL kaynak: URL (kitaba özel > batch geneli)
+            'text'    => $eff_src_text,   // MANUEL kaynak: yapıştırılan/yüklenen metin (kitaba özel > batch geneli)
             'provider'=> 'auto',
             'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
             'on_stage'=> function ($m) use ($batch_file, $idx) { bw_set_stage($batch_file, $idx, $m); bw_touch_hb($batch_file, $idx); },
@@ -1309,7 +1315,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         ]);
         // KAYNAK ARŞİVİ: kaynak-temelli yazıldıysa kitap↔kaynak linkini kalıcı kaydet.
         if ($gen_method === 'kaynak-temelli') {
-            bw_source_archive($update_pid, $book, $author, $gen_source, $gen_source_url, $gen_book_words, $wp_api, $ep, $auth, (string) ($batch['source_text'] ?? ''));
+            bw_source_archive($update_pid, $book, $author, $gen_source, $gen_source_url, $gen_book_words, $wp_api, $ep, $auth, $eff_src_text);
         } else {
             // Kaynak-temelli DEĞİL ama içerik DEĞİŞTİ (bilgi/Claude/kaynaksız): arşivdeki
             // eski (ör. Wikisource) kaydı GÜNCELLE ki "şüpheli" listesinde bayat kalmasın.

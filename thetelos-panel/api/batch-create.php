@@ -111,6 +111,10 @@ $batch = [
         // Yeniden yazma HEDEFİ: verilen post id (bulanık başlık aramasına gerek
         // kalmadan doğrudan bu yazı güncellenir). Sonuç post_id ayrı tutulur.
         'target_pid'  => ((int)($b['post_id'] ?? 0) > 0) ? (int)$b['post_id'] : null,
+        // KİTABA ÖZEL MANUEL KAYNAK (toplu metin yükleme): kullanıcının o kitap
+        // için sağladığı tam metin / URL. Varsa motor bunu kullanır (kaynak-temelli).
+        'source_text' => (string)($b['source_text'] ?? ''),
+        'source_url'  => (string)($b['source_url']  ?? ''),
         'post_id'     => null,
         'post_url'    => null,
         'edit_url'    => null,
