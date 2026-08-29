@@ -774,8 +774,75 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         panel v6 &middot; <?= strip_tags(tls_version_badge()) ?> &middot; jobs: <?= is_dir($jobs_dir) ? 'var' : 'YOK' ?> &middot; dosya: <?= count($all_files) ?> &middot; yarim kalan: <?= count($stuck_batches) ?>
         &middot; tasarruf: <?= $tls_peak_on ? 'açık' : 'kapalı' ?><?= $tls_in_peak ? ' (şu an yoğun saat)' : '' ?>
       </div>
+
+      <!-- ── CANLI ÖZET: sitenin GERÇEK durumu (batch değil) ─────────────────
+           Batch'ler geçici; gerçek "ne kaldı" burada, sitenin canlı hâlinden.
+           Bir yazı düzelince sayı kendiliğinden düşer. -->
+      <div class="card" style="border-left:3px solid var(--green)">
+        <div class="card-title" style="color:var(--green)">📊 Sitenin durumu <span style="font-size:11px;color:var(--muted);font-weight:400">(canlı — batch değil)</span></div>
+        <div id="live-summary" style="font-size:14px;color:var(--muted);padding:6px 0">
+          <span class="loader" style="display:inline-block;width:14px;height:14px;vertical-align:middle"></span> Site taranıyor…
+        </div>
+        <div id="live-actions" style="display:none;gap:10px;align-items:center;flex-wrap:wrap;margin-top:8px">
+          <button class="btn btn-primary btn-sm" id="live-redo-ph">⚡ Boş yazıları kaynaklı yazdır</button>
+          <label style="font-size:12px;color:var(--muted)">kelime
+            <select id="live-words" style="padding:3px 6px"><option>2500</option><option selected>3500</option><option>5000</option></select></label>
+          <label style="font-size:12px;color:var(--muted)">worker
+            <select id="live-workers" style="padding:3px 6px"><option selected>1</option><option>2</option><option>3</option></select></label>
+          <a class="btn btn-ghost btn-sm" href="placeholders.php">Boş yazılar →</a>
+          <a class="btn btn-ghost btn-sm" href="sources.php">Şüpheli kaynaklar →</a>
+          <button class="btn btn-ghost btn-sm" id="live-refresh">🔄 Yenile</button>
+        </div>
+        <div id="live-status" style="font-size:12px;color:var(--tls-gold);margin-top:6px;min-height:16px"></div>
+      </div>
+      <script>
+      (function(){
+        var sumEl=document.getElementById('live-summary'), actEl=document.getElementById('live-actions'),
+            stEl=document.getElementById('live-status');
+        var phItems=[];
+        function n(x){ return Number(x||0).toLocaleString('tr'); }
+        async function load(){
+          sumEl.innerHTML='<span class="loader" style="display:inline-block;width:14px;height:14px;vertical-align:middle"></span> Site taranıyor…';
+          actEl.style.display='none';
+          var ph=0, sus=0; phItems=[];
+          try{ var r=await fetch('api/placeholders.php?action=list',{credentials:'same-origin'}); var d=await r.json(); if(d&&d.ok){ phItems=d.items||[]; ph=d.count||phItems.length; } }catch(e){}
+          try{ var r2=await fetch('api/source-index.php?action=list',{credentials:'same-origin'}); var d2=await r2.json(); if(d2&&d2.ok){ sus=d2.suspect||0; } }catch(e){}
+          sumEl.innerHTML='Sitede şu an <b style="color:'+(ph>0?'#e0a800':'#7fb37f')+'">'+n(ph)+' boş yazı</b> (içerik yok)'
+            + ' &middot; <b style="color:'+(sus>0?'#e0524d':'#7fb37f')+'">'+n(sus)+' şüpheli kaynak</b>';
+          document.getElementById('live-redo-ph').style.display = ph>0 ? '' : 'none';
+          document.getElementById('live-redo-ph').textContent = '⚡ '+n(ph)+' boş yazıyı kaynaklı yazdır';
+          actEl.style.display='flex';
+        }
+        document.getElementById('live-refresh').addEventListener('click', load);
+        document.getElementById('live-redo-ph').addEventListener('click', async function(){
+          if(!phItems.length){ stEl.textContent='Boş yazı yok.'; return; }
+          var words=document.getElementById('live-words').value||'3500';
+          var workers=parseInt(document.getElementById('live-workers').value||'1');
+          if(!confirm(n(phItems.length)+' boş yazı kaynaklı yeniden yazılacak (post id ile birebir). Kaynak bulunamazsa bilgi metni/yer tutucu kalır. Devam?')) return;
+          var btn=document.getElementById('live-redo-ph'); btn.disabled=true; btn.textContent='⏳ Batch kuruluyor…';
+          try{
+            var books=phItems.map(function(it){ return {post_id:it.id, book_title:it.book||'', author_name:it.author||''}; });
+            var fd=new URLSearchParams();
+            fd.set('books', JSON.stringify(books));
+            fd.set('type','source'); fd.set('source_words',words);
+            fd.set('post_status','publish'); fd.set('rewrite','1'); fd.set('no_keep','1');
+            fd.set('workers', String(workers)); fd.set('api_provider','deepseek');
+            var r=await fetch('api/batch-create.php',{method:'POST',credentials:'same-origin',body:fd});
+            var d=await r.json();
+            if(!d||!d.ok) throw new Error(d&&d.error||'batch kurulamadı');
+            for(var w=0;w<workers;w++){ fetch('api/batch-worker.php',{method:'POST',credentials:'same-origin',body:new URLSearchParams({batch_id:d.batch_id})}).catch(function(){}); }
+            stEl.innerHTML='✓ Başladı ('+n(d.total||books.length)+' yazı). Bittikçe "🔄 Yenile" ile sayının düştüğünü görürsün.';
+            btn.textContent='✓ Başladı';
+          }catch(e){ stEl.textContent='✗ '+e.message; btn.disabled=false; btn.textContent='⚡ Boş yazıları kaynaklı yazdır'; }
+        });
+        load();
+      })();
+      </script>
+
       <?php if ($stuck_batches): ?>
-      <div class="card" style="border-left:3px solid var(--gold)">
+      <details style="margin-bottom:10px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:6px 0">&#9656; Batch detayları (ileri — normalde gerekmez): <?= count($stuck_batches) ?> yarım batch</summary>
+      <div class="card" style="border-left:3px solid var(--gold);margin-top:8px">
         <div class="card-title" style="color:var(--gold)">&#9888; Yarım Kalan Toplu Batchler</div>
         <?php if (count($stuck_batches) > 1): ?>
         <div style="margin:0 0 12px;padding:10px 12px;background:rgba(212,180,131,.08);border:1px solid rgba(212,180,131,.35);border-radius:8px;font-size:12px">
@@ -969,6 +1036,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
         </details>
         <?php endif; ?>
       </div>
+      </details>
       <script>
       var _tlsPanelBase = (function(){ var p=window.location.pathname; return p.substring(0,p.lastIndexOf('/')+1); })();
 
