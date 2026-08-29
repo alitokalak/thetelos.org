@@ -34,12 +34,17 @@ function br_label(array $b): string {
     if (($b['status'] ?? '') === 'duplicate')   return 'zaten var';
     return $b['status'] ?? '?';
 }
-/* "Sorunlu mu?" — kullanıcının asıl istediği süzme sütunu.
-   Gerçek kaynak-temelli / kaynaksız-tam yazım SORUNSUZ; gerisi ilgilenilmeli. */
+/* "Sorunlu mu?" — üç durum, kafa karışmasın:
+   • hayır       → gerçek içerik var (kaynak-temelli / kaynaksız-tam)
+   • bilgi metni → gerçek ama kaynak-temelli değil (Wikipedia/Wikidata/Claude);
+                   içerik VAR, sorun değil ama istersen sonra kaynaktan zenginleştir
+   • EVET        → gerçekten ele alınmalı: yer tutucu (boş) / eski korundu / hata */
 function br_problem(string $label): string {
-    $ok = ['kaynak-temelli', 'kaynaksız', 'yazıldı', 'zaten var'];
-    foreach ($ok as $o) if (strpos($label, $o) === 0) return 'hayır';
-    return 'EVET';
+    foreach (['kaynak-temelli', 'kaynaksız', 'yazıldı', 'zaten var'] as $o)
+        if (strpos($label, $o) === 0) return 'hayır';
+    foreach (['bilgi-metni', 'claude-bilgi'] as $o)
+        if (strpos($label, $o) === 0) return 'bilgi metni (içerik var)';
+    return 'EVET';   // yer-tutucu / eski-korundu / hata
 }
 
 $fname = 'sonuc-' . $batch_id . '.csv';
