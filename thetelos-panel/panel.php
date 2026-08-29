@@ -777,6 +777,27 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <?php if ($stuck_batches): ?>
       <div class="card" style="border-left:3px solid var(--gold)">
         <div class="card-title" style="color:var(--gold)">&#9888; Yarım Kalan Toplu Batchler</div>
+        <?php if (count($stuck_batches) > 1): ?>
+        <div style="margin:0 0 12px;padding:10px 12px;background:rgba(212,180,131,.08);border:1px solid rgba(212,180,131,.35);border-radius:8px;font-size:12px">
+          <div style="color:var(--gold);font-weight:600;margin-bottom:6px">📋 <?= count($stuck_batches) ?> ayrı yarım batch var — hangisine baktığını karıştırma:</div>
+          <?php foreach ($stuck_batches as $ii => $bb):
+            $bt2  = ($bb['_cnt']['done'] ?? 0) + ($bb['_cnt']['error'] ?? 0);
+            $tt2  = $bb['_total'] ?? 0;
+            $wh2  = !empty($bb['created_at']) ? date('d.m H:i', (int)$bb['created_at']) : '';
+            $idsh = htmlspecialchars(substr((string)($bb['id'] ?? ''), -8));
+            $ago2 = !empty($bb['last_activity']) ? (time() - (int)$bb['last_activity']) : null;
+            $agotx= $ago2 === null ? '' : ($ago2 < 3600 ? round($ago2/60).' dk' : round($ago2/3600).' sa') . ' önce';
+          ?>
+          <div style="display:flex;gap:10px;align-items:center;padding:3px 0;<?= $ii>0?'border-top:1px solid rgba(255,255,255,.05)':'' ?>">
+            <span style="flex:0 0 auto;<?= $ii===0?'color:var(--gold);font-weight:600':'color:var(--muted)' ?>"><?= $ii===0 ? '● en yeni' : '○' ?></span>
+            <span style="flex:0 0 88px;font-family:monospace;color:#888">#<?= $idsh ?></span>
+            <span style="flex:0 0 auto;color:#aaa"><?= $wh2 ?> başladı</span>
+            <span style="flex:1;text-align:right;color:#ddd"><b><?= number_format($bt2) ?></b>/<?= number_format($tt2) ?> işlendi<?= $agotx ? " · son ilerleme $agotx" : '' ?></span>
+          </div>
+          <?php endforeach; ?>
+          <div style="color:var(--muted);margin-top:6px;font-size:11px">Öneri: BİRİNİ "Devam Et" ile bitir, ötekileri "Sil". Aynı listeyi tekrar başlatmak yeni batch yaratır — kafa karışmasının sebebi bu.</div>
+        </div>
+        <?php endif; ?>
         <?php
         /* Tek kart render eden yardımcı */
         $newest_total = $stuck_batches[0]['_total'] ?? 0;
