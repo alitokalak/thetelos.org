@@ -359,15 +359,22 @@ function bw_placeholder_html($book, $author) {
    Ne tam metin ne Wikipedia bulunduğunda, yer tutucu koymadan ÖNCE çağrılır.
    Claude eseri GÜVENİLİR biliyorsa olgusal bir tanıtım döner; bilmiyorsa ''.
    UYDURMA YOK: model emin değilse UNKNOWN der, biz de boş döneriz.
+   MODEL: KALİTELİ (Sonnet) — Haiku obscure eserleri "bilmiyorum" (UNKNOWN)
+   diyordu, oysa Sonnet çoğunu biliyor; son çare az sayıda kitapta çalıştığı
+   için maliyet sınırlı, kazanç büyük. config'de ANTHROPIC_QUALITY_MODEL ile
+   değiştirilebilir.
+   $why (by-ref): neden boş döndüğünü GÖRÜNÜR yapar (anahtar yok / UNKNOWN / hata)
    @return string  HTML içerik (bulundu) ya da '' (bilmiyor/kapalı/hata). */
-function bw_claude_last_resort($book, $author, $batch_file, $idx) {
+function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '') {
     require_once __DIR__ . '/_anthropic.php';
-    if (!tls_anthropic_ready()) return '';
+    if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
     $r = tls_claude_overview($book, $author, [
-        'model'   => tls_claude_fast_model(),   // ucuz: haiku
+        'model'   => tls_claude_quality_model(),   // GÜÇLÜ: Sonnet (bilgi kapsamı geniş)
         'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
     ]);
-    if (empty($r['ok']) || !empty($r['unknown']) || trim((string) ($r['md'] ?? '')) === '') return '';
+    if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
+    if (empty($r['ok']) || trim((string) ($r['md'] ?? '')) === '') { $why = 'Claude hata/boş: ' . mb_substr((string)($r['error'] ?? 'bilinmiyor'), 0, 80); return ''; }
+    $why = '';
     return bw_clean_content($r['md']);
 }
 
@@ -859,22 +866,24 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             ]);
             if (!empty($ir['insufficient'])) {
                 // SON ÇARE: Claude eseri güvenilir biliyorsa tanıtım metni yazsın.
-                $cl = bw_claude_last_resort($book, $author, $batch_file, $idx);
+                $cl_why = '';
+                $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why);
                 if ($cl !== '') {
                     $content = $cl;
                     $gen_method = 'claude-bilgi';   // Claude'un bilgisinden (kaynak yok) — CSV'de ayrı görünür
                     bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'kaynak yok → Claude bilgi metni', $update_pid, $rewrite ? 'rewrite' : 'create');
                 } else {
-                    // Ne tam metin ne Wikipedia ne de Claude → UYDURMA YOK.
+                    // Ne tam metin ne Wikipedia ne de Claude → UYDURMA YOK. Sebebi GÖRÜNÜR yaz.
+                    $ph_reason = 'kaynak yok · ' . ($cl_why ?: $sr_trace);
                     if ($rewrite && $update_pid) {
                         $ph = bw_placeholder_html($book, $author);
                         [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
-                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', 'kaynak yok · ' . $sr_trace, $update_pid, 'rewrite');
-                        bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu (yayında)','placeholder'=>1,'method'=>'yer-tutucu']);
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', $ph_reason, $update_pid, 'rewrite');
+                        bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu · '.($cl_why?:'—'),'placeholder'=>1,'method'=>'yer-tutucu']);
                         return;
                     }
-                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', 'kaynak yok · ' . $sr_trace, 0, 'create');
-                    bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: tam metin ve Wikipedia bulunamadı']);
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', $ph_reason, 0, 'create');
+                    bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: tam metin/Wikipedia yok · '.($cl_why?:'—')]);
                     return;
                 }
             } else
