@@ -273,8 +273,8 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
           var chunk=refs.slice(i,i+CH);
           stat.textContent='İşleniyor… '+done+'/'+refs.length;
           try{
-            var body=new URLSearchParams({action:'deai', items:JSON.stringify(chunk), model:model});
-            var r=await fetch('api/content-audit.php',{method:'POST',credentials:'same-origin',body:body});
+            var body=new URLSearchParams({action:'run', items:JSON.stringify(chunk), model:model});
+            var r=await fetch('api/deai.php',{method:'POST',credentials:'same-origin',body:body});
             var d=await r.json();
             if(i===0){ line('· sunucu: HTTP '+r.status+' · v='+(d&&d.v||'?')+' · aldığı='+(d&&d.got)+' · yanıt='+JSON.stringify(d).slice(0,200)); }
             if(d&&d.ok){
@@ -302,7 +302,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
         undoB.disabled=true; stat.textContent='Geri alınıyor…';
         try{
           var body=new URLSearchParams({action:'undo', ids:doneIds.join(',')});
-          var r=await fetch('api/content-audit.php',{method:'POST',credentials:'same-origin',body:body});
+          var r=await fetch('api/deai.php',{method:'POST',credentials:'same-origin',body:body});
           var d=await r.json();
           stat.textContent = (d&&d.ok) ? ('Geri alındı: '+d.restored+' yazı.') : 'Geri alma hatası.';
           if(d&&d.ok){ doneIds=[]; undoB.style.display='none'; }
