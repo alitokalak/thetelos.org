@@ -3,6 +3,27 @@ session_start();
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/_version.php';
 if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
+
+/* ── AÇILIŞTA AKTİF BATCH VARSA DOĞRUDAN KUYRUĞA ──────────────────────────
+   Kullanıcı: kuyrukta yarım/aktif bir batch varken paneli açınca "listeyi aç"
+   demeden AYNEN kuyruk ekranını görmek istiyor (zaten batch varken yeni içerik
+   yazdırmıyor). Bu yüzden mode BELİRTİLMEMİŞSE ve bekleyen/işlenen kitabı olan
+   bir batch varsa → ?mode=queue'ya yönlendir. İçerik Üret'e ulaşmak için nav
+   linki ?mode=single verir (aşağıda), böylece kilitlenme olmaz. */
+if (!isset($_GET['mode'])) {
+    $tls_jobs = __DIR__ . '/jobs';
+    if (!is_dir($tls_jobs)) $tls_jobs = dirname(__DIR__) . '/jobs';
+    $tls_active = false;
+    foreach (glob("$tls_jobs/batch_*.json") ?: [] as $tls_f) {
+        $tls_d = json_decode(@file_get_contents($tls_f), true);
+        if (!$tls_d || empty($tls_d['books']) || !is_array($tls_d['books'])) continue;
+        foreach ($tls_d['books'] as $tls_bk) {
+            $tls_s = $tls_bk['status'] ?? 'pending';
+            if ($tls_s === 'pending' || $tls_s === 'processing') { $tls_active = true; break 2; }
+        }
+    }
+    if ($tls_active) { header('Location: panel.php?mode=queue'); exit; }
+}
 ?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -20,7 +41,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
   <aside class="tls-sidebar">
     <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
     <nav class="tls-nav">
-      <a href="panel.php" <?= !in_array($_GET['mode']??'', ['queue','cleaner'], true) ? 'class="active"' : '' ?>><span class="ico">✍</span> İçerik Üret</a>
+      <a href="panel.php?mode=single" <?= !in_array($_GET['mode']??'', ['queue','cleaner'], true) ? 'class="active"' : '' ?>><span class="ico">✍</span> İçerik Üret</a>
       <a href="panel.php?mode=queue" <?= ($_GET['mode']??'') === 'queue' ? 'class="active"' : '' ?>><span class="ico">📋</span> Kuyruk</a>
       <a href="panel.php?mode=cleaner" <?= ($_GET['mode']??'') === 'cleaner' ? 'class="active"' : '' ?>><span class="ico">🧹</span> Liste Temizle</a>
       <a href="placeholders.php"><span class="ico">⏳</span> Yer Tutucular</a>
