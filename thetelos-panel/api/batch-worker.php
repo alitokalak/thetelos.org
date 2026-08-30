@@ -1036,7 +1036,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $anti_meta = "\n\nWrite only about the work, as a human reference author. "
           . "Never mention yourself, an AI, or your knowledge/limits, and never "
           . "address the reader (no 'As an AI', 'I cannot', 'A note on the limits…'). "
-          . "Omit what you don't know silently.";
+          . "Omit what you don't know silently. NEVER invent, translate, paraphrase, "
+          . "or reconstruct a quotation from the work — do NOT include any direct "
+          . "quote or blockquote unless it is copied word-for-word from source text "
+          . "you were actually given; you were not given the work's text here, so use "
+          . "NO quotations at all.";
 
         $pr = $template
             . "\n\nBook: {$book}\nAuthor: {$author}"
