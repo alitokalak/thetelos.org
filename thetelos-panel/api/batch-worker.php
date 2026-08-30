@@ -1031,21 +1031,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
         $tail = $accumulated !== '' ? mb_substr($accumulated, -700) : '';
 
-        // ZORUNLU ANTI-META KURALI (stored prompt'ta olsa da olmasa da her zaman
-        // eklenir): metin ansiklopedi/eleştiri yazısı gibi olmalı; yazar KENDİNDEN,
-        // AI'dan, bilgisinden/sınırlarından ASLA bahsetmez, okuyucuya hitap etmez.
-        // "As an AI / I cannot / I do not have knowledge / A note on the limits /
-        // to the best of my knowledge" gibi ifadeler KESİNLİKLE yasak. Bilmediğin
-        // bir şeyi SESSİZCE atla; not/uyarı/itiraf yazma.
-        $anti_meta =
-            "\n\nABSOLUTE OUTPUT RULE — write as a published encyclopedia/critical "
-          . "article about the WORK ONLY. NEVER write about yourself, an AI, your "
-          . "knowledge, confidence, or limits, and NEVER address the reader. Do NOT "
-          . "output any note/caveat/disclaimer such as 'As an AI', 'I cannot', 'I do "
-          . "not have (secure) knowledge', 'A note on the limits of what I can say', "
-          . "'to the best of my knowledge', 'I have deliberately not…'. If you don't "
-          . "know a specific, OMIT it silently — no meta-commentary. The text must "
-          . "read as if written by a human reference author, never by an AI.";
+        // ZORUNLU ANTI-META (kısa): AI hitabı/itirafı asla. Uzun tutmaya gerek yok
+        // — çıktı filtresi (bw_clean_content) zaten yedek. Az token, net kural.
+        $anti_meta = "\n\nWrite only about the work, as a human reference author. "
+          . "Never mention yourself, an AI, or your knowledge/limits, and never "
+          . "address the reader (no 'As an AI', 'I cannot', 'A note on the limits…'). "
+          . "Omit what you don't know silently.";
 
         $pr = $template
             . "\n\nBook: {$book}\nAuthor: {$author}"
