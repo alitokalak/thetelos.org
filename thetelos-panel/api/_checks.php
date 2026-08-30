@@ -399,12 +399,36 @@ function ca_ai_meta_patterns() {
     ];
 }
 
-/** Verilen düz metin AI meta/itiraf içeriyor mu? (paragraf düzeyi onarım için) */
+/** Verilen düz metin AI meta/itiraf içeriyor mu? (geniş tespit) */
 function ca_ai_meta_line($text) {
     $text = (string) $text;
     if (trim($text) === '') return false;
     foreach (ca_ai_meta_patterns() as $p) if (preg_match($p, $text)) return true;
     return false;
+}
+
+/** Bu paragraf, tümüyle bir AI İTİRAF BLOĞU mu? (mekanik silme İÇİN — akışı
+   bozmamak adına TUTUCU). Yalnız paragraf, güçlü bir itiraf açılışıyla
+   BAŞLIYORSA true döner (ör. "A note on the limits…", "I can reliably
+   identify…", "I do not have secure knowledge…"). Meta cümle paragrafın
+   ortasındaysa true DÖNMEZ — o incelikli durumu AI editör hallesin. */
+function ca_ai_meta_block($text) {
+    $t = trim(preg_replace('/\s+/u', ' ', (string) $text));
+    if ($t === '') return false;
+    $t = ltrim($t, "*_# \t");                         // baştaki md vurgu/başlık işaretleri
+    $openers = '/^('
+        . 'a note (?:on|about) (?:the )?(?:limits|extent|what)|'
+        . 'to the best of my knowledge|'
+        . 'what i can (?:reliably |securely )?(?:say|state|tell)|'
+        . 'i can(?:not|\'t)? (?:reliably |securely )?(?:identify|say|confirm|verify|provide|supply|tell|attest|vouch)|'
+        . 'i (?:do not|don\'?t) have (?:secure |reliable |detailed |direct |access to )?(?:knowledge|information|access)|'
+        . 'i have (?:deliberately|intentionally) |'
+        . 'i (?:am|\'m) not (?:able|certain|confident|sure)|'
+        . 'as an ai|as a language model|'
+        . 'bir yapay zeka|yapay zeka olarak|bilgim'
+        . ')\b/i';
+    // Kısa (<600 karakter) ve itiraf açılışlı paragraf → tam bir itiraf bloğu say.
+    return (mb_strlen($t) < 600) && (bool) preg_match($openers, $t);
 }
 
 function ca_check_meta_talk($html) {

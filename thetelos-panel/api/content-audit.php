@@ -599,10 +599,10 @@ function ca_repair($html, $mode = 'severe') {
         }
 
         if (ca_leak_line($bare)) return '';                       // süreç satırı → sil
-        // AI birinci-şahıs itiraf/hitap paragrafı ("A note on the limits of what
-        // I can say…", "I do not have secure knowledge…") → HER modda sil; bunlar
-        // yazının AI olduğunu ele veriyor, asla yayında kalmamalı.
-        if (ca_ai_meta_line($bare)) return '';
+        // AI itiraf BLOĞU (paragraf tümüyle itiraf açılışlı) → sil. Akışı bozmamak
+        // için TUTUCU: meta cümle paragraf ortasındaysa dokunmaz (onu AI editör
+        // halleder). "A note on the limits…", "I do not have secure knowledge…" gibi.
+        if (ca_ai_meta_block($bare)) return '';
 
         if ($all) {
             if (preg_match('/^(#{1,6})\s+(.+)$/u', $bare, $h)) {  // başlık kalıntısı
@@ -694,7 +694,7 @@ function ca_repair_safe($html) {
     // AI birinci-şahıs itiraf/hitap bloklarını (p/li/blockquote) at — kayıpsız
     // sayılır (okuyucuya değil, AI'nın kendine ait meta-konuşma).
     $out = preg_replace_callback('#<(p|li|blockquote)\b[^>]*>(.*?)</\1>#is', function ($m) {
-        return ca_ai_meta_line(trim(wp_strip_all_tags($m[2]))) ? '' : $m[0];
+        return ca_ai_meta_block(trim(wp_strip_all_tags($m[2]))) ? '' : $m[0];
     }, $out);
     $out = ca_clean_headings($out);
     $out = ca_strip_orphan_headings($out);
@@ -1646,6 +1646,92 @@ if ($action === 'fix') {
         $fixed++;
     }
     echo json_encode(['ok' => true, 'fixed' => $fixed, 'skipped' => $skipped]);
+    exit;
+}
+
+/* ── AI DENETİMLİ TEMİZLİK (Claude yazılarındaki "AI itirafı/hitabı") ────────
+   Kaba mekanik silme AKIŞI bozabildiği için: bir editör-AI, YALNIZ yazının
+   kendisi/AI'ı hakkında konuşan ya da okuyucuya hitap eden cümleleri çıkarır,
+   gerisini AYNEN korur, gereken en küçük dikişi atar. Yeniden yazmaz, kaynak
+   aramaz. Yedek alınır → mevcut 'undo' (ids ile) geri getirir. */
+function ca_deai_edit($id, $model = '') {
+    require_once __DIR__ . '/_anthropic.php';
+    $p = get_post($id);
+    if (!$p || $p->post_type === 'revision') return ['ok'=>false, 'error'=>'yazı yok'];
+    $old = (string) $p->post_content;
+    if (trim($old) === '') return ['ok'=>false, 'skip'=>true, 'error'=>'boş'];
+    // Zaten temizse API harcama.
+    if (ca_check_meta_talk($old) === '') return ['ok'=>true, 'skip'=>true, 'clean'=>true];
+    if (!tls_anthropic_ready())          return ['ok'=>false, 'error'=>'ANTHROPIC_KEY yok'];
+
+    $sys = "You are a meticulous copy editor for a published book-reference website. "
+         . "You are given the HTML body of one article. Your ONLY task: DELETE every "
+         . "sentence or passage where the writer talks about THEMSELVES, their own "
+         . "knowledge, confidence or limits, or ADDRESSES the reader as an author/AI — "
+         . "for example: 'A note on the limits of what I can say', 'I can reliably "
+         . "identify…', 'I do not have secure knowledge…', 'I have deliberately not "
+         . "supplied…', 'as an AI', 'I cannot…', 'to the best of my knowledge'. Also "
+         . "delete a heading or paragraph that exists ONLY to host such text.\n\n"
+         . "STRICT RULES:\n"
+         . "1. Keep ALL other text EXACTLY as written — do NOT reword, summarize, "
+         . "translate, reorder, add, or 'improve' anything.\n"
+         . "2. Preserve the HTML tags and structure of the kept text verbatim.\n"
+         . "3. If a deletion leaves a rough seam, make the SMALLEST possible change to "
+         . "the surrounding words so it still reads naturally — nothing more.\n"
+         . "4. Never add new facts, opinions, or notes of your own.\n"
+         . "Output ONLY the cleaned HTML body, nothing else (no code fences, no "
+         . "commentary).";
+    $user = "Clean this article body:\n\n" . $old;
+
+    $otok = (int) round(mb_strlen($old) / 3);
+    $mtok = min(16000, max(2000, (int) round($otok * 1.3)));
+    $r = tls_claude($sys, $user, [
+        'model'       => $model ?: tls_claude_quality_model(),
+        'max_tokens'  => $mtok,
+        'temperature' => 0.0,
+        'timeout'     => 300,
+        'retries'     => 2,
+    ]);
+    if (empty($r['ok'])) return ['ok'=>false, 'error'=>$r['error'] ?? 'AI hata'];
+
+    $new = trim((string) $r['text']);
+    $new = preg_replace('/^```[a-z]*\s*/i', '', $new);   // olası kod-çiti soy
+    $new = preg_replace('/\s*```$/', '', $new);
+    $new = trim($new);
+    if (function_exists('tls_strip_ai_meta_html')) $new = tls_strip_ai_meta_html($new);   // son kalkan
+
+    // DOĞRULAMA — şüpheli/bozuk sonucu YAZMA (akış/uzunluk koruması).
+    if ($new === '')                        return ['ok'=>false, 'error'=>'AI boş döndü'];
+    if (ca_check_refusal($new) !== '')      return ['ok'=>false, 'error'=>'AI reddetti'];
+    if (ca_check_meta_talk($new) !== '')    return ['ok'=>false, 'error'=>'meta hâlâ var (yazılmadı)'];
+    $ol = mb_strlen(wp_strip_all_tags($old));
+    $nl = mb_strlen(wp_strip_all_tags($new));
+    if ($nl < $ol * 0.5 || $nl > $ol * 1.1) return ['ok'=>false, 'error'=>"uzunluk şüpheli ($ol→$nl) — yazılmadı"];
+    if ($new === $old)                      return ['ok'=>true, 'skip'=>true, 'clean'=>true];
+
+    ca_backup_before($id, $old);
+    wp_update_post(['ID'=>$id, 'post_content'=>$new]);
+    do_action('litespeed_purge_post', $id);
+    return ['ok'=>true, 'changed'=>true, 'words'=>str_word_count(wp_strip_all_tags($new))];
+}
+
+if ($action === 'deai') {
+    require_once __DIR__ . '/_anthropic.php';
+    $ids = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
+    $ids = array_slice(array_values(array_unique($ids)), 0, 25);   // güvenlik: tur başına en çok 25
+    $mreq = trim((string)($_POST['model'] ?? ''));
+    // UI 'opus' → en iyi model; boş → kaliteli (Sonnet) varsayılan.
+    $model = ($mreq === 'opus') ? tls_claude_best_model() : ($mreq !== '' ? $mreq : '');
+    $results = []; $changed = 0; $clean = 0; $failed = 0;
+    foreach ($ids as $id) {
+        $res = ca_deai_edit($id, $model);
+        $row = ['id'=>$id, 'title'=>get_the_title($id) ?: ('#'.$id)];
+        if (!empty($res['changed']))      { $changed++; $row['status']='temizlendi'; $row['words']=$res['words']??0; }
+        elseif (!empty($res['clean']))    { $clean++;   $row['status']='zaten temiz'; }
+        else                              { $failed++;  $row['status']='atlandı'; $row['error']=$res['error']??'?'; }
+        $results[] = $row;
+    }
+    echo json_encode(['ok'=>true, 'results'=>$results, 'changed'=>$changed, 'clean'=>$clean, 'failed'=>$failed]);
     exit;
 }
 
