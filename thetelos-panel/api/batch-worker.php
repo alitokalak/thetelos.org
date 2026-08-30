@@ -812,7 +812,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_touch_hb($batch_file, $idx);
         bw_set_stage($batch_file, $idx, 'analiz için kaynak metni aranıyor…');
         $adg = proto_generate($search_book, $author, [
-            'words'    => 2500,                 // sadık özet (analizin dayanağı)
+            'words'    => 1500,                 // sadık özet (analizin dayanağı) — hız için
+                                                // hafif okuma (8 parça); grounding yeterli
+
             'url'      => $eff_src_url,
             'text'     => $eff_src_text,
             'provider' => 'auto',
