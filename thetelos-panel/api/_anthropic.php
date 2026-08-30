@@ -266,9 +266,15 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "specific, OMIT it — do not guess. It is fine to write at the level you "
       . "actually know (e.g. 'a collection of Chesterton's essays from this period, "
       . "characteristically concerned with X') without fabricating specifics.\n"
-      . "2. Be honest about the grain of your knowledge: if you know the author, "
-      . "type, and context but not the exact contents, write about those and say so "
-      . "naturally, rather than inventing a detailed summary.\n"
+      . "2. Write the overview as a clean published encyclopedia/reference entry "
+      . "about the BOOK ONLY. NEVER write about yourself, your knowledge, your "
+      . "confidence, your limits, or what you can/cannot say/identify/supply. Do "
+      . "NOT address the reader and do NOT add any note, caveat, or disclaimer "
+      . "about the grain of your knowledge (e.g. 'A note on the limits of what I "
+      . "can say', 'I can reliably identify…', 'I do not have secure knowledge of…', "
+      . "'I have deliberately not supplied…'). If you don't know a specific, just "
+      . "OMIT it SILENTLY — no meta-commentary about the omission whatsoever. The "
+      . "text must read as if written by a reference work, never by an AI.\n"
       . "3. Output EXACTLY the single word UNKNOWN — nothing else — ONLY when you "
       . "genuinely cannot identify this work at all: you can't tell what it is, you "
       . "can't distinguish it from a different work with a similar name, or you "
@@ -291,9 +297,11 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "Target length: if you reliably know this work and its author in depth, "
       . "write a full overview of about $cap_lo–$cap words, and do NOT exceed $cap "
       . "words under any circumstances. If you know it only a little (e.g. the "
-      . "author and roughly what kind of work it is), write a short honest note "
+      . "author and roughly what kind of work it is), write a short factual entry "
       . "about just that much. Length must track how much you actually know, capped "
-      . "at $cap words.\n\n"
+      . "at $cap words. Do NOT add any note about your own knowledge or its limits, "
+      . "and do NOT talk about yourself or what you can/cannot say — write only "
+      . "about the book, like an encyclopedia entry.\n\n"
       . "Cover what you actually know — as much as applies and you are sure of: "
       . "what kind of work it is, its author and their historical/intellectual "
       . "context, its central subject or argument or the author's characteristic "
@@ -339,7 +347,50 @@ function tls_claude_overview($book, $author, $opts = []) {
     if (str_word_count(strip_tags($md)) < 70) {
         return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
     }
+    // SAVUNMA: prompt'a rağmen model bazen kendi bilgi sınırları hakkında bir
+    // "not"/itiraf paragrafı ekleyebiliyor (ör. "A note on the limits of what I
+    // can say…", "I can reliably identify…", "I do not have secure knowledge…").
+    // Bu meta-konuşma YAYINA ÇIKMAMALI — burada ayıklanır.
+    $md = tls_strip_ai_meta($md);
+    if (str_word_count(strip_tags($md)) < 70) {
+        return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
+    }
     return ['ok' => true, 'unknown' => false, 'md' => $md, 'usage' => $r['usage'] ?? []];
+}
+
+/** AI meta-konuşmasını / kendi bilgi sınırı itiraflarını metinden ayıkla.
+   Yalnız bu KALIPLARI içeren PARAGRAFLARI (ya da o başlık altındaki bölümü)
+   siler; gerçek içeriğe dokunmaz. Yayına AI itirafı sızmasın diye son kalkan. */
+function tls_strip_ai_meta($md) {
+    $md = (string) $md;
+    if (trim($md) === '') return '';
+    // Birinci tekil şahıs + bilgi/sınır/söyleme kalıpları (İng. + biraz TR).
+    $pat = '/\b('
+         . 'a note on (the )?limits|note on what i can|'
+         . 'i can(not|\'t)? (reliably )?(identify|say|confirm|verify|provide|supply|tell)|'
+         . 'i do not have (secure |reliable |access to )?(knowledge|information)|'
+         . 'i don\'?t have (secure |reliable |access to )?(knowledge|information)|'
+         . 'i have (deliberately|intentionally) (not |omitted|left out)|'
+         . 'i am not (able|certain|confident)|i\'?m not (able|certain|confident)|'
+         . 'as an ai|language model|my (training|knowledge) (data|cutoff)|'
+         . 'bilgim(in)? (yok|sınırlı)|kesin (olarak )?bil(e|mi)|emin değilim|'
+         . 'yapay zeka olarak'
+         . ')\b/i';
+    // Paragraflara böl (boş satırla), meta içerenleri at.
+    $parts = preg_split('/\n{2,}/', $md);
+    $keep  = [];
+    foreach ($parts as $p) {
+        $t = trim($p);
+        if ($t === '') continue;
+        // Yalnız başlık satırıysa (##) koru.
+        $body = preg_replace('/^#{1,6}\s+.*$/m', '', $t);
+        if (preg_match($pat, $body)) continue;   // meta paragrafı → at
+        $keep[] = $t;
+    }
+    $out = trim(implode("\n\n", $keep));
+    // Öksüz kalan son başlık(lar)ı (altındaki tek içeriği atılmışsa) temizle.
+    $out = preg_replace('/\n{2,}#{1,6}\s+[^\n]+\s*$/', '', $out);
+    return trim($out);
 }
 
 } // TLS_ANTHROPIC_LOADED

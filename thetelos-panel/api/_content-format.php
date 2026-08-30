@@ -128,6 +128,11 @@ function bw_clean_content($text) {
     // Tekrarlanan bölümleri at (çok kademeli üretim kopyaları).
     $text = bw_dedup_sections($text);
 
+    // AI META / kendi bilgi-sınırı itirafı paragraflarını at (ör. "A note on the
+    // limits of what I can say…"). HER üretici için son kalkan — yayına sızmasın.
+    if (!function_exists('tls_strip_ai_meta')) { @require_once __DIR__ . '/_anthropic.php'; }
+    if (function_exists('tls_strip_ai_meta')) { $text = tls_strip_ai_meta($text); }
+
     $text = preg_replace('/\n{4,}/', "\n\n\n", $text);
     return trim($text);
 }
