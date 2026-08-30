@@ -371,17 +371,45 @@ function ca_check_dup_chapters($html) {
  * olanlar. Alıntılar hariç tutulur: bir mektup ya da diyalog alıntısında
  * "per your request" geçebilir, bu kitabın sesidir.
  */
-function ca_check_meta_talk($html) {
-    $text = wp_strip_all_tags(ca_strip_quotes($html));
-    $hard = [
+/* AI BİRİNCİ-ŞAHIS İTİRAF/HİTAP kalıpları — yazının AI tarafından yazıldığını
+   ele veren, okuyucuya ASLA görünmemesi gereken ifadeler. Örn: "A note on the
+   limits of what I can say: I can reliably identify… I do not have secure
+   knowledge… I have deliberately not supplied…". Hem tespit (ca_check_meta_talk)
+   hem onarım (ca_repair) tek kaynak buradan kullanır. */
+function ca_ai_meta_patterns() {
+    return [
         '/\bas an? (?:ai|language model|assistant)\b/i',
         '/\bi hope this (?:helps|summary)\b/i',
         '/\blet me know if you\b/i',
         '/\bnote to (?:the )?(?:editor|reader|user)\b/i',
         '/\bword count\s*[:=]/i',
         '/\[(?:note|continued|to be continued)\b/i',
+        '/\ba note (?:on|about) (?:the )?(?:limits|extent|what)\b/i',
+        '/\bwhat i can (?:reliably |securely )?(?:say|state|tell)\b/i',
+        '/\bi can(?:not|\'t)? (?:reliably |securely )?(?:identify|say|confirm|verify|provide|supply|tell|attest|vouch)\b/i',
+        '/\bi (?:do not|don\'?t) have (?:secure |reliable |detailed |direct |access to )?(?:knowledge|information|access)\b/i',
+        '/\bi have (?:deliberately|intentionally) (?:not|omitted|left out|refrained|avoided)\b/i',
+        '/\bi have (?:not |deliberately )?(?:supplied|invented|fabricated|guessed)\b/i',
+        '/\bi (?:am|\'m) not (?:able|certain|confident|sure)\b/i',
+        '/\bto the best of my knowledge\b/i',
+        '/\bi (?:would|should) not (?:invent|fabricate|guess|speculate)\b/i',
+        '/\byapay zeka olarak\b/iu',
+        '/\bbilgim(?:in)? (?:yok|sınırlı|dahilinde)\b/iu',
+        '/\bemin değilim\b/iu',
     ];
-    foreach ($hard as $p) if (preg_match($p, $text, $m)) return ca_context($text, $m[0]);
+}
+
+/** Verilen düz metin AI meta/itiraf içeriyor mu? (paragraf düzeyi onarım için) */
+function ca_ai_meta_line($text) {
+    $text = (string) $text;
+    if (trim($text) === '') return false;
+    foreach (ca_ai_meta_patterns() as $p) if (preg_match($p, $text)) return true;
+    return false;
+}
+
+function ca_check_meta_talk($html) {
+    $text = wp_strip_all_tags(ca_strip_quotes($html));
+    foreach (ca_ai_meta_patterns() as $p) if (preg_match($p, $text, $m)) return ca_context($text, $m[0]);
     return '';
 }
 

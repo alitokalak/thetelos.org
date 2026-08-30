@@ -461,6 +461,9 @@ function ca_repair_too_lossy($old, $new) {
     // Prompt dökümünün kesilmesi KASITLI ve büyük bir silmedir; eşik burada
     // devreye girerse en ağır kaza onarılamaz hale gelir.
     if (ca_check_prompt_dump($old) !== '' && ca_check_prompt_dump($new) === '') return false;
+    // AI birinci-şahıs itiraf paragrafının silinmesi de KASITLI ve gereklidir:
+    // eski gövdede vardı, yenide yoksa — ne kadar silinmiş olursa olsun izin ver.
+    if (ca_check_meta_talk($old) !== '' && ca_check_meta_talk($new) === '') return false;
     $o = mb_strlen(wp_strip_all_tags($old));
     $n = mb_strlen(wp_strip_all_tags($new));
     return (($o - $n) > 600) && ($n < $o * 0.9);
@@ -596,6 +599,10 @@ function ca_repair($html, $mode = 'severe') {
         }
 
         if (ca_leak_line($bare)) return '';                       // süreç satırı → sil
+        // AI birinci-şahıs itiraf/hitap paragrafı ("A note on the limits of what
+        // I can say…", "I do not have secure knowledge…") → HER modda sil; bunlar
+        // yazının AI olduğunu ele veriyor, asla yayında kalmamalı.
+        if (ca_ai_meta_line($bare)) return '';
 
         if ($all) {
             if (preg_match('/^(#{1,6})\s+(.+)$/u', $bare, $h)) {  // başlık kalıntısı
@@ -684,6 +691,11 @@ function ca_repair_safe($html) {
     if (ca_check_refusal($html) !== '') return $html;
     $out = preg_replace(ca_marker_regex(), '', (string) $html);
     if ($out === null) return (string) $html;
+    // AI birinci-şahıs itiraf/hitap bloklarını (p/li/blockquote) at — kayıpsız
+    // sayılır (okuyucuya değil, AI'nın kendine ait meta-konuşma).
+    $out = preg_replace_callback('#<(p|li|blockquote)\b[^>]*>(.*?)</\1>#is', function ($m) {
+        return ca_ai_meta_line(trim(wp_strip_all_tags($m[2]))) ? '' : $m[0];
+    }, $out);
     $out = ca_clean_headings($out);
     $out = ca_strip_orphan_headings($out);
     $out = preg_replace('/<p[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>\s*/i', '', $out);

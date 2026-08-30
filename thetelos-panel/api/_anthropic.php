@@ -358,39 +358,70 @@ function tls_claude_overview($book, $author, $opts = []) {
     return ['ok' => true, 'unknown' => false, 'md' => $md, 'usage' => $r['usage'] ?? []];
 }
 
-/** AI meta-konuşmasını / kendi bilgi sınırı itiraflarını metinden ayıkla.
-   Yalnız bu KALIPLARI içeren PARAGRAFLARI (ya da o başlık altındaki bölümü)
-   siler; gerçek içeriğe dokunmaz. Yayına AI itirafı sızmasın diye son kalkan. */
+/** AI meta/itiraf kalıp regex'i (İng. + biraz TR). Metin ve HTML ayıklayıcıları
+   ortak kullanır — tek yerde tanımlı olsun. Birinci-şahıs "bilgim/sınırım"
+   itirafları + "as an AI / language model" gibi ifadeler. */
+function tls_ai_meta_pattern() {
+    return '/\b('
+         . 'a note on (the )?limits|note on what i can|note on the extent|'
+         . 'i can(not|\'t)? (reliably |securely )?(identify|say|confirm|verify|provide|supply|tell|attest|vouch)|'
+         . 'i do not have (secure |reliable |detailed |access to |direct )?(knowledge|information|access)|'
+         . 'i don\'?t have (secure |reliable |detailed |access to |direct )?(knowledge|information|access)|'
+         . 'i have (deliberately|intentionally) (not |omitted|left out|refrained|avoided)|'
+         . 'i have (not |deliberately )?(supplied|invented|fabricated|guessed)|'
+         . 'i am not (able|certain|confident|sure)|i\'?m not (able|certain|confident|sure)|'
+         . 'i cannot in good|to the best of my knowledge|'
+         . 'what i can (reliably |securely )?(say|state|tell)|'
+         . 'as an ai|as a language model|language model|my (training|knowledge) (data|cutoff)|'
+         . 'i (would|should) not (invent|fabricate|guess|speculate)|'
+         . 'bilgim(in)? (yok|sınırlı|dahilinde)|kesin (olarak )?bil(e|mi)|emin değilim|'
+         . 'yapay zeka olarak|bir yapay zeka'
+         . ')\b/i';
+}
+
+/** AI meta-konuşmasını / kendi bilgi sınırı itiraflarını METİNDEN (markdown)
+   ayıkla. Yalnız bu KALIPLARI içeren PARAGRAFLARI siler; gerçek içeriğe
+   dokunmaz. Yayına AI itirafı sızmasın diye son kalkan. */
 function tls_strip_ai_meta($md) {
     $md = (string) $md;
     if (trim($md) === '') return '';
-    // Birinci tekil şahıs + bilgi/sınır/söyleme kalıpları (İng. + biraz TR).
-    $pat = '/\b('
-         . 'a note on (the )?limits|note on what i can|'
-         . 'i can(not|\'t)? (reliably )?(identify|say|confirm|verify|provide|supply|tell)|'
-         . 'i do not have (secure |reliable |access to )?(knowledge|information)|'
-         . 'i don\'?t have (secure |reliable |access to )?(knowledge|information)|'
-         . 'i have (deliberately|intentionally) (not |omitted|left out)|'
-         . 'i am not (able|certain|confident)|i\'?m not (able|certain|confident)|'
-         . 'as an ai|language model|my (training|knowledge) (data|cutoff)|'
-         . 'bilgim(in)? (yok|sınırlı)|kesin (olarak )?bil(e|mi)|emin değilim|'
-         . 'yapay zeka olarak'
-         . ')\b/i';
-    // Paragraflara böl (boş satırla), meta içerenleri at.
+    $pat = tls_ai_meta_pattern();
     $parts = preg_split('/\n{2,}/', $md);
     $keep  = [];
     foreach ($parts as $p) {
         $t = trim($p);
         if ($t === '') continue;
-        // Yalnız başlık satırıysa (##) koru.
-        $body = preg_replace('/^#{1,6}\s+.*$/m', '', $t);
-        if (preg_match($pat, $body)) continue;   // meta paragrafı → at
+        $body = preg_replace('/^#{1,6}\s+.*$/m', '', $t);   // yalnız başlık satırını koru
+        if (preg_match($pat, $body)) continue;              // meta paragrafı → at
         $keep[] = $t;
     }
     $out = trim(implode("\n\n", $keep));
-    // Öksüz kalan son başlık(lar)ı (altındaki tek içeriği atılmışsa) temizle.
-    $out = preg_replace('/\n{2,}#{1,6}\s+[^\n]+\s*$/', '', $out);
+    $out = preg_replace('/\n{2,}#{1,6}\s+[^\n]+\s*$/', '', $out);   // öksüz son başlık
     return trim($out);
+}
+
+/** AI meta itiraflarını YAYINLANMIŞ HTML gövdeden ayıkla (mevcut yazıları
+   temizlemek için). Meta kalıbı içeren <p>/<li>/<blockquote> bloklarını siler;
+   sonda öksüz kalan <hr>/başlık kalıntısını da atar. Değişiklik olduysa
+   temizlenmiş HTML döner, yoksa aynı gövde. */
+function tls_strip_ai_meta_html($html) {
+    $html = (string) $html;
+    if (trim($html) === '') return $html;
+    $pat = tls_ai_meta_pattern();
+    // Meta kalıbı içeren blok etiketlerini kaldır (p, li, blockquote).
+    $html = preg_replace_callback(
+        '#<(p|li|blockquote)\b[^>]*>(.*?)</\1>#is',
+        function ($m) use ($pat) {
+            $text = trim(html_entity_decode(strip_tags($m[2]), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            return preg_match($pat, $text) ? '' : $m[0];
+        },
+        $html
+    );
+    // Sonda öksüz kalan ayraç / boş başlık kalıntısını temizle.
+    $html = preg_replace('#(?:\s*<hr\b[^>]*/?>\s*)+$#i', '', $html);
+    $html = preg_replace('#(?:\s*<h[1-6]\b[^>]*>\s*</h[1-6]>\s*)+$#i', '', $html);
+    $html = preg_replace('#(?:\s*<p\b[^>]*>\s*(?:&nbsp;)?\s*</p>\s*)+$#i', '', $html);
+    return trim($html);
 }
 
 } // TLS_ANTHROPIC_LOADED
