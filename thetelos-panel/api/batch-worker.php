@@ -1833,9 +1833,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
  * parça başına istenen kelime hiçbir zaman ~1800'ü geçmez.
  */
 function bw_effective_parts($batch) {
+    // TAMAMEN OTOMATİK: parça sayısı yalnız hedef kelimeye göre. Model tek istekte
+    // ~1800 kelime yazabildiği için her ~1800 kelimeye bir parça. Manuel sınır yok
+    // (kullanıcı 'ne kadar gerekiyorsa o kadar' istedi). Üst sınır 6 (~10-11 bin kelime).
     $target = max(500, min(8000, (int)($batch['max_tokens'] ?? 3000)));
-    $picked = max(1, min(6, (int)($batch['parts'] ?? 2)));
-    return max($picked, min(6, (int)ceil($target / 1800)));
+    return max(1, min(6, (int)ceil($target / 1800)));
 }
 
 function bw_peak_now() {

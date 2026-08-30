@@ -192,15 +192,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <option value="publish">Direkt yayınla</option>
             </select>
           </div>
-          <div id="single-parts-col">
-            <label for="parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek — en az)</span></label>
-            <select id="parts-select" onchange="updateTokenDisplay(document.getElementById('token-slider').value)">
-              <option value="2" selected>2 parça</option>
-              <option value="3">3 parça (daha uzun)</option>
-              <option value="4">4 parça (en uzun)</option>
-            </select>
-            <span id="parts-actual" style="display:block;margin-top:4px;font-size:11px;color:var(--muted)"></span>
-          </div>
         </div>
         <button class="btn btn-primary" id="btn-generate">✦ İçerik Üret</button>
       </div>
@@ -355,21 +346,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
               <option value="3" selected>3 worker (önerilen)</option>
               <option value="5">5 worker (hızlı)</option>
             </select>
-          </div>
-        </div>
-
-        <div class="form-row" id="bulk-parts-row" style="margin-top:14px">
-          <div>
-            <label for="bulk-parts-select">Parça Sayısı <span style="color:var(--muted);font-weight:400;font-size:11px">(DeepSeek — uzun içerik için)</span></label>
-            <select id="bulk-parts-select">
-              <option value="2" selected>2 parça</option>
-              <option value="3">3 parça (daha uzun)</option>
-              <option value="4">4 parça (en uzun)</option>
-            </select>
-            <span style="display:block;margin-top:6px;font-size:11px;color:var(--muted);line-height:1.5">
-              Bu bir <b>alt sınır</b>: model tek istekte ~1800 kelimeden fazlasını yazmadığı için
-              parça sayısı hedef kelimeye göre otomatik yükseltilir (ör. 8.000 kelime → 5 parça).
-            </span>
           </div>
         </div>
 
