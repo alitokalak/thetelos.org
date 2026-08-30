@@ -57,6 +57,15 @@ function tls_claude_quality_model() {
         ? (string) ANTHROPIC_QUALITY_MODEL : 'claude-sonnet-4-5-20250929';
 }
 
+/** EN GÜÇLÜ model — son-çare "bu eseri biliyor musun" için. Opus, geniş
+   bilgi kapsamı + düşünme ile nadir eserleri Sonnet'ten çok daha iyi hatırlar
+   (sohbette Opus'un bilip Sonnet'in UNKNOWN demesinin sebebi buydu). Config'de
+   ANTHROPIC_BEST_MODEL ile değiştirilebilir. */
+function tls_claude_best_model() {
+    return (defined('ANTHROPIC_BEST_MODEL') && ANTHROPIC_BEST_MODEL)
+        ? (string) ANTHROPIC_BEST_MODEL : 'claude-opus-4-8';
+}
+
 /**
  * Claude'a bir istek. Tek kullanıcı mesajı + isteğe bağlı system.
  *
@@ -86,6 +95,11 @@ function tls_claude($system, $user, $opts = []) {
     // eklenip istek yinelenir (aşağıdaki tur döngüsü). max_turns bunu sınırlar.
     $tools     = (isset($opts['tools']) && is_array($opts['tools'])) ? $opts['tools'] : null;
     $max_turns = max(1, (int) ($opts['max_turns'] ?? ($tools ? 5 : 1)));
+    // DÜŞÜNME (adaptive): yeni modeller (Opus 4.6+/5, Sonnet 5, Fable) nadir
+    // eserleri düşünerek çok daha iyi hatırlar. Düşünme açıkken bu modeller
+    // 'temperature' parametresini REDDEDER (400) → o yüzden düşünme varsa
+    // temperature göndermeyiz. ['type'=>'adaptive'] gibi bir dizi beklenir.
+    $thinking  = (isset($opts['thinking']) && is_array($opts['thinking'])) ? $opts['thinking'] : null;
 
     $messages = [['role' => 'user', 'content' => (string) $user]];
 
@@ -94,6 +108,7 @@ function tls_claude($system, $user, $opts = []) {
     $do_request = function (array $payload) use ($key, $timeout, $retries, $beat) {
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
         $lastErr = ''; $lastCode = 0;
+        $stripped_temp = false;   // temperature 400'ünü bir kez temizle
         for ($try = 1; $try <= $retries; $try++) {
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             $copts = [
@@ -130,6 +145,15 @@ function tls_claude($system, $user, $opts = []) {
             }
             $emsg    = $j['error']['message'] ?? trim(preg_replace('/\s+/', ' ', strip_tags((string) $raw)));
             $lastErr = 'HTTP ' . $code . ($emsg ? ' · ' . mb_substr($emsg, 0, 200) : '');
+            // Yeni modeller (Opus 4.6+/5, Sonnet 5, Fable) 'temperature'ı reddeder
+            // (400). Bir kez temizleyip tekrar dene — model değişse de kod çalışsın.
+            if ($code === 400 && !$stripped_temp && isset($payload['temperature'])
+                && stripos($emsg, 'temperature') !== false) {
+                unset($payload['temperature']);
+                $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+                $stripped_temp = true;
+                continue;   // bu denemeyi harcamadan yeniden gönder
+            }
             // 429 / 529 / 5xx → geçici; 4xx → kalıcı.
             if ($code === 429 || $code === 529 || $code >= 500) {
                 if ($try < $retries) { sleep(min(40, 5 * $try * ($code === 529 ? 2 : 1))); continue; }
@@ -146,11 +170,13 @@ function tls_claude($system, $user, $opts = []) {
 
     for ($turn = 1; $turn <= $max_turns; $turn++) {
         $payload = [
-            'model'       => $model,
-            'max_tokens'  => $maxtok,
-            'temperature' => $temp,
-            'messages'    => $messages,
+            'model'      => $model,
+            'max_tokens' => $maxtok,
+            'messages'   => $messages,
         ];
+        // Düşünme açıksa temperature GÖNDERME (yeni modeller reddeder); yoksa gönder.
+        if ($thinking) $payload['thinking'] = $thinking;
+        else           $payload['temperature'] = $temp;
         if ($tools) $payload['tools'] = $tools;
         if (trim((string) $system) !== '') $payload['system'] = (string) $system;
 
@@ -292,6 +318,8 @@ function tls_claude_overview($book, $author, $opts = []) {
         'temperature' => 0.2,
         'timeout'     => (int) ($opts['timeout'] ?? 180),
         'on_beat'     => $opts['on_beat'] ?? null,
+        // Düşünme (adaptive) verilirse geç: nadir eserleri daha iyi hatırlar.
+        'thinking'    => (isset($opts['thinking']) && is_array($opts['thinking'])) ? $opts['thinking'] : null,
     ]);
 
     if (empty($r['ok'])) {

@@ -368,17 +368,37 @@ function bw_placeholder_html($book, $author) {
 function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0) {
     require_once __DIR__ . '/_anthropic.php';
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
+    $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
+
+    // 1) EN GÜÇLÜ model (Opus) + DÜŞÜNME: nadir eserleri Sonnet'ten çok daha iyi
+    //    hatırlar (sohbette Opus'un bilip Sonnet'in UNKNOWN demesinin sebebi).
+    //    Batch'te seçilen kelime hedefi TAVAN: iyi biliyorsa o civarı yazar ama
+    //    geçmez; az biliyorsa daha kısa; hiç bilmiyorsa UNKNOWN.
     $r = tls_claude_overview($book, $author, [
-        'model'        => tls_claude_quality_model(),   // GÜÇLÜ: Sonnet (bilgi kapsamı geniş)
-        // Batch'te seçilen kelime hedefi TAVAN olarak geçer: Claude eseri iyi
-        // biliyorsa bu civarda yazar ama GEÇMEZ; az biliyorsa daha kısa yazar.
+        'model'        => tls_claude_best_model(),
+        'thinking'     => ['type' => 'adaptive'],
         'target_words' => (int) $target_words,
-        'on_beat'      => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+        'timeout'      => 300,
+        'on_beat'      => $hb,
     ]);
+    // Güçlü model AÇIKÇA bilmiyorsa (UNKNOWN) → Sonnet de bilmez; yer tutucu.
     if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
-    if (empty($r['ok']) || trim((string) ($r['md'] ?? '')) === '') { $why = 'Claude hata/boş: ' . mb_substr((string)($r['error'] ?? 'bilinmiyor'), 0, 80); return ''; }
-    $why = '';
-    return bw_clean_content($r['md']);
+    if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
+
+    // 2) GÜVENLİK AĞI: güçlü model HATA verdi (model erişilemez/400 vb.) — UNKNOWN
+    //    değil. Kaliteli modelle (Sonnet, düşünmesiz) yeniden dene ki toplu hata
+    //    olmasın. Böylece Opus yapılandırması bozuksa bile üretim durmaz.
+    $r2 = tls_claude_overview($book, $author, [
+        'model'        => tls_claude_quality_model(),
+        'target_words' => (int) $target_words,
+        'timeout'      => 240,
+        'on_beat'      => $hb,
+    ]);
+    if (!empty($r2['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
+    if (!empty($r2['ok']) && trim((string) ($r2['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r2['md']); }
+
+    $why = 'Claude hata/boş: ' . mb_substr((string) ($r['error'] ?? $r2['error'] ?? 'bilinmiyor'), 0, 80);
+    return '';
 }
 
 /* ── MEKANİK KUSUR TARAMASI (BEDAVA) ────────────────────────────────────────
