@@ -247,59 +247,38 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "you know only in outline, keep it short. Never add a sentence you cannot "
       . "vouch for just to reach a length. A short true text beats a long padded "
       . "one.\n"
-      . "5. WEB SEARCH (use only when needed): you have a web_search tool. FIRST "
-      . "rely on your own reliable knowledge. If you already know this exact work "
-      . "well, just write the overview — do NOT search. Use web_search ONLY when "
-      . "you are unsure, cannot place the work, or cannot confirm specifics from "
-      . "memory; then search (title + author) to confirm before writing or before "
-      . "concluding UNKNOWN. Search is a fallback to VERIFY, never required and "
-      . "never for padding. This does NOT relax rule 1: never state a 'fact' that "
-      . "neither your knowledge nor the search supports.";
+      . "5. Work ONLY from your own knowledge. You have no web access and must not "
+      . "claim to look anything up. If your own knowledge is not enough to identify "
+      . "the work, that is an UNKNOWN — do not fill the gap with guesses.";
 
     $user =
-        "Write a factual overview of the book $who — as thorough as your genuine, "
-      . "verified knowledge allows, and no longer. Rely on your own reliable "
-      . "knowledge first: if you already know this exact work, write the overview "
-      . "directly. Only if you are unsure or cannot confirm what it is, use the "
-      . "web_search tool (title with author) to establish and verify it before "
-      . "writing — and if even then you cannot identify this specific work, output "
-      . "UNKNOWN.\n\n"
-      . "Do NOT aim for a fixed length: if you can reliably establish this work and "
-      . "its author in depth, write a full, rich overview (this may run 1000–1500 "
-      . "words); if you can only establish it in outline, write a short honest note. "
-      . "Length must track how much you can actually confirm, never a target.\n\n"
-      . "Cover what you can actually establish — as much as applies: what kind of "
-      . "work it is, its author and their historical/intellectual context, its "
-      . "central subject or argument or the author's characteristic themes, how it "
-      . "fits the author's body of work, and its significance, reception, or "
-      . "influence. Use Markdown with 2–5 short section headings (##). Write in the "
-      . "same language as the book's title/audience where natural, otherwise clear "
-      . "neutral prose. Do NOT include citations, URLs, or a sources list — just "
-      . "the clean overview prose.\n\n"
+        "Write a factual overview of the book $who — from your own knowledge only, "
+      . "as thorough as that knowledge genuinely allows and no longer.\n\n"
+      . "Do NOT aim for a fixed length: if you reliably know this work and its "
+      . "author in depth, write a full, rich overview (this may run 1000–1500 "
+      . "words); if you know it only a little (e.g. the author and roughly what kind "
+      . "of work it is), write a short honest note about just that much. Length "
+      . "must track how much you actually know, never a target.\n\n"
+      . "Cover what you actually know — as much as applies and you are sure of: "
+      . "what kind of work it is, its author and their historical/intellectual "
+      . "context, its central subject or argument or the author's characteristic "
+      . "themes, how it fits the author's body of work, and its significance, "
+      . "reception, or influence. Use Markdown with 2–5 short section headings "
+      . "(##). Write in the same language as the book's title/audience where "
+      . "natural, otherwise clear neutral prose.\n\n"
       . "ANTI-FABRICATION (absolute): do NOT reconstruct or invent a plot, "
-      . "characters, quotes, dates, chapter lists, or any specific neither you nor "
-      . "the search results support — omit what you cannot confirm rather than "
-      . "guess. Output exactly UNKNOWN only if, even after searching, you genuinely "
-      . "cannot identify this specific work at all.";
-
-    // Web araması: son-çare metnini gerçek kaynaklara dayandırır (uydurma yok).
-    // sonnet-4-5/haiku-4-5 için temel değişken: web_search_20250305. İsteyen
-    // kapatabilir (opts['web']=false); vars. açık, tur+kullanım sınırlı.
-    $use_web = !array_key_exists('web', $opts) || $opts['web'];
-    $tools   = $use_web ? [[
-        'type'     => 'web_search_20250305',
-        'name'     => 'web_search',
-        'max_uses' => (int) ($opts['web_max_uses'] ?? 4),
-    ]] : null;
+      . "characters, quotes, dates, chapter lists, or any specific you are not "
+      . "sure of — omit what you don't know rather than guess. Every sentence must "
+      . "be something you actually know to be true. Output exactly UNKNOWN only if "
+      . "you genuinely cannot identify this work at all (not merely because you "
+      . "lack its detailed contents).";
 
     $r = tls_claude($system, $user, [
         'model'       => $opts['model'] ?? tls_claude_fast_model(),
         'max_tokens'  => (int) ($opts['max_tokens'] ?? 4000),
         'temperature' => 0.2,
-        'timeout'     => (int) ($opts['timeout'] ?? 240),
+        'timeout'     => (int) ($opts['timeout'] ?? 180),
         'on_beat'     => $opts['on_beat'] ?? null,
-        'tools'       => $tools,
-        'max_turns'   => $use_web ? (int) ($opts['max_turns'] ?? 6) : 1,
     ]);
 
     if (empty($r['ok'])) {
