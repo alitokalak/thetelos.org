@@ -266,14 +266,25 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
         if(!confirm(ITEMS.length+' Claude yazısı AI ile temizlenecek (ücretli). Devam?')) return;
         stopFlag=false; doneIds=[]; log.innerHTML=''; prog.style.display='block'; bar.style.width='0%';
         startB.disabled=true; stopB.style.display=''; undoB.style.display='none';
-        var refs=ITEMS.map(function(x){return x.ref;});
+        // WAF'a takılmasın diye URL/JSON yerine SADE token gönder: sayısal id ya
+        // da yazının slug'ı (son yol parçası; http/nokta/parantez yok).
+        function toToken(ref){
+          ref=(''+ref).trim();
+          if(/^\d+$/.test(ref)) return ref;
+          var m=ref.match(/[?&]p=(\d+)/); if(m) return m[1];
+          var path=ref;
+          try{ if(ref.indexOf('http')===0) path=new URL(ref).pathname; }catch(e){}
+          var parts=path.split('/').filter(Boolean);
+          return parts.length?parts[parts.length-1]:ref;
+        }
+        var refs=ITEMS.map(function(x){return toToken(x.ref);}).filter(Boolean);
         var model=modelEl.value, CH=4, changed=0, clean=0, failed=0, done=0;
         line('▶ '+refs.length+' yazı sıraya alındı.');
         for(var i=0;i<refs.length && !stopFlag;i+=CH){
           var chunk=refs.slice(i,i+CH);
           stat.textContent='İşleniyor… '+done+'/'+refs.length;
           try{
-            var body=new URLSearchParams({action:'run', items:JSON.stringify(chunk), model:model});
+            var body=new URLSearchParams({action:'run', list:chunk.join('\n'), model:model});
             var r=await fetch('api/deai.php',{method:'POST',credentials:'same-origin',body:body});
             var d=await r.json();
             if(i===0){ line('· sunucu: HTTP '+r.status+' · v='+(d&&d.v||'?')+' · aldığı='+(d&&d.got)+' · yanıt='+JSON.stringify(d).slice(0,200)); }

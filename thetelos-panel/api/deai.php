@@ -136,10 +136,17 @@ if ($action === 'undo') {
     exit;
 }
 
-// action=run
-$items = json_decode((string)($_POST['items'] ?? ''), true);
-if (!is_array($items)) $items = array_filter(array_map('trim', explode(',', (string)($_POST['ids'] ?? ''))));
-$items = array_slice(array_values($items), 0, 25);
+// action=run — sade 'list' (satır/virgül ayrılmış id ya da slug; WAF-güvenli)
+// tercih edilir; geriye dönük 'items'(JSON) / 'ids'(CSV) da kabul edilir.
+$raw = (string)($_POST['list'] ?? '');
+if ($raw !== '') {
+    $items = preg_split('/[\r\n,]+/', $raw);
+} else {
+    $items = json_decode((string)($_POST['items'] ?? ''), true);
+    if (!is_array($items)) $items = explode(',', (string)($_POST['ids'] ?? ''));
+}
+$items = array_values(array_filter(array_map('trim', (array) $items), function ($s) { return $s !== ''; }));
+$items = array_slice($items, 0, 25);
 $mreq  = trim((string)($_POST['model'] ?? ''));
 $model = ($mreq === 'opus') ? tls_claude_best_model() : ($mreq !== '' ? $mreq : '');
 
