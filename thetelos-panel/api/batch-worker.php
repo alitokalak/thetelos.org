@@ -365,12 +365,15 @@ function bw_placeholder_html($book, $author) {
    değiştirilebilir.
    $why (by-ref): neden boş döndüğünü GÖRÜNÜR yapar (anahtar yok / UNKNOWN / hata)
    @return string  HTML içerik (bulundu) ya da '' (bilmiyor/kapalı/hata). */
-function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '') {
+function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0) {
     require_once __DIR__ . '/_anthropic.php';
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
     $r = tls_claude_overview($book, $author, [
-        'model'   => tls_claude_quality_model(),   // GÜÇLÜ: Sonnet (bilgi kapsamı geniş)
-        'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+        'model'        => tls_claude_quality_model(),   // GÜÇLÜ: Sonnet (bilgi kapsamı geniş)
+        // Batch'te seçilen kelime hedefi TAVAN olarak geçer: Claude eseri iyi
+        // biliyorsa bu civarda yazar ama GEÇMEZ; az biliyorsa daha kısa yazar.
+        'target_words' => (int) $target_words,
+        'on_beat'      => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
     ]);
     if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
     if (empty($r['ok']) || trim((string) ($r['md'] ?? '')) === '') { $why = 'Claude hata/boş: ' . mb_substr((string)($r['error'] ?? 'bilinmiyor'), 0, 80); return ''; }
@@ -536,6 +539,19 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     if ($search_book === '') $search_book = $book;
     $type         = $batch['type'];
     $target_words = max(500, min(8000, (int)$batch['max_tokens']));
+    // CLAUDE SON-ÇARE için hedef kelime (TAVAN): batch'te seçilen kritere göre.
+    // source: kaydırıcı (source_words) > uzunluk ön-ayarı (kisa/standart/kapsamli).
+    // diğer tipler: max_tokens (kelime hedefi). Claude iyi biliyorsa bu civarı
+    // yazar ama geçmez; az biliyorsa daha kısa.
+    $cl_target_words = (int) ($batch['source_words'] ?? 0);
+    if ($cl_target_words <= 0) {
+        if ($type === 'source') {
+            $len_pre = in_array($batch['length'] ?? 'standart', ['kisa','standart','kapsamli'], true) ? $batch['length'] : 'standart';
+            $cl_target_words = ['kisa'=>1500, 'standart'=>3000, 'kapsamli'=>5200][$len_pre];
+        } else {
+            $cl_target_words = $target_words;
+        }
+    }
     $post_status  = $batch['post_status'];
     $api_provider = $batch['api_provider'] ?? 'deepseek';
     // Claude seçiliyse ANA İÇERİK modeli: kalite için varsayılan Sonnet, ucuz
@@ -867,7 +883,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             if (!empty($ir['insufficient'])) {
                 // SON ÇARE: Claude eseri güvenilir biliyorsa tanıtım metni yazsın.
                 $cl_why = '';
-                $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why);
+                $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words);
                 if ($cl !== '') {
                     $content = $cl;
                     $gen_method = 'claude-bilgi';   // Claude'un bilgisinden (kaynak yok) — CSV'de ayrı görünür
@@ -917,8 +933,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 : 'kaynak yetersiz (bilgi metni)';
             // SON ÇARE: Claude eseri güvenilir biliyorsa tanıtım metni yazsın.
             // (Provider zaten anthropic ise Claude denenmişti → tekrar deneme.)
+            $cl_why2 = '';
             $cl = ($api_provider !== 'anthropic')
-                ? bw_claude_last_resort($book, $author, $batch_file, $idx) : '';
+                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words) : '';
             if ($cl !== '') {
                 $content = $cl;
                 $gen_method = 'claude-bilgi';   // Claude'un bilgisinden (kaynak yok) — CSV'de ayrı görünür

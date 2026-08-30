@@ -216,6 +216,13 @@ function tls_claude_overview($book, $author, $opts = []) {
 
     $who = $author !== '' ? "\"$book\" by $author" : "\"$book\"";
 
+    // HEDEF KELİME (TAVAN): batch'te seçilen kriter. Claude eseri iyi biliyorsa
+    // bu civarda yazar ama GEÇMEZ; az biliyorsa daha kısa. 0/geçersizse 1200.
+    $cap = (int) ($opts['target_words'] ?? 0);
+    if ($cap < 200)  $cap = 1200;
+    if ($cap > 8000) $cap = 8000;
+    $cap_lo = max(120, (int) round($cap * 0.7));   // iyi bilinen eserde alt-hedef
+
     $system =
         "You are a careful literary reference writer. This is a strict "
       . "anti-fabrication task: everything you write must be TRUE, but you do NOT "
@@ -243,10 +250,11 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "still place (author + kind + context) is NOT UNKNOWN — write what you know.\n"
       . "4. Do NOT pad with generic filler. Your length must follow how much you "
       . "TRULY know: write as much as you can while every single sentence stays "
-      . "true. For a work you know well, that can be long (1000+ words); for one "
-      . "you know only in outline, keep it short. Never add a sentence you cannot "
-      . "vouch for just to reach a length. A short true text beats a long padded "
-      . "one.\n"
+      . "true. If you know the work well, aim for roughly $cap_lo–$cap words — but "
+      . "treat $cap words as a HARD CEILING you must not exceed. If you know it only "
+      . "in outline, write a short honest note well under that. Never add a sentence "
+      . "you cannot vouch for just to reach a length. A short true text beats a long "
+      . "padded one.\n"
       . "5. Work ONLY from your own knowledge. You have no web access and must not "
       . "claim to look anything up. If your own knowledge is not enough to identify "
       . "the work, that is an UNKNOWN — do not fill the gap with guesses.";
@@ -254,11 +262,12 @@ function tls_claude_overview($book, $author, $opts = []) {
     $user =
         "Write a factual overview of the book $who — from your own knowledge only, "
       . "as thorough as that knowledge genuinely allows and no longer.\n\n"
-      . "Do NOT aim for a fixed length: if you reliably know this work and its "
-      . "author in depth, write a full, rich overview (this may run 1000–1500 "
-      . "words); if you know it only a little (e.g. the author and roughly what kind "
-      . "of work it is), write a short honest note about just that much. Length "
-      . "must track how much you actually know, never a target.\n\n"
+      . "Target length: if you reliably know this work and its author in depth, "
+      . "write a full overview of about $cap_lo–$cap words, and do NOT exceed $cap "
+      . "words under any circumstances. If you know it only a little (e.g. the "
+      . "author and roughly what kind of work it is), write a short honest note "
+      . "about just that much. Length must track how much you actually know, capped "
+      . "at $cap words.\n\n"
       . "Cover what you actually know — as much as applies and you are sure of: "
       . "what kind of work it is, its author and their historical/intellectual "
       . "context, its central subject or argument or the author's characteristic "
@@ -273,9 +282,13 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "you genuinely cannot identify this work at all (not merely because you "
       . "lack its detailed contents).";
 
+    // max_tokens'i tavana göre boyutlandır (~1 kelime ≈ 1.6 token + pay); tavan
+    // yükseldiğinde uzun ama gerçek metin yarıda kesilmesin.
+    $mtok = (int) ($opts['max_tokens'] ?? min(16000, max(1500, (int) round($cap * 1.9))));
+
     $r = tls_claude($system, $user, [
         'model'       => $opts['model'] ?? tls_claude_fast_model(),
-        'max_tokens'  => (int) ($opts['max_tokens'] ?? 4000),
+        'max_tokens'  => $mtok,
         'temperature' => 0.2,
         'timeout'     => (int) ($opts['timeout'] ?? 180),
         'on_beat'     => $opts['on_beat'] ?? null,
