@@ -117,6 +117,33 @@ function deai_edit($id, $model = '') {
 
 $action = $_POST['action'] ?? 'run';
 
+/* TÜM SİTEDE BUL: yayınlanan yazılarda AI itirafı/hitabı (ca_check_meta_talk)
+   içerenleri dilim dilim tara. İstemci next<0 gelene kadar çağırır, bulunanları
+   birleştirip temizleyiciye verir. CSV listesine gerek kalmaz. */
+if ($action === 'find') {
+    global $wpdb;
+    $offset = max(0, (int)($_POST['offset'] ?? 0));
+    $limit  = max(20, min(300, (int)($_POST['limit'] ?? 150)));
+    $total  = (int) $wpdb->get_var(
+        "SELECT COUNT(*) FROM {$wpdb->posts}
+          WHERE post_type IN ('post','analysis') AND post_status='publish'");
+    $rows = $wpdb->get_results($wpdb->prepare(
+        "SELECT ID, post_title, post_name, post_content FROM {$wpdb->posts}
+          WHERE post_type IN ('post','analysis') AND post_status='publish'
+       ORDER BY ID DESC LIMIT %d OFFSET %d", $limit, $offset));
+    $hits = [];
+    foreach ($rows as $r) {
+        if (ca_check_meta_talk((string) $r->post_content) !== '') {
+            $hits[] = ['id'=>(int)$r->ID, 'title'=>$r->post_title, 'slug'=>$r->post_name];
+        }
+    }
+    echo json_encode([
+        'ok'=>true, 'hits'=>$hits, 'scanned'=>count($rows), 'total'=>$total,
+        'next'=>(count($rows) < $limit) ? -1 : $offset + count($rows),
+    ]);
+    exit;
+}
+
 if ($action === 'undo') {
     $ids = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
     $restored = 0; $samples = [];

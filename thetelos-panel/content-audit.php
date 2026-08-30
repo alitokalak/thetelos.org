@@ -168,6 +168,10 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
         <textarea id="deai-ids" rows="3" placeholder="14805, 15202, 16654 …  (virgül/boşluk/satır ayır)"
           style="width:100%;margin-top:6px;font-family:ui-monospace,monospace;font-size:12px"></textarea>
       </details>
+      <div style="font-size:12px;color:var(--muted);margin:2px 0 8px">
+        …ya da liste olmadan: <button class="btn btn-ghost btn-sm" id="deai-scan" style="font-size:12px;color:#7fb37f">🔎 Tüm sitede AI itirafı olan yazıları bul</button>
+        <span id="deai-scan-status" style="margin-left:6px"></span>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn btn-primary btn-sm" id="deai-start" style="background:#4f8f4f;border-color:#4f8f4f">▶ Temizliği Başlat</button>
         <button class="btn btn-sm" id="deai-stop" style="display:none;color:#e05252">■ Durdur</button>
@@ -258,6 +262,30 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       }
       fileEl.addEventListener('change', refreshFromInputs);
       idsEl.addEventListener('input', refreshFromInputs);
+
+      // Tüm siteyi tara → AI itirafı içeren yazıları bul, listeyi doldur.
+      var scanB=document.getElementById('deai-scan'), scanSt=document.getElementById('deai-scan-status'), scanStop=false;
+      scanB.addEventListener('click', async function(){
+        if(scanB.dataset.running){ scanStop=true; scanB.textContent='🔎 Tüm sitede AI itirafı olan yazıları bul'; scanB.dataset.running=''; return; }
+        scanStop=false; scanB.dataset.running='1'; scanB.textContent='■ Taramayı durdur';
+        ITEMS=[]; renderPreview(); var off=0, found=0, scanned=0, total=0;
+        while(!scanStop){
+          try{
+            var body=new URLSearchParams({action:'find', offset:String(off), limit:'150'});
+            var r=await fetch('api/deai.php',{method:'POST',credentials:'same-origin',body:body});
+            var d=await r.json();
+            if(!d||!d.ok){ scanSt.textContent='Tarama hatası.'; break; }
+            total=d.total||total; scanned+=d.scanned||0;
+            (d.hits||[]).forEach(function(h){ ITEMS.push({ref:h.slug||String(h.id), title:h.title||('#'+h.id), author:''}); found++; });
+            renderPreview();
+            scanSt.textContent='taranan: '+scanned+'/'+total+' · bulunan: '+found;
+            if(d.next<0) break;
+            off=d.next;
+          }catch(e){ scanSt.textContent='Tarama hatası: '+e.message; break; }
+        }
+        scanB.textContent='🔎 Tüm sitede AI itirafı olan yazıları bul'; scanB.dataset.running='';
+        scanSt.textContent='Bitti — bulunan: '+found+' (taranan: '+scanned+'/'+total+'). Şimdi “Temizliği Başlat”.';
+      });
 
       function line(s){ log.innerHTML += s+'<br>'; log.scrollTop=log.scrollHeight; }
 
