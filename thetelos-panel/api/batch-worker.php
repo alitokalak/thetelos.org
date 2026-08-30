@@ -799,7 +799,36 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $eff_src_text = $bk_src_text !== '' ? $bk_src_text : (string) ($batch['source_text'] ?? '');
     $eff_src_url  = $bk_src_url  !== '' ? $bk_src_url  : (string) ($batch['source_url'] ?? '');
     $has_manual_source = (trim($eff_src_url) !== '' || trim($eff_src_text) !== '');
-    if (tv_settings()['probe'] && ($post_status === 'publish' || $rewrite) && $type !== 'source' && !$has_manual_source) {
+
+    /* ── ANALİZ = KAYNAK MERKEZLİ ───────────────────────────────────────────
+       Özet/kaynak ile aynı yol: ÖNCE kitabın GERÇEK tam metnini bul (Gutenberg/
+       Standard Ebooks/Archive · yazar teyitli) ve ondan sadık bir özet çıkar;
+       analiz bu doğrulanmış özete DAYANARAK yazılır (uydurma değil). Metin
+       bulunmazsa aşağıdaki probe→Claude→yer tutucu yolu devreye girer. */
+    $analysis_digest = ''; $adg_source = ''; $adg_url = '';
+    if ($type === 'analysis') {
+        require_once __DIR__ . '/_proto.php';
+        require_once __DIR__ . '/_info.php';
+        bw_touch_hb($batch_file, $idx);
+        bw_set_stage($batch_file, $idx, 'analiz için kaynak metni aranıyor…');
+        $adg = proto_generate($search_book, $author, [
+            'words'    => 2500,                 // sadık özet (analizin dayanağı)
+            'url'      => $eff_src_url,
+            'text'     => $eff_src_text,
+            'provider' => 'auto',
+            'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+            'on_stage' => function ($m) use ($batch_file, $idx) { bw_set_stage($batch_file, $idx, $m); bw_touch_hb($batch_file, $idx); },
+        ]);
+        if (!empty($adg['found']) && empty($adg['insufficient']) && trim((string) ($adg['md'] ?? '')) !== '') {
+            $analysis_digest = bw_clean_content((string) $adg['md']);
+            $adg_source = (string) ($adg['source'] ?? '');
+            $adg_url    = (string) ($adg['url'] ?? '');
+        }
+    }
+
+    // Kaynak metin bulunduysa (analysis_digest) probe/Claude gerekmez — kaynağa
+    // dayalı gideceğiz. Bulunmadıysa probe→Claude→yer tutucu yolu çalışır.
+    if (tv_settings()['probe'] && ($post_status === 'publish' || $rewrite) && $type !== 'source' && !$has_manual_source && $analysis_digest === '') {
         bw_touch_hb($batch_file, $idx);
         $pr = tv_probe($search_book, $author);
         if (!empty($pr['ok'])) {
@@ -1001,7 +1030,20 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        uydurma büyük ölçüde kesilir. Kaynak yoksa blok boş kalır (model eski
        davranışına döner, dürüstlük prompt'u yine geçerli). */
     $ground = '';
-    if (is_array($src)) {
+    // ANALİZ (kaynak merkezli): gerçek metinden çıkarılmış SADIK ÖZET varsa,
+    // analiz doğrudan ona dayanır — en güçlü grounding (uydurma değil, gerçek metin).
+    if ($analysis_digest !== '') {
+        $ground = "\n\n=== VERIFIED SOURCE-BASED SUMMARY OF THE ACTUAL BOOK ==="
+            . " (faithfully derived from the real text of the work)\n"
+            . "Base your ANALYSIS on THIS material — the book's actual content as "
+            . "summarized from its real text. Analyse and interpret what is genuinely "
+            . "here; do NOT introduce plot points, characters, or claims not supported "
+            . "by it.\n\n" . mb_substr($analysis_digest, 0, 9000)
+            . "\n=== END SOURCE MATERIAL ===";
+        $gen_method = 'kaynak-temelli analiz';   // gerçek metne dayalı — CSV'de ayrı görünür
+        $gen_source = $adg_source;
+        $gen_source_url = $adg_url;
+    } elseif (is_array($src)) {
         $sd = trim((string) ($src['desc'] ?? ''));
         $sy = $src['year'] ?? null;
         $ssub = implode(', ', array_slice((array) ($src['subjects'] ?? []), 0, 6));
@@ -1202,7 +1244,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        Kaynak (dossier) yoksa hakem 'skip' → engellemez (dürüstlük prompt'u +
        mekanik kapı yine geçerli). Batch 'referee' kapalıysa çalışmaz. */
     $ref_dossier = '';
-    if (is_array($src)) {
+    if ($analysis_digest !== '') {
+        // Kaynak-temelli analiz: hakem, analizi GERÇEK metin özetiyle kıyaslar.
+        $ref_dossier = mb_substr($analysis_digest, 0, 9000);
+    } elseif (is_array($src)) {
         $rsd = trim((string) ($src['desc'] ?? ''));
         $rsy = $src['year'] ?? null;
         $rsub = implode(', ', array_slice((array) ($src['subjects'] ?? []), 0, 8));
