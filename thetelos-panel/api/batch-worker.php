@@ -808,7 +808,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // SON ÇARE: probe kitabı doğrulayamadı — ama Claude eseri GÜVENİLİR
                 // biliyorsa (kendi kaçışıyla: bilmiyorsa UNKNOWN) tanıtım yazsın.
                 if ($api_provider !== 'anthropic') {
-                    $cl = bw_claude_last_resort($book, $author, $batch_file, $idx);
+                    $cl_why0 = '';
+                    $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words);
                     if ($cl !== '') {
                         $content = $cl;
                         $gen_method = 'claude-bilgi';
@@ -1180,6 +1181,50 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
 
     if ($accumulated !== '') $content = bw_clean_content($accumulated);
+
+    /* ── HAKEM (özet + ANALİZ): kaynağa-sadakat uydurma denetimi ─────────────
+       AYNI DİSİPLİN: source/info tipinde hakem tls_info_generate içinde vardı;
+       artık özet/analiz de aynı denetimden geçer. Üretilen metni, elimizdeki
+       DOĞRULANMIŞ katalog malzemesiyle (dossier) kıyaslar; hakem "uydurma özgül
+       iddia" bulursa YAYINLAMAYIZ → rewrite'ta dürüst yer tutucu, create'te atla.
+       Kaynak (dossier) yoksa hakem 'skip' → engellemez (dürüstlük prompt'u +
+       mekanik kapı yine geçerli). Batch 'referee' kapalıysa çalışmaz. */
+    $ref_dossier = '';
+    if (is_array($src)) {
+        $rsd = trim((string) ($src['desc'] ?? ''));
+        $rsy = $src['year'] ?? null;
+        $rsub = implode(', ', array_slice((array) ($src['subjects'] ?? []), 0, 8));
+        if ($rsd !== '' || $rsub !== '' || $rsy) {
+            $ref_dossier = trim(
+                ($rsy ? "First published: {$rsy}\n" : '') .
+                ($rsub !== '' ? "Subjects: {$rsub}\n" : '') .
+                ($rsd !== '' ? "Description:\n" . mb_substr($rsd, 0, 4000) : '')
+            );
+        }
+    }
+    if (($batch['referee'] ?? '1') !== '0' && $ref_dossier !== '' && trim((string) $content) !== '') {
+        require_once __DIR__ . '/_referee.php';
+        bw_touch_hb($batch_file, $idx);
+        $rf = tls_referee($content, $ref_dossier, $book, $author, ['primary' => 'gemini', 'escalate' => 'anthropic']);
+        bw_touch_hb($batch_file, $idx);
+        if (($rf['verdict'] ?? '') === 'fabricated') {
+            $rf_probs = implode(' | ', array_slice($rf['problems'] ?? [], 0, 3));
+            if ($rewrite && $update_pid) {
+                $ph = bw_placeholder_html($book, $author);
+                [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'referee', 'hakem uydurma buldu (' . ($rf['judge'] ?? '?') . ')' . ($rf_probs ? ': ' . $rf_probs : ''), $update_pid, 'rewrite');
+                bw_update_book($batch_file, $idx, [
+                    'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
+                    'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                    'error' => 'hakem uydurma buldu → yer tutucu (yayında)', 'placeholder' => 1, 'method' => 'yer-tutucu',
+                ]);
+                return;
+            }
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'referee', 'hakem uydurma buldu: ' . $rf_probs, 0, 'create');
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'hakem uydurma buldu: ' . $rf_probs]);
+            return;
+        }
+    }
     }   // ── /walkthrough (type !== 'info') ──
     }   // ── /if (empty($skip_generation)) — Claude son-çare içeriği hazırsa üretim atlandı ──
 
