@@ -177,6 +177,10 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <div class="prog" id="deai-prog" style="margin-top:10px"><i></i></div>
       <div id="deai-log" style="margin-top:8px;font-size:11px;font-family:ui-monospace,monospace;color:var(--muted);max-height:260px;overflow:auto"></div>
     </div>
+    <div id="deai-preview" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;background:rgba(0,0,0,.15)">
+      <div id="deai-preview-head" style="font-size:12px;color:var(--text);font-weight:600;margin-bottom:6px"></div>
+      <div id="deai-preview-list" style="font-size:11px;color:var(--muted);max-height:200px;overflow:auto;line-height:1.7"></div>
+    </div>
     <script>
     (function(){
       var fileEl=document.getElementById('deai-csv'), idsEl=document.getElementById('deai-ids'),
@@ -184,9 +188,11 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
           undoB=document.getElementById('deai-undo'), stat=document.getElementById('deai-status'),
           modelEl=document.getElementById('deai-model'),
           prog=document.getElementById('deai-prog'), bar=prog.querySelector('i'),
-          log=document.getElementById('deai-log');
+          log=document.getElementById('deai-log'),
+          pv=document.getElementById('deai-preview'), pvHead=document.getElementById('deai-preview-head'),
+          pvList=document.getElementById('deai-preview-list');
       if(!startB) return;
-      var stopFlag=false, doneIds=[];
+      var stopFlag=false, doneIds=[], ITEMS=[];   // ITEMS: [{ref, title}]
 
       // Basit CSV ayrıştırıcı (tırnaklı alanları tolere eder).
       function parseCSV(txt){
@@ -199,71 +205,88 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
         if(cur!==''||row.length){row.push(cur);rows.push(row);}
         return rows;
       }
-      // CSV'den Claude ile yazılmış post ID'lerini çıkar (Durum/Yöntem 'claude' içerir).
-      function idsFromCSV(txt){
-        var rows=parseCSV(txt); if(!rows.length) return [];
+      // CSV'den YALNIZ Claude satırlarını çıkar → {ref(url/id), title, author}.
+      function rowsFromCSV(txt){
+        var rows=parseCSV(txt); if(rows.length<2) return [];
         var head=rows[0].map(function(s){return (s||'').toLowerCase();});
-        var iMethod=-1,iURL=-1;
+        var iMethod=-1,iURL=-1,iTitle=-1,iAuthor=-1,iPid=-1;
         head.forEach(function(h,idx){
           if(iMethod<0 && (h.indexOf('yöntem')>=0||h.indexOf('yontem')>=0||h.indexOf('durum')>=0)) iMethod=idx;
           if(iURL<0 && h.indexOf('url')>=0) iURL=idx;
+          if(iTitle<0 && h.indexOf('kitap')>=0) iTitle=idx;
+          if(iAuthor<0 && h.indexOf('yazar')>=0) iAuthor=idx;
+          if(iPid<0 && (h.indexOf('post id')>=0||h==='id')) iPid=idx;
         });
         var out=[];
         for(var r=1;r<rows.length;r++){
           var cells=rows[r]; if(!cells) continue;
-          var method=(iMethod>=0?cells[iMethod]:'')||'';
-          if(method.toLowerCase().indexOf('claude')<0) continue;   // yalnız Claude yazıları
+          var method=((iMethod>=0?cells[iMethod]:'')||'').toLowerCase();
+          if(method.indexOf('claude')<0) continue;                 // yalnız Claude yazıları
+          var pid=(iPid>=0?(''+cells[iPid]).trim():'');
           var url=(iURL>=0?cells[iURL]:'')||'';
-          var m=url.match(/[?&]p=(\d+)/)||url.match(/\/(\d{3,})\/?$/);
-          if(m) out.push(parseInt(m[1]));
-          else { // URL'de id yoksa satırdaki ilk büyük sayıyı dene
-            for(var c=0;c<cells.length;c++){var mm=(''+cells[c]).match(/\b(\d{3,})\b/); if(mm){out.push(parseInt(mm[1]));break;}}
-          }
+          var ref = (pid && /^\d+$/.test(pid)) ? pid : url.trim();  // ID varsa ID, yoksa URL
+          if(!ref) continue;
+          out.push({ref:ref, title:(iTitle>=0?cells[iTitle]:'')||'', author:(iAuthor>=0?cells[iAuthor]:'')||''});
         }
         return out;
       }
-      function idsFromText(txt){
-        return (txt.match(/\d{3,}/g)||[]).map(Number);
+      function rowsFromText(txt){
+        var out=[];
+        (txt.match(/\d{3,}/g)||[]).forEach(function(n){ out.push({ref:n, title:'#'+n, author:''}); });
+        return out;
       }
-      function uniq(a){var s={},o=[];a.forEach(function(x){if(x&&!s[x]){s[x]=1;o.push(x);}});return o;}
+      function uniqRows(a){var s={},o=[];a.forEach(function(x){if(x.ref&&!s[x.ref]){s[x.ref]=1;o.push(x);}});return o;}
 
-      function collectIds(){
-        return new Promise(function(res){
-          var t=(idsEl.value||'').trim();
-          if(t){ res(uniq(idsFromText(t))); return; }
-          var f=fileEl.files&&fileEl.files[0];
-          if(!f){ res([]); return; }
-          var rd=new FileReader(); rd.onload=function(){ res(uniq(idsFromCSV(String(rd.result||'')))); };
-          rd.onerror=function(){res([]);}; rd.readAsText(f,'UTF-8');
-        });
+      function renderPreview(){
+        if(!ITEMS.length){ pv.style.display='none'; startB.textContent='▶ Temizliği Başlat'; return; }
+        pv.style.display='block';
+        pvHead.textContent='📋 '+ITEMS.length+' Claude yazısı bulundu — işlenecek liste:';
+        pvList.innerHTML = ITEMS.map(function(x,i){
+          return (i+1)+'. '+ (x.title||x.ref) + (x.author?' <span style="opacity:.6">— '+x.author+'</span>':'');
+        }).join('<br>');
+        startB.textContent='▶ Temizliği Başlat ('+ITEMS.length+')';
       }
+      function refreshFromInputs(){
+        var t=(idsEl.value||'').trim();
+        if(t){ ITEMS=uniqRows(rowsFromText(t)); renderPreview(); return; }
+        var f=fileEl.files&&fileEl.files[0];
+        if(!f){ ITEMS=[]; renderPreview(); return; }
+        var rd=new FileReader();
+        rd.onload=function(){ ITEMS=uniqRows(rowsFromCSV(String(rd.result||''))); renderPreview(); };
+        rd.onerror=function(){ ITEMS=[]; renderPreview(); stat.textContent='Dosya okunamadı.'; };
+        rd.readAsText(f,'UTF-8');
+      }
+      fileEl.addEventListener('change', refreshFromInputs);
+      idsEl.addEventListener('input', refreshFromInputs);
+
       function line(s){ log.innerHTML += s+'<br>'; log.scrollTop=log.scrollHeight; }
 
       startB.addEventListener('click', async function(){
-        var ids=await collectIds();
-        if(!ids.length){ stat.textContent='Claude yazısı bulunamadı (CSV yükle ya da ID yapıştır).'; return; }
-        if(!confirm(ids.length+' Claude yazısı AI ile temizlenecek (ücretli). Devam?')) return;
+        if(!ITEMS.length){ stat.textContent='Önce CSV yükle ya da ID yapıştır.'; return; }
+        if(!confirm(ITEMS.length+' Claude yazısı AI ile temizlenecek (ücretli). Devam?')) return;
         stopFlag=false; doneIds=[]; log.innerHTML=''; prog.style.display='block'; bar.style.width='0%';
         startB.disabled=true; stopB.style.display=''; undoB.style.display='none';
+        var refs=ITEMS.map(function(x){return x.ref;});
         var model=modelEl.value, CH=4, changed=0, clean=0, failed=0, done=0;
-        line('▶ '+ids.length+' yazı sıraya alındı.');
-        for(var i=0;i<ids.length && !stopFlag;i+=CH){
-          var chunk=ids.slice(i,i+CH);
-          stat.textContent='İşleniyor… '+done+'/'+ids.length;
+        line('▶ '+refs.length+' yazı sıraya alındı.');
+        for(var i=0;i<refs.length && !stopFlag;i+=CH){
+          var chunk=refs.slice(i,i+CH);
+          stat.textContent='İşleniyor… '+done+'/'+refs.length;
           try{
-            var body=new URLSearchParams({action:'deai', ids:chunk.join(','), model:model});
+            var body=new URLSearchParams({action:'deai', items:JSON.stringify(chunk), model:model});
             var r=await fetch('api/content-audit.php',{method:'POST',credentials:'same-origin',body:body});
             var d=await r.json();
             if(d&&d.ok){
               (d.results||[]).forEach(function(x){
                 done++;
-                if(x.status==='temizlendi'){changed++; doneIds.push(x.id); line('✓ #'+x.id+' '+(x.title||'')+' — temizlendi');}
-                else if(x.status==='zaten temiz'){clean++; line('· #'+x.id+' zaten temiz');}
-                else {failed++; line('✗ #'+x.id+' atlandı — '+(x.error||''));}
+                var who='#'+(x.id||x.ref||'?')+' '+(x.title||'');
+                if(x.status==='temizlendi'){changed++; if(x.id)doneIds.push(x.id); line('✓ '+who+' — temizlendi');}
+                else if(x.status==='zaten temiz'){clean++; line('· '+who+' zaten temiz');}
+                else {failed++; line('✗ '+who+' atlandı — '+(x.error||''));}
               });
-            } else { chunk.forEach(function(id){done++;failed++;line('✗ #'+id+' — sunucu hatası');}); }
-          }catch(e){ chunk.forEach(function(id){done++;failed++;line('✗ #'+id+' — '+e.message);}); }
-          bar.style.width=Math.round(done/ids.length*100)+'%';
+            } else { chunk.forEach(function(rf){done++;failed++;line('✗ '+rf+' — sunucu hatası');}); }
+          }catch(e){ chunk.forEach(function(rf){done++;failed++;line('✗ '+rf+' — '+e.message);}); }
+          bar.style.width=Math.round(done/refs.length*100)+'%';
         }
         stat.textContent=(stopFlag?'Durduruldu. ':'Bitti. ')+'temizlendi: '+changed+' · zaten temiz: '+clean+' · atlandı: '+failed;
         line('— '+stat.textContent);

@@ -53,16 +53,18 @@ header('Content-Disposition: attachment; filename="' . $fname . '"');
 
 $out = fopen('php://output', 'w');
 fprintf($out, "\xEF\xBB\xBF");   // UTF-8 BOM (Excel için)
-fputcsv($out, ['#', 'Kitap Adı', 'Yazar Adı', 'Durum/Yöntem', 'Sorunlu?', 'Kaynak', 'URL']);
+fputcsv($out, ['#', 'Post ID', 'Kitap Adı', 'Yazar Adı', 'Durum/Yöntem', 'Sorunlu?', 'Kaynak', 'URL']);
 
 $i = 0;
 foreach ($batch['books'] as $b) {
     $i++;
     $label = br_label($b);
+    $pid   = (int) ($b['post_id'] ?? $b['target_pid'] ?? 0);
     $url   = $b['post_url'] ?? '';
-    if ($url === '' && !empty($b['post_id'])) $url = rtrim(WP_URL, '/') . '/?p=' . $b['post_id'];
+    if ($url === '' && $pid) $url = rtrim(WP_URL, '/') . '/?p=' . $pid;
     fputcsv($out, [
         $i,
+        $pid ?: '',
         $b['book_title']  ?? '',
         $b['author_name'] ?? '',
         $label,

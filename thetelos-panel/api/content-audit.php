@@ -1715,15 +1715,44 @@ function ca_deai_edit($id, $model = '') {
     return ['ok'=>true, 'changed'=>true, 'words'=>str_word_count(wp_strip_all_tags($new))];
 }
 
+/* Bir öğeyi (sayısal post id VEYA yazı URL'i/slug'ı) post id'ye çöz. CSV'de
+   çoğu zaman ID yok, slug permalink var (…/the-mariner-il-marinaio-…/). */
+function ca_deai_resolve($item) {
+    $item = trim((string) $item);
+    if ($item === '') return 0;
+    if (ctype_digit($item)) return (int) $item;                 // düz post id
+    if (preg_match('/[?&]p=(\d+)/', $item, $m)) return (int) $m[1];   // …?p=123
+    // Slug permalink → post id (WP çözer). Göreli slug'a da tam URL uydur.
+    $url = (stripos($item, 'http') === 0) ? $item : (rtrim(WP_URL, '/') . '/' . ltrim($item, '/'));
+    $pid = (int) url_to_postid($url);
+    if ($pid) return $pid;
+    // Son çare: URL'in son slug parçasından ada göre ara.
+    $slug = trim(parse_url($url, PHP_URL_PATH) ?: '', '/');
+    $slug = substr(strrchr('/' . $slug, '/'), 1);
+    if ($slug !== '') {
+        $p = get_page_by_path($slug, OBJECT, ['post', 'analysis']);
+        if ($p) return (int) $p->ID;
+    }
+    return 0;
+}
+
 if ($action === 'deai') {
     require_once __DIR__ . '/_anthropic.php';
-    $ids = array_filter(array_map('intval', explode(',', (string)($_POST['ids'] ?? ''))));
-    $ids = array_slice(array_values(array_unique($ids)), 0, 25);   // güvenlik: tur başına en çok 25
+    // Girdi: 'items' (JSON dizi — id veya url) TERCİH EDİLİR; geriye dönük 'ids'.
+    $items = json_decode((string)($_POST['items'] ?? ''), true);
+    if (!is_array($items)) {
+        $items = array_filter(array_map('trim', explode(',', (string)($_POST['ids'] ?? ''))));
+    }
+    $items = array_slice(array_values($items), 0, 25);          // tur başına en çok 25
     $mreq = trim((string)($_POST['model'] ?? ''));
-    // UI 'opus' → en iyi model; boş → kaliteli (Sonnet) varsayılan.
     $model = ($mreq === 'opus') ? tls_claude_best_model() : ($mreq !== '' ? $mreq : '');
-    $results = []; $changed = 0; $clean = 0; $failed = 0;
-    foreach ($ids as $id) {
+    $results = []; $changed = 0; $clean = 0; $failed = 0; $seen = [];
+    foreach ($items as $it) {
+        $id = ca_deai_resolve($it);
+        $ref = is_string($it) ? $it : (string) $it;
+        if (!$id)          { $failed++; $results[] = ['ref'=>$ref, 'status'=>'atlandı', 'error'=>'yazı bulunamadı']; continue; }
+        if (isset($seen[$id])) continue;                        // aynı yazı iki kez gelmesin
+        $seen[$id] = 1;
         $res = ca_deai_edit($id, $model);
         $row = ['id'=>$id, 'title'=>get_the_title($id) ?: ('#'.$id)];
         if (!empty($res['changed']))      { $changed++; $row['status']='temizlendi'; $row['words']=$res['words']??0; }
