@@ -207,26 +207,36 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "can't distinguish it from a different work with a similar name, or you "
       . "would have to invent essentially everything. A merely obscure work you can "
       . "still place (author + kind + context) is NOT UNKNOWN — write what you know.\n"
-      . "4. Do NOT pad with generic filler. Length should follow how much you truly "
-      . "know.";
+      . "4. Do NOT pad with generic filler. Your length must follow how much you "
+      . "TRULY know: write as much as you can while every single sentence stays "
+      . "true. For a work you know well, that can be long (1000+ words); for one "
+      . "you know only in outline, keep it short. Never add a sentence you cannot "
+      . "vouch for just to reach a length. A short true text beats a long padded "
+      . "one.";
 
     $user =
-        "Write a factual overview (roughly 250–600 words, but shorter is fine if "
-      . "that is all you can say truthfully) of the book $who.\n\n"
-      . "Cover what you actually know — some of: what kind of work it is, its "
-      . "author and their historical/intellectual context, its central subject or "
-      . "argument or the author's characteristic themes, and its significance or "
-      . "place in the author's body of work. Use Markdown with 2–4 short section "
-      . "headings (##). Write in the same language as the book's title/audience "
-      . "where natural, otherwise clear neutral prose.\n\n"
-      . "Do NOT reconstruct or invent a plot, quotes, or specifics from the title. "
-      . "Write only true statements, at whatever level of detail you can vouch for. "
-      . "Output exactly UNKNOWN only if you genuinely cannot identify this work at "
-      . "all (not merely because you lack its detailed contents).";
+        "Write a factual overview of the book $who — as thorough as your genuine "
+      . "knowledge allows, and no longer. Do NOT aim for a fixed length: if you "
+      . "reliably know this work and its author in depth, write a full, rich "
+      . "overview (this may run 1000–1500 words); if you know it only in outline, "
+      . "write a short honest note. Length must track certainty, never a target.\n\n"
+      . "Cover what you actually know — as much as applies and you are sure of: "
+      . "what kind of work it is, its author and their historical/intellectual "
+      . "context, its central subject or argument or the author's characteristic "
+      . "themes, how it fits the author's body of work, and its significance, "
+      . "reception, or influence. Use Markdown with 2–5 short section headings "
+      . "(##). Write in the same language as the book's title/audience where "
+      . "natural, otherwise clear neutral prose.\n\n"
+      . "ANTI-FABRICATION (absolute): do NOT reconstruct or invent a plot, "
+      . "characters, quotes, dates, chapter lists, or any specific you are not "
+      . "certain of — omit what you don't know rather than guess. Every sentence "
+      . "must be something you actually know to be true. Output exactly UNKNOWN "
+      . "only if you genuinely cannot identify this work at all (not merely because "
+      . "you lack its detailed contents).";
 
     $r = tls_claude($system, $user, [
         'model'       => $opts['model'] ?? tls_claude_fast_model(),
-        'max_tokens'  => (int) ($opts['max_tokens'] ?? 2000),
+        'max_tokens'  => (int) ($opts['max_tokens'] ?? 4000),
         'temperature' => 0.2,
         'timeout'     => (int) ($opts['timeout'] ?? 180),
         'on_beat'     => $opts['on_beat'] ?? null,
