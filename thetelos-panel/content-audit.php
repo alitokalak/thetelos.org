@@ -276,7 +276,9 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
             var body=new URLSearchParams({action:'deai', items:JSON.stringify(chunk), model:model});
             var r=await fetch('api/content-audit.php',{method:'POST',credentials:'same-origin',body:body});
             var d=await r.json();
+            if(i===0){ line('· sunucu: HTTP '+r.status+' · v='+(d&&d.v||'?')+' · aldığı='+(d&&d.got)+' · yanıt='+JSON.stringify(d).slice(0,200)); }
             if(d&&d.ok){
+              if(!(d.results&&d.results.length)) line('⚠ sunucu boş sonuç döndü (v='+(d.v||'yok')+', aldığı='+(d.got!=null?d.got:'?')+'). API güncel değil ya da öğe çözülemedi.');
               (d.results||[]).forEach(function(x){
                 done++;
                 var who='#'+(x.id||x.ref||'?')+' '+(x.title||'');

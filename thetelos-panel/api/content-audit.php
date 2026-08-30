@@ -1760,7 +1760,7 @@ if ($action === 'deai') {
         else                              { $failed++;  $row['status']='atlandı'; $row['error']=$res['error']??'?'; }
         $results[] = $row;
     }
-    echo json_encode(['ok'=>true, 'results'=>$results, 'changed'=>$changed, 'clean'=>$clean, 'failed'=>$failed]);
+    echo json_encode(['ok'=>true, 'v'=>2, 'got'=>count($items), 'results'=>$results, 'changed'=>$changed, 'clean'=>$clean, 'failed'=>$failed]);
     exit;
 }
 
