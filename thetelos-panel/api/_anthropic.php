@@ -80,79 +80,113 @@ function tls_claude($system, $user, $opts = []) {
     $timeout = max(15, (int) ($opts['timeout'] ?? 180));
     $retries = max(1, (int) ($opts['retries'] ?? 3));
     $beat    = $opts['on_beat'] ?? null;
+    // SUNUCU ARAÇLARI (ör. web araması): verilirse payload'a eklenir. Web araması
+    // Anthropic tarafında çalışır — panelden ekstra dış bağlantı GEREKTİRMEZ.
+    // Uzun aramalarda API 'pause_turn' dönebilir; o zaman asistan turu geri
+    // eklenip istek yinelenir (aşağıdaki tur döngüsü). max_turns bunu sınırlar.
+    $tools     = (isset($opts['tools']) && is_array($opts['tools'])) ? $opts['tools'] : null;
+    $max_turns = max(1, (int) ($opts['max_turns'] ?? ($tools ? 5 : 1)));
 
-    $payload = [
-        'model'       => $model,
-        'max_tokens'  => $maxtok,
-        'temperature' => $temp,
-        'messages'    => [['role' => 'user', 'content' => (string) $user]],
-    ];
-    if (trim((string) $system) !== '') $payload['system'] = (string) $system;
-    $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    $messages = [['role' => 'user', 'content' => (string) $user]];
 
-    $lastErr = ''; $lastCode = 0;
-    for ($try = 1; $try <= $retries; $try++) {
-        $ch = curl_init('https://api.anthropic.com/v1/messages');
-        $copts = [
-            CURLOPT_POST           => true,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT        => $timeout,
-            CURLOPT_HTTPHEADER     => [
-                'content-type: application/json',
-                'x-api-key: ' . $key,
-                'anthropic-version: 2023-06-01',
-            ],
-            CURLOPT_POSTFIELDS     => $body,
+    /* Tek bir HTTP denemesi (geçici hatalarda kendi içinde yeniden dener).
+       @return array ['j'=>decoded|null, 'code'=>int, 'err'=>string] */
+    $do_request = function (array $payload) use ($key, $timeout, $retries, $beat) {
+        $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+        $lastErr = ''; $lastCode = 0;
+        for ($try = 1; $try <= $retries; $try++) {
+            $ch = curl_init('https://api.anthropic.com/v1/messages');
+            $copts = [
+                CURLOPT_POST           => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 15,
+                CURLOPT_TIMEOUT        => $timeout,
+                CURLOPT_HTTPHEADER     => [
+                    'content-type: application/json',
+                    'x-api-key: ' . $key,
+                    'anthropic-version: 2023-06-01',
+                ],
+                CURLOPT_POSTFIELDS     => $body,
+            ];
+            if (is_callable($beat)) {
+                $copts[CURLOPT_NOPROGRESS]       = false;
+                $copts[CURLOPT_XFERINFOFUNCTION] = function () use ($beat) { $beat(); return 0; };
+            }
+            curl_setopt_array($ch, $copts);
+            $raw  = curl_exec($ch);
+            $err  = curl_error($ch);
+            $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            curl_close($ch);
+            $lastCode = $code;
+
+            if ($err) {                       // ağ hatası → geçici
+                $lastErr = 'bağlantı: ' . $err;
+                if ($try < $retries) { sleep(min(20, 3 * $try)); continue; }
+                return ['j' => null, 'code' => 0, 'err' => $lastErr];
+            }
+            $j = json_decode((string) $raw, true);
+            if ($code >= 200 && $code < 300 && is_array($j)) {
+                return ['j' => $j, 'code' => $code, 'err' => ''];
+            }
+            $emsg    = $j['error']['message'] ?? trim(preg_replace('/\s+/', ' ', strip_tags((string) $raw)));
+            $lastErr = 'HTTP ' . $code . ($emsg ? ' · ' . mb_substr($emsg, 0, 200) : '');
+            // 429 / 529 / 5xx → geçici; 4xx → kalıcı.
+            if ($code === 429 || $code === 529 || $code >= 500) {
+                if ($try < $retries) { sleep(min(40, 5 * $try * ($code === 529 ? 2 : 1))); continue; }
+            }
+            return ['j' => null, 'code' => $code, 'err' => $lastErr];
+        }
+        return ['j' => null, 'code' => $lastCode, 'err' => $lastErr ?: 'bilinmeyen hata'];
+    };
+
+    $collected  = '';   // nihai yazılan metin (en son metinli tur kazanır)
+    $last_stop  = '';
+    $last_usage = [];
+    $last_err   = ''; $last_code = 0;
+
+    for ($turn = 1; $turn <= $max_turns; $turn++) {
+        $payload = [
+            'model'       => $model,
+            'max_tokens'  => $maxtok,
+            'temperature' => $temp,
+            'messages'    => $messages,
         ];
-        if (is_callable($beat)) {
-            $copts[CURLOPT_NOPROGRESS]       = false;
-            $copts[CURLOPT_XFERINFOFUNCTION] = function () use ($beat) { $beat(); return 0; };
+        if ($tools) $payload['tools'] = $tools;
+        if (trim((string) $system) !== '') $payload['system'] = (string) $system;
+
+        $res  = $do_request($payload);
+        $j    = $res['j'];
+        if (!is_array($j)) {
+            // Hata: elimizde önceki turdan metin varsa onu döndür, yoksa hata.
+            if ($collected !== '') break;
+            return ['ok' => false, 'http' => $res['code'], 'error' => $res['err']];
         }
-        curl_setopt_array($ch, $copts);
-        $raw  = curl_exec($ch);
-        $err  = curl_error($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
-        $lastCode = $code;
+        $last_code  = $res['code'];
+        $last_stop  = (string) ($j['stop_reason'] ?? '');
+        $last_usage = $j['usage'] ?? [];
 
-        // Ağ/bağlantı hatası → geçici say, yeniden dene.
-        if ($err) {
-            $lastErr = 'bağlantı: ' . $err;
-            if ($try < $retries) { sleep(min(20, 3 * $try)); continue; }
-            return ['ok' => false, 'http' => 0, 'error' => $lastErr];
+        $turn_text = '';
+        foreach (($j['content'] ?? []) as $blk) {
+            if (($blk['type'] ?? '') === 'text') $turn_text .= (string) ($blk['text'] ?? '');
         }
+        $turn_text = trim($turn_text);
+        if ($turn_text !== '') $collected = $turn_text;   // nihai özet son turda gelir
 
-        $j = json_decode((string) $raw, true);
-
-        if ($code >= 200 && $code < 300 && is_array($j)) {
-            $text = '';
-            foreach (($j['content'] ?? []) as $blk) {
-                if (($blk['type'] ?? '') === 'text') $text .= (string) ($blk['text'] ?? '');
-            }
-            $text = trim($text);
-            if ($text !== '') {
-                return ['ok' => true, 'text' => $text,
-                        'stop_reason' => (string) ($j['stop_reason'] ?? ''),
-                        'usage' => $j['usage'] ?? [], 'http' => $code];
-            }
-            $lastErr = 'boş içerik (stop_reason: ' . ($j['stop_reason'] ?? '?') . ')';
-            if ($try < $retries) { sleep(2); continue; }
-            return ['ok' => false, 'http' => $code, 'error' => $lastErr];
+        // Sunucu aracı (web araması) turu duraklattıysa → asistan turunu geri
+        // ekleyip devam et; model arama sonuçlarıyla metni yazsın.
+        if ($last_stop === 'pause_turn' && $tools && $turn < $max_turns) {
+            $messages[] = ['role' => 'assistant', 'content' => $j['content'] ?? []];
+            continue;
         }
-
-        // Hata gövdesi.
-        $emsg    = $j['error']['message'] ?? trim(preg_replace('/\s+/', ' ', strip_tags((string) $raw)));
-        $lastErr = 'HTTP ' . $code . ($emsg ? ' · ' . mb_substr($emsg, 0, 200) : '');
-
-        // 429 (rate) / 529 (overloaded) / 5xx → geçici, geri çekilip dene.
-        // 4xx (400/401/403/404) → kalıcı, denemenin anlamı yok.
-        if ($code === 429 || $code === 529 || $code >= 500) {
-            if ($try < $retries) { sleep(min(40, 5 * $try * ($code === 529 ? 2 : 1))); continue; }
-        }
-        return ['ok' => false, 'http' => $code, 'error' => $lastErr];
+        break;
     }
-    return ['ok' => false, 'http' => $lastCode, 'error' => $lastErr ?: 'bilinmeyen hata'];
+
+    if ($collected !== '') {
+        return ['ok' => true, 'text' => $collected,
+                'stop_reason' => $last_stop, 'usage' => $last_usage, 'http' => $last_code ?: 200];
+    }
+    return ['ok' => false, 'http' => $last_code,
+            'error' => $last_err ?: ('boş içerik (stop_reason: ' . ($last_stop ?: '?') . ')')];
 }
 
 /**
@@ -212,34 +246,56 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "true. For a work you know well, that can be long (1000+ words); for one "
       . "you know only in outline, keep it short. Never add a sentence you cannot "
       . "vouch for just to reach a length. A short true text beats a long padded "
-      . "one.";
+      . "one.\n"
+      . "5. WEB SEARCH: you have a web_search tool. Before deciding you don't know "
+      . "a work, SEARCH for it (by title + author) to confirm what it is and gather "
+      . "real facts. Ground your overview in what reputable sources actually say. "
+      . "This does NOT relax rule 1: never state a 'fact' the sources don't support, "
+      . "and if search returns nothing reliable about THIS specific work, treat it "
+      . "as genuinely unidentifiable → UNKNOWN. Search is to VERIFY, never to pad.";
 
     $user =
-        "Write a factual overview of the book $who — as thorough as your genuine "
-      . "knowledge allows, and no longer. Do NOT aim for a fixed length: if you "
-      . "reliably know this work and its author in depth, write a full, rich "
-      . "overview (this may run 1000–1500 words); if you know it only in outline, "
-      . "write a short honest note. Length must track certainty, never a target.\n\n"
-      . "Cover what you actually know — as much as applies and you are sure of: "
-      . "what kind of work it is, its author and their historical/intellectual "
-      . "context, its central subject or argument or the author's characteristic "
-      . "themes, how it fits the author's body of work, and its significance, "
-      . "reception, or influence. Use Markdown with 2–5 short section headings "
-      . "(##). Write in the same language as the book's title/audience where "
-      . "natural, otherwise clear neutral prose.\n\n"
+        "Write a factual overview of the book $who — as thorough as your genuine, "
+      . "verified knowledge allows, and no longer. First, use the web_search tool "
+      . "to look this exact work up (search the title with the author) and confirm "
+      . "what it is; base what you write on your own reliable knowledge plus what "
+      . "reputable search results actually say.\n\n"
+      . "Do NOT aim for a fixed length: if you can reliably establish this work and "
+      . "its author in depth, write a full, rich overview (this may run 1000–1500 "
+      . "words); if you can only establish it in outline, write a short honest note. "
+      . "Length must track how much you can actually confirm, never a target.\n\n"
+      . "Cover what you can actually establish — as much as applies: what kind of "
+      . "work it is, its author and their historical/intellectual context, its "
+      . "central subject or argument or the author's characteristic themes, how it "
+      . "fits the author's body of work, and its significance, reception, or "
+      . "influence. Use Markdown with 2–5 short section headings (##). Write in the "
+      . "same language as the book's title/audience where natural, otherwise clear "
+      . "neutral prose. Do NOT include citations, URLs, or a sources list — just "
+      . "the clean overview prose.\n\n"
       . "ANTI-FABRICATION (absolute): do NOT reconstruct or invent a plot, "
-      . "characters, quotes, dates, chapter lists, or any specific you are not "
-      . "certain of — omit what you don't know rather than guess. Every sentence "
-      . "must be something you actually know to be true. Output exactly UNKNOWN "
-      . "only if you genuinely cannot identify this work at all (not merely because "
-      . "you lack its detailed contents).";
+      . "characters, quotes, dates, chapter lists, or any specific neither you nor "
+      . "the search results support — omit what you cannot confirm rather than "
+      . "guess. Output exactly UNKNOWN only if, even after searching, you genuinely "
+      . "cannot identify this specific work at all.";
+
+    // Web araması: son-çare metnini gerçek kaynaklara dayandırır (uydurma yok).
+    // sonnet-4-5/haiku-4-5 için temel değişken: web_search_20250305. İsteyen
+    // kapatabilir (opts['web']=false); vars. açık, tur+kullanım sınırlı.
+    $use_web = !array_key_exists('web', $opts) || $opts['web'];
+    $tools   = $use_web ? [[
+        'type'     => 'web_search_20250305',
+        'name'     => 'web_search',
+        'max_uses' => (int) ($opts['web_max_uses'] ?? 4),
+    ]] : null;
 
     $r = tls_claude($system, $user, [
         'model'       => $opts['model'] ?? tls_claude_fast_model(),
         'max_tokens'  => (int) ($opts['max_tokens'] ?? 4000),
         'temperature' => 0.2,
-        'timeout'     => (int) ($opts['timeout'] ?? 180),
+        'timeout'     => (int) ($opts['timeout'] ?? 240),
         'on_beat'     => $opts['on_beat'] ?? null,
+        'tools'       => $tools,
+        'max_turns'   => $use_web ? (int) ($opts['max_turns'] ?? 6) : 1,
     ]);
 
     if (empty($r['ok'])) {
