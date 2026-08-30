@@ -183,31 +183,46 @@ function tls_claude_overview($book, $author, $opts = []) {
     $who = $author !== '' ? "\"$book\" by $author" : "\"$book\"";
 
     $system =
-        "You are a careful literary reference writer. You write ONLY about works "
-      . "you genuinely and reliably know. This is a strict anti-fabrication task.\n\n"
+        "You are a careful literary reference writer. This is a strict "
+      . "anti-fabrication task: everything you write must be TRUE, but you do NOT "
+      . "need to have the work's full text memorized to write about it.\n\n"
+      . "WHAT COUNTS AS 'KNOWING' THE WORK — you may write an overview if you can "
+      . "reliably identify this specific work and state true things about it, EVEN "
+      . "IF you do not remember its detailed contents. It is enough to reliably "
+      . "know, for example: who the author is, what KIND of work this is (novel, "
+      . "essay collection, compiled newspaper columns, treatise, poetry, etc.), the "
+      . "period and context it comes from, and its general subject or the author's "
+      . "characteristic themes. Write about exactly those things you are sure of.\n\n"
       . "ABSOLUTE RULES:\n"
-      . "1. If you are NOT highly confident that you reliably know THIS SPECIFIC "
-      . "work (its actual content, themes, and context — not a guess from the "
-      . "title, not a different book with a similar name, not a vague inference), "
-      . "then output EXACTLY the single word: UNKNOWN — nothing else.\n"
-      . "2. NEVER invent plot, characters, quotes, dates, chapters, or claims. If "
-      . "you are unsure about a specific fact, omit it rather than guess.\n"
-      . "3. Do NOT pad. Write only what you actually know to be true about this work.\n"
-      . "4. If the author or title looks obscure, unverifiable, or you cannot "
-      . "distinguish it from other works, choose UNKNOWN.\n"
-      . "When in ANY doubt: UNKNOWN.";
+      . "1. NEVER invent plot points, characters, quotes, specific dates, chapter "
+      . "lists, or any concrete claim you are not sure of. If you don't know a "
+      . "specific, OMIT it — do not guess. It is fine to write at the level you "
+      . "actually know (e.g. 'a collection of Chesterton's essays from this period, "
+      . "characteristically concerned with X') without fabricating specifics.\n"
+      . "2. Be honest about the grain of your knowledge: if you know the author, "
+      . "type, and context but not the exact contents, write about those and say so "
+      . "naturally, rather than inventing a detailed summary.\n"
+      . "3. Output EXACTLY the single word UNKNOWN — nothing else — ONLY when you "
+      . "genuinely cannot identify this work at all: you can't tell what it is, you "
+      . "can't distinguish it from a different work with a similar name, or you "
+      . "would have to invent essentially everything. A merely obscure work you can "
+      . "still place (author + kind + context) is NOT UNKNOWN — write what you know.\n"
+      . "4. Do NOT pad with generic filler. Length should follow how much you truly "
+      . "know.";
 
     $user =
-        "Write a factual overview (about 400–600 words) of the book $who — but ONLY "
-      . "if you are certain you reliably know this exact work.\n\n"
-      . "If you write it, cover what you actually know: what the work is, its "
-      . "author and historical/intellectual context, its central subject or "
-      . "argument, its main themes, and its significance or influence. Use Markdown "
-      . "with 2–4 short section headings (##). Write in the same language as the "
-      . "book's title/audience where natural, otherwise clear neutral prose.\n\n"
-      . "Do NOT summarize a plot you are reconstructing from the title. Do NOT "
-      . "invent specifics. If you cannot do this reliably for THIS exact work, "
-      . "output exactly: UNKNOWN";
+        "Write a factual overview (roughly 250–600 words, but shorter is fine if "
+      . "that is all you can say truthfully) of the book $who.\n\n"
+      . "Cover what you actually know — some of: what kind of work it is, its "
+      . "author and their historical/intellectual context, its central subject or "
+      . "argument or the author's characteristic themes, and its significance or "
+      . "place in the author's body of work. Use Markdown with 2–4 short section "
+      . "headings (##). Write in the same language as the book's title/audience "
+      . "where natural, otherwise clear neutral prose.\n\n"
+      . "Do NOT reconstruct or invent a plot, quotes, or specifics from the title. "
+      . "Write only true statements, at whatever level of detail you can vouch for. "
+      . "Output exactly UNKNOWN only if you genuinely cannot identify this work at "
+      . "all (not merely because you lack its detailed contents).";
 
     $r = tls_claude($system, $user, [
         'model'       => $opts['model'] ?? tls_claude_fast_model(),
@@ -227,8 +242,11 @@ function tls_claude_overview($book, $author, $opts = []) {
     if (strpos($probe, 'UNKNOWN') === 0) {
         return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
     }
-    // Çok kısa çıktı da güvenilmez → bilmiyor say.
-    if (str_word_count(strip_tags($md)) < 120) {
+    // Çok kısa çıktı da güvenilmez → bilmiyor say. Eşik düşürüldü: Claude bir
+    // eseri (yazar+tür+bağlam) sağlam bilip de içeriğini ezbere bilmiyorsa kısa
+    // ama gerçek bir tanıtım yazabilir; bunu yer tutucuya düşürme. Yalnızca tek
+    // cümlelik/işe yaramaz çıktıları ele.
+    if (str_word_count(strip_tags($md)) < 70) {
         return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
     }
     return ['ok' => true, 'unknown' => false, 'md' => $md, 'usage' => $r['usage'] ?? []];

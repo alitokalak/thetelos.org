@@ -142,6 +142,24 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <input type="text" id="single_source_url" placeholder="https://en.wikisource.org/wiki/…  ·  https://archive.org/details/…  ·  …/kitap.txt" style="width:100%;margin-bottom:8px">
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">…ya da metni buraya yapıştır</label>
           <textarea id="single_source_text" rows="4" placeholder="Eserin tam metnini buraya yapıştır (URL doldurulmuşsa bu alan gerekmez)" style="width:100%;font-family:monospace;font-size:12px"></textarea>
+          <label style="display:block;font-size:12px;color:var(--muted);margin:8px 0 4px">…ya da bir <b>.txt</b> dosyası yükle (içeriği yukarıdaki alana yüklenir)</label>
+          <input type="file" id="single_source_file" accept=".txt,text/plain" style="font-size:12px">
+          <span id="single_source_file_status" style="font-size:11px;color:var(--tls-gold);margin-left:6px"></span>
+          <script>
+          (function(){
+            var f=document.getElementById('single_source_file'),
+                ta=document.getElementById('single_source_text'),
+                st=document.getElementById('single_source_file_status');
+            if(!f) return;
+            f.addEventListener('change', function(){
+              var file=f.files&&f.files[0]; if(!file){ st.textContent=''; return; }
+              var r=new FileReader();
+              r.onload=function(){ ta.value=String(r.result||''); st.textContent='✓ '+file.name+' yüklendi ('+ta.value.length+' karakter).'; };
+              r.onerror=function(){ st.textContent='✗ Dosya okunamadı.'; };
+              r.readAsText(file,'UTF-8');
+            });
+          })();
+          </script>
         </details>
         <div class="form-row">
           <div>
@@ -386,65 +404,6 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <button class="btn btn-ghost" id="btn-batch-pause" style="display:none">⏸ Duraklat</button>
         </div>
 
-        <!-- ── ELİMDEKİ METİNLERDEN YAZ (toplu manuel kaynak) ───────────────── -->
-        <div style="margin-top:22px;border-top:1px solid var(--border);padding-top:16px">
-          <div style="font-weight:600;margin-bottom:6px">📄 Elimdeki metinlerden yaz <span style="font-size:11px;color:var(--muted)">(toplu manuel kaynak)</span></div>
-          <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">
-            Elinde bir kitabın tam metni (<b>.txt</b>) varsa, dosyayı buraya ver — sistem <b>senin verdiğin metinden</b> kaynak-temelli özet yazar (nereden aldığın önemli değil).
-            <b>Dosya adı ilgili yazının POST ID'sini içermeli</b> — ör. <code>14805.txt</code> ya da <code>14805-octavio.txt</code>. Birden çok dosya seçebilirsin.
-            Her yazı, adındaki id ile <b>birebir</b> eşleşip o metinden yeniden yazılır.
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <input type="file" id="man-src-files" accept=".txt,text/plain" multiple style="font-size:12px">
-            <label style="font-size:12px;color:var(--muted)">kelime
-              <select id="man-src-words" style="padding:3px 6px"><option>2500</option><option selected>3500</option><option>5000</option></select></label>
-            <label style="font-size:12px;color:var(--muted)">worker
-              <select id="man-src-workers" style="padding:3px 6px"><option selected>1</option><option>2</option><option>3</option></select></label>
-            <button class="btn btn-primary btn-sm" id="btn-man-src">▶ Metinlerden Yaz</button>
-          </div>
-          <div id="man-src-status" style="font-size:12px;color:var(--tls-gold);margin-top:8px;min-height:16px"></div>
-        </div>
-        <script>
-        (function(){
-          var btn = document.getElementById('btn-man-src'),
-              inp = document.getElementById('man-src-files'),
-              st  = document.getElementById('man-src-status');
-          if(!btn) return;
-          function readFile(f){ return new Promise(function(res){ var r=new FileReader(); r.onload=function(){res(String(r.result||''));}; r.onerror=function(){res('');}; r.readAsText(f,'UTF-8'); }); }
-          btn.addEventListener('click', async function(){
-            var files = inp.files ? Array.from(inp.files) : [];
-            if(!files.length){ st.textContent='Önce .txt dosya(lar) seç.'; return; }
-            var words = document.getElementById('man-src-words').value || '3500';
-            var workers = parseInt(document.getElementById('man-src-workers').value||'1');
-            btn.disabled=true; btn.textContent='⏳ Okunuyor…';
-            try{
-              var books=[], skipped=0;
-              for(var i=0;i<files.length;i++){
-                var f=files[i];
-                var m=(f.name||'').match(/(\d{2,})/);           // dosya adındaki ilk sayı = post id
-                if(!m){ skipped++; continue; }
-                var txt=await readFile(f);
-                if(txt.trim().length<500){ skipped++; continue; } // çok kısa/boş metni alma
-                books.push({ post_id: parseInt(m[1]), book_title:'', author_name:'', source_text: txt });
-              }
-              if(!books.length){ st.textContent='Geçerli dosya yok (ad içinde post id ve ≥500 karakter metin olmalı).'; btn.disabled=false; btn.textContent='▶ Metinlerden Yaz'; return; }
-              st.textContent='⏳ Batch kuruluyor ('+books.length+' metin)…';
-              var fd=new URLSearchParams();
-              fd.set('books', JSON.stringify(books));
-              fd.set('type','source'); fd.set('source_words',words);
-              fd.set('post_status','publish'); fd.set('rewrite','1'); fd.set('no_keep','1');
-              fd.set('workers', String(workers)); fd.set('api_provider','deepseek');
-              var r=await fetch('api/batch-create.php',{method:'POST',credentials:'same-origin',body:fd});
-              var d=await r.json();
-              if(!d||!d.ok) throw new Error(d&&d.error||'batch kurulamadı');
-              for(var w=0;w<workers;w++){ fetch('api/batch-worker.php',{method:'POST',credentials:'same-origin',body:new URLSearchParams({batch_id:d.batch_id})}).catch(function(){}); }
-              st.innerHTML='✓ Batch başladı ('+(d.total||books.length)+' metin'+(skipped?', '+skipped+' dosya atlandı':'')+'). İlerleme: <a href="panel.php?mode=queue" style="color:var(--tls-gold)">Kuyruk</a>.';
-              btn.textContent='✓ Başladı — Kuyruk\'ta';
-              setTimeout(function(){ window.location='panel.php?mode=queue'; },1600);
-            }catch(e){ st.textContent='✗ '+e.message; btn.disabled=false; btn.textContent='▶ Metinlerden Yaz'; }
-          });
-        })();
-        </script>
         <script>
         (function(){
           var cb = document.getElementById('cb-peak-skip'), msg = document.getElementById('peak-skip-msg');
