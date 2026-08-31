@@ -3192,5 +3192,7 @@ function tls_topic_guide_url_for_category() {
     $obj = get_queried_object();
     if ( ! $obj || empty( $obj->slug ) || $obj->slug !== 'existentialism' ) return '';
     $gid = (int) get_option( 'tls_exist_guide_id' );
-    return $gid ? get_permalink( $gid ) : home_url( '/existentialism-guide/' );
+    $url = $gid ? get_permalink( $gid ) : '';       // sayfa silinmiş/permalink boşsa
+    if ( ! $url ) $url = home_url( '/existentialism-guide/' );   // her koşulda bir URL ver
+    return $url;
 }
