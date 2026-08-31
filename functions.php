@@ -3164,27 +3164,32 @@ function thetelos_autolink_author( $content ) {
    Guide sayfasını (template-topic-guide.php) otomatik oluşturur; WP admin'de
    elle sayfa açmaya gerek yok. Bir kez kurulur (option ile korunur). Slug:
    /existentialism-guide/ · meta tls_topic_slug = existentialism. */
+define( 'TLS_TG_TEMPLATE', 'template-topic-guide-v2.php' );   // aktif şablon dosyası
 add_action( 'init', function () {
-    if ( get_option( 'tls_exist_guide_id' ) ) return;
-    $existing = get_page_by_path( 'existentialism-guide' );
-    if ( $existing ) {
-        update_post_meta( $existing->ID, '_wp_page_template', 'template-topic-guide.php' );
-        update_post_meta( $existing->ID, 'tls_topic_slug', 'existentialism' );
-        update_option( 'tls_exist_guide_id', (int) $existing->ID );
-        return;
+    // Sayfayı bul/oluştur.
+    $gid = (int) get_option( 'tls_exist_guide_id' );
+    $page = $gid ? get_post( $gid ) : null;
+    if ( ! $page || $page->post_type !== 'page' ) {
+        $existing = get_page_by_path( 'existentialism-guide' );
+        if ( $existing ) { $gid = (int) $existing->ID; }
+        else {
+            $gid = (int) wp_insert_post( [
+                'post_title'  => 'Existentialism — A Topic Guide',
+                'post_name'   => 'existentialism-guide',
+                'post_status' => 'publish',
+                'post_type'   => 'page',
+                'post_content'=> '',
+            ] );
+        }
+        if ( $gid ) update_option( 'tls_exist_guide_id', $gid );
     }
-    $id = wp_insert_post( [
-        'post_title'   => 'Existentialism — A Topic Guide',
-        'post_name'    => 'existentialism-guide',
-        'post_status'  => 'publish',
-        'post_type'    => 'page',
-        'post_content' => '',
-    ] );
-    if ( $id && ! is_wp_error( $id ) ) {
-        update_post_meta( $id, '_wp_page_template', 'template-topic-guide.php' );
-        update_post_meta( $id, 'tls_topic_slug', 'existentialism' );
-        update_option( 'tls_exist_guide_id', (int) $id );
-    }
+    if ( ! $gid ) return;
+    // Şablon + konu meta'sını HER ZAMAN doğru dosyaya sabitle (idempotent) —
+    // eski şablona (OPcache'te takılı) yönlenmiş kalmasın, v2'ye geçsin.
+    if ( get_post_meta( $gid, '_wp_page_template', true ) !== TLS_TG_TEMPLATE )
+        update_post_meta( $gid, '_wp_page_template', TLS_TG_TEMPLATE );
+    if ( get_post_meta( $gid, 'tls_topic_slug', true ) !== 'existentialism' )
+        update_post_meta( $gid, 'tls_topic_slug', 'existentialism' );
 } );
 
 /* Existentialism kategori sayfasının URL'inden guide URL'ini ver (buton için). */

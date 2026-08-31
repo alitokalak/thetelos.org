@@ -1,6 +1,6 @@
 <?php
 /**
- * Template Name: Topic Guide
+ * Template Name: Topic Guide v2
  *
  * TheTelos — Konu Rehberi (pilot: Existentialism). Editoryal, tarayıcı-dostu
  * referans katmanı. Mevcut kitap listesini DEĞİŞTİRMEZ. Essential Works ve
