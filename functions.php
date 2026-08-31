@@ -3159,3 +3159,38 @@ function thetelos_autolink_author( $content ) {
     }
     return $done ? implode( '', $parts ) : $content;
 }
+
+/* ── KONU REHBERİ (Topic Guide) — pilot: Existentialism ─────────────────────
+   Guide sayfasını (template-topic-guide.php) otomatik oluşturur; WP admin'de
+   elle sayfa açmaya gerek yok. Bir kez kurulur (option ile korunur). Slug:
+   /existentialism-guide/ · meta tls_topic_slug = existentialism. */
+add_action( 'init', function () {
+    if ( get_option( 'tls_exist_guide_id' ) ) return;
+    $existing = get_page_by_path( 'existentialism-guide' );
+    if ( $existing ) {
+        update_post_meta( $existing->ID, '_wp_page_template', 'template-topic-guide.php' );
+        update_post_meta( $existing->ID, 'tls_topic_slug', 'existentialism' );
+        update_option( 'tls_exist_guide_id', (int) $existing->ID );
+        return;
+    }
+    $id = wp_insert_post( [
+        'post_title'   => 'Existentialism — A Topic Guide',
+        'post_name'    => 'existentialism-guide',
+        'post_status'  => 'publish',
+        'post_type'    => 'page',
+        'post_content' => '',
+    ] );
+    if ( $id && ! is_wp_error( $id ) ) {
+        update_post_meta( $id, '_wp_page_template', 'template-topic-guide.php' );
+        update_post_meta( $id, 'tls_topic_slug', 'existentialism' );
+        update_option( 'tls_exist_guide_id', (int) $id );
+    }
+} );
+
+/* Existentialism kategori sayfasının URL'inden guide URL'ini ver (buton için). */
+function tls_topic_guide_url_for_category() {
+    $obj = get_queried_object();
+    if ( ! $obj || empty( $obj->slug ) || $obj->slug !== 'existentialism' ) return '';
+    $gid = (int) get_option( 'tls_exist_guide_id' );
+    return $gid ? get_permalink( $gid ) : home_url( '/existentialism-guide/' );
+}

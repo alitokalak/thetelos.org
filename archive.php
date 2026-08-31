@@ -44,6 +44,16 @@ $is_filterable = ( is_category() || is_tag() );
         ?>
         <p class="tls-archive-count"><?php echo number_format( $total ); ?> summaries</p>
         <?php endif; ?>
+        <?php
+        // KONU REHBERİ butonu — yalnız Existentialism kategorisinde (pilot).
+        $tls_guide_url = function_exists( 'tls_topic_guide_url_for_category' ) ? tls_topic_guide_url_for_category() : '';
+        if ( $tls_guide_url ) :
+        ?>
+        <a class="tls-topic-guide-btn" href="<?php echo esc_url( $tls_guide_url ); ?>"
+           style="display:inline-flex;align-items:center;gap:8px;margin-top:16px;padding:11px 20px;border-radius:30px;background:var(--tls-accent,#c9a34e);color:#1a1a1a;font-family:var(--tls-sans,sans-serif);font-weight:600;font-size:15px;text-decoration:none">
+           📘 Explore the <?php echo esc_html( single_cat_title( '', false ) ); ?> Guide →
+        </a>
+        <?php endif; ?>
     </div>
 </div>
 
