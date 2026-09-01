@@ -91,19 +91,21 @@ if (!tls_gemini_ready()) {
 $key = tls_gemini_key();
 $mime = 'application/pdf';
 
-// PDF'i Gemini File API'ye yükle (tek sefer), sonra çok kez referansla.
-$up = pex_gemini_upload($key, $bytes, $mime, $name);
-if (!$up['ok']) {
-    echo json_encode(['ok'=>false,'error'=>'Gemini yükleme hatası: '.$up['error'],'pages'=>$pages]); exit;
-}
-$ready = pex_gemini_wait_active($key, $up['name']);
-if (!$ready['ok']) {
-    echo json_encode(['ok'=>false,'error'=>'Gemini dosyayı işleyemedi: '.$ready['error'],'pages'=>$pages]); exit;
+// PDF'i SATIRİÇİ (inline_data) olarak generateContent'e gömeriz — File API bu
+// projede kapalı ("denied access"). generateContent aynı anahtarla ÇALIŞIYOR
+// (referee de onu kullanıyor). Inline istek gövdesi ~20MB sınırına tabi;
+// base64 şişmesiyle güvenli sınır ~14MB ham PDF.
+$INLINE_MAX = 14 * 1024 * 1024;
+if (strlen($bytes) > $INLINE_MAX) {
+    echo json_encode(['ok'=>false,
+        'error'=>'Bu tarama PDF çok büyük ('.round(strlen($bytes)/1048576,1).'MB) — satıriçi OCR sınırı ~14MB ve bu projede Gemini File API kapalı. PDF\'i bölüp daha küçük parça yükleyin ya da metni .txt olarak verin.',
+        'pages'=>$pages]);
+    exit;
 }
 
 $model  = defined('GEMINI_OCR_MODEL') ? GEMINI_OCR_MODEL : (defined('GEMINI_MODEL') && GEMINI_MODEL ? GEMINI_MODEL : 'gemini-2.5-flash');
 $sys    = 'You are a precise OCR transcription engine. Transcribe the document VERBATIM into plain text, preserving reading order and paragraph breaks. Do NOT summarize, translate, comment, or add anything. Output only the transcribed text.';
-$file_part = ['file_data' => ['mime_type' => $up['mime'], 'file_uri' => $up['uri']]];
+$file_part = ['inline_data' => ['mime_type' => $mime, 'data' => base64_encode($bytes)]];
 
 $acc = '';
 $truncated = false;
@@ -132,8 +134,6 @@ for ($round = 1; $round <= $MAX_ROUNDS; $round++) {
     if (($r['finish'] ?? '') !== 'MAX_TOKENS') break;   // bitti
     if ($round === $MAX_ROUNDS) $truncated = true;       // tavana takıldı
 }
-
-@pex_gemini_delete($key, $up['name']);   // temizlik (best-effort)
 
 $acc = pex_tidy($acc);
 if ($acc === '') {
@@ -354,19 +354,21 @@ function pex_gemini_wait_active($key, $name) {
 
 /** generateContent — çok-parçalı (file_data + text) istek. */
 function pex_gemini_generate($key, $model, $system, $parts, $maxtok) {
-    $base = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($key);
+    // Anahtarı ÇALIŞAN referee gibi header'da gönder (?key= yerine) — bazı
+    // kısıtlı anahtarlar sorgu-parametreli erişimi reddediyor.
+    $base = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
     $payload = [
         'contents' => [['role'=>'user', 'parts'=>$parts]],
         'generationConfig' => ['temperature'=>0.0, 'maxOutputTokens'=>(int)$maxtok, 'thinkingConfig'=>['thinkingBudget'=>0]],
     ];
     if (trim((string)$system) !== '') $payload['systemInstruction'] = ['parts'=>[['text'=>$system]]];
 
-    $do = function($body) use ($base) {
+    $do = function($body) use ($base, $key) {
         $ch = curl_init($base);
         curl_setopt_array($ch, [
             CURLOPT_POST=>true, CURLOPT_RETURNTRANSFER=>true,
             CURLOPT_CONNECTTIMEOUT=>20, CURLOPT_TIMEOUT=>600,
-            CURLOPT_HTTPHEADER=>['Content-Type: application/json'],
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json', 'x-goog-api-key: ' . $key],
             CURLOPT_POSTFIELDS=>json_encode($body, JSON_UNESCAPED_UNICODE),
         ]);
         $raw=curl_exec($ch); $err=curl_error($ch); $code=(int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
