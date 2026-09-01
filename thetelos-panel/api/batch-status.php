@@ -38,6 +38,7 @@ foreach ($batch['books'] as $i => $b) {
         'edit_url'         => $b['edit_url'],
         'cover_set'        => $b['cover_set'],
         'placeholder'      => !empty($b['placeholder']) ? 1 : 0,
+        'duplicate'        => !empty($b['duplicate']) ? 1 : 0,
         'kept'             => !empty($b['kept']) ? 1 : 0,
         'method'           => $b['method'] ?? '',
         'source'           => $b['source'] ?? '',

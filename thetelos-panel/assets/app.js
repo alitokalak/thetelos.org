@@ -536,6 +536,18 @@ async function runSingleSource(book, author) {
     }
     if (b.status === 'done' || b.status === 'error') {
       clearInterval(poll); setLoading(btn, false);
+      if (b.status === 'done' && b.duplicate) {
+        // Kitap sitede zaten var → create modunda atlandı. Token harcanmadı.
+        preview.innerHTML =
+          '<div style="padding:16px;border:1px solid rgba(224,168,0,.5);border-radius:10px;background:rgba(224,168,0,.08)">'
+          + '<div style="color:#e0a800;font-weight:600;margin-bottom:6px">⚠ Bu kitap sitede zaten var — yeni yazı oluşturulmadı</div>'
+          + '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">' + (b.error || 'Mevcut yazıyı güncellemek için “mevcut yazıyı yeniden yaz” kutusunu işaretleyip tekrar başlat.') + '</div>'
+          + (b.post_url ? '<a href="' + b.post_url + '" target="_blank" style="color:var(--gold)">Mevcut yazıyı gör →</a>' : '')
+          + (b.edit_url ? ' &nbsp;·&nbsp; <a href="' + b.edit_url + '" target="_blank" style="color:var(--muted)">Düzenle</a>' : '')
+          + '</div>';
+        notify('gen-notif', '⚠ Kitap zaten var — güncellemek için “yeniden yaz”ı işaretle.', 'err');
+        return;
+      }
       if (b.status === 'done' && b.post_url) {
         // DÜRÜST: gerçekten kaynak-temelli mi yoksa bilgi-metnine mi düştü? Kısa
         // çıktının sebebi genelde budur — 6.000 seçsen de bilgi-metni kısadır.

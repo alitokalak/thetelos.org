@@ -761,6 +761,32 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         if ($type !== 'info' && $type !== 'source') $type = ($ep === 'analysis') ? 'analysis' : 'summary';
     }
 
+    /* ── ÜRETİMDEN ÖNCE ÇİFT (DUPLICATE) KONTROLÜ ──────────────────────────
+       Create modunda (yeniden yaz İŞARETSİZ) aynı başlıkta yazı zaten varsa,
+       eskiden önce içeriği ÜRETİP (token harcayıp) sonra atıyorduk → kullanıcı
+       "bir şey yaptı ama yazı aynı kaldı" diyordu. Artık üretimden ÖNCE bakıyoruz:
+       varsa hiç üretmeden dürüst bir mesajla dönüyoruz (token harcanmaz) ve
+       kullanıcıya "güncellemek için yeniden yaz'ı işaretle" diyoruz. */
+    if (!$rewrite) {
+        $dup_title = $author ? "$book - $author" : $book;
+        $dup_slug  = mb_strtolower($dup_title, 'UTF-8');
+        $dup_slug  = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $dup_slug) ?: $dup_slug;
+        $dup_slug  = trim(preg_replace('/[^a-z0-9]+/', '-', $dup_slug), '-');
+        [$dup_posts, $dup_code] = bw_wp("$wp_api/$ep?slug=" . urlencode($dup_slug) . '&status=any&per_page=1', 'GET', [], $auth, 15);
+        if ($dup_code === 200 && !empty($dup_posts[0]['id'])) {
+            $dpid = (int) $dup_posts[0]['id'];
+            bw_update_book($batch_file, $idx, [
+                'status'    => 'done',
+                'duplicate' => 1,
+                'post_id'   => $dpid,
+                'post_url'  => $dup_posts[0]['link'] ?? '',
+                'edit_url'  => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $dpid . '&action=edit',
+                'error'     => 'Bu kitap sitede zaten var (#'.$dpid.'). Yeni içerik YAZILMADI (token harcanmadı). Mevcut yazıyı verdiğin kaynakla güncellemek için “mevcut yazıyı yeniden yaz” kutusunu işaretleyip tekrar başlat.',
+            ]);
+            return;
+        }
+    }
+
     // ── Prompt ────────────────────────────────────────────────────
     // Bilgi metni (info) tipi prompts.json kullanmaz — kendi motoru var (_info.php).
     $prompts  = file_exists(PROMPTS_FILE) ? json_decode(file_get_contents(PROMPTS_FILE), true) : [];
@@ -1697,11 +1723,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
         bw_update_book($batch_file, $idx, [
             'status'   => 'done',
+            'duplicate'=> 1,
             'post_id'  => $pid,
             'post_url' => $slug_posts[0]['link'] ?? '',
             'edit_url' => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
             'cover_set'=> false,
-            'error'    => 'duplicate_skipped',
+            'error'    => 'Bu kitap sitede zaten var (#'.$pid.'). Güncellemek için “mevcut yazıyı yeniden yaz”ı işaretle.',
         ]);
         return;
     }
