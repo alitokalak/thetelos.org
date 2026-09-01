@@ -255,15 +255,23 @@ function pex_ops_to_text($c) {
 
 /**
  * Çıkan metin GERÇEK okunabilir metin mi, yoksa CID-font çöpü mü?
- * Latin harf + boşluk + temel noktalamanın toplam orana bakılır. Gibberish
- * (özel font kodlaması) düşük oran verir → OCR'a düşer.
+ * Çok PDF, 2-baytlık CID font kodları kullanır; ham operatör çıkarımı bu
+ * kodları çöp bayt olarak verir ("6>???:W…q8?_u*?…"). Bu çöp; harf ve boşluk
+ * ORANI DÜŞÜK, buna karşın '?' ve sembol oranı yüksektir. İki güçlü sinyal:
+ *   1) harf+boşluk oranı yeterince yüksek (gerçek düzyazı ~%75+),
+ *   2) yaygın kısa kelimeler (the/and/of/de/la…) makul sayıda geçiyor.
+ * İkisi de yoksa → çöp say, Gemini OCR'a düş.
  */
 function pex_looks_like_text($t) {
     $sample = substr($t, 0, 20000);
     $n = strlen($sample);
     if ($n < 200) return false;
-    $good = preg_match_all('/[A-Za-zÀ-ÿ0-9 .,;:!?\'"()\-\n]/u', $sample);
-    return ($good / max(1, $n)) >= 0.55;
+    $letters = preg_match_all('/[A-Za-zÀ-ÿ]/u', $sample);
+    $spaces  = substr_count($sample, ' ');
+    $ratio   = ($letters + $spaces) / max(1, $n);
+    // Gerçek metinde bu yaygın kelimeler bolca geçer; çöpte neredeyse hiç yok.
+    $words   = preg_match_all('/(?<![A-Za-z])(the|and|of|to|in|that|is|was|for|with|de|la|le|el|und|der|die|il|et|en)(?![A-Za-z])/i', $sample);
+    return ($ratio >= 0.62 && $words >= 6);
 }
 
 /** Metni derle-topla: kontrol karakterleri, aşırı boşluk, satır normalize. */
