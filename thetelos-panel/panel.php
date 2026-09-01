@@ -158,7 +158,7 @@ if (!isset($_GET['mode'])) {
             düz <b>.txt</b> linki) <b>veya</b> metnin tamamını aşağıya <b>yapıştır</b>.
             Motor otomatik aramayı atlar, verdiğin kaynaktan kaynak-temelli özet çıkarır.
             <b>PDF hakkında:</b> içinde metin katmanı varsa (Gutenberg, çoğu Archive PDF'i)
-            anında ve ücretsiz okunur; <b>salt tarama/görsel</b> PDF ise Gemini ile OCR
+            anında ve ücretsiz okunur; <b>salt tarama/görsel</b> PDF ise Claude ile OCR
             edilir (biraz sürebilir). Metin otomatik olarak aşağıdaki kutuya düşer.
           </p>
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Kaynak bağlantısı (URL)</label>
@@ -201,7 +201,7 @@ if (!isset($_GET['mode'])) {
                 var j; try{ j=JSON.parse(xhr.responseText); }catch(_){ setStatus('✗ Sunucu beklenmedik yanıt verdi (HTTP '+xhr.status+').','#e88'); return; }
                 if(!j.ok){ setStatus('✗ '+(j.error||'PDF okunamadı.'),'#e88'); return; }
                 ta.value=j.text||'';
-                var how = j.method==='gemini-ocr' ? 'Gemini OCR (tarama PDF)' : 'metin katmanı (anında)';
+                var how = (j.method==='claude-ocr'||j.method==='gemini-ocr') ? 'Claude OCR (tarama PDF)' : 'metin katmanı (anında)';
                 var warn = j.truncated ? ' <span style="color:#e6c65a">⚠ çok uzun; bir kısmı alınamamış olabilir</span>' : '';
                 setStatus('✓ '+file.name+' okundu — '+how+' · '+(j.pages||'?')+' sayfa · '+(j.chars||ta.value.length).toLocaleString()+' karakter.'+warn,'#8fd18f');
               };

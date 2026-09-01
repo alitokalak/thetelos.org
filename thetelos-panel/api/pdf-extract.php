@@ -80,36 +80,41 @@ if ($has_layer) {
     exit;
 }
 
-/* ── 2) GEMINI OCR (salt görsel / tarama PDF) ─────────────────────────────── */
-if (!tls_gemini_ready()) {
+/* ── 2) CLAUDE OCR (salt görsel / CID-font tarama PDF) ─────────────────────────
+   Gemini bu projede kapalı ("denied access") — hem File API hem generateContent.
+   Anthropic (Claude) bu projede ÇALIŞIYOR (son-çare yazar + referee onu kullanır)
+   ve PDF'i NATIF (görsel) okur: sayfaları render edip OCR eder, custom/CID font
+   kodlaması onu ETKİLEMEZ. PDF'i "document" içerik bloğu (base64) olarak yollarız. */
+require_once __DIR__ . '/_anthropic.php';
+if (!tls_anthropic_ready()) {
     echo json_encode(['ok'=>false,
-        'error'=>'Bu bir tarama (görsel) PDF ve içinde okunabilir metin katmanı yok. OCR için Gemini anahtarı gerekli ama config.php\'de tanımlı değil.',
+        'error'=>'Bu bir tarama/CID-font PDF ve okunabilir düz metin katmanı yok. OCR için Anthropic (Claude) anahtarı gerekli ama config.php\'de tanımlı değil.',
         'pages'=>$pages]);
     exit;
 }
 
-$key = tls_gemini_key();
-$mime = 'application/pdf';
-
-// PDF'i SATIRİÇİ (inline_data) olarak generateContent'e gömeriz — File API bu
-// projede kapalı ("denied access"). generateContent aynı anahtarla ÇALIŞIYOR
-// (referee de onu kullanıyor). Inline istek gövdesi ~20MB sınırına tabi;
-// base64 şişmesiyle güvenli sınır ~14MB ham PDF.
-$INLINE_MAX = 14 * 1024 * 1024;
-if (strlen($bytes) > $INLINE_MAX) {
+// Claude PDF sınırı: istek başına ~32MB ve ~100 sayfa. Aşımda net uyarı.
+if (strlen($bytes) > 30 * 1024 * 1024) {
     echo json_encode(['ok'=>false,
-        'error'=>'Bu tarama PDF çok büyük ('.round(strlen($bytes)/1048576,1).'MB) — satıriçi OCR sınırı ~14MB ve bu projede Gemini File API kapalı. PDF\'i bölüp daha küçük parça yükleyin ya da metni .txt olarak verin.',
+        'error'=>'Bu tarama PDF çok büyük ('.round(strlen($bytes)/1048576,1).'MB) — Claude PDF sınırı ~32MB. PDF\'i bölün ya da metni .txt olarak verin.',
+        'pages'=>$pages]);
+    exit;
+}
+if ($pages > 100) {
+    echo json_encode(['ok'=>false,
+        'error'=>'Bu PDF '.$pages.' sayfa — Claude tek istekte en çok ~100 sayfa OCR eder. PDF\'i bölüp parça parça yükleyin.',
         'pages'=>$pages]);
     exit;
 }
 
-$model  = defined('GEMINI_OCR_MODEL') ? GEMINI_OCR_MODEL : (defined('GEMINI_MODEL') && GEMINI_MODEL ? GEMINI_MODEL : 'gemini-2.5-flash');
-$sys    = 'You are a precise OCR transcription engine. Transcribe the document VERBATIM into plain text, preserving reading order and paragraph breaks. Do NOT summarize, translate, comment, or add anything. Output only the transcribed text.';
-$file_part = ['inline_data' => ['mime_type' => $mime, 'data' => base64_encode($bytes)]];
+$key   = tls_anthropic_key();
+$model = defined('ANTHROPIC_OCR_MODEL') ? ANTHROPIC_OCR_MODEL : tls_claude_quality_model();
+$b64   = base64_encode($bytes);
+$sys   = 'You are a precise OCR transcription engine. Transcribe the document VERBATIM into plain text, preserving reading order and paragraph breaks. Do NOT summarize, translate, comment, or add anything. Output only the transcribed text.';
 
 $acc = '';
 $truncated = false;
-$MAX_ROUNDS = 14;                 // güvenlik tavanı — sonsuz döngü olmasın
+$MAX_ROUNDS = 10;                 // güvenlik tavanı
 for ($round = 1; $round <= $MAX_ROUNDS; $round++) {
     if ($round === 1) {
         $prompt = 'Transcribe the ENTIRE document verbatim, from the first page to the last. Output only the raw text.';
@@ -120,19 +125,17 @@ for ($round = 1; $round <= $MAX_ROUNDS; $round++) {
                 . "Resume the transcription IMMEDIATELY after that text and continue to the end of the document. "
                 . "Do NOT repeat any text you already produced. Output only the new raw text.";
     }
-    $r = pex_gemini_generate($key, $model, $sys, [$file_part, ['text'=>$prompt]], 65536);
+    $r = pex_claude_ocr($key, $model, $sys, $b64, $prompt, 16000);
     if (!$r['ok']) {
-        // İlk turda hata → tümden başarısız; sonraki turda hata → eldekiyle dön.
-        if ($round === 1) { echo json_encode(['ok'=>false,'error'=>'Gemini OCR hatası: '.$r['error'],'pages'=>$pages]); exit; }
+        if ($round === 1) { echo json_encode(['ok'=>false,'error'=>'Claude OCR hatası: '.$r['error'],'pages'=>$pages]); exit; }
         $truncated = true; break;
     }
     $chunk = $r['text'];
-    // Devam turunda başı örtüşüyorsa kırp (model son parçayı yine yazmış olabilir).
     if ($round > 1) $chunk = pex_dedupe_join($acc, $chunk);
     $acc .= ($acc === '' ? '' : "\n") . $chunk;
 
-    if (($r['finish'] ?? '') !== 'MAX_TOKENS') break;   // bitti
-    if ($round === $MAX_ROUNDS) $truncated = true;       // tavana takıldı
+    if (($r['stop'] ?? '') !== 'max_tokens') break;      // bitti
+    if ($round === $MAX_ROUNDS) $truncated = true;        // tavana takıldı
 }
 
 $acc = pex_tidy($acc);
@@ -140,7 +143,7 @@ if ($acc === '') {
     echo json_encode(['ok'=>false,'error'=>'OCR sonucu boş döndü.','pages'=>$pages]); exit;
 }
 echo json_encode([
-    'ok'=>true, 'method'=>'gemini-ocr', 'text'=>$acc,
+    'ok'=>true, 'method'=>'claude-ocr', 'text'=>$acc,
     'chars'=>mb_strlen($acc), 'pages'=>$pages, 'truncated'=>$truncated,
 ], JSON_UNESCAPED_UNICODE);
 exit;
@@ -302,7 +305,56 @@ function pex_dedupe_join($acc, $chunk) {
     return $chunk;
 }
 
-/* ── Gemini File API ───────────────────────────────────────────────────────── */
+/**
+ * Claude OCR — PDF'i "document" (base64) içerik bloğu olarak yollar, verbatim
+ * transkripsiyon ister. Claude PDF'i natif (görsel) okur; CID/custom font
+ * kodlaması sonucu etkilemez. Dönüş ['ok','text','stop','error'].
+ */
+function pex_claude_ocr($key, $model, $system, $b64, $prompt, $maxtok) {
+    $payload = [
+        'model'      => $model,
+        'max_tokens' => (int) $maxtok,
+        'system'     => $system,
+        'messages'   => [[
+            'role' => 'user',
+            'content' => [
+                ['type'=>'document', 'source'=>['type'=>'base64','media_type'=>'application/pdf','data'=>$b64]],
+                ['type'=>'text', 'text'=>$prompt],
+            ],
+        ]],
+    ];
+    $do = function($body) use ($key) {
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_POST=>true, CURLOPT_RETURNTRANSFER=>true,
+            CURLOPT_CONNECTTIMEOUT=>20, CURLOPT_TIMEOUT=>600,
+            CURLOPT_HTTPHEADER=>[
+                'content-type: application/json',
+                'x-api-key: ' . $key,
+                'anthropic-version: 2023-06-01',
+                'anthropic-beta: pdfs-2024-09-25',
+            ],
+            CURLOPT_POSTFIELDS=>json_encode($body, JSON_UNESCAPED_UNICODE),
+        ]);
+        $raw=curl_exec($ch); $err=curl_error($ch); $code=(int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+        return [$raw,$err,$code];
+    };
+    for ($try=1; $try<=3; $try++) {
+        [$raw,$err,$code] = $do($payload);
+        if ($err) { if ($try<3){ sleep(3*$try); continue; } return ['ok'=>false,'error'=>'bağlantı: '.$err]; }
+        $j = json_decode((string)$raw, true);
+        if ($code>=200 && $code<300 && is_array($j)) {
+            $text=''; foreach (($j['content'] ?? []) as $blk) if (($blk['type'] ?? '')==='text') $text .= $blk['text'];
+            return ['ok'=>true, 'text'=>trim($text), 'stop'=>(string)($j['stop_reason'] ?? '')];
+        }
+        if ($code===429 || $code>=500) { if ($try<3){ sleep(5*$try); continue; } }
+        $m = $j['error']['message'] ?? ('HTTP '.$code);
+        return ['ok'=>false,'error'=>$m];
+    }
+    return ['ok'=>false,'error'=>'bilinmeyen hata'];
+}
+
+/* ── Gemini File API (kullanılmıyor — anahtar erişimi kapalı; ileride açılırsa) ── */
 
 /** PDF'i Gemini File API'ye yükle (tek istekli raw resumable). */
 function pex_gemini_upload($key, $bytes, $mime, $display) {
