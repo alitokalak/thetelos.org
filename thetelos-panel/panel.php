@@ -189,24 +189,48 @@ if (!isset($_GET['mode'])) {
               r.readAsText(file,'UTF-8');
             }
 
+            function fillDone(file,j){
+              ta.value=j.text||'';
+              var how = j.method==='claude-ocr' ? 'Claude OCR (tarama PDF)' : 'metin katmanı (anında)';
+              var warn = j.truncated ? ' <span style="color:#e6c65a">⚠ çok uzun; bir kısmı alınamamış olabilir</span>' : '';
+              setStatus('✓ '+file.name+' okundu — '+how+' · '+(j.pages||'?')+' sayfa · '+(j.chars||ta.value.length).toLocaleString()+' karakter.'+warn,'#8fd18f');
+            }
+            function fireWork(job){ // ateşle-unut; Cloudflare 524 verse de sunucuda sürer
+              try{ fetch('api/pdf-extract.php?action=work',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'job='+encodeURIComponent(job),keepalive:true}).catch(function(){}); }catch(_){}
+            }
+            function pollOcr(file,job,pages){
+              var t0=Date.now(), fired=Date.now();
+              setStatus('🔎 Claude OCR başladı ('+file.name+' · '+pages+' sayfa) — tarama PDF görsel okunuyor, kapatma. Sürebilir…','#e6c65a');
+              var iv=setInterval(function(){
+                fetch('api/pdf-extract.php?action=status&job='+encodeURIComponent(job)).then(function(r){return r.json();}).then(function(j){
+                  if(!j.ok){ clearInterval(iv); setStatus('✗ '+(j.error||'iş bulunamadı'),'#e88'); return; }
+                  if(j.status==='done'){ clearInterval(iv); fillDone(file,j); return; }
+                  if(j.status==='error'){ clearInterval(iv); setStatus('✗ OCR hatası: '+(j.error||'—'),'#e88'); return; }
+                  var sec=Math.round((Date.now()-t0)/1000);
+                  setStatus('🔎 Claude OCR sürüyor… tur '+(j.round||0)+' · ~'+(j.chars||0).toLocaleString()+' karakter · '+sec+' sn ('+file.name+')','#e6c65a');
+                  // Worker düşmüş/ateşleme kaybolmuşsa yeniden ateşle (work çift-ateşlemeye karşı korumalı).
+                  if((j.status==='queued' || (j.status==='working' && j.age!=null && j.age>150)) && (Date.now()-fired)>150000){ fired=Date.now(); fireWork(job); }
+                  if(sec>1200){ clearInterval(iv); setStatus('✗ OCR çok uzun sürdü (20 dk). PDF\'i bölüp deneyin ya da .txt verin.','#e88'); }
+                }).catch(function(){ /* geçici ağ hatası — bir sonraki turda dene */ });
+              },3000);
+            }
             function handlePdf(file){
-              setStatus('⏳ '+file.name+' yükleniyor ve okunuyor… (tarama PDF ise OCR biraz sürebilir, sayfayı kapatma)','#e6c65a');
+              setStatus('⏫ '+file.name+' yükleniyor…','#e6c65a');
               var xhr=new XMLHttpRequest();
               // HAM gövde ile gönder: upload_max_filesize'ı (2MB) baştan aşar.
-              xhr.open('POST','api/pdf-extract.php?name='+encodeURIComponent(file.name),true);
+              xhr.open('POST','api/pdf-extract.php?action=start&name='+encodeURIComponent(file.name),true);
               xhr.setRequestHeader('Content-Type','application/pdf');
-              xhr.timeout=1000*60*20; // 20 dk — büyük tarama PDF'leri için
-              xhr.upload.onprogress=function(e){ if(e.lengthComputable){ var pct=Math.round(e.loaded/e.total*100); if(pct<100) setStatus('⏫ Yükleniyor… %'+pct+' ('+file.name+')','#e6c65a'); else setStatus('🔎 Sunucu PDF\'i okuyor… (tarama PDF ise OCR sürüyor, bekle)','#e6c65a'); } };
+              xhr.timeout=1000*60*3; // start yalnız yükleme+metin katmanı — kısa
+              xhr.upload.onprogress=function(e){ if(e.lengthComputable){ var pct=Math.round(e.loaded/e.total*100); if(pct<100) setStatus('⏫ Yükleniyor… %'+pct+' ('+file.name+')','#e6c65a'); else setStatus('🔎 Metin katmanı kontrol ediliyor…','#e6c65a'); } };
               xhr.onload=function(){
                 var j; try{ j=JSON.parse(xhr.responseText); }catch(_){ setStatus('✗ Sunucu beklenmedik yanıt verdi (HTTP '+xhr.status+').','#e88'); return; }
                 if(!j.ok){ setStatus('✗ '+(j.error||'PDF okunamadı.'),'#e88'); return; }
-                ta.value=j.text||'';
-                var how = (j.method==='claude-ocr'||j.method==='gemini-ocr') ? 'Claude OCR (tarama PDF)' : 'metin katmanı (anında)';
-                var warn = j.truncated ? ' <span style="color:#e6c65a">⚠ çok uzun; bir kısmı alınamamış olabilir</span>' : '';
-                setStatus('✓ '+file.name+' okundu — '+how+' · '+(j.pages||'?')+' sayfa · '+(j.chars||ta.value.length).toLocaleString()+' karakter.'+warn,'#8fd18f');
+                if(j.status==='done'){ fillDone(file,j); return; }          // metin katmanı — anında
+                if(j.status==='processing'){ fireWork(j.job_id); pollOcr(file,j.job_id,j.pages||'?'); return; } // tarama → arka plan OCR
+                setStatus('✗ Beklenmedik durum: '+(j.status||'?'),'#e88');
               };
               xhr.onerror=function(){ setStatus('✗ Ağ hatası — yükleme başarısız.','#e88'); };
-              xhr.ontimeout=function(){ setStatus('✗ Zaman aşımı — PDF çok büyük olabilir. Daha küçük bir dosya ya da .txt dene.','#e88'); };
+              xhr.ontimeout=function(){ setStatus('✗ Yükleme zaman aşımı — PDF çok büyük olabilir. Daha küçük dosya ya da .txt dene.','#e88'); };
               xhr.send(file);
             }
 
