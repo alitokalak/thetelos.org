@@ -1077,7 +1077,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
         // ZORUNLU ANTI-META (kısa): AI hitabı/itirafı asla. Uzun tutmaya gerek yok
         // — çıktı filtresi (bw_clean_content) zaten yedek. Az token, net kural.
-        $anti_meta = "\n\nWrite only about the work, as a human reference author. "
+        $anti_meta = "\n\nWrite ENTIRELY IN ENGLISH — even if the book or source is in "
+          . "another language, write in English; never output in the original language. "
+          . "Write only about the work, as a human reference author. "
           . "Never mention yourself, an AI, or your knowledge/limits, and never "
           . "address the reader (no 'As an AI', 'I cannot', 'A note on the limits…'). "
           . "Omit what you don't know silently. NEVER invent, translate, paraphrase, "

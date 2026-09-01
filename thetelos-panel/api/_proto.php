@@ -572,7 +572,7 @@ function proto_chunks($t, $max_chunks = 14, $target = 45000) {
 function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150-280') {
     return "The following is an excerpt (part {$k} of {$n}) from a REAL public-domain edition of the book \"{$book}\""
         . ($author ? " by {$author}" : '') . ". It is genuinely from that edition — it may be the main text, OR the edition's introduction, the translator's/editor's analysis, a preface, footnotes, or appendices.\n"
-        . "TASK: Write {$note_words} words of dense, faithful notes IN ENGLISH on the ideas, arguments, reasoning, concepts, events, and points ACTUALLY MADE in THIS passage. Use ONLY what this passage says — add no outside knowledge.\n"
+        . "TASK: Write {$note_words} words of dense, faithful notes IN ENGLISH on the ideas, arguments, reasoning, concepts, events, and points ACTUALLY MADE in THIS passage. Use ONLY what this passage says — add no outside knowledge. WRITE THE NOTES IN ENGLISH ONLY — even if this passage is in Spanish/French/Latin/etc., translate its content into English; never write notes in the passage's original language.\n"
         . "PRECISION: Preserve exact character/person names and place names as they appear in the text. Keep events in the ORDER they occur in this passage. Attribute each action to the correct character; never merge two people or two events into one.\n"
         . "DO NOT judge whether the passage 'belongs' to the book — it does. DO NOT refuse. Summarize whatever readable prose is present, whether it is the work itself or editorial discussion OF the work (when it is editorial context rather than the work's own words, just note that).\n"
         . "The ONLY case where you may skip: the passage contains NO readable sentences at all — i.e. it is purely a title page, a copyright/license/Project Gutenberg notice, a bare table of contents, or a page-number index. In that single case reply EXACTLY: (no substantive content). In EVERY other case you MUST produce notes.\n\n=== EXCERPT ===\n" . mb_substr($excerpt, 0, 48000);
@@ -585,7 +585,8 @@ function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summa
             . "Use these REAL divisions instead of inventing generic 'Part 1 / Part 2' labels. "
             . "Mention each chapter heading AT MOST ONCE (as a ### subheading inside the Section-by-Section Summary); in 'Structure of the Book' describe the arrangement in prose. NEVER output the same chapter heading twice.\n";
     }
-    return "You are writing a faithful, source-based book summary for a books website, in English.\n"
+    return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH. The source text and notes may be in Spanish, French, Latin, or any other language; TRANSLATE their content into fluent English. Every section heading (## About the Work, etc.) and every sentence MUST be in English. NEVER write any part of the output in the book's original language.\n\n"
+        . "You are writing a faithful, source-based book summary for a books website, in English.\n"
         . "Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
         . $chap_block
         . "Using ONLY these notes (from the real text), write {$target} with these ## sections, omitting any you lack material for:\n"
@@ -613,7 +614,8 @@ function proto_sbs_prompt($book, $author, $notes, $g, $G, $seg_words = 0) {
     $budget = $seg_words > 0
         ? "LENGTH BUDGET: write about {$seg_words} words for THIS segment (a hard ceiling — do not exceed it). Spend the words evenly across the whole segment so you reach its final event.\n"
         : '';
-    return "You are writing the DETAILED SECTION-BY-SECTION narrative of a faithful, source-based summary of \"{$book}\"" . ($author ? " by {$author}" : '') . ", in English.\n"
+    return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH, even if the notes are in another language; translate their content. Never write headings or prose in the book's original language.\n\n"
+        . "You are writing the DETAILED SECTION-BY-SECTION narrative of a faithful, source-based summary of \"{$book}\"" . ($author ? " by {$author}" : '') . ", in English.\n"
         . "Below are ORDERED notes from the ACTUAL TEXT covering ONE consecutive segment of the book (segment {$g} of {$G}).\n"
         . "The notes are labelled [Part 1], [Part 2]… — these are OUR internal processing segments, NOT the book's real divisions. NEVER mention 'Part N' or reproduce those labels, and do NOT claim the book 'is divided into N parts'. Follow the book's OWN natural flow.\n"
         . $budget
@@ -631,7 +633,8 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
         $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text) ===\n"
             . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\nUse these REAL divisions when describing structure; do NOT invent generic 'Part 1/2' labels.\n";
     }
-    return "You are writing the FRAMING sections of a faithful, source-based book summary for a books website, in English.\n"
+    return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH, even if the notes are in another language; translate their content. Never write headings or prose in the book's original language.\n\n"
+        . "You are writing the FRAMING sections of a faithful, source-based book summary for a books website, in English.\n"
         . "Below are ORDERED notes from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ".\n"
         . $chap_block
         . "Using ONLY these notes, write {$target}, but ONLY these ## sections (the blow-by-blow narrative is produced separately — do NOT write a section-by-section retelling here), omitting any you lack material for:\n"
