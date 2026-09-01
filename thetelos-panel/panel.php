@@ -153,32 +153,73 @@ if (!isset($_GET['mode'])) {
         <details id="single-manual-source" style="margin:0 0 12px;border:1px solid rgba(90,170,90,.3);border-radius:10px;padding:10px 12px;background:rgba(90,170,90,.05)">
           <summary style="cursor:pointer;font-size:13px;color:#7fb37f;font-weight:600">📎 Manuel kaynak ver (opsiyonel) — motor bulamadıysa sen ver</summary>
           <p style="font-size:11px;color:var(--muted);margin:8px 0;line-height:1.5">
-            Motor tam metni bulamıyorsa, sen kaynağı ver: bir <b>bağlantı</b> yapıştır
-            (Wikisource sayfası, Internet Archive eseri, ya da düz <b>.txt</b> linki) <b>veya</b>
-            metnin tamamını aşağıya <b>yapıştır</b>. Motor otomatik aramayı atlar, doğrudan
-            bu kaynaktan kaynak-temelli özet çıkarır. <b>Not:</b> doğrudan PDF ikili linki
-            çalışmaz — Archive/Wikisource linki ya da .txt ver, ya da metni yapıştır.
+            Motor tam metni bulamıyorsa, sen kaynağı ver: bir <b>PDF yükle</b> (aşağıya
+            sürükle-bırak), bir <b>bağlantı</b> yapıştır (Wikisource / Internet Archive /
+            düz <b>.txt</b> linki) <b>veya</b> metnin tamamını aşağıya <b>yapıştır</b>.
+            Motor otomatik aramayı atlar, verdiğin kaynaktan kaynak-temelli özet çıkarır.
+            <b>PDF hakkında:</b> içinde metin katmanı varsa (Gutenberg, çoğu Archive PDF'i)
+            anında ve ücretsiz okunur; <b>salt tarama/görsel</b> PDF ise Gemini ile OCR
+            edilir (biraz sürebilir). Metin otomatik olarak aşağıdaki kutuya düşer.
           </p>
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Kaynak bağlantısı (URL)</label>
           <input type="text" id="single_source_url" placeholder="https://en.wikisource.org/wiki/…  ·  https://archive.org/details/…  ·  …/kitap.txt" style="width:100%;margin-bottom:8px">
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">…ya da metni buraya yapıştır</label>
           <textarea id="single_source_text" rows="4" placeholder="Eserin tam metnini buraya yapıştır (URL doldurulmuşsa bu alan gerekmez)" style="width:100%;font-family:monospace;font-size:12px"></textarea>
-          <label style="display:block;font-size:12px;color:var(--muted);margin:8px 0 4px">…ya da bir <b>.txt</b> dosyası yükle (içeriği yukarıdaki alana yüklenir)</label>
-          <input type="file" id="single_source_file" accept=".txt,text/plain" style="font-size:12px">
-          <span id="single_source_file_status" style="font-size:11px;color:var(--tls-gold);margin-left:6px"></span>
+          <label style="display:block;font-size:12px;color:var(--muted);margin:8px 0 4px">…ya da bir <b>PDF</b> / <b>.txt</b> dosyası yükle (içeriği yukarıdaki alana düşer)</label>
+          <div id="single_drop" style="border:1.5px dashed var(--tls-gold,#c8a24a);border-radius:10px;padding:18px 14px;text-align:center;cursor:pointer;transition:background .15s,border-color .15s;background:rgba(255,255,255,.02)">
+            <div style="font-size:22px;line-height:1;margin-bottom:6px">📄⬆️</div>
+            <div style="font-size:12px;color:var(--muted)"><b>PDF ya da .txt</b> dosyasını buraya sürükle-bırak<br>ya da tıklayıp seç</div>
+            <input type="file" id="single_source_file" accept=".pdf,application/pdf,.txt,text/plain" style="display:none">
+          </div>
+          <div id="single_source_file_status" style="font-size:11px;color:var(--tls-gold);margin-top:8px;line-height:1.5"></div>
           <script>
           (function(){
-            var f=document.getElementById('single_source_file'),
+            var drop=document.getElementById('single_drop'),
+                f=document.getElementById('single_source_file'),
                 ta=document.getElementById('single_source_text'),
                 st=document.getElementById('single_source_file_status');
-            if(!f) return;
-            f.addEventListener('change', function(){
-              var file=f.files&&f.files[0]; if(!file){ st.textContent=''; return; }
+            if(!drop||!f) return;
+
+            function setStatus(html,color){ st.innerHTML=html; if(color) st.style.color=color; }
+
+            function handleTxt(file){
               var r=new FileReader();
-              r.onload=function(){ ta.value=String(r.result||''); st.textContent='✓ '+file.name+' yüklendi ('+ta.value.length+' karakter).'; };
-              r.onerror=function(){ st.textContent='✗ Dosya okunamadı.'; };
+              r.onload=function(){ ta.value=String(r.result||''); setStatus('✓ '+file.name+' yüklendi ('+ta.value.length.toLocaleString()+' karakter).','#8fd18f'); };
+              r.onerror=function(){ setStatus('✗ Dosya okunamadı.','#e88'); };
               r.readAsText(file,'UTF-8');
-            });
+            }
+
+            function handlePdf(file){
+              setStatus('⏳ '+file.name+' yükleniyor ve okunuyor… (tarama PDF ise OCR biraz sürebilir, sayfayı kapatma)','#e6c65a');
+              var fd=new FormData(); fd.append('pdf',file);
+              var xhr=new XMLHttpRequest();
+              xhr.open('POST','api/pdf-extract.php',true);
+              xhr.timeout=1000*60*20; // 20 dk — büyük tarama PDF'leri için
+              xhr.upload.onprogress=function(e){ if(e.lengthComputable){ var pct=Math.round(e.loaded/e.total*100); if(pct<100) setStatus('⏫ Yükleniyor… %'+pct+' ('+file.name+')','#e6c65a'); else setStatus('🔎 Sunucu PDF\'i okuyor… (tarama PDF ise OCR sürüyor, bekle)','#e6c65a'); } };
+              xhr.onload=function(){
+                var j; try{ j=JSON.parse(xhr.responseText); }catch(_){ setStatus('✗ Sunucu beklenmedik yanıt verdi (HTTP '+xhr.status+').','#e88'); return; }
+                if(!j.ok){ setStatus('✗ '+(j.error||'PDF okunamadı.'),'#e88'); return; }
+                ta.value=j.text||'';
+                var how = j.method==='gemini-ocr' ? 'Gemini OCR (tarama PDF)' : 'metin katmanı (anında)';
+                var warn = j.truncated ? ' <span style="color:#e6c65a">⚠ çok uzun; bir kısmı alınamamış olabilir</span>' : '';
+                setStatus('✓ '+file.name+' okundu — '+how+' · '+(j.pages||'?')+' sayfa · '+(j.chars||ta.value.length).toLocaleString()+' karakter.'+warn,'#8fd18f');
+              };
+              xhr.onerror=function(){ setStatus('✗ Ağ hatası — yükleme başarısız.','#e88'); };
+              xhr.ontimeout=function(){ setStatus('✗ Zaman aşımı — PDF çok büyük olabilir. Daha küçük bir dosya ya da .txt dene.','#e88'); };
+              xhr.send(fd);
+            }
+
+            function handle(file){
+              if(!file) return;
+              var isPdf = /\.pdf$/i.test(file.name) || file.type==='application/pdf';
+              if(isPdf) handlePdf(file); else handleTxt(file);
+            }
+
+            drop.addEventListener('click', function(){ f.click(); });
+            f.addEventListener('change', function(){ handle(f.files&&f.files[0]); });
+            ['dragenter','dragover'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); drop.style.background='rgba(200,162,74,.14)'; drop.style.borderColor='#e6c65a'; }); });
+            ['dragleave','drop'].forEach(function(ev){ drop.addEventListener(ev,function(e){ e.preventDefault(); e.stopPropagation(); drop.style.background='rgba(255,255,255,.02)'; drop.style.borderColor='var(--tls-gold,#c8a24a)'; }); });
+            drop.addEventListener('drop', function(e){ var dt=e.dataTransfer; if(dt&&dt.files&&dt.files[0]){ f.files=dt.files; handle(dt.files[0]); } });
           })();
           </script>
         </details>
