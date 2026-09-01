@@ -158,8 +158,10 @@ if (!isset($_GET['mode'])) {
             düz <b>.txt</b> linki) <b>veya</b> metnin tamamını aşağıya <b>yapıştır</b>.
             Motor otomatik aramayı atlar, verdiğin kaynaktan kaynak-temelli özet çıkarır.
             <b>PDF hakkında:</b> içinde metin katmanı varsa (Gutenberg, çoğu Archive PDF'i)
-            anında ve ücretsiz okunur; <b>salt tarama/görsel</b> PDF ise Claude ile OCR
-            edilir (biraz sürebilir). Metin otomatik olarak aşağıdaki kutuya düşer.
+            anında ve ücretsiz okunur; <b>salt tarama/görsel</b> (ya da telifli) PDF ise
+            Claude kitabı okuyup <b>dönüştürücü bir digest</b> (kendi sözleriyle kapsamlı
+            özet) çıkarır — kelimesi kelimesine kopya değil (biraz sürebilir). Sonuç
+            otomatik olarak aşağıdaki kutuya düşer ve özetin kaynağı olur.
           </p>
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Kaynak bağlantısı (URL)</label>
           <input type="text" id="single_source_url" placeholder="https://en.wikisource.org/wiki/…  ·  https://archive.org/details/…  ·  …/kitap.txt" style="width:100%;margin-bottom:8px">
@@ -191,7 +193,7 @@ if (!isset($_GET['mode'])) {
 
             function fillDone(file,j){
               ta.value=j.text||'';
-              var how = j.method==='claude-ocr' ? 'Claude OCR (tarama PDF)' : 'metin katmanı (anında)';
+              var how = (j.method==='claude-digest'||j.method==='claude-ocr') ? 'Claude digest (tarama/telifli PDF — dönüştürücü özet)' : 'metin katmanı (anında)';
               var warn = j.truncated ? ' <span style="color:#e6c65a">⚠ çok uzun; bir kısmı alınamamış olabilir</span>' : '';
               setStatus('✓ '+file.name+' okundu — '+how+' · '+(j.pages||'?')+' sayfa · '+(j.chars||ta.value.length).toLocaleString()+' karakter.'+warn,'#8fd18f');
             }
@@ -200,14 +202,14 @@ if (!isset($_GET['mode'])) {
             }
             function pollOcr(file,job,pages){
               var t0=Date.now(), fired=Date.now();
-              setStatus('🔎 Claude OCR başladı ('+file.name+' · '+pages+' sayfa) — tarama PDF görsel okunuyor, kapatma. Sürebilir…','#e6c65a');
+              setStatus('🔎 Claude kitabı okuyor ('+file.name+' · '+pages+' sayfa) — dönüştürücü digest çıkarılıyor, kapatma. Sürebilir…','#e6c65a');
               var iv=setInterval(function(){
                 fetch('api/pdf-extract.php?action=status&job='+encodeURIComponent(job)).then(function(r){return r.json();}).then(function(j){
                   if(!j.ok){ clearInterval(iv); setStatus('✗ '+(j.error||'iş bulunamadı'),'#e88'); return; }
                   if(j.status==='done'){ clearInterval(iv); fillDone(file,j); return; }
                   if(j.status==='error'){ clearInterval(iv); setStatus('✗ OCR hatası: '+(j.error||'—'),'#e88'); return; }
                   var sec=Math.round((Date.now()-t0)/1000);
-                  setStatus('🔎 Claude OCR sürüyor… tur '+(j.round||0)+' · ~'+(j.chars||0).toLocaleString()+' karakter · '+sec+' sn ('+file.name+')','#e6c65a');
+                  setStatus('🔎 Claude digest çıkarıyor… tur '+(j.round||0)+' · ~'+(j.chars||0).toLocaleString()+' karakter · '+sec+' sn ('+file.name+')','#e6c65a');
                   // Worker düşmüş/ateşleme kaybolmuşsa yeniden ateşle (work çift-ateşlemeye karşı korumalı).
                   if((j.status==='queued' || (j.status==='working' && j.age!=null && j.age>150)) && (Date.now()-fired)>150000){ fired=Date.now(); fireWork(job); }
                   if(sec>1200){ clearInterval(iv); setStatus('✗ OCR çok uzun sürdü (20 dk). PDF\'i bölüp deneyin ya da .txt verin.','#e88'); }

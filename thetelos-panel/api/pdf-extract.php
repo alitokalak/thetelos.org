@@ -93,30 +93,34 @@ if ($action === 'work') {
 
     $model = defined('ANTHROPIC_OCR_MODEL') ? ANTHROPIC_OCR_MODEL : tls_claude_quality_model();
     $b64   = base64_encode($bytes);
-    $sys   = 'You are a precise OCR transcription engine. Transcribe the document VERBATIM into plain text, preserving reading order and paragraph breaks. Do NOT summarize, translate, comment, or add anything. Output only the transcribed text.';
+    // DÖNÜŞTÜRÜCÜ DİGEST — telif korumalı kitabı KELİMESİ KELİMESİNE kopyalamak
+    // (reproduction) Claude tarafından reddediliyor; zaten thetelos'un işi de
+    // özet. Onun için Claude kitabı okuyup KENDİ SÖZLERİYLE kapsamlı, sadık bir
+    // digest üretir (bölüm bölüm ana tezler, argümanlar, örnekler). Bu hem
+    // meşru/dönüştürücü, hem tek geçiş → daha ucuz ve sunucuyu az yorar.
+    $sys   = 'You are a scholarly book-digest engine for a book-summary website. From the provided PDF, produce a COMPREHENSIVE, faithful digest IN ENGLISH that a summariser can rely on as source grounding. Work through the book in order (chapter by chapter or section by section), capturing in YOUR OWN WORDS: the central theses, the key arguments and how they are built, important examples and evidence, and the conclusions. Be detailed and specific to THIS book (names, concepts, structure) — not generic. Do NOT reproduce the text verbatim; this is a transformative digest, not a copy. Write ONLY the digest itself: no preface, no meta commentary, no notes about yourself or about copyright, no headings like "Digest:".';
 
     $acc = (string) ($job['acc'] ?? '');
     $truncated = false;
     $job['status']='working'; $job['ts']=time(); pex_job_write($JOBDIR, $id, $job);
 
     // SERT KAYNAK TAVANI: sunucuyu (shared hosting) uzun süre tutmasın.
-    // Toplam duvar-saati bütçesi ve tur sayısı sınırlı; aşınca eldekiyle biter.
-    $MAX_ROUNDS = 8;
-    $deadline   = time() + 720;   // ~12 dk toplam; sonra worker'ı serbest bırak
+    $MAX_ROUNDS = 4;              // digest yoğunlaştırılmış → az tur yeter
+    $deadline   = time() + 600;   // ~10 dk toplam; sonra worker'ı serbest bırak
     for ($round = ((int)($job['round'] ?? 0)) + 1; $round <= $MAX_ROUNDS; $round++) {
         if (time() > $deadline) { $truncated = true; break; }
         if ($acc === '') {
-            $prompt = 'Transcribe the ENTIRE document verbatim, from the first page to the last. Output only the raw text.';
+            $prompt = 'Produce the comprehensive English digest of this document now, covering the whole book in order.';
         } else {
             $tail = mb_substr($acc, max(0, mb_strlen($acc) - 600));
-            $prompt = "You are continuing a verbatim transcription of the SAME document. "
-                    . "Here are the LAST characters already transcribed:\n\n\"".$tail."\"\n\n"
-                    . "Resume the transcription IMMEDIATELY after that text and continue to the end of the document. "
-                    . "Do NOT repeat any text you already produced. Output only the new raw text.";
+            $prompt = "You are continuing the SAME comprehensive digest of this book. "
+                    . "Here is how the digest so far ends:\n\n\"".$tail."\"\n\n"
+                    . "Continue the digest from that point, covering the remaining parts of the book to the end. "
+                    . "Do NOT repeat what you already wrote. Output only the continuation.";
         }
         $r = pex_claude_ocr($key = tls_anthropic_key(), $model, $sys, $b64, $prompt, 16000);
         if (!$r['ok']) {
-            if ($acc === '') { $job['status']='error'; $job['error']='Claude OCR hatası: '.$r['error']; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
+            if ($acc === '') { $job['status']='error'; $job['error']='Claude digest hatası: '.$r['error']; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
             $truncated = true; break;   // eldekiyle bitir
         }
         $chunk = $r['text'];
@@ -131,8 +135,8 @@ if ($action === 'work') {
     }
 
     $acc = pex_tidy($acc);
-    if ($acc === '') { $job['status']='error'; $job['error']='OCR sonucu boş döndü.'; }
-    else { $job = ['status'=>'done','method'=>'claude-ocr','text'=>$acc,'chars'=>mb_strlen($acc),'pages'=>$pages,'truncated'=>$truncated,'round'=>$job['round'] ?? 0,'ts'=>time()]; }
+    if ($acc === '') { $job['status']='error'; $job['error']='Digest boş döndü.'; }
+    else { $job = ['status'=>'done','method'=>'claude-digest','text'=>$acc,'chars'=>mb_strlen($acc),'pages'=>$pages,'truncated'=>$truncated,'round'=>$job['round'] ?? 0,'ts'=>time()]; }
     pex_job_write($JOBDIR, $id, $job);
     @unlink($pdf);
     echo json_encode(['ok'=>true,'status'=>$job['status']]);
