@@ -191,9 +191,10 @@ if (!isset($_GET['mode'])) {
 
             function handlePdf(file){
               setStatus('⏳ '+file.name+' yükleniyor ve okunuyor… (tarama PDF ise OCR biraz sürebilir, sayfayı kapatma)','#e6c65a');
-              var fd=new FormData(); fd.append('pdf',file);
               var xhr=new XMLHttpRequest();
-              xhr.open('POST','api/pdf-extract.php',true);
+              // HAM gövde ile gönder: upload_max_filesize'ı (2MB) baştan aşar.
+              xhr.open('POST','api/pdf-extract.php?name='+encodeURIComponent(file.name),true);
+              xhr.setRequestHeader('Content-Type','application/pdf');
               xhr.timeout=1000*60*20; // 20 dk — büyük tarama PDF'leri için
               xhr.upload.onprogress=function(e){ if(e.lengthComputable){ var pct=Math.round(e.loaded/e.total*100); if(pct<100) setStatus('⏫ Yükleniyor… %'+pct+' ('+file.name+')','#e6c65a'); else setStatus('🔎 Sunucu PDF\'i okuyor… (tarama PDF ise OCR sürüyor, bekle)','#e6c65a'); } };
               xhr.onload=function(){
@@ -206,7 +207,7 @@ if (!isset($_GET['mode'])) {
               };
               xhr.onerror=function(){ setStatus('✗ Ağ hatası — yükleme başarısız.','#e88'); };
               xhr.ontimeout=function(){ setStatus('✗ Zaman aşımı — PDF çok büyük olabilir. Daha küçük bir dosya ya da .txt dene.','#e88'); };
-              xhr.send(fd);
+              xhr.send(file);
             }
 
             function handle(file){

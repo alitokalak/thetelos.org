@@ -33,19 +33,29 @@ header('Content-Type: application/json; charset=utf-8');
 @ignore_user_abort(true);
 @ini_set('memory_limit', '512M');
 
-/* ── Yükleme kontrolü ─────────────────────────────────────────────────────── */
-if (empty($_FILES['pdf']) || !is_uploaded_file($_FILES['pdf']['tmp_name'] ?? '')) {
-    $code = (int)($_FILES['pdf']['error'] ?? -1);
-    $msg  = 'PDF bulunamadı.';
-    if ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE) {
-        $msg = 'PDF çok büyük — sunucu yükleme sınırını aşıyor. Daha küçük bir dosya deneyin ya da metni .txt olarak verin.';
-    }
-    echo json_encode(['ok'=>false,'error'=>$msg]); exit;
+/* ── PDF baytlarını al ─────────────────────────────────────────────────────
+   İki yol: (1) HAM gövde (php://input) — istemci öntanımlı olarak bunu kullanır;
+   `upload_max_filesize`'ı (çoğu paylaşımlı sunucuda 2MB) BAŞTAN aşar, yalnız
+   `post_max_size`'a tabidir. (2) multipart $_FILES — yedek. */
+$bytes = '';
+$name  = basename((string)($_GET['name'] ?? 'source.pdf'));
+
+if (!empty($_FILES['pdf']) && is_uploaded_file($_FILES['pdf']['tmp_name'] ?? '')) {
+    $bytes = (string) file_get_contents($_FILES['pdf']['tmp_name']);
+    $name  = basename((string)($_FILES['pdf']['name'] ?? $name));
+} elseif (!empty($_FILES['pdf']) && (int)($_FILES['pdf']['error'] ?? 0) === UPLOAD_ERR_INI_SIZE) {
+    echo json_encode(['ok'=>false,'error'=>'PDF çok büyük — sunucu yükleme sınırını aşıyor. Daha küçük bir dosya deneyin ya da metni .txt olarak verin.']); exit;
+} else {
+    $bytes = (string) file_get_contents('php://input');
 }
 
-$path  = $_FILES['pdf']['tmp_name'];
-$name  = (string)($_FILES['pdf']['name'] ?? 'source.pdf');
-$bytes = (string) file_get_contents($path);
+if ($bytes === '') {
+    // Gövde boşsa ve $_POST/$_FILES de boşsa: büyük olasılıkla post_max_size aşıldı.
+    if (empty($_POST) && empty($_FILES)) {
+        echo json_encode(['ok'=>false,'error'=>'PDF sunucuya ulaşmadı — dosya sunucu sınırını (post_max_size) aşıyor olabilir. Bir-iki dakika sonra tekrar deneyin (sunucu ayarı güncelleniyor) ya da metni .txt olarak verin.']); exit;
+    }
+    echo json_encode(['ok'=>false,'error'=>'PDF bulunamadı.']); exit;
+}
 
 if (strncmp($bytes, '%PDF', 4) !== 0) {
     echo json_encode(['ok'=>false,'error'=>'Bu bir PDF dosyası değil (%PDF imzası yok).']); exit;
