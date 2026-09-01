@@ -52,16 +52,17 @@ $AC = '#8A6A12';   // accent (altın)
 #tg .serif{ font-family:var(--tls-serif); font-weight:400; }
 #tg a{ color:inherit; text-decoration:none; }
 #tg a:hover{ color:var(--ac); }
-#tg .hero{ padding:64px 0 34px; }
-#tg .eyebrow{ margin:0 0 18px; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--ac); font-weight:600; }
+#tg .hero{ padding:72px 0 40px; }
+#tg .herowrap{ max-width:780px; }
+#tg .eyebrow{ margin:0 0 22px; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--ac); font-weight:600; }
 #tg .h1{ margin:0 0 16px; font-family:var(--tls-serif); font-weight:400; font-size:52px; line-height:1.04; letter-spacing:-.01em; max-width:900px; }
 #tg .intro{ max-width:780px; margin:0 0 22px; font-size:18px; line-height:1.7; color:var(--tx); }
-#tg .meta{ display:flex; flex-wrap:wrap; gap:10px 20px; font-size:13px; color:var(--mut); }
+#tg .meta{ display:flex; flex-wrap:wrap; gap:10px 24px; font-size:13px; color:var(--mut); }
 #tg .navbar{ position:sticky; top:0; z-index:20; background:rgba(251,250,247,.92); backdrop-filter:blur(10px); border-top:1px solid var(--ln); border-bottom:1px solid var(--ln); }
 #tg .navwrap{ display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; padding-top:12px; padding-bottom:12px; }
 #tg .navwrap::-webkit-scrollbar{ display:none; }
 #tg .chip{ flex:0 0 auto; font-size:14px; padding:8px 16px; border-radius:999px; white-space:nowrap; transition:all .18s ease; border:1px solid var(--ln2); background:#fff; color:#45412F; }
-#tg .chip.on{ border-color:var(--ac); background:var(--ac); color:#fff; }
+#tg .chip.on{ border-color:#2A2F4E; background:#2A2F4E; color:#fff; }
 #tg main{ padding-bottom:120px; }
 #tg section{ padding-top:96px; }
 #tg .sechead{ border-bottom:1px solid var(--ln2); padding-bottom:14px; }
@@ -131,13 +132,13 @@ html{ scroll-behavior:smooth; scroll-padding-top:80px; }
 
   <!-- HERO -->
   <section class="pad hero" id="tg-top">
-    <p class="eyebrow">Topic Guide</p>
-    <h1 class="h1"><?php echo esc_html( $G['label'] ); ?></h1>
-    <p class="intro"><?php echo esc_html( $G['intro'] ); ?></p>
-    <div class="meta">
-      <span><?php echo count( $secs ); ?> sections</span><span>·</span>
-      <span>~<?php echo (int) $G['read']; ?> min read</span><span>·</span>
-      <span>Updated <?php echo esc_html( $G['updated'] ); ?></span>
+    <div class="herowrap">
+      <p class="eyebrow">Topic Guide</p>
+      <div class="meta">
+        <span><?php echo count( $secs ); ?> sections</span><span>·</span>
+        <span>~<?php echo (int) $G['read']; ?> min read</span><span>·</span>
+        <span>Updated <?php echo esc_html( $G['updated'] ); ?></span>
+      </div>
     </div>
   </section>
 
