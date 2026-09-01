@@ -753,6 +753,18 @@ function proto_extract_quote($text, $prov, $beat = null) {
         . " change any punctuation. Output ONLY that one sentence, nothing else. If nothing"
         . " suitable exists, output exactly: NONE\n\n=== PASSAGE ===\n" . $sample . "\n=== END ===";
     $d = ''; $q = trim((string) proto_ds($prompt, 90, $beat, 60, $d, $prov));
+    // proto_ds boş dönebilir: DeepSeek bütçesi bitmiş VE Gemini bu projede kapalı
+    // ("denied access") olduğunda alıntı hiç seçilemiyordu → yeni yazılarda alıntı
+    // kaybolmuştu. Son çare olarak Claude (Haiku) ile bir cümle KOPYALAT — yine
+    // AŞAĞIDA metinde birebir geçtiği DOĞRULANIR, yani uydurma imkânsız.
+    if ($q === '' || preg_match('/^none\b/i', $q)) {
+        require_once __DIR__ . '/_anthropic.php';
+        if (tls_anthropic_ready()) {
+            if (is_callable($beat)) $beat();
+            $cr = tls_claude('', $prompt, ['model' => tls_claude_fast_model(), 'max_tokens' => 120, 'temperature' => 0]);
+            if (!empty($cr['ok'])) $q = trim((string) $cr['text']);
+        }
+    }
     if ($q === '' || preg_match('/^none\b/i', $q)) return '';
     $q = trim($q, " \t\r\n\"'“”‘’«»");
     $wc = str_word_count($q);
@@ -885,7 +897,15 @@ function proto_generate($book, $author, $opts = []) {
 
     // GERÇEK ALINTI: metinden DOĞRULANMIŞ bir cümleyi pull-quote olarak ekle
     // (uydurma imkânsız — metinde birebir geçmiyorsa eklenmez). Kapalıysa atla.
-    if (($opts['quote'] ?? true) !== false) {
+    //
+    // RİSK KURALI: alıntı YALNIZCA eserin GERÇEK tam metninden (Gutenberg /
+    // Standard Ebooks / Internet Archive / Wikisource) alınır. "Yüklenen metin"
+    // (kullanıcının yapıştırdığı ya da tarama PDF'inden çıkarılan DİGEST) eserin
+    // birebir sözü DEĞİL, bir yeniden-anlatımdır → ondan "birebir" bir cümle
+    // seçmek sahte bir kitap alıntısı üretir. Kullanıcının kuralı: emin değilsek
+    // hiç karıştırma → yüklenen/dijest kaynakta alıntı EKLENMEZ.
+    $quote_ok = (($src['source'] ?? '') !== 'Yüklenen metin');
+    if ($quote_ok && ($opts['quote'] ?? true) !== false) {
         $stage("metinden gerçek bir alıntı seçiliyor…");
         $q = proto_extract_quote($text, $prov, $beat);
         if ($q !== '') $md = proto_insert_quote($md, $q);
