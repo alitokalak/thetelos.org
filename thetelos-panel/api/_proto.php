@@ -487,15 +487,82 @@ function proto_acquire($book, $author, $beat = null) {
     return ['found' => false, 'debug' => $dbg];
 }
 
+/* Web PDF'inden METİN KATMANI çıkar (saf PHP, LLM'siz). Uploader'daki pex_*
+   ile aynı mantık; burada bağımsız tutulur (o dosya oturum-korumalı). Yalnız
+   metin katmanlı PDF'lerde işe yarar; salt tarama PDF'i çöp/boş döner → çağıran
+   taraf 'pdf' işaretiyle kullanıcıyı uploader'a (digest) yönlendirir. */
+function proto_pdf_textlayer($raw) {
+    $out = '';
+    if (!preg_match_all('#stream\r?\n(.*?)\r?\nendstream#s', $raw, $mm)) {
+        preg_match_all('#stream\r?\n?(.*?)endstream#s', $raw, $mm);
+    }
+    foreach ($mm[1] as $s) {
+        $dec = @gzuncompress($s); if ($dec === false || $dec === '') $dec = @gzinflate($s);
+        if (($dec === false || $dec === '') && (strpos($s, 'Tj') !== false || strpos($s, 'TJ') !== false)) $dec = $s;
+        if ($dec === false || $dec === '') continue;
+        if (strpos($dec, 'Tj') === false && strpos($dec, 'TJ') === false && strpos($dec, 'BT') === false) continue;
+        // ( ) literal ve < > hex dizgileri; Td/TD/T*/tırnak → satır sonu.
+        $res = ''; $len = strlen($dec); $i = 0;
+        while ($i < $len) {
+            $ch = $dec[$i];
+            if ($ch === '(') {
+                $depth = 1; $i++; $buf = '';
+                while ($i < $len && $depth > 0) {
+                    $d = $dec[$i];
+                    if ($d === '\\') { $n = $dec[$i+1] ?? ''; $map = ['n'=>"\n",'r'=>"\r",'t'=>"\t",'('=>'(',')'=>')','\\'=>'\\'];
+                        if (isset($map[$n])) { $buf .= $map[$n]; $i += 2; continue; }
+                        if ($n >= '0' && $n <= '7') { $oct = $n; $i += 2; for ($k=0;$k<2&&$i<$len&&$dec[$i]>='0'&&$dec[$i]<='7';$k++,$i++) $oct .= $dec[$i]; $buf .= chr(octdec($oct)); continue; }
+                        $buf .= $n; $i += 2; continue; }
+                    if ($d === '(') { $depth++; $buf .= $d; $i++; continue; }
+                    if ($d === ')') { $depth--; if ($depth>0) $buf .= $d; $i++; continue; }
+                    $buf .= $d; $i++;
+                }
+                $res .= $buf; continue;
+            }
+            if ($ch === '<' && ($dec[$i+1] ?? '') !== '<') {
+                $i++; $hex = ''; while ($i < $len && $dec[$i] !== '>') { $hex .= $dec[$i]; $i++; } $i++;
+                $hex = preg_replace('/[^0-9a-fA-F]/', '', $hex); if (strlen($hex) % 2) $hex .= '0';
+                for ($k=0;$k<strlen($hex);$k+=2) $res .= chr(hexdec(substr($hex,$k,2))); continue;
+            }
+            if ($ch === 'T' && in_array(($dec[$i+1] ?? ''), ['d','D','*'], true)) { $res .= "\n"; $i += 2; continue; }
+            if ($ch === "'" || $ch === '"') { $res .= "\n"; $i++; continue; }
+            $i++;
+        }
+        $out .= $res . "\n";
+        if (strlen($out) > 8000000) break;
+    }
+    // temizle
+    $out = @mb_convert_encoding($out, 'UTF-8', 'UTF-8');
+    $out = preg_replace('/[^\P{C}\n\t]+/u', '', str_replace(["\x00","\r"], ['', "\n"], $out));
+    $out = preg_replace('/[ \t]{2,}/', ' ', $out);
+    return trim(preg_replace('/\n{3,}/', "\n\n", $out));
+}
+
+/* Metin GERÇEK düzyazı mı yoksa CID-font çöpü mü? (harf+boşluk oranı + kelime) */
+function proto_pdf_is_real_text($t) {
+    $s = substr($t, 0, 20000); $n = strlen($s); if ($n < 300) return false;
+    $letters = preg_match_all('/[A-Za-zÀ-ÿ]/u', $s); $spaces = substr_count($s, ' ');
+    $words = preg_match_all('/(?<![A-Za-z])(the|and|of|to|in|that|is|was|for|with|de|la|le|el|und|der|die|il|et|en)(?![A-Za-z])/i', $s);
+    return (($letters + $spaces) / max(1, $n) >= 0.6 && $words >= 6);
+}
+
 /* ── MANUEL KAYNAK: kullanıcının verdiği URL'den metin çıkar ─────────────────
-   Desteklenen: Internet Archive (details/download → _djvu.txt OCR), Wikisource
-   (REST HTML render), düz .txt, ve genel web sayfası (HTML→metin). Doğrudan PDF
-   ikili verisi PHP ile güvenilir çıkarılamaz → kullanıcıya .txt/Archive/Wikisource
-   linki ya da metni yapıştırma önerilir. Dönüş: ['text'=>..., 'source'=>..., 'pdf'=>bool] */
+   Desteklenen: Internet Archive (_djvu.txt OCR), Gutenberg, Wikisource (REST),
+   düz .txt, GENEL WEB SAYFASI (HTML→metin) ve DOĞRUDAN WEB PDF linki (metin
+   katmanı çıkarımı). Google Books/Play Books gibi KORUMALI ÖNİZLEMELER okunamaz
+   (metin sayfada yok, erişim-korumalı görüntü) → 'blocked' döner, uydurma yok.
+   Dönüş: ['text'=>..., 'source'=>..., 'pdf'=>bool, 'blocked'=>string] */
 function proto_fetch_source_url($url, $beat = null) {
     $url = trim((string) $url);
     if ($url === '') return ['text' => '', 'source' => ''];
     if (is_callable($beat)) $beat();
+
+    // KORUMALI ÖNİZLEMELER: tam metin sayfada YOK (erişim-korumalı görüntü) →
+    // okumaya çalışmak viewer kabuğunu "metin" sanıp çöp üretir. Dürüstçe reddet.
+    $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+    if (preg_match('~(^|\.)books\.google\.|(^|\.)play\.google\.com$|(^|\.)google\.[a-z.]+/books|(^|\.)scribd\.com$|(^|\.)jstor\.org$|(^|\.)perlego\.com$|(^|\.)everand\.com$~', $host . parse_url($url, PHP_URL_PATH))) {
+        return ['text' => '', 'source' => '', 'blocked' => 'protected-preview'];
+    }
 
     // Internet Archive → OCR düz metni (_djvu.txt)
     if (preg_match('~archive\.org/(?:details|download|stream)/([^/?\#]+)~i', $url, $m)) {
@@ -546,7 +613,17 @@ function proto_fetch_source_url($url, $beat = null) {
     // Genel URL: indir → PDF mi / HTML mi / düz metin mi?
     $raw = proto_fetch_text($url, 2);
     if ($raw === '') return ['text' => '', 'source' => ''];
-    if (strncmp($raw, '%PDF', 4) === 0) return ['text' => '', 'source' => '', 'pdf' => true];   // ikili PDF → çıkaramayız
+    // DOĞRUDAN WEB PDF: metin katmanını çıkar. Metin katmanlı PDF'ler (akademik
+    // makaleler, çoğu dijital kitap) anında/ücretsiz okunur. Salt tarama PDF'i
+    // çöp/boş verir → kullanıcı uploader'dan (Claude digest) yüklesin.
+    if (strncmp($raw, '%PDF', 4) === 0) {
+        if (is_callable($beat)) $beat();
+        $ptxt = proto_pdf_textlayer($raw);
+        if (mb_strlen($ptxt) >= 1200 && proto_pdf_is_real_text($ptxt)) {
+            return ['text' => $ptxt, 'source' => 'Web PDF (manuel)'];
+        }
+        return ['text' => '', 'source' => '', 'pdf' => true];   // tarama/görsel PDF → uploader'a yönlendir
+    }
     if (stripos($raw, '<html') !== false || stripos($raw, '<!doctype') !== false || substr_count($raw, '<') > 60) {
         $raw = preg_replace('#<(script|style|nav|header|footer|table|figure)[^>]*>.*?</\1>#is', ' ', $raw);
         $t = trim(preg_replace('/[ \t]+/', ' ', html_entity_decode(strip_tags($raw), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
@@ -855,8 +932,13 @@ function proto_generate($book, $author, $opts = []) {
         $stage("verilen bağlantıdan metin alınıyor…");
         $f = proto_fetch_source_url((string) $opts['url'], $beat);
         if (trim((string) ($f['text'] ?? '')) === '') {
-            return ['found' => false, 'insufficient' => true,
-                    'trace' => 'manuel bağlantıdan metin ALINAMADI' . (!empty($f['pdf']) ? ' — bu bir PDF; PHP ile metni çıkaramadım. Wikisource/Archive linki ya da .txt ver, ya da metni yapıştır.' : ' (link erişilemedi veya metin yok)')];
+            $why = !empty($f['blocked'])
+                ? ' — bu KORUMALI bir önizleme linki (Google Books/Play Books vb.); kitabın metni o sayfada yok. Kitabın PDF\'ini indirip yükle (taranmışsa Claude digest ile okunur).'
+                : (!empty($f['pdf'])
+                    ? ' — bu bir tarama/görsel PDF; metin katmanı yok. PDF\'i uploader\'dan yükle (Claude digest ile okunur) ya da metni yapıştır.'
+                    : ' (link erişilemedi veya metin yok)');
+            return ['found' => false, 'insufficient' => true, 'blocked' => $f['blocked'] ?? '',
+                    'trace' => 'manuel bağlantıdan metin ALINAMADI' . $why];
         }
         $src = ['found' => true, 'source' => $f['source'], 'text' => $f['text'], 'url' => (string) $opts['url']];
     } else {

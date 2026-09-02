@@ -155,16 +155,35 @@ if (!isset($_GET['mode'])) {
           <p style="font-size:11px;color:var(--muted);margin:8px 0;line-height:1.5">
             Motor tam metni bulamıyorsa, sen kaynağı ver: bir <b>PDF yükle</b> (aşağıya
             sürükle-bırak), bir <b>bağlantı</b> yapıştır (Wikisource / Internet Archive /
-            düz <b>.txt</b> linki) <b>veya</b> metnin tamamını aşağıya <b>yapıştır</b>.
-            Motor otomatik aramayı atlar, verdiğin kaynaktan kaynak-temelli özet çıkarır.
+            düz <b>.txt</b> linki, <b>genel web sayfası</b> ya da <b>doğrudan web PDF linki</b>)
+            <b>veya</b> metnin tamamını aşağıya <b>yapıştır</b>. Motor otomatik aramayı atlar,
+            verdiğin kaynaktan kaynak-temelli özet çıkarır. <b>Not:</b> Google Books / Play
+            Books gibi <b>korumalı önizleme</b> linkleri okunamaz (metin sayfada yok) —
+            onun yerine kitabın PDF'ini indirip yükle.
             <b>PDF hakkında:</b> içinde metin katmanı varsa (Gutenberg, çoğu Archive PDF'i)
             anında ve ücretsiz okunur; <b>salt tarama/görsel</b> (ya da telifli) PDF ise
             Claude kitabı okuyup <b>dönüştürücü bir digest</b> (kendi sözleriyle kapsamlı
             özet) çıkarır — kelimesi kelimesine kopya değil (biraz sürebilir). Sonuç
             otomatik olarak aşağıdaki kutuya düşer ve özetin kaynağı olur.
           </p>
-          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Kaynak bağlantısı (URL)</label>
-          <input type="text" id="single_source_url" placeholder="https://en.wikisource.org/wiki/…  ·  https://archive.org/details/…  ·  …/kitap.txt" style="width:100%;margin-bottom:8px">
+          <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">Kaynak bağlantısı (URL) — Wikisource / Archive / düz .txt · genel web sayfası · doğrudan web PDF linki</label>
+          <input type="text" id="single_source_url" placeholder="https://…/kitap.txt  ·  https://…/makale  ·  https://…/kitap.pdf  ·  archive.org/details/…" style="width:100%;margin-bottom:4px">
+          <div id="single_url_warn" style="display:none;font-size:11px;color:#e6c65a;margin:0 0 8px;line-height:1.5"></div>
+          <script>
+          (function(){
+            var u=document.getElementById('single_source_url'), w=document.getElementById('single_url_warn');
+            if(!u||!w) return;
+            function check(){
+              var v=(u.value||'').toLowerCase();
+              // Korumalı önizlemeler: tam metin sayfada YOK → okunamaz.
+              if(/books\.google\.|play\.google\.com|google\.[a-z.]+\/books|scribd\.com|jstor\.org|perlego\.com|everand\.com/.test(v)){
+                w.innerHTML='⚠ Google Books / Play Books gibi <b>korumalı önizleme</b> linkleri okunamaz — kitabın metni o sayfada yok (erişim-korumalı görüntü). Bunun yerine kitabın <b>PDF\'ini indirip aşağıdan yükle</b> (taranmışsa Claude digest ile okunur).';
+                w.style.display='';
+              } else { w.style.display='none'; w.textContent=''; }
+            }
+            u.addEventListener('input',check); u.addEventListener('change',check); check();
+          })();
+          </script>
           <label style="display:block;font-size:12px;color:var(--muted);margin-bottom:4px">…ya da metni buraya yapıştır</label>
           <textarea id="single_source_text" rows="4" placeholder="Eserin tam metnini buraya yapıştır (URL doldurulmuşsa bu alan gerekmez)" style="width:100%;font-family:monospace;font-size:12px"></textarea>
           <label style="display:block;font-size:12px;color:var(--muted);margin:8px 0 4px">…ya da bir <b>PDF</b> / <b>.txt</b> dosyası yükle (içeriği yukarıdaki alana düşer)</label>
