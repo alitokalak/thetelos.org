@@ -178,7 +178,15 @@ function tls_claude($system, $user, $opts = []) {
         if ($thinking) $payload['thinking'] = $thinking;
         else           $payload['temperature'] = $temp;
         if ($tools) $payload['tools'] = $tools;
-        if (trim((string) $system) !== '') $payload['system'] = (string) $system;
+        if (trim((string) $system) !== '') {
+            // PROMPT CACHE (opsiyonel): sistem promptu çağrılar arası AYNIysa
+            // (ör. batch'te her kitap için birebir aynı yönerge) cache_control ile
+            // işaretle → 5 dk içinde tekrar eden bu ön-ek input maliyeti ~%90 düşer.
+            // Yalnız gerçekten TEKRAR EDEN büyük sistemlerde açılmalı (opts['cache']).
+            $payload['system'] = !empty($opts['cache'])
+                ? [['type' => 'text', 'text' => (string) $system, 'cache_control' => ['type' => 'ephemeral']]]
+                : (string) $system;
+        }
 
         $res  = $do_request($payload);
         $j    = $res['j'];
@@ -326,6 +334,9 @@ function tls_claude_overview($book, $author, $opts = []) {
         'temperature' => 0.2,
         'timeout'     => (int) ($opts['timeout'] ?? 180),
         'on_beat'     => $opts['on_beat'] ?? null,
+        // PROMPT CACHE: sistem promptu (anti-uydurma yönergesi) her kitapta birebir
+        // aynı → batch içinde tekrar eden ~1500 token'lık ön-ek önbelleğe alınır.
+        'cache'       => true,
         // Düşünme (adaptive) verilirse geç: nadir eserleri daha iyi hatırlar.
         'thinking'    => (isset($opts['thinking']) && is_array($opts['thinking'])) ? $opts['thinking'] : null,
     ]);

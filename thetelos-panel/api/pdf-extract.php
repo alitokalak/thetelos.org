@@ -304,8 +304,10 @@ function pex_dedupe_join($acc, $chunk) {
 function pex_claude_ocr($key, $model, $system, $b64, $prompt, $maxtok) {
     $payload = [
         'model'=>$model, 'max_tokens'=>(int)$maxtok, 'system'=>$system,
+        // PROMPT CACHE: PDF belgesi devam turlarında tekrar gönderiliyor →
+        // cache_control ile 2-4. turlarda PDF input maliyeti ~%90 düşer.
         'messages'=>[[ 'role'=>'user', 'content'=>[
-            ['type'=>'document','source'=>['type'=>'base64','media_type'=>'application/pdf','data'=>$b64]],
+            ['type'=>'document','source'=>['type'=>'base64','media_type'=>'application/pdf','data'=>$b64],'cache_control'=>['type'=>'ephemeral']],
             ['type'=>'text','text'=>$prompt],
         ]]],
     ];

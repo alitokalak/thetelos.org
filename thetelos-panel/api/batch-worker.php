@@ -370,14 +370,21 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
     $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
 
+    // İDEAL UZUNLUK: Claude içerikleri fazla kısa çıkıyordu. Kaynaksız yazıda
+    // hedefi makul bir banda çek — eseri iyi biliyorsa DOLU bir ansiklopedi
+    // girdisi (~alt-sınır 0.7×hedef) yazsın, ama TAVANI da abartma. Batch'in
+    // kaynak-özet hedefi çok küçük/çok büyük olabilir; burada 1000–1600'e sıkıştır.
+    // (Uydurma YOK: az biliyorsa yine kısa/UNKNOWN kalır — bu yalnız TAVAN/taban.)
+    $ideal = ((int) $target_words > 0) ? max(1000, min(1600, (int) $target_words)) : 1300;
+
     // 1) EN GÜÇLÜ model (Opus) + DÜŞÜNME: nadir eserleri Sonnet'ten çok daha iyi
     //    hatırlar (sohbette Opus'un bilip Sonnet'in UNKNOWN demesinin sebebi).
-    //    Batch'te seçilen kelime hedefi TAVAN: iyi biliyorsa o civarı yazar ama
-    //    geçmez; az biliyorsa daha kısa; hiç bilmiyorsa UNKNOWN.
+    //    İdeal kelime hedefi TAVAN: iyi biliyorsa o civarı yazar ama geçmez;
+    //    az biliyorsa daha kısa; hiç bilmiyorsa UNKNOWN.
     $r = tls_claude_overview($book, $author, [
         'model'        => tls_claude_best_model(),
         'thinking'     => ['type' => 'adaptive'],
-        'target_words' => (int) $target_words,
+        'target_words' => $ideal,
         'timeout'      => 300,
         'on_beat'      => $hb,
     ]);
@@ -390,7 +397,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     //    olmasın. Böylece Opus yapılandırması bozuksa bile üretim durmaz.
     $r2 = tls_claude_overview($book, $author, [
         'model'        => tls_claude_quality_model(),
-        'target_words' => (int) $target_words,
+        'target_words' => $ideal,
         'timeout'      => 240,
         'on_beat'      => $hb,
     ]);
