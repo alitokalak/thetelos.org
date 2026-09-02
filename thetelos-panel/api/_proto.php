@@ -446,9 +446,14 @@ function proto_author_in_text($author, $text, $book = '') {
 function proto_acquire($book, $author, $beat = null) {
     $dbg = [];
     // Her kaynağı dene; yalnız YAZAR-TEYİTLİ metni kabul et.
+    // NOT: proto_wikisource zaten mevcuttu ama zincire hiç bağlanmamıştı —
+    // Gutenberg/Archive'de olmayan çok sayıda deneme/risale Wikisource'ta düz
+    // metin olarak var. Standard Ebooks'tan sonra, Archive'den (OCR gürültülü)
+    // ÖNCE denenir: temiz metin varsa onu tercih et.
     $sources = [
         'gutenberg'      => fn() => proto_gutenberg($book, $author, $beat),
         'standardebooks' => fn() => proto_standardebooks($book, $author, $beat),
+        'wikisource'     => fn() => proto_wikisource($book, $author, $beat),
         'archive'        => fn() => proto_archive($book, $author, $beat),
     ];
     foreach ($sources as $name => $fetch) {
