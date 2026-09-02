@@ -238,10 +238,10 @@ function proto_archive($book, $author, $beat = null) {
    metin başka sayfalardan aktarılıyor) → eser "bulundu ama kısa" diye eleniyordu.
    REST HTML uç noktası transclusion'ları RENDER eder → gerçek tam metni verir.
    HTML'i düz metne indirger, kaynak/dipnot/nav artıklarını kırpar. */
-function proto_ws_fetch_text($title, $beat = null) {
+function proto_ws_fetch_text($title, $beat = null, $lang = 'en') {
     if (is_callable($beat)) $beat();
     $t = str_replace(' ', '_', trim($title));
-    $html = proto_fetch_text('https://en.wikisource.org/api/rest_v1/page/html/' . rawurlencode($t), 2);
+    $html = proto_fetch_text("https://$lang.wikisource.org/api/rest_v1/page/html/" . rawurlencode($t), 2);
     if (mb_strlen($html) < 2000) return '';
     // <style>/<script>/<table> (gezinme, lisans) at; <sup> dipnot işaretlerini at.
     $html = preg_replace('#<(script|style|table|figure)[^>]*>.*?</\1>#is', ' ', $html);
@@ -251,7 +251,24 @@ function proto_ws_fetch_text($title, $beat = null) {
     $txt  = preg_replace('/\n{3,}/', "\n\n", $txt);
     return trim($txt);
 }
+/* Çok-dilli sarmalayıcı: önce en; kitabın parantezli ORİJİNAL başlığı varsa
+   (yani İngilizce yazılmamış bir eser) büyük dillerin Wikisource'larını da dene.
+   Metin hangi dilde olursa olsun özet İngilizce yazılır (üretim promptları öyle
+   zorluyor) → yabancı orijinali okuyup İngilizce özet çıkır. İlk bulanı döndür. */
 function proto_wikisource($book, $author, $beat = null) {
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
+    $langs = ['en'];
+    if ($orig !== '') $langs = ['en', 'de', 'fr', 'es', 'it', 'la', 'ru', 'pt', 'nl'];
+    $alldbg = [];
+    foreach ($langs as $lang) {
+        $r = proto_wikisource_lang($book, $author, $beat, $lang);
+        $alldbg[$lang] = $r['debug'] ?? null;
+        if (!empty($r['found'])) { $r['debug'] = $alldbg; return $r; }
+    }
+    return ['found' => false, 'debug' => $alldbg];
+}
+
+function proto_wikisource_lang($book, $author, $beat, $lang) {
     if (is_callable($beat)) $beat();
     $debug = ['ws_results' => 0, 'tried' => []];
     // Parantezli orijinal başlığı at: "Of the Geometrical Spirit (De l'ésprit…)" → sade.
@@ -295,8 +312,8 @@ function proto_wikisource($book, $author, $beat = null) {
     if ($author !== '') { $cands[] = "$author/$btitle"; }
     $cands[] = $btitle;
     // Arama sonuçları da aday havuzuna (WS'nin döndürdüğü tam sayfa adları).
-    $s = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=6&format=json&srsearch='
-        . rawurlencode(trim($btitle . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
+    $s = tls_fetch_json("https://$lang.wikisource.org/w/api.php?action=query&list=search&srnamespace=0&srlimit=6&format=json&srsearch="
+        . rawurlencode(trim($btitle . ' ' . $orig . ' ' . $author)), 'thetelos.org/1.0', 20, 3);
     $hits = $s['query']['search'] ?? [];
     $debug['ws_results'] = count($hits);
     foreach ($hits as $h) { $t = (string) ($h['title'] ?? ''); if ($t !== '') $cands[] = $t; }
@@ -307,10 +324,10 @@ function proto_wikisource($book, $author, $beat = null) {
         // KRİTİK: aday başlık kitapla eşleşmiyorsa metni çekme bile — reddet.
         if (!$matches($title)) { $debug['tried'][] = ['title' => $title, 'chars' => 0, 'note' => 'başlık/yazar tutmadı → reddedildi']; continue; }
         // 1) Gerçek gövde (transclusion render): REST HTML.
-        $txt = proto_ws_fetch_text($title, $beat);
+        $txt = proto_ws_fetch_text($title, $beat, $lang);
         // 2) Yedek: düz-metin extract (bazı sayfalarda yeterli olur).
         if (mb_strlen($txt) < 6000) {
-            $p = tls_fetch_json('https://en.wikisource.org/w/api.php?action=query&prop=extracts&explaintext=1&exlimit=1&redirects=1&format=json&titles='
+            $p = tls_fetch_json("https://$lang.wikisource.org/w/api.php?action=query&prop=extracts&explaintext=1&exlimit=1&redirects=1&format=json&titles="
                 . rawurlencode($title), 'thetelos.org/1.0', 25, 2);
             foreach (($p['query']['pages'] ?? []) as $pg) { $ex = (string) ($pg['extract'] ?? ''); if (mb_strlen($ex) > mb_strlen($txt)) $txt = $ex; break; }
         }
@@ -319,8 +336,8 @@ function proto_wikisource($book, $author, $beat = null) {
         // Eşik 15k→5k: felsefe denemeleri (bu Pascal metni gibi) kısa olabilir; ama
         // stub/içindekiler değil GERÇEK düzyazı olsun diye asgari cümle yoğunluğu iste.
         if ($len >= 5000 && substr_count($txt, '. ') >= 20) {
-            return ['found' => true, 'title' => $title, 'source' => 'Wikisource', 'text' => $txt, 'raw_len' => $len,
-                'url' => 'https://en.wikisource.org/wiki/' . rawurlencode(str_replace(' ', '_', $title)), 'debug' => $debug];
+            return ['found' => true, 'title' => $title, 'source' => ($lang === 'en' ? 'Wikisource' : 'Wikisource (' . $lang . ')'), 'text' => $txt, 'raw_len' => $len,
+                'url' => "https://$lang.wikisource.org/wiki/" . rawurlencode(str_replace(' ', '_', $title)), 'debug' => $debug];
         }
     }
     return ['found' => false, 'debug' => $debug];
