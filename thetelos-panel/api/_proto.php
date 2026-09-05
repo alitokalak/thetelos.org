@@ -215,7 +215,33 @@ function proto_archive($book, $author, $beat = null) {
                 $txt = '';
                 foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; }
                 if ($txt === '') foreach (($meta['files'] ?? []) as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
-                if ($txt === '') { $debug['tried'][] = ['id' => $id, 'note' => 'txt yok']; continue; }
+                if ($txt === '') {
+                    // OCR TXT yok → PDF metin katmanını dene (SAF PHP, ÜCRETSİZ). Yalnız
+                    // "Text PDF" (metin katmanlı) denenir; "Image Container PDF" (salt
+                    // görsel) atlanır — batch'te Claude/OCR maliyeti YOK. Boyut tavanı 40MB.
+                    $pdf = ''; $psz = 0;
+                    foreach (($meta['files'] ?? []) as $f) {
+                        $nm = (string) ($f['name'] ?? ''); $fmt = (string) ($f['format'] ?? '');
+                        if (!preg_match('/\.pdf$/i', $nm)) continue;
+                        if (stripos($fmt, 'image') !== false) continue;      // salt görsel PDF'i atla
+                        if (stripos($fmt, 'text') === false && $fmt !== 'PDF' && $fmt !== 'Additional Text PDF') continue;
+                        $sz = (int) ($f['size'] ?? 0);
+                        if ($pdf === '' || ($sz && $sz < $psz)) { $pdf = $nm; $psz = $sz ?: $psz; }
+                    }
+                    if ($pdf !== '' && $psz > 0 && $psz < 40 * 1024 * 1024) {
+                        if (is_callable($beat)) $beat();
+                        $pu = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($pdf);
+                        $pb = proto_fetch_text($pu, 2);
+                        if (strncmp((string) $pb, '%PDF', 4) === 0) {
+                            $pt = proto_pdf_textlayer($pb);
+                            if (mb_strlen($pt) > 5000 && proto_pdf_is_real_text($pt)) {
+                                $debug['tried'][] = ['id' => $id, 'file' => $pdf, 'note' => 'PDF metin katmanı OK'];
+                                return ['found' => true, 'url' => $pu, 'title' => ($tt ?: $book), 'source' => 'Internet Archive (PDF)', 'text' => $pt, 'raw_len' => mb_strlen($pt), 'debug' => $debug];
+                            }
+                        }
+                    }
+                    $debug['tried'][] = ['id' => $id, 'note' => 'txt yok' . ($pdf ? ' · PDF metin katmanı yetersiz' : '')]; continue;
+                }
                 if (is_callable($beat)) $beat();
                 $u = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt);
                 $inf = null; $t = proto_fetch_text($u, 2, $inf);
