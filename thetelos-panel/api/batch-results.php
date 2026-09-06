@@ -42,7 +42,7 @@ function br_label(array $b): string {
 function br_problem(string $label): string {
     foreach (['kaynak-temelli', 'kaynaksız', 'yazıldı', 'zaten var'] as $o)
         if (strpos($label, $o) === 0) return 'hayır';
-    foreach (['bilgi-metni', 'claude-bilgi'] as $o)
+    foreach (['bilgi-metni', 'claude-bilgi', 'claude'] as $o)
         if (strpos($label, $o) === 0) return 'bilgi metni (içerik var)';
     return 'EVET';   // yer-tutucu / eski-korundu / hata
 }

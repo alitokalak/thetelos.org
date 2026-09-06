@@ -915,7 +915,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words);
                     if ($cl !== '') {
                         $content = $cl;
-                        $gen_method = 'claude-bilgi';
+                        $gen_method = 'claude';   // Claude'un kendi bilgisinden UZUN özet
                         $skip_generation = true;   // içerik hazır → normal üretimi atla, yayına geç
                         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'probe bilmiyor → Claude bilgi metni', $update_pid, $rewrite ? 'rewrite' : 'create');
                     }
@@ -1008,8 +1008,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words) : '';
             if ($cl !== '') {
                 $content = $cl;
-                $gen_method = 'claude-bilgi';   // Claude'un kendi bilgisinden — CSV'de ayrı görünür
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'tam metin yok → Claude kendi bilgisinden (öncelikli)', $update_pid, $rewrite ? 'rewrite' : 'create');
+                $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet (bilgi metni değil)
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'tam metin yok → Claude kendi bilgisinden uzun özet (öncelikli)', $update_pid, $rewrite ? 'rewrite' : 'create');
             } else {
                 // Claude eseri KESİN bilmiyor (UNKNOWN) → Wikipedia/katalog Bilgi Metni.
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' · Claude bilmiyor → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
@@ -1027,6 +1027,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     ]);
                     if (empty($ir2['insufficient']) && !empty($ir2['ok']) && trim((string) $ir2['md']) !== '') {
                         $ir = $ir2;
+                        $gen_method = 'claude-bilgi';   // Claude, KAYNAKLARDAN bilgi metni yazdı (uzun özet değil)
                         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'DeepSeek yetersiz → bilgi metni Claude ile (kaynak-temelli)', $update_pid, $rewrite ? 'rewrite' : 'create');
                     }
                 }
@@ -1077,8 +1078,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words) : '';
             if ($cl !== '') {
                 $content = $cl;
-                $gen_method = 'claude-bilgi';   // Claude'un bilgisinden (kaynak yok) — CSV'de ayrı görünür
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'kaynak yok → Claude bilgi metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+                $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'kaynak yok → Claude kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
             } else {
                 // Rewrite'ta yer tutucu (yayında kalsın), create'te atla.
                 if ($rewrite && $update_pid) {

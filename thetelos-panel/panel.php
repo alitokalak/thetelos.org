@@ -972,11 +972,12 @@ if (!isset($_GET['mode'])) {
                     $map_tag = [
                         'kaynak-temelli' => '📖 kaynak',
                         'bilgi-metni'    => '📚 bilgi',
-                        'claude-bilgi'   => '🤖 Claude',
+                        'claude'         => '🤖 Claude',
+                        'claude-bilgi'   => '🤖 Claude bilgi',
                         'kaynaksız'      => '✍ kaynaksız',
                         'yer-tutucu'     => '⚠ yer tutucu',
                     ];
-                    $method_tag = [$map_tag[$mth] ?? $mth, $mth === 'kaynak-temelli' ? '#1f7a3d' : ($mth === 'claude-bilgi' ? '#7a5cff' : '#666')];
+                    $method_tag = [$map_tag[$mth] ?? $mth, $mth === 'kaynak-temelli' ? '#1f7a3d' : (($mth === 'claude' || $mth === 'claude-bilgi') ? '#7a5cff' : '#666')];
                 }
                 $time_label = '';
                 if ($bs === 'processing' && $elapsed > 0) {
@@ -1136,9 +1137,9 @@ if (!isset($_GET['mode'])) {
                 if      (bk.status === 'done' && bk.placeholder) { mtag='⚠ yer tutucu'; mcol='#b8860b'; }
                 else if (bk.status === 'done' && bk.kept)        { mtag='⚠ eski korundu'; mcol='#b8860b'; }
                 else if (bk.status === 'done' && bk.method) {
-                  var _mm = {'kaynak-temelli':'📖 kaynak','bilgi-metni':'📚 bilgi','claude-bilgi':'🤖 Claude','kaynaksız':'✍ kaynaksız','yer-tutucu':'⚠ yer tutucu'};
+                  var _mm = {'kaynak-temelli':'📖 kaynak','bilgi-metni':'📚 bilgi','claude':'🤖 Claude','claude-bilgi':'🤖 Claude bilgi','kaynaksız':'✍ kaynaksız','yer-tutucu':'⚠ yer tutucu'};
                   mtag = _mm[bk.method] || bk.method;
-                  mcol = bk.method==='kaynak-temelli' ? '#1f7a3d' : (bk.method==='claude-bilgi' ? '#7a5cff' : '#666');
+                  mcol = bk.method==='kaynak-temelli' ? '#1f7a3d' : ((bk.method==='claude'||bk.method==='claude-bilgi') ? '#7a5cff' : '#666');
                 }
                 var mel = row.querySelector('[data-bc-method]');
                 if (mtag) {

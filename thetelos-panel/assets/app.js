@@ -556,7 +556,8 @@ async function runSingleSource(book, author) {
         const head  = b.placeholder ? '⚠ Yer tutucu kondu — içerik yok'
                     : isSrc         ? '✓ Kaynak-temelli özet yayınlandı'
                     : (b.method === 'bilgi-metni') ? '📚 Bilgi metni yayınlandı (tam metin bulunamadı)'
-                    : (b.method === 'claude-bilgi') ? '🤖 Claude bilgi metni yayınlandı (kaynak bulunamadı)'
+                    : (b.method === 'claude') ? '🤖 Claude özeti yayınlandı (tam metin yok — Claude kendi bilgisinden uzun özet)'
+                    : (b.method === 'claude-bilgi') ? '🤖 Claude bilgi metni yayınlandı (kaynaklardan)'
                     :                 '✓ Özet yayınlandı';
         const note  = (!isSrc && !b.placeholder && b.method === 'bilgi-metni')
           ? '<div style="font-size:12px;color:#e0a800;margin-bottom:8px">Bu eserin indirilebilir tam metni bulunamadığı için Wikipedia/katalog temelli KISA bilgi metni yazıldı — seçtiğin kelime hedefi yalnız kaynak-temelli özette geçerlidir.</div>'
@@ -1331,20 +1332,22 @@ function renderBatchStatus(b) {
 
   // YÖNTEM KIRILIMI: "taze içerik"in kaç kaynak-temelli / bilgi / Claude olduğunu
   // say → "ne yaptı belli değil" bitsin. Kitap listesindeki method alanından.
-  let mSrc = 0, mInfo = 0, mClaude = 0, mOther = 0;
+  let mSrc = 0, mInfo = 0, mClaude = 0, mClaudeInfo = 0, mOther = 0;
   (b.books || []).forEach(bk => {
     if (bk.status !== 'done' || bk.placeholder || bk.kept) return;
     const m = bk.method || '';
     if (m === 'kaynak-temelli') mSrc++;
     else if (m === 'bilgi-metni') mInfo++;
-    else if (m === 'claude-bilgi') mClaude++;
+    else if (m === 'claude') mClaude++;           // Claude uzun özet (kendi bilgisi)
+    else if (m === 'claude-bilgi') mClaudeInfo++; // Claude bilgi metni (kaynaklardan)
     else mOther++;
   });
   const brk = [];
-  if (mSrc)    brk.push(`📖 ${mSrc} kaynak`);
-  if (mInfo)   brk.push(`📚 ${mInfo} bilgi`);
-  if (mClaude) brk.push(`🤖 ${mClaude} Claude`);
-  if (mOther)  brk.push(`✍ ${mOther} kaynaksız`);
+  if (mSrc)        brk.push(`📖 ${mSrc} kaynak`);
+  if (mInfo)       brk.push(`📚 ${mInfo} bilgi`);
+  if (mClaude)     brk.push(`🤖 ${mClaude} Claude`);
+  if (mClaudeInfo) brk.push(`🤖 ${mClaudeInfo} Claude bilgi`);
+  if (mOther)      brk.push(`✍ ${mOther} kaynaksız`);
   const brkTxt = brk.length ? ` <span style="font-size:11px;opacity:.85">(${brk.join(' · ')})</span>` : '';
 
   document.getElementById('bulk-summary').innerHTML =
@@ -1391,7 +1394,7 @@ function renderBatchStatus(b) {
       ? `⚠ ${idHtml} eski içerik korundu — yenilenmedi`
       : st==='done'
       ? `✓ ${idHtml}${bk.cover_set?' 🖼':''}`
-        + (bk.method ? ` <span style="font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:6px;padding:0 4px">${bk.method==='kaynak-temelli'?'📖 kaynak':bk.method==='bilgi-metni'?'📚 bilgi':bk.method==='claude-bilgi'?'🤖 Claude bilgi':bk.method}</span>` : '')
+        + (bk.method ? ` <span style="font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:6px;padding:0 4px">${bk.method==='kaynak-temelli'?'📖 kaynak':bk.method==='bilgi-metni'?'📚 bilgi':bk.method==='claude'?'🤖 Claude':bk.method==='claude-bilgi'?'🤖 Claude bilgi':bk.method}</span>` : '')
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
