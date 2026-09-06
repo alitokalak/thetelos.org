@@ -297,7 +297,20 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "padded one.\n"
       . "5. Work ONLY from your own knowledge. You have no web access and must not "
       . "claim to look anything up. If your own knowledge is not enough to identify "
-      . "the work, that is an UNKNOWN — do not fill the gap with guesses.";
+      . "the work, that is an UNKNOWN — do not fill the gap with guesses.\n"
+      . "6. THIS EXACT WORK ONLY. Write about the work in the EXACT title given — never "
+      . "import a publication venue, date, edition, or a controversy/response/debate that "
+      . "actually belongs to a DIFFERENT work, most dangerously another, more famous work "
+      . "by the SAME author on a similar subject. Say a work 'appeared in X', 'was published "
+      . "in <year>', or 'provoked/answered <Y>' ONLY if that genuinely attaches to THIS precise "
+      . "title. If you recall a famous story but are unsure it belongs to THIS exact title "
+      . "rather than a sibling work, leave it out.\n"
+      . "7. BE SPECIFIC, not generic: name what is DISTINCTIVE to THIS particular work, not "
+      . "boilerplate that fits any book by the author. State the work's FORM (novel, treatise, "
+      . "lecture course, essay, compilation…) only if you are sure — never hedge it with 'or' "
+      . "('lectures or essays' is a guess tell). When relating this work to another in time "
+      . "(built on / preceded / followed), be certain of the real dates and distinguish written "
+      . "from (posthumously) published; if unsure, omit the relationship.";
 
     $user =
         "Write a factual overview of the book $who — from your own knowledge only, "
