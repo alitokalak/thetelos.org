@@ -994,9 +994,19 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             // Tam metin yok / yetersiz → Wikipedia-temelli Bilgi Metni'ne düş.
             // NEDENİNİ sorunlu listeye yaz (Relativity'nin neden 2 dk çıktığını böyle görürüz).
             bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
-            $info_prov = (proto_deepseek_reachable()) ? 'deepseek' : 'gemini';
+            // BİLGİ METNİNİ CLAUDE YAZAR (varsa). Kaynaklar (Wikipedia/Wikidata/
+            // Google Books/Open Library) zaten BİZİM kodumuzca çekilip dosyaya
+            // konur; yazan model sadece bunları SADIK biçimde derler. Claude bu
+            // derlemede DeepSeek'ten çok daha az eser-kimliği/kronoloji hatası
+            // yapar (d'Alembert/Piaget/Husserl vakaları). Claude yoksa DeepSeek/
+            // Gemini'ye düşülür (tv_ask kendi içinde de DeepSeek'e yedekler).
+            require_once __DIR__ . '/_anthropic.php';
+            if (tls_anthropic_ready())            { $info_prov = 'anthropic'; $info_model = tls_claude_quality_model(); }
+            elseif (proto_deepseek_reachable())   { $info_prov = 'deepseek';  $info_model = ''; }
+            else                                  { $info_prov = 'gemini';    $info_model = ''; }
             $ir = tls_info_generate($search_book, $author, [
                 'provider' => $info_prov,
+                'model'    => $info_model,
                 'referee'  => (($batch['referee'] ?? '1') !== '0'),
                 'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
             ]);
