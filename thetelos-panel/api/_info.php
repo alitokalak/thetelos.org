@@ -410,18 +410,31 @@ function tls_info_dossier($book, $author) {
 /* ── BİLGİ METNİ PROMPT'U ────────────────────────────────────────────────
    Model = kaynak derleyici. Bölüm/olay/karakter/alıntı UYDURMAK yasak.
    Uzunluk kaynağa göre değişken (zengin → uzun, zayıf → kısa). ALINTI YOK. */
-function tls_info_prompt($book, $author, $dossier) {
+function tls_info_prompt($book, $author, $dossier, $allow_own = false) {
     $A = $author !== '' ? $author : 'the author';
+    // KAYNAK-SADAKATİ SAĞLAYICIYA GÖRE. Zayıf hatırlayan modeller (DeepSeek/Gemini)
+    // boşluğu hafızadan doldurunca eser-kimliği/tarih hataları çıkıyor → onlara
+    // YALNIZ KAYNAK. Claude'un bilgisi güvenilir → ona kendi kesin bilgisini de aç.
+    $basis = $allow_own
+        ? "Base the article on THIS source material, and you MAY ALSO draw on your OWN well-established, reliable knowledge of THIS specific work to enrich and deepen it — but ONLY things you are genuinely certain are true. Anything you are not sure of, leave out silently. Do NOT guess, reconstruct, infer, or fill gaps with plausible-sounding claims."
+        : "Base the article STRICTLY on THIS source material provided below. You may add only widely-established, uncontroversial background facts any reference would confirm — but every substantive statement ABOUT this specific work MUST come from the sources, NOT from your own memory, guesswork, or plausible reconstruction. A confident claim you cannot trace to the sources is FABRICATION, even if it \"sounds right\" for this author or period. Do NOT fill gaps from memory — if the sources do not cover something, leave it out.";
+    $len_rule = $allow_own
+        ? "LENGTH FOLLOWS GENUINE KNOWLEDGE. Write as much as you TRULY, RELIABLY know about this specific work — combining the sources and your own certain knowledge. If you know the work well, write a fuller, richer article; if you know little and the sources are thin, write a SHORT one and stop. NEVER manufacture length: a confident-sounding paragraph you are not certain is true is FABRICATION, even if it \"sounds right\". A short true article always beats a long padded one."
+        : "LENGTH FOLLOWS THE SOURCES. When the source material is rich, develop the article thoroughly; when it is thin, write a SHORT article covering only what the sources support and STOP. Do NOT expand from your own memory or with plausible-sounding claims the sources do not back up — that is FABRICATION, even if it \"sounds right\" for this author or period. A short article faithful to the sources always beats a long one that drifts.";
+    $claim_rule = $allow_own
+        ? "Every specific, concrete claim about THIS work — a plot event, a named person, a precise date, a statistic, a chapter structure — must be either supported by the sources OR something you are genuinely certain is true. If you are not certain, omit it rather than assert it."
+        : "Every specific claim about THIS work must be supported by the source material. If the sources do not say it, do not assert it.";
+    $len_basis = $allow_own ? "the sources plus your own certain knowledge of this work" : "the source material";
     return <<<TXT
 You are writing a FACTUAL, encyclopedic INFORMATIONAL ARTICLE about a book, in English, for a books website (thetelos.org).
 
-You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. Base the article on THIS source material, and you MAY ALSO draw on your OWN well-established, reliable knowledge of THIS specific work to enrich and deepen it — but ONLY things you are genuinely certain are true. Anything you are not sure of, leave out silently. Do NOT guess, reconstruct, infer, or fill gaps with plausible-sounding claims. This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book (its subject, ideas, themes, and significance).
+You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. {$basis} This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book (its subject, ideas, themes, and significance).
 
 ABSOLUTE RULES (a violation is worse than a short article):
-- LENGTH FOLLOWS GENUINE KNOWLEDGE. Write as much as you TRULY, RELIABLY know about this specific work — combining the sources and your own certain knowledge. If you know the work well, write a fuller, richer article; if you know little and the sources are thin, write a SHORT one and stop. Let the book itself decide: a major, well-understood work earns a long article; an obscure or slight one gets a short, honest entry. NEVER manufacture length: a confident-sounding paragraph you are not certain is true is FABRICATION, even if it "sounds right" for this author or period. A short true article always beats a long padded one.
+- {$len_rule}
 - NO PADDING, NO REPETITION. Make each point ONCE. Do NOT restate the same idea under a different heading, and do NOT split one idea across several sections to seem longer. If you catch yourself rephrasing something you already said, stop and end the article instead.
 - Each ### section must cover a DISTINCT aspect. If you do not have distinct, reliable material for a section, omit that section entirely rather than repeat earlier content under a new title.
-- Every specific, concrete claim about THIS work — a plot event, a named person, a precise date, a statistic, a chapter structure — must be either supported by the sources OR something you are genuinely certain is true. If you are not certain, omit it rather than assert it.
+- {$claim_rule}
 - NEVER invent or assert: quotations, chapter titles, chapter counts, a chapter-by-chapter structure, specific plot events, character names, precise dates, or statistics that are not in the sources.
 - THIS EXACT WORK ONLY — no cross-work contamination. The article is about the work in the EXACT title given, nothing else. Do NOT import a publication venue, date, edition, or a debate/controversy/response that actually belongs to a DIFFERENT work — most dangerously another, more famous work by the SAME author on a similar subject. Do not say this work "appeared in <place/collection>", "was published in <year>", or "provoked / responded to <X>" unless that fact genuinely attaches to THIS precise title. If you are recalling a well-known story (a famous controversy, a reply it triggered) but are not certain it belongs to THIS exact title rather than a sibling work, LEAVE IT OUT.
 - SPECIFIC, NOT GENERIC. Do NOT pad with statements that would fit ANY book by this author or any work of its genre/period (e.g. generic descriptions of the author's lifelong themes). Name what is DISTINCTIVE to THIS particular work — its own specific thesis, argument, or subject. If you do not know what makes this specific work distinctive, keep the article SHORT and honest rather than filling it with author-boilerplate.
@@ -454,7 +467,7 @@ WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliab
 FORMAT:
 - First line: # **{$book} — {$author}**
 - Second line: ## a short original subtitle capturing what the work is (do NOT repeat the title).
-- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Overall length is DRIVEN BY HOW MUCH YOU RELIABLY KNOW (the sources plus your own certain knowledge of this work): when you know the work well, develop the sections thoroughly (a well-understood work can run long, 2000+ words, and that is good); when you know little, write a SHORT article covering only what you are sure of and stop. NEVER pad, repeat, or add plausible-sounding claims you cannot vouch for in order to make it longer. A short article faithful to what is genuinely known always beats a long one that drifts into invented territory. End cleanly; no "In conclusion" paragraph.
+- Then the ### sections in flowing prose. Put the depth into the BOOK's ideas and content, not the author. Overall length is DRIVEN BY {$len_basis}: when that is rich, develop the sections thoroughly (a well-understood work can run long, 2000+ words, and that is good); when it is thin, write a SHORT article covering only what is genuinely supported and stop. NEVER pad, repeat, or add plausible-sounding claims you cannot vouch for in order to make it longer. A short article faithful to what is genuinely known always beats a long one that drifts into invented territory. End cleanly; no "In conclusion" paragraph.
 
 === VERIFIED SOURCE MATERIAL ===
 {$dossier}
@@ -551,7 +564,9 @@ function tls_info_generate($book, $author, $opts = []) {
                 'sources' => [$slabel], 'dossier' => $dos['text'], 'error' => ''];
     }
 
-    $prompt = tls_info_prompt($book, $author, $dos['text']);
+    // Kendi bilgisini kullanma izni YALNIZ Claude'a (anthropic): hafızası güvenilir.
+    // DeepSeek/Gemini yalnız kaynaktan yazar (hafızadan doldurma = hata kaynağı).
+    $prompt = tls_info_prompt($book, $author, $dos['text'], ($provider === 'anthropic'));
     // Anthropic seçiliyse ana makaleyi istenen Claude modeliyle yaz (Haiku/Sonnet).
     $cmodel = ($provider === 'anthropic') ? (string) ($opts['model'] ?? '') : '';
     $r = tv_ask($prompt, 8000, 240, $provider, $cmodel);

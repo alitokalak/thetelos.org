@@ -994,22 +994,35 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             // Tam metin yok / yetersiz → Wikipedia-temelli Bilgi Metni'ne düş.
             // NEDENİNİ sorunlu listeye yaz (Relativity'nin neden 2 dk çıktığını böyle görürüz).
             bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
-            // BİLGİ METNİNİ CLAUDE YAZAR (varsa). Kaynaklar (Wikipedia/Wikidata/
-            // Google Books/Open Library) zaten BİZİM kodumuzca çekilip dosyaya
-            // konur; yazan model sadece bunları SADIK biçimde derler. Claude bu
-            // derlemede DeepSeek'ten çok daha az eser-kimliği/kronoloji hatası
-            // yapar (d'Alembert/Piaget/Husserl vakaları). Claude yoksa DeepSeek/
-            // Gemini'ye düşülür (tv_ask kendi içinde de DeepSeek'e yedekler).
-            require_once __DIR__ . '/_anthropic.php';
-            if (tls_anthropic_ready())            { $info_prov = 'anthropic'; $info_model = tls_claude_quality_model(); }
-            elseif (proto_deepseek_reachable())   { $info_prov = 'deepseek';  $info_model = ''; }
-            else                                  { $info_prov = 'gemini';    $info_model = ''; }
+            // KADEMELİ (ucuz→pahalı): ÖNCE DeepSeek YALNIZ KAYNAKTAN yazsın (ucuz;
+            // kaynak-kilitli olduğu için hafızadan uydurma yapamaz → "sıfır hata"
+            // hedefi buradan gelir). DeepSeek yetersiz kalırsa (kaynak ince/boş ya
+            // da hakem uydurma bulursa) ANCAK O ZAMAN Claude devralır — aynı
+            // kaynaklardan, gerekirse kendi GÜVENİLİR bilgisiyle zenginleştirerek.
+            // Böylece Claude yalnız zor kitaplarda çalışır → maliyet minimum.
+            $ref_on = (($batch['referee'] ?? '1') !== '0');
+            $info_hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
+            $info_prov = proto_deepseek_reachable() ? 'deepseek' : 'gemini';
             $ir = tls_info_generate($search_book, $author, [
                 'provider' => $info_prov,
-                'model'    => $info_model,
-                'referee'  => (($batch['referee'] ?? '1') !== '0'),
-                'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+                'referee'  => $ref_on,
+                'on_beat'  => $info_hb,
             ]);
+            // DeepSeek/Gemini hatasız yazamadıysa (yetersiz/uydurma) → Claude yazsın.
+            require_once __DIR__ . '/_anthropic.php';
+            if (!empty($ir['insufficient']) && tls_anthropic_ready()) {
+                bw_touch_hb($batch_file, $idx);
+                $ir2 = tls_info_generate($search_book, $author, [
+                    'provider' => 'anthropic',
+                    'model'    => tls_claude_quality_model(),
+                    'referee'  => $ref_on,
+                    'on_beat'  => $info_hb,
+                ]);
+                if (empty($ir2['insufficient']) && !empty($ir2['ok']) && trim((string) $ir2['md']) !== '') {
+                    $ir = $ir2;
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'DeepSeek yetersiz → bilgi metni Claude ile (kaynak-temelli) yazıldı', $update_pid, $rewrite ? 'rewrite' : 'create');
+                }
+            }
             // KRİTİK: bilgi metni YETERSİZ (insufficient) YA DA HİÇ ÜRETİLEMEDİ
             // (ok=false / md boş — ör. DeepSeek bütçesi bitti, Gemini kapalı) →
             // HER İKİ durumda da SON ÇARE Claude denenir. ESKİDEN yalnız
