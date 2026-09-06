@@ -365,6 +365,41 @@ function bw_placeholder_html($book, $author) {
    değiştirilebilir.
    $why (by-ref): neden boş döndüğünü GÖRÜNÜR yapar (anahtar yok / UNKNOWN / hata)
    @return string  HTML içerik (bulundu) ya da '' (bilmiyor/kapalı/hata). */
+/* Çıktı İngilizce mi? İngilizceye ÇOK özgü stopword oranına bakar (bu kelimeler
+   İspanyolca/Fransızca/Almanca vb.'de yok/çok az). Düşük oran → yabancı dil. */
+function bw_looks_english($text) {
+    $raw   = strip_tags((string) $text);
+    $chars = mb_strlen($raw, 'UTF-8');
+    if ($chars < 200) return true;             // çok kısa (placeholder vb.) → karışma
+    $t   = ' ' . mb_strtolower($raw, 'UTF-8') . ' ';
+    $tot = str_word_count($t);
+    // Boşluksuz betik (Çince/Japonca/Arapça…): uzun metinde kelime sayısı çok
+    // düşükse İngilizce değildir (İngilizce ~kelime/6 karakter).
+    if ($tot < $chars / 30) return false;
+    $en = 0;
+    foreach (['the','and','of','to','is','was','that','this','with','for','which','their','would','there','been','have','are','from','were','its','into','than','such','about','these','those','through','while'] as $w) {
+        $en += preg_match_all('/\b' . $w . '\b/u', $t);
+    }
+    return ($en / max(1, $tot)) >= 0.045;
+}
+
+/* Yabancı dildeki Markdown özeti sadık biçimde İngilizce'ye çevir (yapı korunur).
+   Nadir bir güvenlik ağı → ucuz (Haiku) model yeter. Başarısızsa '' döner. */
+function bw_translate_to_english($md, $hb = null) {
+    require_once __DIR__ . '/_anthropic.php';
+    if (!tls_anthropic_ready()) return '';
+    $sys = 'You are a professional translator. Translate the user\'s Markdown document into natural, fluent English. Preserve ALL Markdown structure exactly (## / ### headings, lists, emphasis, blockquotes) and translate every heading and sentence. Do NOT summarize, add, remove, or comment. Any part already in English stays as is. Output ONLY the translated Markdown, nothing else.';
+    $r = tls_claude($sys, (string) $md, [
+        'model'       => tls_claude_fast_model(),
+        'max_tokens'  => min(16000, max(2000, (int) round(str_word_count(strip_tags((string) $md)) * 2.2))),
+        'temperature' => 0.1,
+        'timeout'     => 240,
+        'cache'       => true,
+        'on_beat'     => is_callable($hb) ? $hb : null,
+    ]);
+    return !empty($r['ok']) ? trim((string) $r['text']) : '';
+}
+
 function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0) {
     require_once __DIR__ . '/_anthropic.php';
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
@@ -1698,6 +1733,21 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         }
     }
     bw_touch_hb($batch_file, $idx);   // kategori çözümü bitti — canlılığı tazele
+
+    // ── İNGİLİZCE GÜVENCESİ (yayın öncesi son kapı) ─────────────────────────
+    // Site içeriği HER ZAMAN İngilizce olmalı. Üretim promptları İngilizce zorlasa
+    // da yabancı kaynak okununca (özellikle çok-dilli Wikisource/İA) ara sıra özet
+    // yabancı dilde sızabiliyor. Prompta güvenmek yerine ÇIKTIYI ölç: İngilizce
+    // değilse Claude ile İngilizce'ye çevir (Markdown/başlıklar korunur). Çeviri
+    // başarısızsa içeriği KAYBETME — olduğu gibi bırak.
+    if (trim((string) $content) !== '' && !bw_looks_english($content)) {
+        bw_touch_hb($batch_file, $idx);
+        $en = bw_translate_to_english($content, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); });
+        if ($en !== '' && bw_looks_english($en)) {
+            $content = $en;
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'lang-fix', 'özet yabancı dildeydi → İngilizce\'ye çevrildi', $update_pid, $rewrite ? 'rewrite' : 'create');
+        }
+    }
 
     $clean = $content;
     $clean = preg_replace('/^# \*\*[^\n]+\*\*\n*/m', '', $clean, 1);
