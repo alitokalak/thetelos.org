@@ -410,7 +410,11 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     // girdisi (~alt-sınır 0.7×hedef) yazsın, ama TAVANI da abartma. Batch'in
     // kaynak-özet hedefi çok küçük/çok büyük olabilir; burada 1000–1600'e sıkıştır.
     // (Uydurma YOK: az biliyorsa yine kısa/UNKNOWN kalır — bu yalnız TAVAN/taban.)
-    $ideal = ((int) $target_words > 0) ? max(1000, min(1600, (int) $target_words)) : 1300;
+    // Claude içeriği artık batch'te SEÇİLEN kelime hedefine kadar uzayabilir:
+    // eseri İYİ biliyorsa (ör. tanınmış romanlar) dolu bir özet yazsın. Prompt
+    // "yalnız gerçekten bildiğin kadar" dediği için az bilinen eser yine kısa/
+    // UNKNOWN kalır — yani bu yalnız TAVANI açar, uydurmayı değil.
+    $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
 
     // 1) EN GÜÇLÜ model (Opus) + DÜŞÜNME: nadir eserleri Sonnet'ten çok daha iyi
     //    hatırlar (sohbette Opus'un bilip Sonnet'in UNKNOWN demesinin sebebi).
