@@ -416,34 +416,24 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     // UNKNOWN kalır — yani bu yalnız TAVANI açar, uydurmayı değil.
     $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
 
-    // 1) EN GÜÇLÜ model (Opus) + DÜŞÜNME: nadir eserleri Sonnet'ten çok daha iyi
-    //    hatırlar (sohbette Opus'un bilip Sonnet'in UNKNOWN demesinin sebebi).
-    //    İdeal kelime hedefi TAVAN: iyi biliyorsa o civarı yazar ama geçmez;
-    //    az biliyorsa daha kısa; hiç bilmiyorsa UNKNOWN.
+    // MALİYET: Eskiden Opus + ADAPTIF DÜŞÜNME kullanılıyordu. Düşünme, GÖRÜNMEZ
+    // ama FATURAYA yansıyan büyük "reasoning" token'ı yakıyor → çıktı kısa olsa
+    // bile pahalı (kullanıcının "kısa ama 26$" şikâyetinin sebebi buydu). Üstelik
+    // Claude-önce sıralamasıyla kaynağı olmayan HER kitapta çalışıyordu. Artık
+    // SONNET + DÜŞÜNMESİZ tek çağrı: ~kat kat ucuz, kalite büyük ölçüde korunur.
+    // (Opus'un bildiği bazı nadir eserleri Sonnet bilmezse UNKNOWN → bilgi/yer
+    // tutucuya düşer; istenirse ANTHROPIC_BEST_MODEL ile Opus geri açılabilir.)
+    $model = defined('ANTHROPIC_LASTRESORT_MODEL') ? ANTHROPIC_LASTRESORT_MODEL : tls_claude_quality_model();
     $r = tls_claude_overview($book, $author, [
-        'model'        => tls_claude_best_model(),
-        'thinking'     => ['type' => 'adaptive'],
-        'target_words' => $ideal,
-        'timeout'      => 300,
-        'on_beat'      => $hb,
-    ]);
-    // Güçlü model AÇIKÇA bilmiyorsa (UNKNOWN) → Sonnet de bilmez; yer tutucu.
-    if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
-    if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
-
-    // 2) GÜVENLİK AĞI: güçlü model HATA verdi (model erişilemez/400 vb.) — UNKNOWN
-    //    değil. Kaliteli modelle (Sonnet, düşünmesiz) yeniden dene ki toplu hata
-    //    olmasın. Böylece Opus yapılandırması bozuksa bile üretim durmaz.
-    $r2 = tls_claude_overview($book, $author, [
-        'model'        => tls_claude_quality_model(),
+        'model'        => $model,
         'target_words' => $ideal,
         'timeout'      => 240,
         'on_beat'      => $hb,
     ]);
-    if (!empty($r2['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
-    if (!empty($r2['ok']) && trim((string) ($r2['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r2['md']); }
+    if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
+    if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
 
-    $why = 'Claude hata/boş: ' . mb_substr((string) ($r['error'] ?? $r2['error'] ?? 'bilinmiyor'), 0, 80);
+    $why = 'Claude hata/boş: ' . mb_substr((string) ($r['error'] ?? 'bilinmiyor'), 0, 80);
     return '';
 }
 
