@@ -985,44 +985,53 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $gen_source_url = (string) ($sr['url'] ?? '');   // KAYNAK ARŞİVİ: kitap↔kaynak linki
             $gen_book_words = (int) ($sr['book_words'] ?? 0);
         } else {
-            // Tam metin YOK. SIRA (MALİYET-ÖNCELİKLİ, kullanıcı tercihi):
-            //  1) DeepSeek Wikipedia/katalog Bilgi Metni — YALNIZ ÇEKİLEN KAYNAKTAN
-            //     yazar (hafızadan doldurma KAPALI → DeepSeek uydurma yapamaz).
-            //  2) DeepSeek yetersizse → Claude AYNI kaynaklardan (kaynak-temelli bilgi).
-            //  3) O da olmazsa (kaynak hiç yok) → Claude KENDİ bilgisinden (son çare).
-            //  4) Hiçbiri → yer tutucu (uydurma YOK).
-            // Böylece Claude yalnız gerektiğinde çalışır → maliyet düşük.
+            // Tam metin YOK — DeepSeek kaynağı bulup kaynak-temelli yazamadı.
+            // SIRA (kullanıcı tercihi). ÖNEMLİ: Claude tam metni ASLA aramaz/okumaz;
+            // kocaman kitabı okuyup üstüne kısa yazma israfı YOK — yalnız KENDİ
+            // bilgisinden yazar. Kitabın tam metnini bulup okumak DeepSeek'in işi.
+            //  1) Claude KENDİ bilgisinden UZUN özet — eseri GÜVENİLİR biliyorsa
+            //     (bilmiyorsa kendi kaçışıyla UNKNOWN → '' döner). → 'claude'
+            //  2) Claude da bilmiyorsa → Bilgi Metni:
+            //       a) DeepSeek YALNIZ ÇEKİLEN KAYNAKTAN yazar (hafızadan doldurma
+            //          KAPALI) + CLAUDE DENETLER (hakem anthropic) — DeepSeek sallarsa
+            //          yayına çıkmasın. → 'bilgi-metni'
+            //       b) DeepSeek yetersiz/uydurma → Claude aynı kaynaklardan. → 'claude-bilgi'
+            //  3) Hiçbiri → yer tutucu (UYDURMA YOK).
             require_once __DIR__ . '/_anthropic.php';
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
             $ref_on = (($batch['referee'] ?? '1') !== '0');
             $info_hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
-            $info_prov = proto_deepseek_reachable() ? 'deepseek' : 'gemini';
-            $ir = tls_info_generate($search_book, $author, [
-                'provider' => $info_prov, 'referee' => $ref_on, 'on_beat' => $info_hb,
-            ]);
-            // 2) DeepSeek/Gemini hatasız/yeterli yazamadıysa → Claude aynı kaynaklardan.
-            if (!empty($ir['insufficient']) && tls_anthropic_ready()) {
-                bw_touch_hb($batch_file, $idx);
-                $ir2 = tls_info_generate($search_book, $author, [
-                    'provider' => 'anthropic', 'model' => tls_claude_quality_model(), 'referee' => $ref_on, 'on_beat' => $info_hb,
+
+            // 1) Claude KENDİ bilgisinden uzun özet (arama/okuma YOK, yalnız hafıza).
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → Claude (kendi bilgisi)', $update_pid, $rewrite ? 'rewrite' : 'create');
+            $cl_why = '';
+            $cl = tls_anthropic_ready()
+                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words) : '';
+            if ($cl !== '') {
+                $content = $cl;
+                $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'tam metin yok → Claude kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
+            } else {
+                // 2) Claude eseri bilmiyor (UNKNOWN) → Bilgi Metni (kaynaktan).
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($cl_why ?: 'Claude bilmiyor') . ' → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+                $info_prov = proto_deepseek_reachable() ? 'deepseek' : 'gemini';
+                // 2a) DeepSeek YALNIZ çekilen kaynaktan + CLAUDE denetler (hakem).
+                $ir = tls_info_generate($search_book, $author, [
+                    'provider' => $info_prov, 'referee' => $ref_on, 'on_beat' => $info_hb,
                 ]);
-                if (empty($ir2['insufficient']) && !empty($ir2['ok']) && trim((string) $ir2['md']) !== '') {
-                    $ir = $ir2;
-                    $gen_method = 'claude-bilgi';   // Claude, KAYNAKLARDAN bilgi metni yazdı
-                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'DeepSeek yetersiz → bilgi metni Claude ile (kaynak-temelli)', $update_pid, $rewrite ? 'rewrite' : 'create');
+                // 2b) DeepSeek yetersiz/uydurma bulundu → Claude aynı kaynaklardan yazsın.
+                if (!empty($ir['insufficient']) && tls_anthropic_ready()) {
+                    bw_touch_hb($batch_file, $idx);
+                    $ir2 = tls_info_generate($search_book, $author, [
+                        'provider' => 'anthropic', 'model' => tls_claude_quality_model(), 'referee' => $ref_on, 'on_beat' => $info_hb,
+                    ]);
+                    if (empty($ir2['insufficient']) && !empty($ir2['ok']) && trim((string) $ir2['md']) !== '') {
+                        $ir = $ir2;
+                        $gen_method = 'claude-bilgi';   // Claude, KAYNAKLARDAN bilgi metni yazdı
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'DeepSeek yetersiz → bilgi metni Claude ile (kaynak-temelli)', $update_pid, $rewrite ? 'rewrite' : 'create');
+                    }
                 }
-            }
-            if (!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '') {
-                // 3) SON ÇARE: kaynak yok → Claude KENDİ bilgisinden uzun özet (Sonnet).
-                $cl_why = '';
-                $cl = tls_anthropic_ready()
-                    ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words) : '';
-                if ($cl !== '') {
-                    $content = $cl;
-                    $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
-                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'kaynak yok → Claude kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
-                } else {
-                    // 4) Hiçbiri → UYDURMA YOK, yer tutucu.
+                if (!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '') {
+                    // 3) Hiçbiri → UYDURMA YOK, yer tutucu.
                     $ph_reason = 'kaynak yok · ' . ($cl_why ?: ($ir['error'] ?? $sr_trace));
                     if ($rewrite && $update_pid) {
                         $ph = bw_placeholder_html($book, $author);
@@ -1032,12 +1041,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                         return;
                     }
                     bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', $ph_reason, 0, 'create');
-                    bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: tam metin/Wikipedia yok, Claude bilmiyor · '.($cl_why?:'—')]);
+                    bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: Claude bilmiyor, tam metin/Wikipedia yok · '.($cl_why?:'—')]);
                     return;
+                } else {
+                    $content = bw_clean_content($ir['md']);
+                    if (!empty($ir['shortnote'])) bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynaksız kısa not (tam metin yok, Wikipedia zayıf)', $update_pid, $rewrite ? 'rewrite' : 'create');
                 }
-            } else {
-                $content = bw_clean_content($ir['md']);
-                if (!empty($ir['shortnote'])) bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynaksız kısa not (tam metin yok, Wikipedia zayıf)', $update_pid, $rewrite ? 'rewrite' : 'create');
             }
         }
     } elseif ($type === 'info') {

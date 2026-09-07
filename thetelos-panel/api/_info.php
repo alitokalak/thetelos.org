@@ -607,10 +607,13 @@ function tls_info_generate($book, $author, $opts = []) {
            (aynı kör noktalar). Yazar kimse, hakem farklı model:
              yazar gemini    → hakem Claude (doğrudan),
              yazar anthropic → hakem Gemini,
-             yazar deepseek  → hakem Gemini, şüphede Claude. */
+             yazar deepseek  → hakem CLAUDE (doğrudan). DeepSeek sallayabildiği için
+               denetimi mutlaka Claude yapsın (kullanıcı isteği); Gemini bu projenin
+               anahtarında erişime kapalı, ilk hakem olarak koymak denetimi boşa
+               düşürüyordu. */
         if ($gen_prov === 'gemini')         { $rp = 'anthropic'; $re = ''; }
         elseif ($gen_prov === 'anthropic')  { $rp = 'gemini';    $re = ''; }
-        else                                { $rp = 'gemini';    $re = 'anthropic'; }
+        else                                { $rp = 'anthropic'; $re = ''; }
         $referee = tls_referee($md, $dos['text'], $book, $author, [
             'primary'  => $opts['referee_primary']  ?? $rp,
             'escalate' => $opts['referee_escalate'] ?? $re,
