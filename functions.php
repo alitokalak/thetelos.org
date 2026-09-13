@@ -2266,6 +2266,44 @@ add_action('created_authors',function(){delete_transient('thetelos_all_authors')
 add_action('deleted_authors',function(){delete_transient('thetelos_all_authors');});
 add_action('edited_authors',function(){delete_transient('thetelos_all_authors');});
 
+/* ── ARAMA KENAR ÇUBUĞU FİLTRELERİ ────────────────────────────────────────
+   search.php'deki "Sort by / Category / Author" seçenekleri GET olarak
+   gönderiliyordu ama ANA SORGUYA hiç uygulanmıyordu (tıklayınca bir şey
+   değişmiyordu). Burada uygulanır:
+     • tls_cat    → kategori (term_id) ile daralt
+     • tls_author → yazar (authors taksonomisi, slug) ile daralt
+     • tls_sort   → newest/oldest/alpha sıralaması (relevance = smart_search'e bırak)
+   smart_search (öncelik 5) yazar eşleşmesinden tax_query kurmuş olabilir; onu
+   EZMEDEN üstüne EKLE (AND). Öncelik 6 → smart_search'ten sonra çalışır. */
+function thetelos_search_filters($query){
+    if(!$query->is_search()||!$query->is_main_query()||is_admin())return;
+
+    $tax=$query->get('tax_query');
+    if(!is_array($tax))$tax=[];
+
+    $cat=isset($_GET['tls_cat'])?(int)$_GET['tls_cat']:0;
+    if($cat>0){
+        $tax[]=['taxonomy'=>'category','field'=>'term_id','terms'=>[$cat],'operator'=>'IN'];
+    }
+    $auth=isset($_GET['tls_author'])?sanitize_text_field($_GET['tls_author']):'';
+    if($auth!==''){
+        $tax[]=['taxonomy'=>'authors','field'=>'slug','terms'=>[$auth],'operator'=>'IN'];
+    }
+    // Birden fazla taksonomi koşulu varsa AND ile birleştir.
+    $clause_count=0; foreach($tax as $k=>$v){ if($k!=='relation')$clause_count++; }
+    if($clause_count>1 && empty($tax['relation']))$tax['relation']='AND';
+    if(!empty($tax))$query->set('tax_query',$tax);
+
+    $sort=isset($_GET['tls_sort'])?sanitize_text_field($_GET['tls_sort']):'';
+    switch($sort){
+        case 'newest': $query->set('orderby','date');  $query->set('order','DESC'); break;
+        case 'oldest': $query->set('orderby','date');  $query->set('order','ASC');  break;
+        case 'alpha':  $query->set('orderby','title'); $query->set('order','ASC');  break;
+        // 'relevance'/boş → dokunma: smart_search alaka sıralamasını yönetir.
+    }
+}
+add_action('pre_get_posts','thetelos_search_filters',6);
+
 /* ══════════════════════════════════════════════════════════════
    SUMMARY REQUEST SYSTEM
    - CPT: tls_request (admin panelde görünür)
