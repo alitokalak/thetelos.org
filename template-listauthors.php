@@ -651,61 +651,141 @@ get_header();
 <?php endif; ?>
 
 </div><!-- /.tla-main -->
+
+<!-- Anlık TÜM-ARŞİV arama sonuçları (JS ile 396 yazarın tamamında arar) -->
+<div class="tla-main" id="tla-search-results" hidden></div>
 </main>
 
-<!-- ══════════ CLIENT-SIDE INSTANT SEARCH ══════════ -->
+<!-- ══════════ CLIENT-SIDE INSTANT SEARCH (TÜM ARŞİV) ══════════ -->
+<?php
+/* Anlık aramanın TÜM yazarları (sayfada görünmeyenler dahil) bulabilmesi için
+   tam yazar dizinini JSON olarak göm. Eskiden arama yalnız o an DOM'da olan
+   60 karta bakıyordu → başka sayfadaki yazar "bulunamadı" görünüyordu. */
+$tls_idx_terms = get_terms( [
+    'taxonomy'   => 'authors',
+    'hide_empty' => false,
+    'orderby'    => 'name',
+    'order'      => 'ASC',
+    'number'     => 0,
+] );
+$tls_authors_index = [];
+if ( ! is_wp_error( $tls_idx_terms ) ) {
+    foreach ( $tls_idx_terms as $t ) {
+        $lnk = get_term_link( $t );
+        $tls_authors_index[] = [
+            'n' => $t->name,
+            'u' => is_wp_error( $lnk ) ? '' : $lnk,
+            'd' => $t->description ? wp_trim_words( wp_strip_all_tags( $t->description ), 14 ) : '',
+            'c' => (int) $t->count,
+        ];
+    }
+}
+?>
+<script type="application/json" id="tla-authors-index"><?php echo wp_json_encode( $tls_authors_index ); ?></script>
 <script>
 (function () {
     'use strict';
     var input    = document.getElementById('tla-search-input');
     var clearBtn = document.getElementById('tla-search-clear');
     var countEl  = document.getElementById('tla-result-count');
-    var container = document.getElementById('tla-authors-container');
+    var browse   = document.getElementById('tla-authors-container');
+    var results  = document.getElementById('tla-search-results');
+    var idxEl    = document.getElementById('tla-authors-index');
+    if (!input || !browse || !results || !idxEl) return;
 
-    if (!input || !container) return;
+    var AUTHORS = [];
+    try { AUTHORS = JSON.parse(idxEl.textContent) || []; } catch (e) { AUTHORS = []; }
+    var countDefault = countEl ? countEl.innerHTML : '';
 
-    var timer = null;
+    /* Aksan/noktalama katlayan normalize — "alembert" → "d'Alembert" bulur */
+    function norm(s) {
+        return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    }
+    AUTHORS.forEach(function (a) { a._n = norm(a.n); a._d = norm(a.d); });
 
-    function filterCards(q) {
-        q = q.trim().toLowerCase();
-        var groups  = container.querySelectorAll('.tla-letter-group');
-        var total   = 0;
-
-        groups.forEach(function (group) {
-            var cards   = group.querySelectorAll('.tla-card');
-            var visible = 0;
-            cards.forEach(function (card) {
-                var match = !q || (card.dataset.name || '').includes(q);
-                card.style.display = match ? '' : 'none';
-                if (match) visible++;
-            });
-            total += visible;
-            group.style.display = visible ? '' : 'none';
+    function esc(s) {
+        return (s || '').replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
         });
-
-        if (countEl) {
-            countEl.innerHTML = total
-                ? '<span>' + total.toLocaleString() + '</span>&nbsp;author' + (total !== 1 ? 's' : '')
-                : 'No results';
-        }
-        if (clearBtn) clearBtn.classList.toggle('visible', q.length > 0);
     }
 
+    /* Alaka puanı: tam ad > ad başı > kelime başı > içeren > tüm kelimeler >
+       açıklamada > bazı kelimeler */
+    function rank(a, q, tokens) {
+        var n = a._n;
+        if (n === q) return 100;
+        if (n.indexOf(q) === 0) return 90;
+        if ((' ' + n).indexOf(' ' + q) >= 0) return 80;
+        if (n.indexOf(q) >= 0) return 60;
+        if (tokens.every(function (t) { return n.indexOf(t) >= 0; })) return 40;
+        if (a._d && a._d.indexOf(q) >= 0) return 20;
+        if (tokens.some(function (t) { return n.indexOf(t) >= 0; })) return 10;
+        return 0;
+    }
+
+    function cardHTML(a) {
+        var initial = esc((a.n || '?').trim().charAt(0).toUpperCase());
+        return '<a href="' + esc(a.u || '#') + '" class="tla-card">'
+            + '<div class="tla-card-initial" aria-hidden="true">' + initial + '</div>'
+            + '<p class="tla-card-name">' + esc(a.n) + '</p>'
+            + (a.d ? '<p class="tla-card-desc">' + esc(a.d) + '</p>' : '')
+            + '<span class="tla-card-count"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:10px;height:10px"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>'
+            + a.c.toLocaleString() + ' ' + (a.c === 1 ? 'work' : 'works') + '</span></a>';
+    }
+
+    function doSearch(q) {
+        var nq = norm(q);
+        if (!nq) {
+            results.hidden = true; results.innerHTML = '';
+            browse.hidden = false;
+            if (countEl) countEl.innerHTML = countDefault;
+            if (clearBtn) clearBtn.classList.remove('visible');
+            return;
+        }
+        var tokens = nq.split(' ').filter(Boolean);
+        var scored = [];
+        for (var i = 0; i < AUTHORS.length; i++) {
+            var r = rank(AUTHORS[i], nq, tokens);
+            if (r > 0) scored.push([r, AUTHORS[i]]);
+        }
+        scored.sort(function (a, b) { return b[0] !== a[0] ? b[0] - a[0] : (a[1]._n < b[1]._n ? -1 : 1); });
+        var list = scored.slice(0, 300).map(function (x) { return x[1]; });
+
+        browse.hidden = true;
+        results.hidden = false;
+        results.innerHTML = list.length
+            ? '<div class="tla-grid">' + list.map(cardHTML).join('') + '</div>'
+            : '<div class="tla-no-results"><strong>No authors found</strong><p>No results across all '
+                + AUTHORS.length.toLocaleString() + ' authors. &nbsp;'
+                + '<a href="#" id="tla-clear-inline" style="color:var(--tls-green);">Clear</a></p></div>';
+
+        var ci = document.getElementById('tla-clear-inline');
+        if (ci) ci.addEventListener('click', function (e) { e.preventDefault(); input.value = ''; doSearch(''); input.focus(); });
+
+        if (countEl) countEl.innerHTML = list.length
+            ? '<span>' + list.length.toLocaleString() + '</span>&nbsp;author' + (list.length !== 1 ? 's' : '')
+            : 'No results';
+        if (clearBtn) clearBtn.classList.add('visible');
+    }
+
+    var timer = null;
     input.addEventListener('input', function () {
         clearTimeout(timer);
         var val = this.value;
-        timer = setTimeout(function () { filterCards(val); }, 100);
+        timer = setTimeout(function () { doSearch(val); }, 110);
     });
 
     if (clearBtn) {
-        clearBtn.addEventListener('click', function () {
-            input.value = '';
-            filterCards('');
-            input.focus();
-        });
+        clearBtn.addEventListener('click', function () { input.value = ''; doSearch(''); input.focus(); });
     }
 
-    /* Scroll to active letter group on alphabet click */
+    /* Enter → sayfa yenilemeden anlık ara (JS varsa). No-JS'te form GET yine
+       sunucu tarafı get_terms araması yapar → fallback korunur. */
+    var form = document.getElementById('tla-search-form');
+    if (form) form.addEventListener('submit', function (e) { e.preventDefault(); doSearch(input.value); });
+
+    /* Alfabe: aktif harfe kaydır */
     document.querySelectorAll('.tla-alpha-btn.active[data-letter]').forEach(function (btn) {
         btn.addEventListener('click', function (e) {
             e.preventDefault();
@@ -718,7 +798,7 @@ get_header();
         });
     });
 
-    if (input.value) filterCards(input.value);
+    if (input.value) doSearch(input.value);
 })();
 </script>
 

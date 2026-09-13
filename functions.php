@@ -2159,10 +2159,17 @@ function tls_norm_apostrophes($s){
 // LIKE deseninde apostrof % jokerine çevrilir → "Lord's", "Lord’s" ve
 // "Lords" üçü de eşleşir. Kullanıcı apostrofsuz yazdıysa, başlıktaki
 // apostroflar REPLACE ile silinerek de denenir.
+// Tek kelime için apostrof-toleranslı LIKE deseni (%..%) üret. Sıralama
+// puanlaması da aynı deseni kullansın diye ayrı fonksiyon.
+function tls_search_flex_like($token){
+    global $wpdb;
+    $tok = tls_norm_apostrophes($token);
+    return '%' . str_replace("'", '%', $wpdb->esc_like($tok)) . '%';
+}
 function tls_search_token_clause($token){
     global $wpdb;
     $tok  = tls_norm_apostrophes($token);
-    $flex = '%' . str_replace("'", '%', $wpdb->esc_like($tok)) . '%';
+    $flex = tls_search_flex_like($token);
     $c = [
         $wpdb->prepare("{$wpdb->posts}.post_title LIKE %s",   $flex),
         $wpdb->prepare("{$wpdb->posts}.post_content LIKE %s", $flex),
@@ -2184,6 +2191,12 @@ function thetelos_smart_search($query){
     if(!$query->is_search()||!$query->is_main_query()||is_admin())return;
     $raw=tls_norm_apostrophes(trim(get_query_var('s')));
     if(empty($raw))return;
+    // Çift/süslü tırnak ve köşeli tırnakları TEMİZLE. Aksi halde tırnak karakteri
+    // token'a yapışıp (ör. '"the' , 'ocean"') LIKE desenine '"' giriyor ve
+    // HİÇBİR gönderiyle eşleşmeyip aramayı komple boşa düşürüyordu — kullanıcının
+    // '"the river and the ocean" kabir' aramasının 0 sonuç dönmesinin sebebi buydu.
+    $raw=trim(preg_replace('/\s+/u',' ',str_replace(['"','“','”','„','‟','«','»','‹','›'],' ',$raw)));
+    if($raw==='')return;
     // Parantez içini (çoğu zaman orijinal-dil/CJK kopya başlık) arama teriminden
     // AT: "Talks ... (在延安文艺座谈会上的讲话)" → "Talks ...". Yoksa o token AND'i
     // bozup gerçek yazıyı eliyordu. (Tamamı parantezse orijinali koru.)
@@ -2207,16 +2220,38 @@ function thetelos_smart_search($query){
     }
     $author_term_ids=array_unique($author_term_ids);
     if(empty($author_term_ids)){
-        // Yazar eşleşmedi → varsayılan WP aramasını apostrof-toleranslı
-        // sürümle değiştir. ("Lord's" vs "Lord’s" farkı yüzünden boş
-        // sonuç dönmesin; kelimeler yine AND ile aranır.)
+        // Yazar eşleşmedi → ALAKA-TEMELLİ arama.
+        // ESKİ SORUN: tüm kelimeler AND'lenirdi; bir kelime bile eşleşmezse
+        // "sonuç yok" dönerdi (kullanıcının çok-kelimeli/tırnaklı araması gibi).
+        // YENİ: dolgu kelimeler (the/and/of…) atılır; kalan ANLAMLI kelimelerden
+        // EN AZ BİRİ eşleşen yazılar gelir ve ALAKA PUANINA göre sıralanır →
+        // en uyumlu içerik en üstte, arama asla boş dönmez.
         $tokens=array_values(array_filter(preg_split('/\s+/u',$raw),function($w){return mb_strlen($w)>=2;}));
         if(empty($tokens))return;
-        add_filter('posts_search',function($search,$q)use($tokens){
+        $stop=['the'=>1,'and'=>1,'of'=>1,'to'=>1,'in'=>1,'on'=>1,'at'=>1,'for'=>1,'with'=>1,'by'=>1,'from'=>1,'as'=>1,'is'=>1,'are'=>1,'was'=>1,'were'=>1,'be'=>1,'an'=>1,'or'=>1,'a'=>1,'this'=>1,'that'=>1,'it'=>1,'its'=>1,'into'=>1,'about'=>1,'between'=>1,'not'=>1];
+        $meaningful=array_values(array_filter($tokens,function($w)use($stop){return !isset($stop[mb_strtolower($w)]);}));
+        if(empty($meaningful))$meaningful=$tokens;   // tümü dolgu kelimeyse hepsini kullan
+        add_filter('posts_search',function($search,$q)use($meaningful){
             if(!$q->is_main_query()||!$q->is_search())return $search;
-            $clauses=[];foreach($tokens as $t){$clauses[]=tls_search_token_clause($t);}
-            return ' AND ('.implode(' AND ',$clauses).')';
+            $clauses=[];foreach($meaningful as $t){$clauses[]=tls_search_token_clause($t);}
+            return ' AND ('.implode(' OR ',$clauses).')';   // en az biri eşleşsin
         },10,2);
+        // Alaka sıralaması (yalnız 'relevance'/varsayılan): başlıkta geçen 3,
+        // içerikte geçen 1 puan; çok kelime eşleşen üste çıkar.
+        $sort=isset($_GET['tls_sort'])?sanitize_text_field($_GET['tls_sort']):'';
+        if($sort===''||$sort==='relevance'){
+            add_filter('posts_orderby',function($orderby,$q)use($meaningful){
+                if(!$q->is_main_query()||!$q->is_search())return $orderby;
+                global $wpdb;
+                $score=[];
+                foreach($meaningful as $t){
+                    $like=tls_search_flex_like($t);
+                    $score[]=$wpdb->prepare("(CASE WHEN {$wpdb->posts}.post_title LIKE %s THEN 3 ELSE 0 END)",$like);
+                    $score[]=$wpdb->prepare("(CASE WHEN {$wpdb->posts}.post_content LIKE %s THEN 1 ELSE 0 END)",$like);
+                }
+                return '('.implode(' + ',$score).") DESC, {$wpdb->posts}.post_date DESC";
+            },10,2);
+        }
         return;
     }
     $query->set('tax_query',[['taxonomy'=>'authors','field'=>'term_id','terms'=>$author_term_ids,'operator'=>'IN']]);
