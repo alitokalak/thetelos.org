@@ -229,7 +229,14 @@ if ($action === 'apply') {
     update_option('tls_cat_groups', $groups, false);
     update_option('tls_cat_main_labels', $mains, false);
 
-    echo json_encode(['ok'=>true, 'set'=>$set, 'cleared'=>$cleared, 'total_assigned'=>count($group_of)]);
+    // KANIT: seçeneği DB'den TAZE oku — gerçekten yazıldı mı?
+    wp_cache_delete('tls_cat_group_of', 'options');
+    $verify = get_option('tls_cat_group_of', []);
+    echo json_encode([
+        'ok'=>true, 'set'=>$set, 'cleared'=>$cleared,
+        'total_assigned'=>count($group_of),
+        'stored'=> is_array($verify) ? count($verify) : 0,
+    ]);
     exit;
 }
 
@@ -253,34 +260,31 @@ if ($action === 'ai_suggest') {
         . $mainlist . "\n"
         . "If a category truly fits none, omit its number.\n\nCATEGORIES:\n" . implode("\n", $lines);
 
-    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat','deepseek-reasoner'], true))
-           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+    // ÖNEMLİ: doğrudan DeepSeek çağırma — tv_ask kullan. tv_ask "thinking"i
+    // kapatıp reasoning_content yedeğini de okur ve sunucunun ERİŞEBİLDİĞİ
+    // sağlayıcı ayarını (OpenRouter dahil) kullanır. Doğrudan çağrı V4'te çoğu
+    // kez BOŞ content döndürüyordu → "öneri gelmiyor" sorununun sebebi buydu.
+    require_once __DIR__ . '/_verify.php';
+    $r = tv_ask($prompt, 3000, 90, 'deepseek');
+    if (empty($r['ok'])) {
+        echo json_encode(['ok'=>false, 'map'=>[], 'error'=>($r['error'] ?? 'AI hata')], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $txt = trim(preg_replace('/```json|```/', '', (string)($r['text'] ?? '')));
+    $j = json_decode($txt, true) ?: [];
+    if (!$j && $txt !== '' && preg_match('/\{.*\}/s', $txt, $m)) $j = json_decode($m[0], true) ?: [];
     $out = [];
-    if (defined('DEEPSEEK_API_URL') && defined('DEEPSEEK_KEY')) {
-        $ch = curl_init(DEEPSEEK_API_URL);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS => json_encode([
-                'model' => $model, 'max_tokens' => 3000, 'temperature' => 0,
-                'response_format' => ['type' => 'json_object'],
-                'messages' => [['role'=>'user','content'=>$prompt]],
-            ]),
-        ]);
-        $raw = curl_exec($ch); curl_close($ch);
-        $txt = json_decode((string)$raw, true)['choices'][0]['message']['content'] ?? '';
-        $txt = trim(preg_replace('/```json|```/', '', (string)$txt));
-        $j = json_decode($txt, true) ?: [];
-        if (!$j && $txt !== '' && preg_match('/\{.*\}/s', $txt, $m)) $j = json_decode($m[0], true) ?: [];
-        foreach (($j['map'] ?? []) as $num => $slug) {
-            $idx = (int)$num - 1;
-            $slug = (string)$slug;
-            if (isset($items[$idx]) && isset($mains[$slug])) {
-                $out[] = ['id' => (int)$items[$idx]['id'], 'main' => $slug];
-            }
+    foreach (($j['map'] ?? []) as $num => $slug) {
+        $idx  = (int)$num - 1;
+        $slug = (string)$slug;
+        if (isset($items[$idx]) && isset($mains[$slug])) {
+            $out[] = ['id' => (int)$items[$idx]['id'], 'main' => $slug];
         }
     }
-    echo json_encode(['ok'=>true, 'map'=>$out, 'asked'=>count($items)]);
+    echo json_encode([
+        'ok'=>true, 'map'=>$out, 'asked'=>count($items),
+        'debug'=> $out ? '' : ('AI yanıtı ayrıştırılamadı: ' . mb_substr($txt, 0, 200)),
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

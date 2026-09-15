@@ -202,10 +202,12 @@ $('btn-ai').addEventListener('click', ()=>{
     const slice = empties.slice(i, i+80); i += 80;
     $('co-status').textContent = 'AI öneriyor… ('+Math.min(i,empties.length)+'/'+empties.length+')';
     post('action=ai_suggest&items='+encodeURIComponent(JSON.stringify(slice))).then(d=>{
-      if(d&&d.ok&&d.map){ d.map.forEach(m=>{
+      if(d && d.ok===false){ $('btn-ai').disabled=false; $('co-status').textContent='AI hata: '+(d.error||'bilinmiyor'); return; }
+      if(d&&d.map){ d.map.forEach(m=>{
         const sel = document.querySelector('tr[data-id="'+m.id+'"] .co-sel');
         if(sel && !sel.value){ sel.value = m.main; sel.classList.remove('co-empty'); filled++; }
       }); }
+      if(d && d.map && !d.map.length && d.debug){ console.log('AI debug:', d.debug); }
       step();
     }).catch(()=>{ $('btn-ai').disabled=false; $('co-status').textContent='AI bağlantı hatası.'; });
   };
@@ -229,7 +231,8 @@ $('btn-save').addEventListener('click', ()=>{
   post('action=apply&map='+encodeURIComponent(JSON.stringify(map))).then(d=>{
     $('btn-save').disabled = false;
     if(!d||!d.ok){ $('co-status').textContent='Hata.'; return; }
-    $('co-status').textContent = '✓ Kaydedildi — '+d.total_assigned+' kategori ana başlıklara bağlı.';
+    $('co-status').textContent = '✓ Kaydedildi — DB\'de '+d.stored+' kategori bağlı (bu turda '+d.set+' yazıldı).';
+    alert('Kaydedildi ✓\nVeritabanında '+d.stored+' kategori ana başlığa bağlı.\n\nSitede görmek için: WP Admin → LiteSpeed → Purge All, sonra /categories/ sayfasını yenile. (Giriş yapmışken açarsan önbelleği atlar.)');
     $('btn-load').click();
   }).catch(()=>{ $('btn-save').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
 });
