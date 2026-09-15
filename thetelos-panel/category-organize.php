@@ -109,7 +109,8 @@ function render(){
     '<th style="width:90px">Durum</th><th style="width:280px">Ana Kategori</th>'+
     '</tr></thead><tbody>';
   rows.forEach(r=>{
-    const val = r.current || '';
+    // Kayıtlı ana varsa onu, yoksa ÖNERİYİ otomatik seç → form asla boş açılmaz
+    const val = r.current || r.suggested || '';
     html += '<tr data-id="'+r.id+'" data-name="'+escH((r.name+' '+r.slug).toLowerCase())+'">'+
       '<td><b>'+escH(r.name)+'</b><br><small style="color:var(--muted)">'+escH(r.slug)+'</small></td>'+
       '<td>'+r.count+'</td>'+
@@ -147,10 +148,13 @@ $('btn-load').addEventListener('click', ()=>{
     if(!d||!d.ok){ $('co-status').textContent='Hata.'; return; }
     mains = d.mains; rows = d.rows;
     $('st-total').textContent = d.total;
-    $('st-assigned').textContent = d.assigned;
-    $('st-unassigned').textContent = d.unassigned;
-    $('co-status').textContent = d.total+' kategori · '+d.unassigned+' atanmamış. "Boşlara Öneriyi Doldur" ile başlayabilirsin.';
     render();
+    // render() önerileri otomatik doldurdu → seçili sayısını istemciden say
+    const filled = document.querySelectorAll('.co-sel').length
+                 - document.querySelectorAll('.co-sel.co-empty').length;
+    $('st-assigned').textContent = filled;
+    $('st-unassigned').textContent = d.total - filled;
+    $('co-status').textContent = d.total+' kategori — öneriler otomatik dolduruldu ('+filled+' atandı). Gözden geçir, düzelt, 💾 Kaydet.';
   }).catch(()=>{ $('btn-load').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
 });
 
@@ -169,6 +173,10 @@ $('btn-save').addEventListener('click', ()=>{
     map.push({id: parseInt(tr.dataset.id,10), main: sel ? sel.value : ''});
   });
   const assigned = map.filter(m=>m.main).length;
+  if(assigned === 0){
+    alert('Hiçbir kategoriye ana başlık seçilmemiş. Önce menülerden seç (ya da "Boşlara Öneriyi Doldur"), sonra Kaydet.');
+    return;
+  }
   if(!confirm(assigned+' kategori ana başlıklara bağlanacak (URL değişmez). Kaydedilsin mi?')) return;
   $('btn-save').disabled = true;
   $('co-status').textContent = 'Kaydediliyor…';
