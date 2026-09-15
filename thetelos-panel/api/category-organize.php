@@ -233,4 +233,55 @@ if ($action === 'apply') {
     exit;
 }
 
+/* ── AI ile boşları öner: motorun tahmin edemediği kategorileri DeepSeek 14
+      ana başlıktan birine maplar. Girdi: [{id,name,slug}] → çıktı: [{id,main}] ── */
+if ($action === 'ai_suggest') {
+    $items = json_decode((string)($_POST['items'] ?? '[]'), true);
+    if (!is_array($items) || !$items) { echo json_encode(['ok'=>true,'map'=>[]]); exit; }
+    $items = array_slice(array_values($items), 0, 120);   // tek çağrıda en çok 120
+    $mains = co_mains();
+    $mainlist = '';
+    foreach ($mains as $slug => $label) $mainlist .= "$slug = $label\n";
+
+    $lines = [];
+    foreach ($items as $i => $it) {
+        $lines[] = ($i+1).'. '.trim((string)($it['name'] ?? '').' ['.($it['slug'] ?? '').']');
+    }
+    $prompt = "Map each book CATEGORY to the SINGLE best fitting main category.\n"
+        . "Return ONLY JSON: {\"map\":{\"<number>\":\"<main-slug>\"}} using the item numbers.\n"
+        . "Choose main-slug EXACTLY from this list (left side), never invent:\n"
+        . $mainlist . "\n"
+        . "If a category truly fits none, omit its number.\n\nCATEGORIES:\n" . implode("\n", $lines);
+
+    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat','deepseek-reasoner'], true))
+           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+    $out = [];
+    if (defined('DEEPSEEK_API_URL') && defined('DEEPSEEK_KEY')) {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => json_encode([
+                'model' => $model, 'max_tokens' => 3000, 'temperature' => 0,
+                'response_format' => ['type' => 'json_object'],
+                'messages' => [['role'=>'user','content'=>$prompt]],
+            ]),
+        ]);
+        $raw = curl_exec($ch); curl_close($ch);
+        $txt = json_decode((string)$raw, true)['choices'][0]['message']['content'] ?? '';
+        $txt = trim(preg_replace('/```json|```/', '', (string)$txt));
+        $j = json_decode($txt, true) ?: [];
+        if (!$j && $txt !== '' && preg_match('/\{.*\}/s', $txt, $m)) $j = json_decode($m[0], true) ?: [];
+        foreach (($j['map'] ?? []) as $num => $slug) {
+            $idx = (int)$num - 1;
+            $slug = (string)$slug;
+            if (isset($items[$idx]) && isset($mains[$slug])) {
+                $out[] = ['id' => (int)$items[$idx]['id'], 'main' => $slug];
+            }
+        }
+    }
+    echo json_encode(['ok'=>true, 'map'=>$out, 'asked'=>count($items)]);
+    exit;
+}
+
 echo json_encode(['ok'=>false, 'error'=>'bad action']);

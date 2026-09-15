@@ -67,8 +67,11 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     <div class="bulk-row">
       <button class="btn btn-primary" id="btn-load">🔄 Kategorileri Tara</button>
       <button class="btn" id="btn-autofill" style="display:none">✨ Boşlara Öneriyi Doldur</button>
+      <button class="btn" id="btn-ai" style="display:none">🤖 Boşları AI ile Öner</button>
       <button class="btn btn-primary" id="btn-save" style="display:none">💾 Kaydet</button>
       <input type="search" id="co-search" placeholder="Kategori ara…" style="display:none">
+      <label id="co-onlyempty-wrap" style="display:none;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="co-onlyempty"> Sadece boşlar</label>
       <span id="co-status"></span>
     </div>
 
@@ -121,24 +124,34 @@ function render(){
   });
   html += '</tbody></table>';
   $('result').innerHTML = html;
-  $('btn-autofill').style.display = '';
-  $('btn-save').style.display = '';
-  $('co-search').style.display = '';
+  ['btn-autofill','btn-ai','btn-save','co-search'].forEach(id=>$(id).style.display='');
+  $('co-onlyempty-wrap').style.display = 'inline-flex';
+}
+function recount(){
+  const all = document.querySelectorAll('.co-sel').length;
+  const empty = document.querySelectorAll('.co-sel.co-empty').length;
+  $('st-assigned').textContent = all - empty;
+  $('st-unassigned').textContent = empty;
+}
+function applyFilter(){
+  const only = $('co-onlyempty').checked;
+  const q = ($('co-search').value||'').trim().toLowerCase();
+  document.querySelectorAll('#result tbody tr').forEach(tr=>{
+    const sel = tr.querySelector('.co-sel');
+    const isEmpty = sel && !sel.value;
+    const okEmpty = !only || isEmpty;
+    const okQ = !q || (tr.dataset.name||'').includes(q);
+    tr.style.display = (okEmpty && okQ) ? '' : 'none';
+  });
 }
 
-// seçim değişince kırmızı kenarı güncelle
+// seçim değişince kırmızı kenarı + sayaçları güncelle
 document.addEventListener('change', e=>{
-  if(e.target.classList.contains('co-sel')) e.target.classList.toggle('co-empty', !e.target.value);
+  if(e.target.classList.contains('co-sel')){ e.target.classList.toggle('co-empty', !e.target.value); recount(); applyFilter(); }
+  if(e.target.id==='co-onlyempty') applyFilter();
 });
-
-// arama filtresi
-document.addEventListener('input', e=>{
-  if(e.target.id!=='co-search') return;
-  const q = e.target.value.trim().toLowerCase();
-  document.querySelectorAll('#result tbody tr').forEach(tr=>{
-    tr.style.display = (!q || (tr.dataset.name||'').includes(q)) ? '' : 'none';
-  });
-});
+// arama + "sadece boşlar" filtresi
+document.addEventListener('input', e=>{ if(e.target.id==='co-search') applyFilter(); });
 
 $('btn-load').addEventListener('click', ()=>{
   $('co-status').textContent='Kategoriler okunuyor…';
@@ -163,7 +176,40 @@ $('btn-autofill').addEventListener('click', ()=>{
   document.querySelectorAll('.co-sel').forEach(sel=>{
     if(!sel.value && sel.dataset.sug){ sel.value = sel.dataset.sug; sel.classList.remove('co-empty'); n++; }
   });
+  recount(); applyFilter();
   $('co-status').textContent = n+' satıra öneri dolduruldu. Gözden geçir ve Kaydet.';
+});
+
+// AI ile boşları öner (motorun tahmin edemedikleri → DeepSeek 14'ten seçer)
+$('btn-ai').addEventListener('click', ()=>{
+  const byId = {}; rows.forEach(r=>byId[r.id]=r);
+  const empties = [];
+  document.querySelectorAll('.co-sel').forEach(sel=>{
+    if(sel.value) return;
+    const tr = sel.closest('tr'); const id = parseInt(tr.dataset.id,10); const r = byId[id];
+    if(r) empties.push({id:id, name:r.name, slug:r.slug});
+  });
+  if(!empties.length){ $('co-status').textContent='Boş kategori yok — hepsi atanmış.'; return; }
+  $('btn-ai').disabled = true;
+  let i = 0, filled = 0;
+  const step = ()=>{
+    if(i >= empties.length){
+      $('btn-ai').disabled = false;
+      recount(); applyFilter();
+      $('co-status').textContent = '🤖 AI '+filled+' boşa öneri koydu. Gözden geçir ve Kaydet. (Kalan boşları elle seçebilirsin.)';
+      return;
+    }
+    const slice = empties.slice(i, i+80); i += 80;
+    $('co-status').textContent = 'AI öneriyor… ('+Math.min(i,empties.length)+'/'+empties.length+')';
+    post('action=ai_suggest&items='+encodeURIComponent(JSON.stringify(slice))).then(d=>{
+      if(d&&d.ok&&d.map){ d.map.forEach(m=>{
+        const sel = document.querySelector('tr[data-id="'+m.id+'"] .co-sel');
+        if(sel && !sel.value){ sel.value = m.main; sel.classList.remove('co-empty'); filled++; }
+      }); }
+      step();
+    }).catch(()=>{ $('btn-ai').disabled=false; $('co-status').textContent='AI bağlantı hatası.'; });
+  };
+  step();
 });
 
 $('btn-save').addEventListener('click', ()=>{
