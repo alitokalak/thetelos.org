@@ -37,6 +37,7 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
       <a href="content-audit.php"><span class="ico">🩺</span> İçerik Denetimi</a>
       <a href="content-guard.php" class="active"><span class="ico">🛡️</span> İçerik Koruma</a>
+      <a href="category-organize.php"><span class="ico">🗄️</span> Kategori Organize</a>
       <a href="recategorize.php"><span class="ico">🗂️</span> Kategori Düzelt</a>
       <a href="category-cleanup.php"><span class="ico">🧹</span> Kategori Temizle</a>
       <a href="cover-backfill.php"><span class="ico">🖼</span> Kapak Bul</a>
