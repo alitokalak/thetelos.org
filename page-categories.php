@@ -162,6 +162,29 @@ get_header();
     gap: 12px;
 }
 
+/* ── Ana kategori bölümü ── */
+.tlc-section { margin-bottom: 40px; }
+.tlc-section:last-child { margin-bottom: 0; }
+.tlc-section-title {
+    font-family: var(--tls-serif);
+    font-size: 22px;
+    font-weight: 400;
+    color: var(--tls-bg-dark);
+    margin: 0 0 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--tls-border);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    scroll-margin-top: calc(var(--tls-nav-h) + 80px);
+}
+.tlc-section-count {
+    font-family: var(--tls-sans);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tls-muted);
+}
+
 /* ── Category card ── */
 .tlc-card {
     display: flex;
@@ -309,40 +332,101 @@ get_header();
     </div>
 </div>
 
-<!-- ══════════ GRID ══════════ -->
-<div class="tlc-main">
-    <div class="tlc-grid" id="tlc-grid">
-    <?php if ( empty( $cats ) ) : ?>
-        <div class="tlc-no-results">
-            <strong>No categories yet</strong>
-            <p>Categories will appear here as content is published.</p>
-        </div>
-    <?php else :
-        foreach ( $cats as $cat ) :
-            $c_url   = get_category_link( $cat->term_id );
-            $c_desc  = $cat->description;
-            $c_count = (int) $cat->count;
+<?php
+/* ── 14 ANA KATEGORİ GRUPLAMASI ─────────────────────────────────────────
+   "Kategori Organize" panelinden kaydedilen eşleme (tls_cat_group_of) okunur;
+   kategoriler ana başlıklar altında bölümlenir. Kategori URL'leri değişmez.
+   Eşleme kaydedilmemişse eski düz grid'e güvenli düşer. */
+$group_of    = get_option( 'tls_cat_group_of', [] );      // [term_id => main_slug]
+$main_labels = get_option( 'tls_cat_main_labels', [] );   // [main_slug => label]
+if ( ! is_array( $group_of ) )    $group_of = [];
+if ( ! is_array( $main_labels ) || empty( $main_labels ) ) {
+    $main_labels = [
+        'literature-fiction'=>'Literature & Fiction','philosophy'=>'Philosophy',
+        'religion-spirituality'=>'Religion & Spirituality','history'=>'History',
+        'biography-memoir'=>'Biography & Memoir','psychology'=>'Psychology',
+        'social-sciences'=>'Social Sciences & Politics','science-nature'=>'Science & Nature',
+        'technology-engineering'=>'Technology & Engineering','arts-culture'=>'Arts & Culture',
+        'business-economics'=>'Business & Economics','health-lifestyle'=>'Health & Lifestyle',
+        'self-help'=>'Self-Help & Personal Growth','children-ya'=>'Children & Young Adult',
+    ];
+}
+$use_groups = ! empty( $group_of );
+
+// Kovalar: ana sıra + sonda "Other" (atanmamışlar)
+$buckets = [];
+foreach ( array_keys( $main_labels ) as $ms ) $buckets[ $ms ] = [];
+$buckets['_other'] = [];
+foreach ( $cats as $cat ) {
+    $ms = isset( $group_of[ $cat->term_id ] ) ? (string) $group_of[ $cat->term_id ] : '';
+    if ( $ms === '' || ! isset( $buckets[ $ms ] ) ) $ms = '_other';
+    $buckets[ $ms ][] = $cat;
+}
+foreach ( $buckets as &$_b ) { usort( $_b, function ( $a, $c ) { return $c->count <=> $a->count; } ); }
+unset( $_b );
+
+// Tek kart çizen yardımcı
+$tlc_card = function ( $cat ) {
+    $c_url   = get_category_link( $cat->term_id );
+    $c_desc  = $cat->description;
+    $c_count = (int) $cat->count;
     ?>
-        <a href="<?php echo esc_url( $c_url ); ?>"
-           class="tlc-card"
-           data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>">
-            <div class="tlc-card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-                </svg>
-            </div>
-            <p class="tlc-card-name"><?php echo esc_html( $cat->name ); ?></p>
-            <?php if ( $c_desc ) : ?>
-                <p class="tlc-card-desc"><?php echo esc_html( wp_trim_words( wp_strip_all_tags( $c_desc ), 16 ) ); ?></p>
-            <?php endif; ?>
-            <span class="tlc-card-count">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
-                </svg>
-                <?php echo number_format( $c_count ) . ' ' . ( $c_count === 1 ? 'entry' : 'entries' ); ?>
-            </span>
-        </a>
-    <?php endforeach; endif; ?>
+    <a href="<?php echo esc_url( $c_url ); ?>" class="tlc-card"
+       data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>">
+        <div class="tlc-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+        </div>
+        <p class="tlc-card-name"><?php echo esc_html( $cat->name ); ?></p>
+        <?php if ( $c_desc ) : ?>
+            <p class="tlc-card-desc"><?php echo esc_html( wp_trim_words( wp_strip_all_tags( $c_desc ), 16 ) ); ?></p>
+        <?php endif; ?>
+        <span class="tlc-card-count">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+            </svg>
+            <?php echo number_format( $c_count ) . ' ' . ( $c_count === 1 ? 'entry' : 'entries' ); ?>
+        </span>
+    </a>
+    <?php
+};
+?>
+
+<!-- ══════════ GRID ══════════ -->
+<div class="tlc-main" id="tlc-main">
+<?php if ( empty( $cats ) ) : ?>
+    <div class="tlc-grid"><div class="tlc-no-results">
+        <strong>No categories yet</strong>
+        <p>Categories will appear here as content is published.</p>
+    </div></div>
+
+<?php elseif ( $use_groups ) :
+    $sections = $main_labels;
+    $sections['_other'] = 'Other';
+    foreach ( $sections as $ms => $label ) :
+        $list = $buckets[ $ms ] ?? [];
+        if ( empty( $list ) ) continue;
+?>
+    <section class="tlc-section" data-main="<?php echo esc_attr( $ms ); ?>">
+        <h2 class="tlc-section-title"><?php echo esc_html( $label ); ?>
+            <span class="tlc-section-count"><?php echo number_format( count( $list ) ); ?></span>
+        </h2>
+        <div class="tlc-grid">
+            <?php foreach ( $list as $cat ) $tlc_card( $cat ); ?>
+        </div>
+    </section>
+<?php endforeach;
+
+else : ?>
+    <div class="tlc-grid">
+        <?php foreach ( $cats as $cat ) $tlc_card( $cat ); ?>
+    </div>
+<?php endif; ?>
+
+    <div class="tlc-no-results" id="tlc-no-results" style="display:none">
+        <strong>No results</strong>
+        <p>Try a different search term.</p>
     </div>
 </div><!-- /.tlc-main -->
 </main>
@@ -353,10 +437,12 @@ get_header();
     'use strict';
     var input   = document.getElementById('tlc-search-input');
     var countEl = document.getElementById('tlc-result-count');
-    var grid    = document.getElementById('tlc-grid');
-    if (!input || !grid) return;
+    var main    = document.getElementById('tlc-main');
+    if (!input || !main) return;
 
-    var cards = Array.prototype.slice.call(grid.querySelectorAll('.tlc-card'));
+    var cards    = Array.prototype.slice.call(main.querySelectorAll('.tlc-card'));
+    var sections = Array.prototype.slice.call(main.querySelectorAll('.tlc-section'));
+    var noRes    = document.getElementById('tlc-no-results');
     var timer = null;
 
     function filterCards(q) {
@@ -367,6 +453,12 @@ get_header();
             card.style.display = match ? '' : 'none';
             if (match) total++;
         });
+        // Görünür kartı olmayan bölüm başlığını gizle
+        sections.forEach(function (sec) {
+            var any = sec.querySelector('.tlc-card:not([style*="display: none"])');
+            sec.style.display = any ? '' : 'none';
+        });
+        if (noRes) noRes.style.display = total ? 'none' : '';
         if (countEl) {
             countEl.innerHTML = total
                 ? '<span>' + total.toLocaleString() + '</span>&nbsp;categor' + (total !== 1 ? 'ies' : 'y')
