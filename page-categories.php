@@ -335,17 +335,21 @@ foreach ( $sections as $ms => $label ) :
     // Sayfa aşağı kaydıkça chip satırını daralt; yukarı kaydırınca / tepede aç
     var toolbar = document.getElementById('tlc-toolbar');
     if (toolbar) {
-        var lastY = window.scrollY || 0, ticking = false;
+        // SABİT EŞİKLİ TAMPON BANT (yön algısı yok → titreme yok):
+        // 200px'i geçince kapat, 120px'in altına inince aç, arada durumu KORU.
+        // Bandın genişliği (80px), daralma/açılmanın yol açtığı ~40px'lik düzen
+        // kaymasından büyük olduğu için aç/kapa salınımı olmaz.
+        var ticking = false;
         function onScroll() {
             var y = window.scrollY || 0;
-            if (y < 130) { toolbar.classList.remove('is-collapsed'); }           // tepede: açık
-            else if (y > lastY + 6) { toolbar.classList.add('is-collapsed'); }    // aşağı: daralt
-            else if (y < lastY - 6) { toolbar.classList.remove('is-collapsed'); } // yukarı: aç
-            lastY = y; ticking = false;
+            if (y > 200)      toolbar.classList.add('is-collapsed');
+            else if (y < 120) toolbar.classList.remove('is-collapsed');
+            ticking = false;
         }
         window.addEventListener('scroll', function () {
             if (!ticking) { window.requestAnimationFrame(onScroll); ticking = true; }
         }, { passive: true });
+        onScroll();
     }
 
     render();
