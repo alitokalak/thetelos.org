@@ -158,30 +158,29 @@ document.addEventListener('input', e=>{ if(e.target.id==='co-search') applyFilte
 $('btn-desc').addEventListener('click', ()=>{
   if(!confirm('Açıklaması boş TÜM kategoriler için tek cümlelik tanım üretilip kaydedilecek. Başlansın mı?')) return;
   $('btn-desc').disabled = true;
-  $('co-status').textContent = 'Boş açıklamalar taranıyor…';
-  post('action=desc_scan').then(d=>{
-    if(!d||!d.ok){ $('btn-desc').disabled=false; $('co-status').textContent='Tarama hatası.'; return; }
-    const items = d.empty || [];
-    if(!items.length){ $('btn-desc').disabled=false; $('co-status').textContent='✓ Tüm kategorilerin açıklaması zaten dolu.'; return; }
-    let i=0, done=0, aiN=0, fbN=0, skF=0, skE=0, dbg='';
-    const step = ()=>{
-      if(i>=items.length){
-        $('btn-desc').disabled=false;
-        let msg='✓ '+done+' açıklama yazıldı ('+aiN+' AI · '+fbN+' yedek).';
-        if(done===0){ msg='⚠ 0 yazıldı — teşhis: taranan '+items.length+', zaten-dolu '+skF+', hata '+skE+(dbg?(' · '+dbg):''); }
-        else { msg+=' Categories sayfasında görünür — gerekirse cache temizle.'; }
-        $('co-status').textContent=msg;
+  // Sunucu taramayı kendi yapıyor; biz remaining=0 olana kadar tetikliyoruz.
+  let done=0, aiN=0, fbN=0, skE=0, dbg='', total=0, guard=0;
+  $('co-status').textContent = 'Boş açıklamalar dolduruluyor…';
+  const step = ()=>{
+    if(++guard > 60){ $('btn-desc').disabled=false; $('co-status').textContent='Durdu (çok fazla tur) · '+done+' yazıldı.'; return; }
+    post('action=desc_fill').then(r=>{
+      if(!r||!r.ok){ $('btn-desc').disabled=false; $('co-status').textContent='⚠ Hata — durdu: '+((r&&r.error)||'bilinmiyor')+' · '+done+' yazıldı'; return; }
+      done+=(r.done||0); aiN+=(r.ai||0); fbN+=(r.fallback||0); skE+=(r.skip_err||0); if(!dbg&&r.debug)dbg=r.debug;
+      if(total===0) total=(r.scanned||0);
+      const remaining = r.remaining||0;
+      if(remaining>0 && (r.done||0)>0){
+        $('co-status').textContent='Açıklamalar yazılıyor… ('+done+'/'+total+') · kalan '+remaining;
+        step();
         return;
       }
-      const slice = items.slice(i, i+10); i+=10;
-      $('co-status').textContent='Açıklamalar yazılıyor… ('+Math.min(i,items.length)+'/'+items.length+') · şu ana kadar '+done;
-      post('action=desc_fill&items='+encodeURIComponent(JSON.stringify(slice))).then(r=>{
-        if(r&&r.ok){ done+=(r.done||0); aiN+=(r.ai||0); fbN+=(r.fallback||0); skF+=(r.skip_filled||0); skE+=(r.skip_err||0); if(!dbg&&r.debug)dbg=r.debug; step(); }
-        else { $('btn-desc').disabled=false; $('co-status').textContent='⚠ AI hatası — durdu: '+((r&&r.error)||'bilinmiyor')+' · '+done+' yazıldı'; }
-      }).catch(()=>{ $('btn-desc').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
-    };
-    step();
-  }).catch(()=>{ $('btn-desc').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
+      // bitti (kalan yok) VEYA bu turda hiç ilerlemedi (takıldı)
+      $('btn-desc').disabled=false;
+      if(done>0){ $('co-status').textContent='✓ '+done+' açıklama yazıldı ('+aiN+' AI · '+fbN+' yedek). Categories sayfasında görünür — gerekirse cache temizle.'; }
+      else if(total===0){ $('co-status').textContent='✓ Tüm kategorilerin açıklaması zaten dolu.'; }
+      else { $('co-status').textContent='⚠ 0 yazıldı — teşhis: boş '+total+', hata '+skE+(dbg?(' · '+dbg):' · sebep bilinmiyor'); }
+    }).catch(()=>{ $('btn-desc').disabled=false; $('co-status').textContent='Bağlantı hatası · '+done+' yazıldı.'; });
+  };
+  step();
 });
 
 $('btn-load').addEventListener('click', ()=>{

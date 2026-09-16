@@ -303,20 +303,29 @@ if ($action === 'desc_scan') {
    Toplu-JSON yerine kategori başına düz metin: JSON ayrıştırma kırılganlığı yok.
    İlk kategoride AI hatası olursa hemen durup hatayı döndürür (maskelenmez). */
 if ($action === 'desc_fill') {
-    $items = json_decode((string)($_POST['items'] ?? '[]'), true);
-    if (!is_array($items) || !$items) { echo json_encode(['ok'=>true,'done'=>0]); exit; }
-    $items = array_slice(array_values($items), 0, 10);
+    // ÖNEMLİ: istemciden 'items' ALMIYORUZ. Kategori adları dolu JSON yükü
+    // bir güvenlik filtresi/WAF tarafından yolda düşüyordu ($_POST['items'] boş
+    // geliyordu → fonksiyon hep done:0 ile çıkıyordu). Çözüm: taramayı SUNUCUDA
+    // yap (desc_scan zaten sorunsuz çalışıyor), bu çağrıda boşların ilk
+    // parçasını doldur, kaç tane kaldığını döndür. İstemci remaining=0 olana
+    // kadar bu ucu tekrar tekrar çağırır. Böylece kırılgan istemci→sunucu dizi
+    // aktarımı tamamen ortadan kalkar.
+    $BATCH = 8;
+    $empties = [];
+    foreach ( get_categories(['hide_empty'=>false]) as $c ) {
+        if ( in_array( strtolower($c->slug), ['general','uncategorized'], true ) ) continue;
+        if ( trim( (string) $c->description ) === '' ) $empties[] = $c;
+    }
+    $remaining_before = count($empties);
+    $batch = array_slice($empties, 0, $BATCH);
 
     require_once __DIR__ . '/_verify.php';
     $done = 0; $ai = 0; $fallback = 0;
     $skip_filled = 0; $skip_err = 0; $dbg = '';   // TEŞHİS: neden atlandığını say
-    foreach ($items as $it) {
-        $tid  = (int)($it['id'] ?? 0);
-        $name = trim( (string)($it['name'] ?? '') );
+    foreach ($batch as $c) {
+        $tid  = (int)$c->term_id;
+        $name = trim( (string)$c->name );
         if ($tid <= 0 || $name === '') { $skip_err++; continue; }
-        $c = get_term($tid, 'category');
-        if (!$c || is_wp_error($c)) { $skip_err++; continue; }
-        if (trim((string)$c->description) !== '') { $skip_filled++; continue; }   // dolu olanı ezme
 
         $prompt = "Write ONE concise, neutral sentence (8 to 16 words) that defines the book category \"$name\" — "
             . "encyclopedic tone, present tense, no marketing, no numbers, no first person, no surrounding quotes. Output only the sentence.";
@@ -340,9 +349,11 @@ if ($action === 'desc_fill') {
         if (is_wp_error($u)) { $skip_err++; continue; }
         $done++;
     }
+    $remaining = $remaining_before - $done;   // bu turda dolanlar çıkınca kalan
     echo json_encode([
-        'ok'=>true, 'done'=>$done, 'ai'=>$ai, 'fallback'=>$fallback, 'asked'=>count($items),
-        'skip_filled'=>$skip_filled, 'skip_err'=>$skip_err, 'debug'=>$dbg,
+        'ok'=>true, 'done'=>$done, 'ai'=>$ai, 'fallback'=>$fallback,
+        'remaining'=>max(0, $remaining), 'scanned'=>$remaining_before,
+        'skip_err'=>$skip_err, 'debug'=>$dbg,
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }
