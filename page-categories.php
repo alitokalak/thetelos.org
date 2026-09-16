@@ -65,12 +65,12 @@ get_header();
 ?>
 
 <style>
-/* Başlık bloğu artık panelin İÇİNDE — kaydırınca kutucuklarla birlikte daralır */
-.cat-intro{ max-width:var(--tls-container); margin:0 auto; padding:40px 32px 6px; overflow:hidden; max-height:400px; opacity:1; transition:max-height .28s ease, opacity .18s ease, padding .28s ease; }
+/* Başlık: normal akışta, sabit panelin ÜSTÜNDE. Kaydırınca kendiliğinden
+   yukarı kayar — daralmaz, o yüzden yükseklik değişimi/titreme olmaz. */
+.cat-intro{ max-width:var(--tls-container); margin:0 auto; padding:40px 32px 18px; }
 .cat-eyebrow{ font-family:var(--tls-sans); font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--tls-gold); margin:0 0 10px; }
 .cat-intro h1{ font-family:var(--tls-serif); font-size:clamp(28px,3.4vw,42px); font-weight:400; color:var(--tls-bg-dark); margin:0 0 8px; line-height:1.1; }
 .cat-hero-sub{ font-family:var(--tls-sans); font-size:14px; color:var(--tls-muted); margin:0; max-width:620px; line-height:1.55; }
-.cat-toolbar.is-collapsed .cat-intro{ max-height:0; opacity:0; padding-top:0; padding-bottom:0; }
 
 /* Üst bar (sabit) */
 .cat-toolbar{ position:sticky; top:var(--tls-nav-h); z-index:200; background:var(--tls-bg); border-bottom:1px solid var(--tls-border); box-shadow:0 2px 12px rgba(0,0,0,.06); isolation:isolate; }
@@ -171,14 +171,16 @@ get_header();
 
 <main id="main" role="main">
 
-<!-- BAŞLIK + ARAÇ ÇUBUĞU + KUTUCUKLAR: tek bütün panel -->
+<!-- BAŞLIK (normal akış: kaydırınca kendiliğinden kayar, titremez) -->
+<div class="cat-intro" id="cat-intro">
+    <p class="cat-eyebrow">The Archive</p>
+    <h1><?php the_title(); ?></h1>
+    <?php while ( have_posts() ) : the_post(); endwhile; ?>
+    <p class="cat-hero-sub">Start from a subject, then open it to see everything filed underneath.</p>
+</div>
+
+<!-- ARAÇ ÇUBUĞU + KUTUCUKLAR (sabit; kutucuklar kaydırınca daralır) -->
 <div class="cat-toolbar" id="cat-toolbar">
-    <div class="cat-intro" id="cat-intro">
-        <p class="cat-eyebrow">The Archive</p>
-        <h1><?php the_title(); ?></h1>
-        <?php while ( have_posts() ) : the_post(); endwhile; ?>
-        <p class="cat-hero-sub">Start from a subject, then open it to see everything filed underneath.</p>
-    </div>
     <div class="cat-toolrow">
         <div class="cat-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
