@@ -299,38 +299,40 @@ if ($action === 'desc_scan') {
     exit;
 }
 
-/* ── Bir grup kategoriye tek cümlelik tanım üret + kaydet (DeepSeek, toplu) ── */
+/* ── Kategori başına tek cümlelik tanım üret + kaydet (DÜZ METİN, sağlam) ──
+   Toplu-JSON yerine kategori başına düz metin: JSON ayrıştırma kırılganlığı yok.
+   İlk kategoride AI hatası olursa hemen durup hatayı döndürür (maskelenmez). */
 if ($action === 'desc_fill') {
     $items = json_decode((string)($_POST['items'] ?? '[]'), true);
     if (!is_array($items) || !$items) { echo json_encode(['ok'=>true,'done'=>0]); exit; }
-    $items = array_slice(array_values($items), 0, 20);
-
-    $lines = [];
-    foreach ($items as $i => $it) $lines[] = ($i+1).'. '.trim((string)($it['name'] ?? ''));
-    $prompt = "For each book category below, write ONE concise, neutral sentence (8-16 words) that DEFINES what that subject or genre is — encyclopedic tone, no marketing, no numbers, no first person. "
-        . "Return ONLY JSON: {\"map\":{\"<number>\":\"sentence\"}} using the item numbers.\n\nCATEGORIES:\n" . implode("\n", $lines);
+    $items = array_slice(array_values($items), 0, 10);
 
     require_once __DIR__ . '/_verify.php';
-    $r = tv_ask($prompt, 1500, 90, 'deepseek');
-    if (empty($r['ok'])) { echo json_encode(['ok'=>false, 'done'=>0, 'error'=>($r['error'] ?? 'AI hata')], JSON_UNESCAPED_UNICODE); exit; }
-    $txt = trim(preg_replace('/```json|```/', '', (string)($r['text'] ?? '')));
-    $j = json_decode($txt, true) ?: [];
-    if (!$j && preg_match('/\{.*\}/s', $txt, $m)) $j = json_decode($m[0], true) ?: [];
-
-    $done = 0;
-    foreach (($j['map'] ?? []) as $num => $sentence) {
-        $idx = (int)$num - 1;
-        if (!isset($items[$idx])) continue;
-        $tid = (int)($items[$idx]['id'] ?? 0);
-        $sentence = trim( preg_replace('/\s+/', ' ', wp_strip_all_tags( (string)$sentence ) ) );
-        if ($tid <= 0 || $sentence === '') continue;
-        if (mb_strlen($sentence) > 240) $sentence = mb_substr($sentence, 0, 237) . '…';
+    $done = 0; $sample = '';
+    foreach ($items as $it) {
+        $tid  = (int)($it['id'] ?? 0);
+        $name = trim( (string)($it['name'] ?? '') );
+        if ($tid <= 0 || $name === '') continue;
         $c = get_term($tid, 'category');
         if (!$c || is_wp_error($c) || trim((string)$c->description) !== '') continue;   // dolu olanı ezme
-        wp_update_term($tid, 'category', ['description' => $sentence]);
+
+        $prompt = "Write ONE concise, neutral sentence (8 to 16 words) that defines the book category \"$name\" — "
+            . "encyclopedic tone, present tense, no marketing, no numbers, no first person, no surrounding quotes. Output only the sentence.";
+        $r = tv_ask($prompt, 120, 45, 'deepseek');
+        if (empty($r['ok'])) {
+            echo json_encode(['ok'=>false, 'done'=>$done, 'error'=>($r['error'] ?? 'AI hata')], JSON_UNESCAPED_UNICODE);
+            exit;   // hatayı göster, döngüyü durdur
+        }
+        $s = trim( (string)($r['text'] ?? '') );
+        $s = preg_replace('/\s+/', ' ', wp_strip_all_tags($s));
+        $s = trim($s, " \t\n\r\0\x0B\"'“”");           // baş/son tırnakları at
+        if ($s !== '' && strpos($s, "\n") !== false) $s = trim(strtok($s, "\n"));
+        if ($s === '') { if ($sample === '') $sample = 'boş yanıt: ' . mb_substr((string)($r['text'] ?? ''), 0, 120); continue; }
+        if (mb_strlen($s) > 240) $s = mb_substr($s, 0, 237) . '…';
+        wp_update_term($tid, 'category', ['description' => $s]);
         $done++;
     }
-    echo json_encode(['ok'=>true, 'done'=>$done, 'asked'=>count($items)], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok'=>true, 'done'=>$done, 'asked'=>count($items), 'sample'=>$sample], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

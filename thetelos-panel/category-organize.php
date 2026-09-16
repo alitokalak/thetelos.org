@@ -170,12 +170,11 @@ $('btn-desc').addEventListener('click', ()=>{
         $('co-status').textContent='✓ '+done+' kategori açıklaması dolduruldu. (Categories sayfasında görünür — gerekirse cache temizle.)';
         return;
       }
-      const slice = items.slice(i, i+15); i+=15;
-      $('co-status').textContent='Açıklamalar yazılıyor… ('+Math.min(i,items.length)+'/'+items.length+')';
+      const slice = items.slice(i, i+10); i+=10;
+      $('co-status').textContent='Açıklamalar yazılıyor… ('+Math.min(i,items.length)+'/'+items.length+') · şu ana kadar '+done;
       post('action=desc_fill&items='+encodeURIComponent(JSON.stringify(slice))).then(r=>{
-        if(r&&r.ok) done += (r.done||0);
-        else if(r&&r.error){ $('co-status').textContent='AI hata: '+r.error; }
-        step();
+        if(r&&r.ok){ done += (r.done||0); step(); }
+        else { $('btn-desc').disabled=false; $('co-status').textContent='⚠ AI hatası — durdu: '+((r&&r.error)||'bilinmiyor')+' · '+done+' yazıldı'; }
       }).catch(()=>{ $('btn-desc').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
     };
     step();
