@@ -86,14 +86,15 @@ get_header();
 .tlc-sort{ display:flex; align-items:center; gap:8px; margin-left:auto; }
 .tlc-sort-lbl{ font-family:var(--tls-sans); font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--tls-muted); }
 .tlc-sort-btns{ display:inline-flex; background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:3px; }
-.tlc-sort-btn{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; color:var(--tls-muted); background:none; border:none; padding:6px 14px; border-radius:999px; cursor:pointer; transition:all .15s; }
+.tlc-sort-btn{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; white-space:nowrap; color:var(--tls-muted); background:none; border:none; padding:6px 14px; border-radius:999px; cursor:pointer; transition:all .15s; }
 .tlc-sort-btn.active{ background:var(--tls-bg-dark); color:#fff; }
 .tlc-count{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); white-space:nowrap; }
 .tlc-count strong{ color:var(--tls-bg-dark); font-weight:600; }
 
-/* ── Chip filtre satırı ── */
-.tlc-chips{ display:flex; flex-wrap:wrap; gap:8px; padding:12px 0 2px; }
-.tlc-chip{ display:inline-flex; align-items:center; gap:7px; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:7px 14px; cursor:pointer; transition:all .14s; }
+/* ── Chip filtre satırı: TEK SATIR, yatay kaydırmalı (kompakt) ── */
+.tlc-chips{ display:flex; flex-wrap:nowrap; gap:8px; padding:10px 0 4px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+.tlc-chips::-webkit-scrollbar{ display:none; }
+.tlc-chip{ flex-shrink:0; white-space:nowrap; display:inline-flex; align-items:center; gap:7px; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:7px 14px; cursor:pointer; transition:all .14s; }
 .tlc-chip:hover{ border-color:var(--tls-bg-dark); }
 .tlc-chip.active{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
 .tlc-chip-n{ font-size:11px; font-weight:700; color:var(--tls-muted); }
@@ -132,13 +133,21 @@ get_header();
 @media (max-width:768px){
     .tlc-grid{ grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; }
     .tlc-sort-lbl{ display:none; }
+    /* Toolbar'ı iki satıra istifle: 1) arama tam genişlik  2) sayı + sort */
+    .tlc-toolrow{ flex-wrap:wrap; gap:10px; }
+    .tlc-search-wrap{ flex:1 1 100%; max-width:none; order:1; }
+    .tlc-count{ order:2; }
+    .tlc-sort{ order:3; margin-left:auto; }
 }
 @media (max-width:480px){
     .tlc-grid{ grid-template-columns:1fr 1fr; gap:8px; }
     .tlc-main{ padding:24px 16px 60px; }
     .tlc-toolbar-inner,.tlc-hero-inner{ padding-left:16px; padding-right:16px; }
-    .tlc-hero{ padding:36px 0 24px; }
+    .tlc-toolbar-inner{ padding-top:10px; padding-bottom:10px; }
+    .tlc-hero{ padding:32px 0 20px; }
+    .tlc-count{ font-size:12px; }
     .tlc-sec-head{ flex-direction:column; gap:10px; }
+    .tlc-sec-title{ font-size:22px; }
     .tlc-card-name{ font-size:16px; }
 }
 </style>
