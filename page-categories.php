@@ -2,21 +2,20 @@
 /**
  * Template Name: Display Categories
  *
- * Kategoriler 14 kalıcı ANA KATEGORİ altında gruplanır (chip filtre + sort +
- * bölüm başlığı/açıklaması). Kategori URL'leri değişmez —
- * gruplama tls_cat_main_of() (panel override + otomatik motor) ile yapılır.
+ * 15 kalıcı ANA KATEGORİ (chip filtre üstte) + aşağıda AKORDEON:
+ * her ana başlık açılır-kapanır; kapalıyken ilk 4 alt kategori önizlemesi,
+ * açıkken tüm alt kategoriler kompakt liste (ad · sayı). Kategori URL'leri
+ * değişmez — gruplama tls_cat_main_of() (panel override + motor) ile.
  *
  * @package Mediumish / TheTelos
  */
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-/* ── Kategorileri getir (boş olanları gizle, uncategorized hariç) ── */
 $cats = get_terms( [ 'taxonomy'=>'category', 'hide_empty'=>true, 'orderby'=>'count', 'order'=>'DESC', 'number'=>0 ] );
 if ( is_wp_error( $cats ) ) $cats = [];
 $cats = array_values( array_filter( $cats, function( $c ) { return $c->slug !== 'uncategorized'; } ) );
 $total_count = count( $cats );
 
-/* ── 14 ana kategori + kovalar ── */
 $main_labels = function_exists( 'tls_cat_mains' ) ? tls_cat_mains() : [
     'literature-fiction'=>'Literature & Fiction','philosophy'=>'Philosophy','religion-spirituality'=>'Religion & Spirituality',
     'history'=>'History','biography-memoir'=>'Biography & Memoir','psychology'=>'Psychology',
@@ -25,21 +24,21 @@ $main_labels = function_exists( 'tls_cat_mains' ) ? tls_cat_mains() : [
     'self-help'=>'Self-Help & Personal Growth','children-ya'=>'Children & Young Adult',
 ];
 $main_desc = [
-    'literature-fiction'=>'Novels, poetry, drama and genre fiction — from the canon to the contemporary.',
+    'literature-fiction'=>'Literary works, genres and criticism — from the canon to speculative fiction.',
     'philosophy'=>'Systematic inquiry into existence, knowledge, morality and reason — the spine of the archive.',
-    'religion-spirituality'=>'Faith traditions, theology, scripture and the world\'s spiritual thought.',
-    'history'=>'The human past — civilizations, events and turning points across the eras.',
-    'biography-memoir'=>'Lives told — biography, autobiography, memoir and letters.',
-    'psychology'=>'The mind and behaviour — cognition, emotion and the unconscious.',
-    'social-sciences'=>'Society, politics, law and how people live together.',
-    'science-nature'=>'The natural world — physics, life, mathematics and the cosmos.',
-    'technology-engineering'=>'Computing, engineering and the tools that shape modern life.',
-    'arts-culture'=>'Art, music, film, architecture and cultural expression.',
-    'business-economics'=>'Markets, management, money and economic thought.',
-    'health-lifestyle'=>'Medicine, wellbeing, food and everyday living.',
-    'self-help'=>'Personal growth, habits and the examined life.',
-    'children-ya'=>'Books for younger readers and young adults.',
-    '_other'=>'Cross-cutting subjects and themes across the archive.',
+    'religion-spirituality'=>'Belief systems, theology and mystical traditions across the world\'s religions.',
+    'history'=>'Civilizations, periods and intellectual movements read through their sources.',
+    'biography-memoir'=>'Lives recounted — by their subjects and by their scholars.',
+    'psychology'=>'Mental processes, behaviour and the sciences of the self.',
+    'social-sciences'=>'Societies, institutions and power — sociology, politics, law and language.',
+    'science-nature'=>'The natural world through observation, experiment and theoretical modeling.',
+    'technology-engineering'=>'Technical knowledge applied to practical problems.',
+    'arts-culture'=>'Visual art, music, architecture and performance in cultural context.',
+    'business-economics'=>'Markets, institutions and the organization of economic life.',
+    'health-lifestyle'=>'Medicine, public health and the literature of everyday living.',
+    'self-help'=>'Habits, motivation and personal development.',
+    'children-ya'=>'Educational and imaginative works for young readers.',
+    '_other'=>'Cross-cutting schools, motifs and regional threads that sit across the main subjects.',
 ];
 $buckets = [];
 foreach ( array_keys( $main_labels ) as $ms ) $buckets[ $ms ] = [];
@@ -52,14 +51,15 @@ foreach ( $cats as $cat ) {
 foreach ( $buckets as &$_b ) { usort( $_b, function ( $a, $c ) { return $c->count <=> $a->count; } ); }
 unset( $_b );
 
-// Bölüm sırası (dolu olanlar) + toplam yazı sayıları
-$sections = $main_labels; $sections['_other'] = 'Other Subjects';
-$sec_entries = []; $total_entries = 0;
+$sections = $main_labels; $sections['_other'] = 'Themes & Movements';
+$sec_entries = []; $total_entries = 0; $subject_count = 0;
 foreach ( $sections as $ms => $label ) {
     $sum = 0; foreach ( ($buckets[$ms] ?? []) as $c ) $sum += (int) $c->count;
     $sec_entries[$ms] = $sum; $total_entries += $sum;
+    if ( ! empty( $buckets[$ms] ) ) $subject_count++;
 }
 
+$chev = '<svg class="tlc-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
 
 get_header();
 ?>
@@ -69,9 +69,9 @@ get_header();
 .tlc-hero-inner{ max-width:var(--tls-container); margin:0 auto; padding:0 32px; }
 .tlc-eyebrow{ font-family:var(--tls-sans); font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--tls-gold); margin-bottom:12px; }
 .tlc-hero h1{ font-family:var(--tls-serif); font-size:clamp(30px,4vw,48px); font-weight:400; color:var(--tls-bg-dark); margin:0 0 10px; line-height:1.1; }
-.tlc-hero-sub{ font-family:var(--tls-sans); font-size:15px; color:var(--tls-muted); margin:0; max-width:560px; line-height:1.6; }
+.tlc-hero-sub{ font-family:var(--tls-sans); font-size:15px; color:var(--tls-muted); margin:0; max-width:600px; line-height:1.6; }
 
-/* ── Sticky toolbar: arama + sort ── */
+/* ── Sticky toolbar ── */
 .tlc-toolbar{ position:sticky; top:var(--tls-nav-h); z-index:200; background:var(--tls-bg); border-bottom:1px solid var(--tls-border); box-shadow:0 2px 12px rgba(0,0,0,.06); isolation:isolate; }
 .admin-bar .tlc-toolbar{ top:calc(var(--tls-nav-h) + 32px); }
 @media screen and (max-width:782px){ .admin-bar .tlc-toolbar{ top:calc(var(--tls-nav-h) + 46px); } }
@@ -82,17 +82,12 @@ get_header();
 .tlc-search-input{ width:100%; height:42px; padding:0 16px 0 40px; font-family:var(--tls-sans); font-size:14px; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; outline:none; transition:border-color .15s, box-shadow .15s; -webkit-appearance:none; }
 .tlc-search-input::placeholder{ color:#aaa; }
 .tlc-search-input:focus{ border-color:var(--tls-green); box-shadow:0 0 0 3px rgba(0,171,107,.12); }
-.tlc-sort{ display:flex; align-items:center; gap:8px; margin-left:auto; }
-.tlc-sort-lbl{ font-family:var(--tls-sans); font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--tls-muted); }
-.tlc-sort-btns{ display:inline-flex; background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:3px; }
-.tlc-sort-btn{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; white-space:nowrap; color:var(--tls-muted); background:none; border:none; padding:6px 14px; border-radius:999px; cursor:pointer; transition:all .15s; }
-.tlc-sort-btn.active{ background:var(--tls-bg-dark); color:#fff; }
-.tlc-count{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); white-space:nowrap; }
+.tlc-count{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); white-space:nowrap; margin-left:auto; }
 .tlc-count strong{ color:var(--tls-bg-dark); font-weight:600; }
+.tlc-expandall{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; white-space:nowrap; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:8px 15px; cursor:pointer; transition:all .15s; }
+.tlc-expandall:hover{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
 
-/* ── Chip filtre satırı ──
-   Masaüstü: hepsi görünür (wrap). Mobil: tek satır, yatay kaydırmalı.
-   Sayfa aşağı kaydıkça (.is-collapsed) daralıp gizlenir; yukarı kaydırınca döner. */
+/* ── Chip filtre satırı ── */
 .tlc-chips{ display:flex; flex-wrap:wrap; gap:8px; padding:10px 0 4px; max-height:400px; opacity:1; overflow:hidden; transition:max-height .28s ease, opacity .18s ease, padding .28s ease; }
 .tlc-chips::-webkit-scrollbar{ display:none; }
 .tlc-toolbar.is-collapsed .tlc-chips{ max-height:0; opacity:0; padding-top:0; padding-bottom:0; pointer-events:none; }
@@ -102,56 +97,57 @@ get_header();
 .tlc-chip-n{ font-size:11px; font-weight:700; color:var(--tls-muted); }
 .tlc-chip.active .tlc-chip-n{ color:rgba(255,255,255,.65); }
 
-/* ── Ana içerik ── */
-.tlc-main{ max-width:var(--tls-container); margin:0 auto; padding:36px 32px 80px; position:relative; z-index:1; }
+/* ── Akordeon ── */
+.tlc-main{ max-width:var(--tls-container); margin:0 auto; padding:20px 32px 90px; }
+.tlc-panel{ border-bottom:1px solid var(--tls-border); }
+.tlc-phead{ display:flex; align-items:center; gap:12px; width:100%; background:none; border:none; padding:20px 0 4px; cursor:pointer; text-align:left; }
+.tlc-chev{ width:18px; height:18px; color:var(--tls-muted); flex-shrink:0; transition:transform .22s ease; }
+.tlc-panel.open .tlc-chev{ transform:rotate(180deg); color:var(--tls-bg-dark); }
+.tlc-ptitle{ font-family:var(--tls-serif); font-size:23px; font-weight:400; color:var(--tls-bg-dark); line-height:1.15; }
+.tlc-pmeta{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; color:var(--tls-muted); white-space:nowrap; }
+.tlc-phead:hover .tlc-ptitle{ color:#000; }
+.tlc-pdesc{ font-family:var(--tls-sans); font-size:13.5px; color:var(--tls-muted); line-height:1.55; margin:0 0 10px 30px; max-width:660px; }
 
-/* ── Bölüm ── */
-.tlc-section{ margin-bottom:52px; scroll-margin-top:calc(var(--tls-nav-h) + 120px); }
-.tlc-sec-head{ display:flex; align-items:flex-start; gap:20px; margin:0 0 20px; }
-.tlc-sec-headmain{ flex:1; min-width:0; }
-.tlc-sec-title{ font-family:var(--tls-serif); font-size:26px; font-weight:400; color:var(--tls-bg-dark); margin:0 0 6px; line-height:1.15; }
-.tlc-sec-meta{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; color:var(--tls-muted); margin-left:2px; }
-.tlc-sec-desc{ font-family:var(--tls-sans); font-size:14px; color:var(--tls-muted); line-height:1.55; margin:0; max-width:640px; }
+/* alt kategori satırı (hem önizleme hem tam liste) */
+.tlc-sublist,.tlc-preview{ padding-left:30px; }
+.tlc-preview{ display:flex; flex-wrap:wrap; gap:6px 10px; padding-bottom:18px; }
+.tlc-panel.open .tlc-preview{ display:none; }
+.tlc-body{ display:none; padding-bottom:18px; }
+.tlc-panel.open .tlc-body{ display:block; }
+.tlc-sublist{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:0 28px; padding-left:30px; }
+.tlc-sub{ display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:9px 2px; border-bottom:1px solid var(--tls-border); text-decoration:none!important; font-family:var(--tls-sans); }
+.tlc-sub-name{ font-size:14px; color:var(--tls-bg-dark); }
+.tlc-sub:hover .tlc-sub-name{ color:var(--tls-green); }
+.tlc-sub-n{ font-size:12px; color:var(--tls-muted); font-variant-numeric:tabular-nums; flex-shrink:0; }
+/* önizleme pill'leri */
+.tlc-pill{ display:inline-flex; align-items:baseline; gap:6px; font-family:var(--tls-sans); font-size:12.5px; color:var(--tls-muted); background:var(--tls-bg); border:1px solid var(--tls-border); border-radius:999px; padding:4px 11px; text-decoration:none!important; transition:all .14s; }
+.tlc-pill:hover{ border-color:var(--tls-bg-dark); color:var(--tls-bg-dark); }
+.tlc-pill b{ color:var(--tls-bg-dark); font-weight:600; }
+.tlc-pill .n{ font-size:11px; }
+.tlc-pill-more{ font-size:12px; color:var(--tls-muted); align-self:center; }
 
-/* ── Grid + kart ── */
-.tlc-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; }
-.tlc-card{ display:flex; flex-direction:column; gap:8px; padding:18px 20px; background:#fff; border:1px solid var(--tls-border); border-radius:var(--tls-radius-lg); text-decoration:none!important; color:var(--tls-bg-dark)!important; transition:border-color .15s, box-shadow .15s, transform .15s; position:relative; overflow:hidden; }
-.tlc-card::before{ content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--tls-green),var(--tls-gold)); opacity:0; transition:opacity .15s; }
-.tlc-card:hover{ border-color:transparent; box-shadow:var(--tls-shadow); transform:translateY(-2px); z-index:2; }
-.tlc-card:hover::before{ opacity:1; }
-.tlc-card-icon{ display:flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:9px; background:var(--tls-bg); color:var(--tls-gold); border:1px solid var(--tls-border); }
-.tlc-card-icon svg{ width:16px; height:16px; }
-.tlc-card-name{ font-family:var(--tls-serif); font-size:18px; font-weight:400; color:var(--tls-bg-dark); line-height:1.2; margin:2px 0 0; }
-.tlc-card-desc{ font-family:var(--tls-sans); font-size:12.5px; color:var(--tls-muted); line-height:1.55; margin:0; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.tlc-card-count{ display:inline-flex; align-items:center; gap:5px; font-family:var(--tls-sans); font-size:11.5px; font-weight:500; color:var(--tls-muted); margin-top:auto; padding-top:6px; }
-.tlc-card-count svg{ width:12px; height:12px; }
-
-.tlc-no-results{ text-align:center; padding:80px 20px; }
+.tlc-no-results{ text-align:center; padding:70px 20px; }
 .tlc-no-results strong{ display:block; font-family:var(--tls-serif); font-size:22px; color:var(--tls-bg-dark); font-weight:400; margin-bottom:8px; }
 .tlc-no-results p{ font-family:var(--tls-sans); font-size:14px; color:var(--tls-muted); margin:0; }
 
 @media (max-width:768px){
-    .tlc-grid{ grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:10px; }
-    .tlc-sort-lbl{ display:none; }
-    /* Toolbar'ı iki satıra istifle: 1) arama tam genişlik  2) sayı + sort */
     .tlc-toolrow{ flex-wrap:wrap; gap:10px; }
     .tlc-search-wrap{ flex:1 1 100%; max-width:none; order:1; }
-    .tlc-count{ order:2; }
-    .tlc-sort{ order:3; margin-left:auto; }
-    /* Mobilde chip'ler tek satır, yatay kaydırmalı */
+    .tlc-count{ order:2; margin-left:0; }
+    .tlc-expandall{ order:3; margin-left:auto; }
     .tlc-chips{ flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
     .tlc-toolbar.is-collapsed .tlc-chips{ overflow:hidden; }
+    .tlc-sublist{ grid-template-columns:1fr 1fr; gap:0 20px; }
 }
 @media (max-width:480px){
-    .tlc-grid{ grid-template-columns:1fr 1fr; gap:8px; }
-    .tlc-main{ padding:24px 16px 60px; }
+    .tlc-main{ padding:16px 16px 64px; }
     .tlc-toolbar-inner,.tlc-hero-inner{ padding-left:16px; padding-right:16px; }
-    .tlc-toolbar-inner{ padding-top:10px; padding-bottom:10px; }
     .tlc-hero{ padding:32px 0 20px; }
-    .tlc-count{ font-size:12px; }
-    .tlc-sec-head{ flex-direction:column; gap:10px; }
-    .tlc-sec-title{ font-size:22px; }
-    .tlc-card-name{ font-size:16px; }
+    .tlc-ptitle{ font-size:20px; }
+    .tlc-pmeta{ display:none; }                 /* dar ekranda meta gizle, başlık nefes alsın */
+    .tlc-pdesc,.tlc-preview,.tlc-body,.tlc-sublist{ padding-left:0; margin-left:0; }
+    .tlc-pdesc{ margin-left:0; }
+    .tlc-sublist{ grid-template-columns:1fr; }
 }
 </style>
 
@@ -162,15 +158,12 @@ get_header();
     <div class="tlc-hero-inner">
         <p class="tlc-eyebrow">The Archive</p>
         <h1><?php the_title(); ?></h1>
-        <?php while ( have_posts() ) : the_post(); $content = trim( get_the_content() ); ?>
-            <p class="tlc-hero-sub"><?php echo $content
-                ? esc_html( wp_trim_words( wp_strip_all_tags( $content ), 28 ) )
-                : 'Browse the archive by subject — every category gathers the summaries and analyses that belong to it, grouped under fourteen enduring fields of knowledge.'; ?></p>
-        <?php endwhile; ?>
+        <?php while ( have_posts() ) : the_post(); endwhile; ?>
+        <p class="tlc-hero-sub"><?php echo esc_html( $subject_count ); ?> subjects, <?php echo number_format( $total_count ); ?> categories. Start from a subject; open it to see everything filed underneath.</p>
     </div>
 </div>
 
-<!-- TOOLBAR: arama + sort + chip filtreler -->
+<!-- TOOLBAR -->
 <div class="tlc-toolbar" id="tlc-toolbar">
     <div class="tlc-toolbar-inner">
         <div class="tlc-toolrow">
@@ -179,13 +172,7 @@ get_header();
                 <input type="search" class="tlc-search-input" id="tlc-search-input" placeholder="Search categories…" autocomplete="off" spellcheck="false">
             </div>
             <span class="tlc-count" id="tlc-count"><strong><?php echo number_format( $total_count ); ?></strong> categories · <?php echo number_format( $total_entries ); ?> entries</span>
-            <div class="tlc-sort">
-                <span class="tlc-sort-lbl">Sort</span>
-                <div class="tlc-sort-btns">
-                    <button class="tlc-sort-btn active" data-sort="entries" type="button">Most entries</button>
-                    <button class="tlc-sort-btn" data-sort="az" type="button">A–Z</button>
-                </div>
-            </div>
+            <button class="tlc-expandall" id="tlc-expandall" type="button">Expand all</button>
         </div>
         <div class="tlc-chips" id="tlc-chips">
             <button class="tlc-chip active" data-main="all" type="button">All subjects <span class="tlc-chip-n"><?php echo number_format( $total_count ); ?></span></button>
@@ -196,40 +183,45 @@ get_header();
     </div>
 </div>
 
-<!-- SECTIONS -->
-<div class="tlc-main" id="tlc-main">
+<!-- ACCORDION -->
+<div class="tlc-main" id="tlc-acc">
 <?php
 foreach ( $sections as $ms => $label ) :
     $list = $buckets[ $ms ] ?? [];
     if ( empty( $list ) ) continue;
     $n = count( $list );
+    $preview = array_slice( $list, 0, 4 );
 ?>
-    <section class="tlc-section" id="sec-<?php echo esc_attr( $ms ); ?>" data-main="<?php echo esc_attr( $ms ); ?>">
-        <div class="tlc-sec-head">
-            <div class="tlc-sec-headmain">
-                <h2 class="tlc-sec-title"><?php echo esc_html( $label ); ?>
-                    <span class="tlc-sec-meta"><?php echo number_format( $n ) . ' ' . ( $n === 1 ? 'subcategory' : 'subcategories' ) . ' · ' . number_format( $sec_entries[$ms] ) . ' entries'; ?></span>
-                </h2>
-                <?php if ( ! empty( $main_desc[$ms] ) ) : ?><p class="tlc-sec-desc"><?php echo esc_html( $main_desc[$ms] ); ?></p><?php endif; ?>
-            </div>
-        </div>
-        <div class="tlc-grid">
-            <?php foreach ( $list as $cat ) :
-                $c_url = get_category_link( $cat->term_id );
-                $c_count = (int) $cat->count;
-                $c_desc = trim( wp_strip_all_tags( (string) $cat->description ) );
+    <section class="tlc-panel" id="sec-<?php echo esc_attr( $ms ); ?>" data-main="<?php echo esc_attr( $ms ); ?>">
+        <button class="tlc-phead" type="button" aria-expanded="false">
+            <?php echo $chev; ?>
+            <span class="tlc-ptitle"><?php echo esc_html( $label ); ?></span>
+            <span class="tlc-pmeta"><?php echo number_format( $n ) . ' ' . ( $n === 1 ? 'subcategory' : 'subcategories' ) . ' · ' . number_format( $sec_entries[$ms] ) . ' entries'; ?></span>
+        </button>
+        <?php if ( ! empty( $main_desc[$ms] ) ) : ?><p class="tlc-pdesc"><?php echo esc_html( $main_desc[$ms] ); ?></p><?php endif; ?>
+
+        <!-- kapalı önizleme: ilk 4 -->
+        <div class="tlc-preview">
+            <?php foreach ( $preview as $cat ) :
+                $u = get_category_link( $cat->term_id );
             ?>
-                <a href="<?php echo esc_url( is_wp_error( $c_url ) ? '#' : $c_url ); ?>" class="tlc-card"
-                   data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>" data-count="<?php echo $c_count; ?>">
-                    <div class="tlc-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg></div>
-                    <p class="tlc-card-name"><?php echo esc_html( $cat->name ); ?></p>
-                    <?php if ( $c_desc ) : ?><p class="tlc-card-desc"><?php echo esc_html( wp_trim_words( $c_desc, 16 ) ); ?></p><?php endif; ?>
-                    <span class="tlc-card-count">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
-                        <?php echo number_format( $c_count ) . ' ' . ( $c_count === 1 ? 'entry' : 'entries' ); ?>
-                    </span>
-                </a>
+                <a class="tlc-pill" href="<?php echo esc_url( is_wp_error($u)?'#':$u ); ?>"><b><?php echo esc_html( $cat->name ); ?></b> <span class="n"><?php echo number_format( (int)$cat->count ); ?></span></a>
             <?php endforeach; ?>
+            <?php if ( $n > 4 ) : ?><span class="tlc-pill-more">+<?php echo number_format( $n - 4 ); ?> more</span><?php endif; ?>
+        </div>
+
+        <!-- açık tam liste -->
+        <div class="tlc-body">
+            <div class="tlc-sublist">
+                <?php foreach ( $list as $cat ) :
+                    $u = get_category_link( $cat->term_id );
+                ?>
+                    <a class="tlc-sub" href="<?php echo esc_url( is_wp_error($u)?'#':$u ); ?>" data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>">
+                        <span class="tlc-sub-name"><?php echo esc_html( $cat->name ); ?></span>
+                        <span class="tlc-sub-n"><?php echo number_format( (int)$cat->count ); ?></span>
+                    </a>
+                <?php endforeach; ?>
+            </div>
         </div>
     </section>
 <?php endforeach; ?>
@@ -244,101 +236,98 @@ foreach ( $sections as $ms => $label ) :
 <script>
 (function () {
     'use strict';
-    var main   = document.getElementById('tlc-main');
-    var input  = document.getElementById('tlc-search-input');
-    var countEl= document.getElementById('tlc-count');
-    var chipRow= document.getElementById('tlc-chips');
-    var noRes  = document.getElementById('tlc-no-results');
-    if (!main) return;
+    var acc     = document.getElementById('tlc-acc');
+    var input   = document.getElementById('tlc-search-input');
+    var countEl = document.getElementById('tlc-count');
+    var chipRow = document.getElementById('tlc-chips');
+    var expandBtn = document.getElementById('tlc-expandall');
+    var noRes   = document.getElementById('tlc-no-results');
+    var toolbar = document.getElementById('tlc-toolbar');
+    if (!acc) return;
 
-    var sections = Array.prototype.slice.call(main.querySelectorAll('.tlc-section'));
-    var state = { main:'all', sort:'entries', q:'' };
-    var timer = null;
-
-    // Kartları bir kez diziye al (sıralama için)
-    sections.forEach(function (sec) {
-        sec._grid  = sec.querySelector('.tlc-grid');
-        sec._cards = Array.prototype.slice.call(sec.querySelectorAll('.tlc-card'));
+    var panels = Array.prototype.slice.call(acc.querySelectorAll('.tlc-panel'));
+    panels.forEach(function (p) {
+        p._head = p.querySelector('.tlc-phead');
+        p._subs = Array.prototype.slice.call(p.querySelectorAll('.tlc-sub'));
     });
 
-    function sortCards(cards) {
-        var arr = cards.slice();
-        if (state.sort === 'az') {
-            arr.sort(function (a,b){ return (a.dataset.name||'').localeCompare(b.dataset.name||''); });
-        } else {
-            arr.sort(function (a,b){ return (parseInt(b.dataset.count,10)||0) - (parseInt(a.dataset.count,10)||0); });
-        }
-        return arr;
+    function setOpen(panel, open) {
+        panel.classList.toggle('open', open);
+        if (panel._head) panel._head.setAttribute('aria-expanded', open ? 'true' : 'false');
     }
+    function anyClosed() { return panels.some(function (p) { return p.style.display !== 'none' && !p.classList.contains('open'); }); }
+    function syncExpandLabel() { if (expandBtn) expandBtn.textContent = anyClosed() ? 'Expand all' : 'Collapse all'; }
 
-    function render() {
-        var q = state.q.trim().toLowerCase();
-        var totalShown = 0;
-
-        sections.forEach(function (sec) {
-            var inMain = (state.main === 'all' || state.main === sec.dataset.main);
-            // sıralı kartları DOM'a diz
-            var ordered = sortCards(sec._cards);
-            ordered.forEach(function (c){ sec._grid.appendChild(c); });
-
-            // Aramaya göre filtre — sınır yok, tüm alt kategoriler görünür
-            var matches = 0;
-            ordered.forEach(function (c) {
-                var isMatch = !q || (c.dataset.name||'').indexOf(q) >= 0;
-                c.style.display = (inMain && isMatch) ? '' : 'none';
-                if (isMatch) matches++;
-            });
-            var secVisible = inMain && matches > 0;
-            sec.style.display = secVisible ? '' : 'none';
-            if (secVisible) totalShown += matches;
+    // Panel başlığına tıkla → aç/kapa
+    panels.forEach(function (p) {
+        p._head.addEventListener('click', function () {
+            if (acc.classList.contains('searching')) return;          // aramada hepsi zaten açık
+            setOpen(p, !p.classList.contains('open'));
+            syncExpandLabel();
         });
+    });
 
-        if (noRes) noRes.style.display = totalShown ? 'none' : '';
+    // Tümünü aç / kapat
+    if (expandBtn) expandBtn.addEventListener('click', function () {
+        var openAll = anyClosed();
+        panels.forEach(function (p) { if (p.style.display !== 'none') setOpen(p, openAll); });
+        syncExpandLabel();
+    });
+
+    // Chip → o paneli aç, diğerlerini kapat, üstüne kaydır
+    if (chipRow) chipRow.addEventListener('click', function (e) {
+        var chip = e.target.closest('.tlc-chip'); if (!chip) return;
+        chipRow.querySelectorAll('.tlc-chip').forEach(function (c) { c.classList.remove('active'); });
+        chip.classList.add('active');
+        var m = chip.dataset.main;
+        if (m === 'all') {
+            panels.forEach(function (p) { setOpen(p, false); });
+            window.scrollTo({ top:0, behavior:'smooth' });
+        } else {
+            panels.forEach(function (p) { setOpen(p, p.dataset.main === m); });
+            var sec = document.getElementById('sec-' + m);
+            if (sec) { var off = (toolbar ? toolbar.offsetHeight : 0) + 16;
+                window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - off, behavior:'smooth' }); }
+        }
+        syncExpandLabel();
+    });
+
+    // Arama: eşleşen alt kategoriler; eşleşen paneller açılır, boşlar gizlenir
+    var timer = null;
+    function doSearch(q) {
+        q = q.trim().toLowerCase();
+        var searching = q.length > 0;
+        acc.classList.toggle('searching', searching);
+        var total = 0;
+        panels.forEach(function (p) {
+            if (!searching) {
+                p.style.display = '';
+                p._subs.forEach(function (s) { s.style.display = ''; });
+                return;
+            }
+            var hit = 0;
+            p._subs.forEach(function (s) {
+                var m = (s.dataset.name || '').indexOf(q) >= 0;
+                s.style.display = m ? '' : 'none';
+                if (m) hit++;
+            });
+            p.style.display = hit ? '' : 'none';
+            if (hit) { p.classList.add('open'); total += hit; }
+        });
+        if (noRes) noRes.style.display = (searching && total === 0) ? '' : 'none';
         if (countEl) {
-            countEl.innerHTML = q
-                ? '<strong>' + totalShown.toLocaleString() + '</strong> matching categor' + (totalShown!==1?'ies':'y')
-                : countEl.getAttribute('data-default') || countEl.innerHTML;
+            if (searching) countEl.innerHTML = '<strong>' + total.toLocaleString() + '</strong> matching categor' + (total !== 1 ? 'ies' : 'y');
+            else countEl.innerHTML = countEl.getAttribute('data-default');
+            if (!searching) syncExpandLabel();
         }
     }
     if (countEl) countEl.setAttribute('data-default', countEl.innerHTML);
-
-    // Chip tıklama
-    if (chipRow) chipRow.addEventListener('click', function (e) {
-        var chip = e.target.closest('.tlc-chip'); if (!chip) return;
-        chipRow.querySelectorAll('.tlc-chip').forEach(function(c){ c.classList.remove('active'); });
-        chip.classList.add('active');
-        state.main = chip.dataset.main;
-        render();
-        if (state.main !== 'all') {
-            var sec = document.getElementById('sec-' + state.main);
-            if (sec) { var tb = document.getElementById('tlc-toolbar'); var off = (tb?tb.offsetHeight:0) + 20;
-                window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - off, behavior:'smooth' }); }
-        } else { window.scrollTo({ top:0, behavior:'smooth' }); }
-    });
-
-    // Sort
-    document.querySelectorAll('.tlc-sort-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            document.querySelectorAll('.tlc-sort-btn').forEach(function(b){ b.classList.remove('active'); });
-            btn.classList.add('active');
-            state.sort = btn.dataset.sort;
-            render();
-        });
-    });
-
-    // Arama
     if (input) input.addEventListener('input', function () {
-        clearTimeout(timer); var v = this.value;
-        timer = setTimeout(function () { state.q = v; render(); }, 110);
+        clearTimeout(timer); var v = this.value; timer = setTimeout(function () { doSearch(v); }, 110);
     });
 
-    // Sayfa aşağı kaydıkça chip satırını daralt; yukarı kaydırınca / tepede aç
-    var toolbar = document.getElementById('tlc-toolbar');
+    // Chip satırı: aşağı kaydırınca daralt (sabit eşik bant → titremez)
     if (toolbar) {
-        // SABİT EŞİKLİ TAMPON BANT (yön algısı yok → titreme yok):
-        // 200px'i geçince kapat, 120px'in altına inince aç, arada durumu KORU.
-        // Bandın genişliği (80px), daralma/açılmanın yol açtığı ~40px'lik düzen
-        // kaymasından büyük olduğu için aç/kapa salınımı olmaz.
         var ticking = false;
         function onScroll() {
             var y = window.scrollY || 0;
@@ -346,13 +335,11 @@ foreach ( $sections as $ms => $label ) :
             else if (y < 120) toolbar.classList.remove('is-collapsed');
             ticking = false;
         }
-        window.addEventListener('scroll', function () {
-            if (!ticking) { window.requestAnimationFrame(onScroll); ticking = true; }
-        }, { passive: true });
+        window.addEventListener('scroll', function () { if (!ticking) { requestAnimationFrame(onScroll); ticking = true; } }, { passive:true });
         onScroll();
     }
 
-    render();
+    syncExpandLabel();
 })();
 </script>
 
