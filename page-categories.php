@@ -2,10 +2,11 @@
 /**
  * Template Name: Display Categories
  *
- * 15 kalıcı ANA KATEGORİ akordeonu (mockup birebir): her konu bir satır —
- * sol "+"/"−" ikonu, serif başlık + "N subcategories · M entries", açıklama,
- * ilk 4 alt kategori düz amber metin, sağda "Open"/"Close". Açınca tüm alt
- * kategoriler görünür. Üstte arama + "Expand all" + durum yazısı.
+ * Üstte ANA KATEGORİ kutucukları (chip) + aşağıda 15 konu AKORDEONU.
+ * Kapalı: sol "+" ikonu, serif başlık + "N subcategories · M entries",
+ *   açıklama, ilk 4 alt kategori düz amber metin, sağda "Open".
+ * Açık: "−" ikonu, sağda "Close"; alt kategoriler İKİ SÜTUNLU liste
+ *   (serif ad + sağda sayı + altında açıklama).
  * Kategori URL'leri değişmez — gruplama tls_cat_main_of() ile.
  *
  * @package Mediumish / TheTelos
@@ -70,9 +71,11 @@ get_header();
 .cat-hero h1{ font-family:var(--tls-serif); font-size:clamp(30px,4vw,48px); font-weight:400; color:var(--tls-bg-dark); margin:0 0 10px; line-height:1.1; }
 .cat-hero-sub{ font-family:var(--tls-sans); font-size:15px; color:var(--tls-muted); margin:0; max-width:600px; line-height:1.6; }
 
-/* Üst bar */
-.cat-toolbar{ background:var(--tls-bg); border-bottom:1px solid var(--tls-border); }
-.cat-toolrow{ max-width:var(--tls-container); margin:0 auto; padding:16px 32px; display:flex; align-items:center; gap:16px; }
+/* Üst bar (sabit) */
+.cat-toolbar{ position:sticky; top:var(--tls-nav-h); z-index:200; background:var(--tls-bg); border-bottom:1px solid var(--tls-border); box-shadow:0 2px 12px rgba(0,0,0,.06); isolation:isolate; }
+.admin-bar .cat-toolbar{ top:calc(var(--tls-nav-h) + 32px); }
+@media screen and (max-width:782px){ .admin-bar .cat-toolbar{ top:calc(var(--tls-nav-h) + 46px); } }
+.cat-toolrow{ max-width:var(--tls-container); margin:0 auto; padding:16px 32px 10px; display:flex; align-items:center; gap:16px; }
 .cat-search{ position:relative; flex:1; max-width:460px; }
 .cat-search>svg{ position:absolute; left:15px; top:50%; transform:translateY(-50%); width:16px; height:16px; color:var(--tls-muted); pointer-events:none; }
 .cat-search input{ width:100%; height:44px; padding:0 16px 0 42px; font-family:var(--tls-sans); font-size:14px; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; outline:none; -webkit-appearance:none; transition:border-color .15s, box-shadow .15s; }
@@ -82,29 +85,50 @@ get_header();
 .cat-expand:hover{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
 .cat-state{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); white-space:nowrap; }
 
+/* Ana kategori kutucukları (chip) */
+.cat-chips{ max-width:var(--tls-container); margin:0 auto; padding:0 32px 12px; display:flex; flex-wrap:wrap; gap:8px; max-height:400px; opacity:1; overflow:hidden; transition:max-height .28s ease, opacity .18s ease, padding .28s ease; }
+.cat-chips::-webkit-scrollbar{ display:none; }
+.cat-toolbar.is-collapsed .cat-chips{ max-height:0; opacity:0; padding-top:0; padding-bottom:0; pointer-events:none; }
+.cat-chip{ flex-shrink:0; white-space:nowrap; display:inline-flex; align-items:center; gap:7px; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:7px 14px; cursor:pointer; transition:all .14s; }
+.cat-chip:hover{ border-color:var(--tls-bg-dark); }
+.cat-chip.active{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
+.cat-chip-n{ font-size:11px; font-weight:700; color:var(--tls-muted); }
+.cat-chip.active .cat-chip-n{ color:rgba(255,255,255,.65); }
+
 /* Akordeon */
 .cat-list{ max-width:var(--tls-container); margin:0 auto; padding:8px 32px 90px; }
-.cat-row{ border-bottom:1px solid var(--tls-border); }
+.cat-row{ border-bottom:1px solid var(--tls-border); scroll-margin-top:calc(var(--tls-nav-h) + 150px); }
 .cat-head{ position:relative; display:flex; gap:16px; padding:24px 96px 22px 0; cursor:pointer; }
-.cat-ico{ flex-shrink:0; width:18px; font-family:var(--tls-sans); font-size:22px; font-weight:300; line-height:1.2; color:var(--tls-gold); user-select:none; }
+.cat-ico{ flex-shrink:0; width:18px; font-family:var(--tls-sans); font-size:22px; font-weight:300; line-height:1.25; color:var(--tls-gold); user-select:none; }
 .cat-ico::before{ content:'+'; }
-.cat-row.open .cat-ico::before{ content:'\2212'; }   /* − */
+.cat-row.open .cat-ico::before{ content:'\2212'; }
 .cat-headtext{ flex:1; min-width:0; }
 .cat-titleline{ display:flex; align-items:baseline; flex-wrap:wrap; gap:6px 14px; }
 .cat-title{ font-family:var(--tls-serif); font-size:26px; font-weight:400; color:var(--tls-bg-dark); line-height:1.1; }
 .cat-head:hover .cat-title{ color:#000; }
 .cat-meta{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; color:var(--tls-muted); }
 .cat-desc{ font-family:var(--tls-sans); font-size:13.5px; color:var(--tls-muted); line-height:1.55; margin:8px 0 0; max-width:680px; }
-.cat-subs{ margin:12px 0 0; line-height:2.1; }
-.cat-sub{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-gold); text-decoration:none!important; margin-right:18px; white-space:nowrap; }
-.cat-sub:hover{ text-decoration:underline!important; }
-.cat-sub .n{ color:var(--tls-muted); }
-.cat-sub.cat-extra{ display:none; }
-.cat-row.open .cat-sub.cat-extra{ display:inline; }
 .cat-open{ position:absolute; right:0; top:26px; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-muted); white-space:nowrap; }
 .cat-head:hover .cat-open{ color:var(--tls-bg-dark); }
 .cat-row.open .cat-open::after{ content:'Close'; }
 .cat-row:not(.open) .cat-open::after{ content:'Open'; }
+
+/* Kapalı önizleme: ilk 4, düz amber metin */
+.cat-preview{ margin:12px 0 0; line-height:2.1; }
+.cat-pv{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-gold); text-decoration:none!important; margin-right:18px; white-space:nowrap; }
+.cat-pv:hover{ text-decoration:underline!important; }
+.cat-pv .n{ color:var(--tls-muted); }
+.cat-row.open .cat-preview{ display:none; }
+
+/* Açık: iki sütunlu detaylı liste */
+.cat-grid{ display:none; grid-template-columns:1fr 1fr; gap:0 48px; margin-top:10px; }
+.cat-row.open .cat-grid{ display:grid; }
+.cat-item{ display:block; padding:15px 0; border-top:1px solid var(--tls-border); text-decoration:none!important; }
+.cat-item-top{ display:flex; align-items:baseline; justify-content:space-between; gap:14px; }
+.cat-item-name{ font-family:var(--tls-serif); font-size:18px; font-weight:400; color:var(--tls-bg-dark); line-height:1.2; }
+.cat-item:hover .cat-item-name{ color:var(--tls-green); }
+.cat-item-n{ font-family:var(--tls-sans); font-size:12px; color:var(--tls-muted); white-space:nowrap; flex-shrink:0; }
+.cat-item-desc{ font-family:var(--tls-sans); font-size:12.5px; color:var(--tls-muted); line-height:1.5; margin:5px 0 0; }
 
 .cat-none{ text-align:center; padding:70px 20px; }
 .cat-none strong{ display:block; font-family:var(--tls-serif); font-size:22px; color:var(--tls-bg-dark); font-weight:400; margin-bottom:8px; }
@@ -114,12 +138,13 @@ get_header();
     .cat-toolrow{ flex-wrap:wrap; gap:10px; }
     .cat-search{ flex:1 1 100%; max-width:none; }
     .cat-expand{ margin-left:0; }
+    .cat-chips{ flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; }
     .cat-title{ font-size:22px; }
     .cat-head{ padding-right:70px; }
-    .cat-open{ font-size:12px; }
+    .cat-grid{ grid-template-columns:1fr; gap:0; }
 }
 @media (max-width:480px){
-    .cat-wrap,.cat-toolrow,.cat-list{ padding-left:16px; padding-right:16px; }
+    .cat-wrap,.cat-toolrow,.cat-chips,.cat-list{ padding-left:16px; padding-right:16px; }
     .cat-hero{ padding:32px 0 20px; }
     .cat-meta{ font-size:11.5px; }
 }
@@ -137,8 +162,8 @@ get_header();
     </div>
 </div>
 
-<!-- TOOLBAR -->
-<div class="cat-toolbar">
+<!-- TOOLBAR + CHIPS -->
+<div class="cat-toolbar" id="cat-toolbar">
     <div class="cat-toolrow">
         <div class="cat-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -146,6 +171,12 @@ get_header();
         </div>
         <button class="cat-expand" id="cat-expand" type="button">Expand all</button>
         <span class="cat-state" id="cat-state">All subjects collapsed</span>
+    </div>
+    <div class="cat-chips" id="cat-chips">
+        <button class="cat-chip active" data-main="all" type="button">All subjects <span class="cat-chip-n"><?php echo number_format( $total_count ); ?></span></button>
+        <?php foreach ( $sections as $ms => $label ) : $n = count( $buckets[$ms] ?? [] ); if ( ! $n ) continue; ?>
+            <button class="cat-chip" data-main="<?php echo esc_attr( $ms ); ?>" type="button"><?php echo esc_html( $label ); ?> <span class="cat-chip-n"><?php echo number_format( $n ); ?></span></button>
+        <?php endforeach; ?>
     </div>
 </div>
 
@@ -156,6 +187,7 @@ foreach ( $sections as $ms => $label ) :
     $list = $buckets[ $ms ] ?? [];
     if ( empty( $list ) ) continue;
     $n = count( $list );
+    $preview = array_slice( $list, 0, 4 );
 ?>
     <section class="cat-row" id="sec-<?php echo esc_attr( $ms ); ?>" data-main="<?php echo esc_attr( $ms ); ?>">
         <div class="cat-head" role="button" tabindex="0" aria-expanded="false">
@@ -166,11 +198,27 @@ foreach ( $sections as $ms => $label ) :
                     <span class="cat-meta"><?php echo number_format( $n ) . ' ' . ( $n === 1 ? 'subcategory' : 'subcategories' ) . ' · ' . number_format( $sec_entries[$ms] ) . ' entries'; ?></span>
                 </div>
                 <?php if ( ! empty( $main_desc[$ms] ) ) : ?><p class="cat-desc"><?php echo esc_html( $main_desc[$ms] ); ?></p><?php endif; ?>
-                <div class="cat-subs">
-                    <?php foreach ( $list as $i => $cat ) :
+
+                <!-- kapalı: ilk 4 -->
+                <div class="cat-preview">
+                    <?php foreach ( $preview as $cat ) : $u = get_category_link( $cat->term_id ); ?>
+                        <a class="cat-pv" href="<?php echo esc_url( is_wp_error($u)?'#':$u ); ?>"><?php echo esc_html( $cat->name ); ?> <span class="n"><?php echo number_format( (int)$cat->count ); ?></span></a>
+                    <?php endforeach; ?>
+                </div>
+
+                <!-- açık: iki sütunlu detaylı -->
+                <div class="cat-grid">
+                    <?php foreach ( $list as $cat ) :
                         $u = get_category_link( $cat->term_id );
+                        $d = trim( wp_strip_all_tags( (string) $cat->description ) );
                     ?>
-                        <a class="cat-sub<?php echo $i >= 4 ? ' cat-extra' : ''; ?>" href="<?php echo esc_url( is_wp_error($u)?'#':$u ); ?>" data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>"><?php echo esc_html( $cat->name ); ?> <span class="n"><?php echo number_format( (int)$cat->count ); ?></span></a>
+                        <a class="cat-item" href="<?php echo esc_url( is_wp_error($u)?'#':$u ); ?>" data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>">
+                            <span class="cat-item-top">
+                                <span class="cat-item-name"><?php echo esc_html( $cat->name ); ?></span>
+                                <span class="cat-item-n"><?php echo number_format( (int)$cat->count ) . ' entries'; ?></span>
+                            </span>
+                            <?php if ( $d ) : ?><span class="cat-item-desc"><?php echo esc_html( wp_trim_words( $d, 18 ) ); ?></span><?php endif; ?>
+                        </a>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -178,9 +226,7 @@ foreach ( $sections as $ms => $label ) :
         </div>
     </section>
 <?php endforeach; ?>
-    <div class="cat-none" id="cat-none" style="display:none">
-        <strong>No results</strong><p>Try a different search term.</p>
-    </div>
+    <div class="cat-none" id="cat-none" style="display:none"><strong>No results</strong><p>Try a different search term.</p></div>
 </div>
 </main>
 
@@ -192,29 +238,29 @@ foreach ( $sections as $ms => $label ) :
     var expandBtn = document.getElementById('cat-expand');
     var stateEl = document.getElementById('cat-state');
     var none = document.getElementById('cat-none');
+    var chipRow = document.getElementById('cat-chips');
+    var toolbar = document.getElementById('cat-toolbar');
     if (!list) return;
 
     var rows = Array.prototype.slice.call(list.querySelectorAll('.cat-row'));
+    var TOTAL = rows.length;
     rows.forEach(function (r) {
         r._head = r.querySelector('.cat-head');
-        r._subs = Array.prototype.slice.call(r.querySelectorAll('.cat-sub'));
+        r._items = Array.prototype.slice.call(r.querySelectorAll('.cat-item'));
     });
-
-    function open(r, v) { r.classList.toggle('open', v); if (r._head) r._head.setAttribute('aria-expanded', v ? 'true':'false'); }
-    function visibleRows() { return rows.filter(function (r) { return r.style.display !== 'none'; }); }
-    function anyClosed() { return visibleRows().some(function (r) { return !r.classList.contains('open'); }); }
-
-    function syncState() {
+    function open(r, v){ r.classList.toggle('open', v); if (r._head) r._head.setAttribute('aria-expanded', v?'true':'false'); }
+    function vis(){ return rows.filter(function(r){ return r.style.display !== 'none'; }); }
+    function anyClosed(){ return vis().some(function(r){ return !r.classList.contains('open'); }); }
+    function syncState(){
         if (list.classList.contains('searching')) return;
-        var vis = visibleRows(), openN = vis.filter(function (r){ return r.classList.contains('open'); }).length;
+        var v = vis(), o = v.filter(function(r){ return r.classList.contains('open'); }).length;
         expandBtn.textContent = anyClosed() ? 'Expand all' : 'Collapse all';
-        stateEl.textContent = openN === 0 ? 'All subjects collapsed'
-            : (openN === vis.length ? 'All subjects expanded' : openN + ' of ' + vis.length + ' open');
+        stateEl.textContent = o === 0 ? 'All subjects collapsed' : (o + ' of ' + v.length + ' subjects open');
     }
 
     rows.forEach(function (r) {
         r._head.addEventListener('click', function (e) {
-            if (e.target.closest('a')) return;                 // alt kategori linkine tıklama → git
+            if (e.target.closest('a')) return;
             if (list.classList.contains('searching')) return;
             open(r, !r.classList.contains('open')); syncState();
         });
@@ -224,39 +270,49 @@ foreach ( $sections as $ms => $label ) :
     });
 
     expandBtn.addEventListener('click', function () {
-        var openAll = anyClosed();
-        visibleRows().forEach(function (r) { open(r, openAll); });
+        var openAll = anyClosed(); vis().forEach(function(r){ open(r, openAll); }); syncState();
+    });
+
+    // Chip → o konuyu aç + üstüne kaydır (all → hepsini kapat)
+    if (chipRow) chipRow.addEventListener('click', function (e) {
+        var chip = e.target.closest('.cat-chip'); if (!chip) return;
+        chipRow.querySelectorAll('.cat-chip').forEach(function(c){ c.classList.remove('active'); });
+        chip.classList.add('active');
+        var m = chip.dataset.main;
+        if (m === 'all') { rows.forEach(function(r){ open(r,false); }); window.scrollTo({top:0,behavior:'smooth'}); }
+        else {
+            rows.forEach(function(r){ open(r, r.dataset.main === m); });
+            var sec = document.getElementById('sec-'+m);
+            if (sec){ var off=(toolbar?toolbar.offsetHeight:0)+16; window.scrollTo({top:sec.getBoundingClientRect().top+window.scrollY-off, behavior:'smooth'}); }
+        }
         syncState();
     });
 
     var timer = null;
     function search(q) {
-        q = q.trim().toLowerCase();
-        var on = q.length > 0;
+        q = q.trim().toLowerCase(); var on = q.length>0;
         list.classList.toggle('searching', on);
         var total = 0;
         rows.forEach(function (r) {
-            if (!on) { r.style.display=''; open(r, false); r._subs.forEach(function(s){ s.style.display=''; }); return; }
+            if (!on) { r.style.display=''; open(r,false); r._items.forEach(function(it){ it.style.display=''; }); return; }
             var hit = 0;
-            r._subs.forEach(function (s) {
-                var m = (s.dataset.name||'').indexOf(q) >= 0;
-                s.style.display = m ? '' : 'none';      // eşleşenleri göster (extra dahil)
-                if (m) hit++;
-            });
-            r.style.display = hit ? '' : 'none';
-            open(r, hit > 0);                            // eşleşen satırları aç
-            total += hit;
+            r._items.forEach(function (it) { var mm=(it.dataset.name||'').indexOf(q)>=0; it.style.display=mm?'':'none'; if(mm)hit++; });
+            r.style.display = hit ? '' : 'none'; open(r, hit>0); total += hit;
         });
-        if (none) none.style.display = (on && total === 0) ? '' : 'none';
-        if (on) { expandBtn.textContent = 'Collapse all'; stateEl.textContent = total + ' matching'; }
+        if (none) none.style.display = (on && total===0) ? '' : 'none';
+        if (on) { expandBtn.textContent='Collapse all'; stateEl.textContent = total+' matching'; }
         else syncState();
     }
-    if (input) input.addEventListener('input', function () { clearTimeout(timer); var v=this.value; timer=setTimeout(function(){ search(v); },110); });
+    if (input) input.addEventListener('input', function(){ clearTimeout(timer); var v=this.value; timer=setTimeout(function(){ search(v); },110); });
+    // aramada iki sütun yerine tek akış görünür kalsın diye grid zaten .open ile açılıyor
 
-    // aramada gizli extra'lar görünsün diye: searching iken tüm eşleşen sub'lar inline
-    var st = document.createElement('style');
-    st.textContent = '.cat-list.searching .cat-sub.cat-extra{ display:inline; } .cat-list.searching .cat-open{ display:none; }';
-    document.head.appendChild(st);
+    // Chip satırı: aşağı kaydırınca daralt (sabit eşik → titremez)
+    if (toolbar) {
+        var ticking=false;
+        function onScroll(){ var y=window.scrollY||0; if(y>200) toolbar.classList.add('is-collapsed'); else if(y<120) toolbar.classList.remove('is-collapsed'); ticking=false; }
+        window.addEventListener('scroll', function(){ if(!ticking){ requestAnimationFrame(onScroll); ticking=true; } }, {passive:true});
+        onScroll();
+    }
 
     syncState();
 })();
