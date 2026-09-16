@@ -2305,6 +2305,81 @@ function thetelos_search_filters($query){
 add_action('pre_get_posts','thetelos_search_filters',6);
 
 /* ══════════════════════════════════════════════════════════════
+   14 KALICI ANA KATEGORİ — gruplama motoru (tema tarafı)
+   Panel "Kategori Organize" ile AYNI mantık. Kategoriler sayfası bunu
+   kullanarak HER KATEGORİYİ bir ana başlığa oturtur: panelden kaydedilen
+   özel atama (tls_cat_group_of) varsa o kazanır, yoksa otomatik tahmin.
+   URL'ler değişmez — bu yalnız görüntüleme gruplamasıdır.
+   ══════════════════════════════════════════════════════════════ */
+function tls_cat_mains() {
+    return [
+        'literature-fiction'=>'Literature & Fiction','philosophy'=>'Philosophy',
+        'religion-spirituality'=>'Religion & Spirituality','history'=>'History',
+        'biography-memoir'=>'Biography & Memoir','psychology'=>'Psychology',
+        'social-sciences'=>'Social Sciences & Politics','science-nature'=>'Science & Nature',
+        'technology-engineering'=>'Technology & Engineering','arts-culture'=>'Arts & Culture',
+        'business-economics'=>'Business & Economics','health-lifestyle'=>'Health & Lifestyle',
+        'self-help'=>'Self-Help & Personal Growth','children-ya'=>'Children & Young Adult',
+    ];
+}
+function tls_cat_norm($s){ return trim(preg_replace('/[^a-z0-9]+/', '-', strtolower((string)$s)), '-'); }
+function tls_cat_explicit_map() {
+    return [
+        'philosophy'=>'philosophy','history-of-philosophy'=>'philosophy','ethics'=>'philosophy','metaphysics'=>'philosophy','epistemology'=>'philosophy','logic'=>'philosophy','aesthetics'=>'philosophy','political-philosophy'=>'philosophy','philosophy-of-religion'=>'philosophy','philosophy-of-science'=>'philosophy','philosophy-of-mind'=>'philosophy','philosophy-of-language'=>'philosophy','critical-theory'=>'philosophy',
+        'religion'=>'religion-spirituality','theology'=>'religion-spirituality','systematic-theology'=>'religion-spirituality','christian-theology'=>'religion-spirituality','islamic-theology'=>'religion-spirituality','christianity'=>'religion-spirituality','islam'=>'religion-spirituality','judaism'=>'religion-spirituality','buddhism'=>'religion-spirituality','hinduism'=>'religion-spirituality','atheism'=>'religion-spirituality','agnosticism'=>'religion-spirituality','mythology'=>'religion-spirituality','folklore'=>'religion-spirituality',
+        'history'=>'history','world-history'=>'history','ancient-history'=>'history','medieval-history'=>'history','modern-history'=>'history','military-history'=>'history','cultural-history'=>'history','history-of-science'=>'history',
+        'biography'=>'biography-memoir','autobiography'=>'biography-memoir','memoir'=>'biography-memoir',
+        'literature'=>'literature-fiction','classic-literature'=>'literature-fiction','world-literature'=>'literature-fiction','poetry'=>'literature-fiction','drama'=>'literature-fiction','novel'=>'literature-fiction','fiction'=>'literature-fiction','historical-fiction'=>'literature-fiction','science-fiction'=>'literature-fiction','dystopian-fiction'=>'literature-fiction','fantasy'=>'literature-fiction','horror'=>'literature-fiction','mystery'=>'literature-fiction','detective-fiction'=>'literature-fiction','romance'=>'literature-fiction','adventure'=>'literature-fiction',
+        'psychology'=>'psychology','cognitive-psychology'=>'psychology','social-psychology'=>'psychology','psychoanalysis'=>'psychology','neuroscience'=>'psychology',
+        'sociology'=>'social-sciences','anthropology'=>'social-sciences','politics'=>'social-sciences','political-science'=>'social-sciences','law'=>'social-sciences','international-law'=>'social-sciences','education'=>'social-sciences','geography'=>'social-sciences','cultural-studies'=>'social-sciences','culture'=>'social-sciences',
+        'science'=>'science-nature','physics'=>'science-nature','astronomy'=>'science-nature','chemistry'=>'science-nature','mathematics'=>'science-nature','statistics'=>'science-nature','biology'=>'science-nature','evolution'=>'science-nature','genetics'=>'science-nature',
+        'technology'=>'technology-engineering','computers'=>'technology-engineering','artificial-intelligence'=>'technology-engineering','programming'=>'technology-engineering','data-science'=>'technology-engineering',
+        'art'=>'arts-culture','art-history'=>'arts-culture','music'=>'arts-culture','music-history'=>'arts-culture','architecture'=>'arts-culture','design'=>'arts-culture','photography'=>'arts-culture','film'=>'arts-culture','theatre'=>'arts-culture',
+        'economics'=>'business-economics','microeconomics'=>'business-economics','macroeconomics'=>'business-economics','business'=>'business-economics','management'=>'business-economics','marketing'=>'business-economics','entrepreneurship'=>'business-economics',
+        'medicine'=>'health-lifestyle','public-health'=>'health-lifestyle','travel'=>'health-lifestyle',
+        'self-help'=>'self-help','personal-development'=>'self-help',
+        'children'=>'children-ya','young-adult'=>'children-ya',
+    ];
+}
+function tls_cat_guess_main($name, $slug) {
+    $exp = tls_cat_explicit_map();
+    $ns  = tls_cat_norm($slug);
+    if (isset($exp[$ns])) return $exp[$ns];
+    $words = array_values(array_filter(preg_split('/-+/', tls_cat_norm($name.'-'.$slug))));
+    if (!$words) return '';
+    $of = array_search('of', $words, true);
+    $head = ($of !== false && $of > 0) ? $words[$of-1] : end($words);
+    if (isset($exp[$head])) return $exp[$head];
+    $fam = [
+        'literature-fiction'=>['literature','literatures','edebiyat','literary','fiction','novel','novels','poetry','poem','poems','poet','drama','play','plays','story','stories','tale','tales','prose','satire','essay','essays','verse','saga','epic','criticism'],
+        'philosophy'=>['philosophy','philosophical','philosopher','ethics','ethical','metaphysics','epistemology','logic','aesthetics','existential','existentialism','phenomenology','idealism'],
+        'religion-spirituality'=>['religion','religious','theology','theological','church','bible','biblical','quran','koran','islam','islamic','christian','christianity','catholic','protestant','judaism','jewish','buddhism','buddhist','hindu','hinduism','spiritual','spirituality','mysticism','mystical','saint','saints','prayer','scripture','gnostic','sufi','taoism','confucian'],
+        'history'=>['history','historical','historiography','century','empire','war','wars','revolution','civilization','civilisation','antiquity','ancient','medieval','renaissance','reformation','dynasty','colonial','archaeology'],
+        'biography-memoir'=>['biography','biographies','biographical','autobiography','memoir','memoirs','diary','diaries','letters','correspondence'],
+        'psychology'=>['psychology','psychological','psycho','cognitive','psychoanalysis','psychiatry','mind','mental','behaviour','behavior','emotion','emotions','consciousness','neuroscience'],
+        'social-sciences'=>['sociology','sociological','social','society','anthropology','anthropological','politics','political','government','governance','democracy','anarchism','socialism','communism','liberalism','law','legal','jurisprudence','education','pedagogy','teaching','geography','gender','feminism','feminist','race','ethnic','african','asian','migration','media','communication','journalism','criminology','linguistics','language'],
+        'science-nature'=>['science','scientific','physics','chemistry','biology','biological','mathematics','math','maths','statistics','astronomy','cosmology','geology','ecology','ecological','environment','environmental','nature','zoology','botany','evolution','genetics','climate','earth'],
+        'technology-engineering'=>['technology','technological','computer','computers','computing','software','programming','coding','artificial','ai','machine','data','robotics','internet','cyber','digital','engineering','electronics','network'],
+        'arts-culture'=>['art','arts','artistic','painting','sculpture','music','musical','film','films','cinema','movie','architecture','architectural','design','photography','photographic','theatre','theater','dance','opera','craft','crafts','fashion'],
+        'business-economics'=>['business','economics','economic','economy','finance','financial','accounting','trade','industry','industrial','commerce','management','marketing','entrepreneur','entrepreneurship','startup','leadership','money','investment','banking'],
+        'health-lifestyle'=>['health','healthy','medicine','medical','disease','anatomy','surgery','clinical','nutrition','diet','fitness','wellness','cooking','cookbook','food','recipe','recipes','home','garden','gardening','travel','sport','sports','hobby','hobbies','lifestyle'],
+        'self-help'=>['self-help','self','improvement','development','productivity','motivation','motivational','habit','habits','mindfulness','relationship','relationships','success'],
+        'children-ya'=>['children','childrens','kids','juvenile','young-adult','ya','picture-book','nursery','fairy'],
+    ];
+    foreach ($words as $w) foreach ($fam as $main=>$keys) if (in_array($w,$keys,true)) return $main;
+    return '';
+}
+/* Bir kategori teriminin ait olduğu ana başlık: önce panel override, sonra tahmin. */
+function tls_cat_main_of($term) {
+    static $ov = null;
+    if ($ov === null) { $ov = get_option('tls_cat_group_of', []); if (!is_array($ov)) $ov = []; }
+    $mains = tls_cat_mains();
+    $id = (int) $term->term_id;
+    if (isset($ov[$id]) && isset($mains[$ov[$id]])) return $ov[$id];
+    return tls_cat_guess_main($term->name, $term->slug);
+}
+
+/* ══════════════════════════════════════════════════════════════
    SUMMARY REQUEST SYSTEM
    - CPT: tls_request (admin panelde görünür)
    - AJAX handler: tls_submit_req

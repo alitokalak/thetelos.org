@@ -337,28 +337,25 @@ get_header();
    "Kategori Organize" panelinden kaydedilen eşleme (tls_cat_group_of) okunur;
    kategoriler ana başlıklar altında bölümlenir. Kategori URL'leri değişmez.
    Eşleme kaydedilmemişse eski düz grid'e güvenli düşer. */
-$group_of    = get_option( 'tls_cat_group_of', [] );      // [term_id => main_slug]
-$main_labels = get_option( 'tls_cat_main_labels', [] );   // [main_slug => label]
-if ( ! is_array( $group_of ) )    $group_of = [];
-if ( ! is_array( $main_labels ) || empty( $main_labels ) ) {
-    $main_labels = [
-        'literature-fiction'=>'Literature & Fiction','philosophy'=>'Philosophy',
-        'religion-spirituality'=>'Religion & Spirituality','history'=>'History',
-        'biography-memoir'=>'Biography & Memoir','psychology'=>'Psychology',
-        'social-sciences'=>'Social Sciences & Politics','science-nature'=>'Science & Nature',
-        'technology-engineering'=>'Technology & Engineering','arts-culture'=>'Arts & Culture',
-        'business-economics'=>'Business & Economics','health-lifestyle'=>'Health & Lifestyle',
-        'self-help'=>'Self-Help & Personal Growth','children-ya'=>'Children & Young Adult',
-    ];
-}
-$use_groups = ! empty( $group_of );
+$main_labels = function_exists( 'tls_cat_mains' ) ? tls_cat_mains() : [
+    'literature-fiction'=>'Literature & Fiction','philosophy'=>'Philosophy',
+    'religion-spirituality'=>'Religion & Spirituality','history'=>'History',
+    'biography-memoir'=>'Biography & Memoir','psychology'=>'Psychology',
+    'social-sciences'=>'Social Sciences & Politics','science-nature'=>'Science & Nature',
+    'technology-engineering'=>'Technology & Engineering','arts-culture'=>'Arts & Culture',
+    'business-economics'=>'Business & Economics','health-lifestyle'=>'Health & Lifestyle',
+    'self-help'=>'Self-Help & Personal Growth','children-ya'=>'Children & Young Adult',
+];
+// HER ZAMAN grupla: panelden kaydedilen özel atama (override) varsa o, yoksa
+// otomatik tahmin. Böylece kayıt yapılmasa bile sayfa gruplu görünür.
+$use_groups = true;
 
-// Kovalar: ana sıra + sonda "Other" (atanmamışlar)
+// Kovalar: ana sıra + sonda "Other" (motorun emin olamadıkları)
 $buckets = [];
 foreach ( array_keys( $main_labels ) as $ms ) $buckets[ $ms ] = [];
 $buckets['_other'] = [];
 foreach ( $cats as $cat ) {
-    $ms = isset( $group_of[ $cat->term_id ] ) ? (string) $group_of[ $cat->term_id ] : '';
+    $ms = function_exists( 'tls_cat_main_of' ) ? tls_cat_main_of( $cat ) : '';
     if ( $ms === '' || ! isset( $buckets[ $ms ] ) ) $ms = '_other';
     $buckets[ $ms ][] = $cat;
 }
