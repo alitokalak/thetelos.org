@@ -308,7 +308,7 @@ if ($action === 'desc_fill') {
     $items = array_slice(array_values($items), 0, 10);
 
     require_once __DIR__ . '/_verify.php';
-    $done = 0; $sample = '';
+    $done = 0; $ai = 0; $fallback = 0;
     foreach ($items as $it) {
         $tid  = (int)($it['id'] ?? 0);
         $name = trim( (string)($it['name'] ?? '') );
@@ -318,21 +318,20 @@ if ($action === 'desc_fill') {
 
         $prompt = "Write ONE concise, neutral sentence (8 to 16 words) that defines the book category \"$name\" — "
             . "encyclopedic tone, present tense, no marketing, no numbers, no first person, no surrounding quotes. Output only the sentence.";
+        // DeepSeek (ucuz) — Anthropic KULLANILMAZ (kredi bitti). Boş dönerse
+        // aşağıdaki güvenli yedek devreye girer, yani asla 0'da kalmaz.
         $r = tv_ask($prompt, 120, 45, 'deepseek');
-        if (empty($r['ok'])) {
-            echo json_encode(['ok'=>false, 'done'=>$done, 'error'=>($r['error'] ?? 'AI hata')], JSON_UNESCAPED_UNICODE);
-            exit;   // hatayı göster, döngüyü durdur
-        }
-        $s = trim( (string)($r['text'] ?? '') );
+        $s = !empty($r['ok']) ? trim( (string)($r['text'] ?? '') ) : '';
         $s = preg_replace('/\s+/', ' ', wp_strip_all_tags($s));
-        $s = trim($s, " \t\n\r\0\x0B\"'“”");           // baş/son tırnakları at
+        $s = trim($s, " \t\n\r\0\x0B\"'“”");
         if ($s !== '' && strpos($s, "\n") !== false) $s = trim(strtok($s, "\n"));
-        if ($s === '') { if ($sample === '') $sample = 'boş yanıt: ' . mb_substr((string)($r['text'] ?? ''), 0, 120); continue; }
-        if (mb_strlen($s) > 240) $s = mb_substr($s, 0, 237) . '…';
+        if ($s !== '' && mb_strlen($s) > 240) $s = mb_substr($s, 0, 237) . '…';
+        if ($s !== '') { $ai++; }
+        else { $s = $name . ' — summaries and analyses filed under this subject in the archive.'; $fallback++; }   // asla boş bırakma
         wp_update_term($tid, 'category', ['description' => $s]);
         $done++;
     }
-    echo json_encode(['ok'=>true, 'done'=>$done, 'asked'=>count($items), 'sample'=>$sample], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok'=>true, 'done'=>$done, 'ai'=>$ai, 'fallback'=>$fallback, 'asked'=>count($items)], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
