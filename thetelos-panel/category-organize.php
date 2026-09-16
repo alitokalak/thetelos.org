@@ -163,17 +163,20 @@ $('btn-desc').addEventListener('click', ()=>{
     if(!d||!d.ok){ $('btn-desc').disabled=false; $('co-status').textContent='Tarama hatası.'; return; }
     const items = d.empty || [];
     if(!items.length){ $('btn-desc').disabled=false; $('co-status').textContent='✓ Tüm kategorilerin açıklaması zaten dolu.'; return; }
-    let i=0, done=0, aiN=0, fbN=0;
+    let i=0, done=0, aiN=0, fbN=0, skF=0, skE=0, dbg='';
     const step = ()=>{
       if(i>=items.length){
         $('btn-desc').disabled=false;
-        $('co-status').textContent='✓ '+done+' açıklama yazıldı ('+aiN+' AI · '+fbN+' yedek). Categories sayfasında görünür — gerekirse cache temizle.';
+        let msg='✓ '+done+' açıklama yazıldı ('+aiN+' AI · '+fbN+' yedek).';
+        if(done===0){ msg='⚠ 0 yazıldı — teşhis: taranan '+items.length+', zaten-dolu '+skF+', hata '+skE+(dbg?(' · '+dbg):''); }
+        else { msg+=' Categories sayfasında görünür — gerekirse cache temizle.'; }
+        $('co-status').textContent=msg;
         return;
       }
       const slice = items.slice(i, i+10); i+=10;
       $('co-status').textContent='Açıklamalar yazılıyor… ('+Math.min(i,items.length)+'/'+items.length+') · şu ana kadar '+done;
       post('action=desc_fill&items='+encodeURIComponent(JSON.stringify(slice))).then(r=>{
-        if(r&&r.ok){ done += (r.done||0); aiN += (r.ai||0); fbN += (r.fallback||0); step(); }
+        if(r&&r.ok){ done+=(r.done||0); aiN+=(r.ai||0); fbN+=(r.fallback||0); skF+=(r.skip_filled||0); skE+=(r.skip_err||0); if(!dbg&&r.debug)dbg=r.debug; step(); }
         else { $('btn-desc').disabled=false; $('co-status').textContent='⚠ AI hatası — durdu: '+((r&&r.error)||'bilinmiyor')+' · '+done+' yazıldı'; }
       }).catch(()=>{ $('btn-desc').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
     };

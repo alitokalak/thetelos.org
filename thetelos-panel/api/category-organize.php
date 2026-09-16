@@ -309,18 +309,26 @@ if ($action === 'desc_fill') {
 
     require_once __DIR__ . '/_verify.php';
     $done = 0; $ai = 0; $fallback = 0;
+    $skip_filled = 0; $skip_err = 0; $dbg = '';   // TEŞHİS: neden atlandığını say
     foreach ($items as $it) {
         $tid  = (int)($it['id'] ?? 0);
         $name = trim( (string)($it['name'] ?? '') );
-        if ($tid <= 0 || $name === '') continue;
+        if ($tid <= 0 || $name === '') { $skip_err++; continue; }
         $c = get_term($tid, 'category');
-        if (!$c || is_wp_error($c) || trim((string)$c->description) !== '') continue;   // dolu olanı ezme
+        if (!$c || is_wp_error($c)) { $skip_err++; continue; }
+        if (trim((string)$c->description) !== '') { $skip_filled++; continue; }   // dolu olanı ezme
 
         $prompt = "Write ONE concise, neutral sentence (8 to 16 words) that defines the book category \"$name\" — "
             . "encyclopedic tone, present tense, no marketing, no numbers, no first person, no surrounding quotes. Output only the sentence.";
         // DeepSeek (ucuz) — Anthropic KULLANILMAZ (kredi bitti). Boş dönerse
         // aşağıdaki güvenli yedek devreye girer, yani asla 0'da kalmaz.
         $r = tv_ask($prompt, 120, 45, 'deepseek');
+        // İlk kalemin ham AI sonucunu teşhis için sakla (X=0 ise sebebini görürüz)
+        if ($dbg === '') {
+            $dbg = 'prov=deepseek ok=' . (!empty($r['ok']) ? '1' : '0')
+                 . ' err=' . mb_substr((string)($r['error'] ?? ''), 0, 80)
+                 . ' text=' . mb_substr((string)($r['text'] ?? ''), 0, 80);
+        }
         $s = !empty($r['ok']) ? trim( (string)($r['text'] ?? '') ) : '';
         $s = preg_replace('/\s+/', ' ', wp_strip_all_tags($s));
         $s = trim($s, " \t\n\r\0\x0B\"'“”");
@@ -328,10 +336,14 @@ if ($action === 'desc_fill') {
         if ($s !== '' && mb_strlen($s) > 240) $s = mb_substr($s, 0, 237) . '…';
         if ($s !== '') { $ai++; }
         else { $s = $name . ' — summaries and analyses filed under this subject in the archive.'; $fallback++; }   // asla boş bırakma
-        wp_update_term($tid, 'category', ['description' => $s]);
+        $u = wp_update_term($tid, 'category', ['description' => $s]);
+        if (is_wp_error($u)) { $skip_err++; continue; }
         $done++;
     }
-    echo json_encode(['ok'=>true, 'done'=>$done, 'ai'=>$ai, 'fallback'=>$fallback, 'asked'=>count($items)], JSON_UNESCAPED_UNICODE);
+    echo json_encode([
+        'ok'=>true, 'done'=>$done, 'ai'=>$ai, 'fallback'=>$fallback, 'asked'=>count($items),
+        'skip_filled'=>$skip_filled, 'skip_err'=>$skip_err, 'debug'=>$dbg,
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
