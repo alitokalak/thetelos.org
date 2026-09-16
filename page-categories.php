@@ -121,6 +121,15 @@ get_header();
 .cat-row.open .cat-open::after{ content:'Close'; }
 .cat-row:not(.open) .cat-open::after{ content:'Open'; }
 
+/* Açık (seçili) satır belli olsun: hafif zemin + sol altın vurgu + yuvarlak köşe */
+.cat-row{ transition:background .18s ease; }
+.cat-row.open{ background:#f7f3ea; border-bottom-color:transparent; border-radius:12px; box-shadow:inset 3px 0 0 var(--tls-gold); margin:6px 0; }
+.cat-row.open + .cat-row{ border-top:1px solid var(--tls-border); }
+.cat-row.open .cat-head{ padding-left:20px; padding-right:112px; }
+.cat-row.open .cat-open{ right:16px; color:var(--tls-gold); }
+.cat-row.open .cat-title{ color:#000; }
+.cat-row.open .cat-grid{ padding:0 20px 8px; }
+
 /* Kapalı önizleme: ilk 4, düz amber metin */
 .cat-preview{ margin:12px 0 0; line-height:2.1; }
 .cat-pv{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-gold); text-decoration:none!important; margin-right:18px; white-space:nowrap; }
