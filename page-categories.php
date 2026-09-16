@@ -3,7 +3,7 @@
  * Template Name: Display Categories
  *
  * Kategoriler 14 kalıcı ANA KATEGORİ altında gruplanır (chip filtre + sort +
- * bölüm başlığı/açıklaması + "View all"). Kategori URL'leri değişmez —
+ * bölüm başlığı/açıklaması). Kategori URL'leri değişmez —
  * gruplama tls_cat_main_of() (panel override + otomatik motor) ile yapılır.
  *
  * @package Mediumish / TheTelos
@@ -60,7 +60,6 @@ foreach ( $sections as $ms => $label ) {
     $sec_entries[$ms] = $sum; $total_entries += $sum;
 }
 
-$PREVIEW = 8;   // "All subjects" görünümünde bölüm başına önizleme kartı
 
 get_header();
 ?>
@@ -113,8 +112,6 @@ get_header();
 .tlc-sec-title{ font-family:var(--tls-serif); font-size:26px; font-weight:400; color:var(--tls-bg-dark); margin:0 0 6px; line-height:1.15; }
 .tlc-sec-meta{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; color:var(--tls-muted); margin-left:2px; }
 .tlc-sec-desc{ font-family:var(--tls-sans); font-size:14px; color:var(--tls-muted); line-height:1.55; margin:0; max-width:640px; }
-.tlc-viewall{ flex-shrink:0; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-bg-dark); background:none; border:1px solid var(--tls-border); border-radius:999px; padding:8px 16px; cursor:pointer; white-space:nowrap; transition:all .15s; }
-.tlc-viewall:hover{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
 
 /* ── Grid + kart ── */
 .tlc-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:12px; }
@@ -215,9 +212,6 @@ foreach ( $sections as $ms => $label ) :
                 </h2>
                 <?php if ( ! empty( $main_desc[$ms] ) ) : ?><p class="tlc-sec-desc"><?php echo esc_html( $main_desc[$ms] ); ?></p><?php endif; ?>
             </div>
-            <?php if ( $n > $PREVIEW ) : ?>
-                <button class="tlc-viewall" type="button" data-target="<?php echo esc_attr( $ms ); ?>">View all <?php echo number_format( $n ); ?> &rarr;</button>
-            <?php endif; ?>
         </div>
         <div class="tlc-grid">
             <?php foreach ( $list as $cat ) :
@@ -257,7 +251,6 @@ foreach ( $sections as $ms => $label ) :
     var noRes  = document.getElementById('tlc-no-results');
     if (!main) return;
 
-    var PREVIEW  = <?php echo (int) $PREVIEW; ?>;
     var sections = Array.prototype.slice.call(main.querySelectorAll('.tlc-section'));
     var state = { main:'all', sort:'entries', q:'' };
     var timer = null;
@@ -288,23 +281,16 @@ foreach ( $sections as $ms => $label ) :
             var ordered = sortCards(sec._cards);
             ordered.forEach(function (c){ sec._grid.appendChild(c); });
 
-            // filtre (arama) + önizleme sınırı
-            var matches = ordered.filter(function (c){ return !q || (c.dataset.name||'').indexOf(q) >= 0; });
-            var cap = (state.main === 'all' && !q) ? PREVIEW : matches.length;  // tek konu/arama → hepsi
-            var shown = 0;
+            // Aramaya göre filtre — sınır yok, tüm alt kategoriler görünür
+            var matches = 0;
             ordered.forEach(function (c) {
                 var isMatch = !q || (c.dataset.name||'').indexOf(q) >= 0;
-                var vis = inMain && isMatch && shown < cap;
-                c.style.display = vis ? '' : 'none';
-                if (vis) shown++;
+                c.style.display = (inMain && isMatch) ? '' : 'none';
+                if (isMatch) matches++;
             });
-            var secVisible = inMain && matches.length > 0;
+            var secVisible = inMain && matches > 0;
             sec.style.display = secVisible ? '' : 'none';
-            if (secVisible) totalShown += matches.length;
-
-            // "View all" yalnız All-subjects + arama yokken ve sınır aşılıyorsa
-            var va = sec.querySelector('.tlc-viewall');
-            if (va) va.style.display = (state.main === 'all' && !q && matches.length > PREVIEW) ? '' : 'none';
+            if (secVisible) totalShown += matches;
         });
 
         if (noRes) noRes.style.display = totalShown ? 'none' : '';
@@ -328,13 +314,6 @@ foreach ( $sections as $ms => $label ) :
             if (sec) { var tb = document.getElementById('tlc-toolbar'); var off = (tb?tb.offsetHeight:0) + 20;
                 window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - off, behavior:'smooth' }); }
         } else { window.scrollTo({ top:0, behavior:'smooth' }); }
-    });
-
-    // "View all" → o konuyu seç (chip'e tıklamış gibi)
-    main.addEventListener('click', function (e) {
-        var va = e.target.closest('.tlc-viewall'); if (!va) return;
-        var chip = chipRow ? chipRow.querySelector('.tlc-chip[data-main="'+va.dataset.target+'"]') : null;
-        if (chip) chip.click();
     });
 
     // Sort
