@@ -66,6 +66,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 
     <div class="bulk-row">
       <button class="btn btn-primary" id="btn-load">🔄 Kategorileri Tara</button>
+      <button class="btn" id="btn-desc">📝 Boş açıklamaları doldur</button>
       <button class="btn" id="btn-autofill" style="display:none">✨ Boşlara Öneriyi Doldur</button>
       <button class="btn" id="btn-ai" style="display:none">🤖 Boşları AI ile Öner</button>
       <button class="btn btn-primary" id="btn-save" style="display:none">💾 Kaydet</button>
@@ -152,6 +153,34 @@ document.addEventListener('change', e=>{
 });
 // arama + "sadece boşlar" filtresi
 document.addEventListener('input', e=>{ if(e.target.id==='co-search') applyFilter(); });
+
+// Boş kategori açıklamalarını otomatik doldur (tek tık, parça parça)
+$('btn-desc').addEventListener('click', ()=>{
+  if(!confirm('Açıklaması boş TÜM kategoriler için tek cümlelik tanım üretilip kaydedilecek. Başlansın mı?')) return;
+  $('btn-desc').disabled = true;
+  $('co-status').textContent = 'Boş açıklamalar taranıyor…';
+  post('action=desc_scan').then(d=>{
+    if(!d||!d.ok){ $('btn-desc').disabled=false; $('co-status').textContent='Tarama hatası.'; return; }
+    const items = d.empty || [];
+    if(!items.length){ $('btn-desc').disabled=false; $('co-status').textContent='✓ Tüm kategorilerin açıklaması zaten dolu.'; return; }
+    let i=0, done=0;
+    const step = ()=>{
+      if(i>=items.length){
+        $('btn-desc').disabled=false;
+        $('co-status').textContent='✓ '+done+' kategori açıklaması dolduruldu. (Categories sayfasında görünür — gerekirse cache temizle.)';
+        return;
+      }
+      const slice = items.slice(i, i+15); i+=15;
+      $('co-status').textContent='Açıklamalar yazılıyor… ('+Math.min(i,items.length)+'/'+items.length+')';
+      post('action=desc_fill&items='+encodeURIComponent(JSON.stringify(slice))).then(r=>{
+        if(r&&r.ok) done += (r.done||0);
+        else if(r&&r.error){ $('co-status').textContent='AI hata: '+r.error; }
+        step();
+      }).catch(()=>{ $('btn-desc').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
+    };
+    step();
+  }).catch(()=>{ $('btn-desc').disabled=false; $('co-status').textContent='Bağlantı hatası.'; });
+});
 
 $('btn-load').addEventListener('click', ()=>{
   $('co-status').textContent='Kategoriler okunuyor…';

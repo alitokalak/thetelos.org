@@ -288,4 +288,50 @@ if ($action === 'ai_suggest') {
     exit;
 }
 
+/* ── Boş açıklamalı kategorileri tara ── */
+if ($action === 'desc_scan') {
+    $empty = [];
+    foreach ( get_categories(['hide_empty'=>false]) as $c ) {
+        if ( in_array( strtolower($c->slug), ['general','uncategorized'], true ) ) continue;
+        if ( trim( (string) $c->description ) === '' ) $empty[] = ['id'=>(int)$c->term_id, 'name'=>$c->name];
+    }
+    echo json_encode(['ok'=>true, 'empty'=>$empty, 'count'=>count($empty)], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+/* ── Bir grup kategoriye tek cümlelik tanım üret + kaydet (DeepSeek, toplu) ── */
+if ($action === 'desc_fill') {
+    $items = json_decode((string)($_POST['items'] ?? '[]'), true);
+    if (!is_array($items) || !$items) { echo json_encode(['ok'=>true,'done'=>0]); exit; }
+    $items = array_slice(array_values($items), 0, 20);
+
+    $lines = [];
+    foreach ($items as $i => $it) $lines[] = ($i+1).'. '.trim((string)($it['name'] ?? ''));
+    $prompt = "For each book category below, write ONE concise, neutral sentence (8-16 words) that DEFINES what that subject or genre is — encyclopedic tone, no marketing, no numbers, no first person. "
+        . "Return ONLY JSON: {\"map\":{\"<number>\":\"sentence\"}} using the item numbers.\n\nCATEGORIES:\n" . implode("\n", $lines);
+
+    require_once __DIR__ . '/_verify.php';
+    $r = tv_ask($prompt, 1500, 90, 'deepseek');
+    if (empty($r['ok'])) { echo json_encode(['ok'=>false, 'done'=>0, 'error'=>($r['error'] ?? 'AI hata')], JSON_UNESCAPED_UNICODE); exit; }
+    $txt = trim(preg_replace('/```json|```/', '', (string)($r['text'] ?? '')));
+    $j = json_decode($txt, true) ?: [];
+    if (!$j && preg_match('/\{.*\}/s', $txt, $m)) $j = json_decode($m[0], true) ?: [];
+
+    $done = 0;
+    foreach (($j['map'] ?? []) as $num => $sentence) {
+        $idx = (int)$num - 1;
+        if (!isset($items[$idx])) continue;
+        $tid = (int)($items[$idx]['id'] ?? 0);
+        $sentence = trim( preg_replace('/\s+/', ' ', wp_strip_all_tags( (string)$sentence ) ) );
+        if ($tid <= 0 || $sentence === '') continue;
+        if (mb_strlen($sentence) > 240) $sentence = mb_substr($sentence, 0, 237) . '…';
+        $c = get_term($tid, 'category');
+        if (!$c || is_wp_error($c) || trim((string)$c->description) !== '') continue;   // dolu olanı ezme
+        wp_update_term($tid, 'category', ['description' => $sentence]);
+        $done++;
+    }
+    echo json_encode(['ok'=>true, 'done'=>$done, 'asked'=>count($items)], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 echo json_encode(['ok'=>false, 'error'=>'bad action']);
