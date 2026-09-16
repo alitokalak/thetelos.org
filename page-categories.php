@@ -54,10 +54,10 @@ foreach ( $buckets as &$_b ) { usort( $_b, function ( $a, $c ) { return $c->coun
 unset( $_b );
 
 $sections = $main_labels; $sections['_other'] = 'Themes & Movements';
-$sec_entries = []; $subject_count = 0;
+$sec_entries = []; $subject_count = 0; $total_entries = 0;
 foreach ( $sections as $ms => $label ) {
     $sum = 0; foreach ( ($buckets[$ms] ?? []) as $c ) $sum += (int) $c->count;
-    $sec_entries[$ms] = $sum;
+    $sec_entries[$ms] = $sum; $total_entries += $sum;
     if ( ! empty( $buckets[$ms] ) ) $subject_count++;
 }
 
@@ -81,7 +81,14 @@ get_header();
 .cat-search input{ width:100%; height:44px; padding:0 16px 0 42px; font-family:var(--tls-sans); font-size:14px; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; outline:none; -webkit-appearance:none; transition:border-color .15s, box-shadow .15s; }
 .cat-search input::placeholder{ color:#aaa; }
 .cat-search input:focus{ border-color:var(--tls-green); box-shadow:0 0 0 3px rgba(0,171,107,.12); }
-.cat-expand{ margin-left:auto; font-family:var(--tls-sans); font-size:13px; font-weight:600; white-space:nowrap; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:9px 18px; cursor:pointer; transition:all .15s; }
+.cat-count{ font-family:var(--tls-sans); font-size:12.5px; color:var(--tls-muted); white-space:nowrap; }
+.cat-count strong{ color:var(--tls-bg-dark); font-weight:700; }
+.cat-sort{ display:flex; align-items:center; gap:8px; margin-left:auto; }
+.cat-sort-lbl{ font-family:var(--tls-sans); font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--tls-muted); }
+.cat-sort-btns{ display:inline-flex; background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:3px; }
+.cat-sort-btn{ font-family:var(--tls-sans); font-size:12.5px; font-weight:600; color:var(--tls-muted); background:none; border:none; padding:6px 14px; border-radius:999px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+.cat-sort-btn.active{ background:var(--tls-bg-dark); color:#fff; }
+.cat-expand{ font-family:var(--tls-sans); font-size:13px; font-weight:600; white-space:nowrap; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:9px 18px; cursor:pointer; transition:all .15s; }
 .cat-expand:hover{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
 .cat-state{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); white-space:nowrap; }
 
@@ -137,7 +144,9 @@ get_header();
 @media (max-width:768px){
     .cat-toolrow{ flex-wrap:wrap; gap:10px; }
     .cat-search{ flex:1 1 100%; max-width:none; }
-    .cat-expand{ margin-left:0; }
+    .cat-sort{ margin-left:auto; }
+    .cat-sort-lbl{ display:none; }
+    .cat-count{ order:3; flex:1 1 100%; }
     .cat-chips{ flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; }
     .cat-title{ font-size:22px; }
     .cat-head{ padding-right:70px; }
@@ -168,6 +177,14 @@ get_header();
         <div class="cat-search">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             <input type="search" id="cat-search" placeholder="Search categories…" autocomplete="off" spellcheck="false">
+        </div>
+        <span class="cat-count" id="cat-count"><strong><?php echo number_format( $total_count ); ?></strong> categories · <?php echo number_format( $total_entries ); ?> entries</span>
+        <div class="cat-sort">
+            <span class="cat-sort-lbl">Sort</span>
+            <div class="cat-sort-btns" id="cat-sort">
+                <button class="cat-sort-btn active" data-sort="entries" type="button">Most entries</button>
+                <button class="cat-sort-btn" data-sort="az" type="button">A&ndash;Z</button>
+            </div>
         </div>
         <button class="cat-expand" id="cat-expand" type="button">Expand all</button>
         <span class="cat-state" id="cat-state">All subjects collapsed</span>
@@ -212,7 +229,7 @@ foreach ( $sections as $ms => $label ) :
                         $u = get_category_link( $cat->term_id );
                         $d = trim( wp_strip_all_tags( (string) $cat->description ) );
                     ?>
-                        <a class="cat-item" href="<?php echo esc_url( is_wp_error($u)?'#':$u ); ?>" data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>">
+                        <a class="cat-item" href="<?php echo esc_url( is_wp_error($u)?'#':$u ); ?>" data-name="<?php echo esc_attr( mb_strtolower( $cat->name ) ); ?>" data-count="<?php echo (int)$cat->count; ?>">
                             <span class="cat-item-top">
                                 <span class="cat-item-name"><?php echo esc_html( $cat->name ); ?></span>
                                 <span class="cat-item-n"><?php echo number_format( (int)$cat->count ) . ' entries'; ?></span>
@@ -271,6 +288,26 @@ foreach ( $sections as $ms => $label ) :
 
     expandBtn.addEventListener('click', function () {
         var openAll = anyClosed(); vis().forEach(function(r){ open(r, openAll); }); syncState();
+    });
+
+    // SORT: açık listedeki alt kategorileri en çok özet / alfabetik diz
+    var sortBox = document.getElementById('cat-sort');
+    function applySort(mode) {
+        rows.forEach(function (r) {
+            var grid = r.querySelector('.cat-grid'); if (!grid) return;
+            var items = Array.prototype.slice.call(grid.querySelectorAll('.cat-item'));
+            items.sort(function (a, b) {
+                if (mode === 'az') return (a.dataset.name||'').localeCompare(b.dataset.name||'');
+                return (parseInt(b.dataset.count,10)||0) - (parseInt(a.dataset.count,10)||0);
+            });
+            items.forEach(function (it) { grid.appendChild(it); });   // yeniden sırala
+        });
+    }
+    if (sortBox) sortBox.addEventListener('click', function (e) {
+        var btn = e.target.closest('.cat-sort-btn'); if (!btn) return;
+        sortBox.querySelectorAll('.cat-sort-btn').forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+        applySort(btn.dataset.sort);
     });
 
     // Chip → o konuyu aç + üstüne kaydır (all → hepsini kapat)
