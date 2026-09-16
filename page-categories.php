@@ -91,9 +91,12 @@ get_header();
 .tlc-count{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); white-space:nowrap; }
 .tlc-count strong{ color:var(--tls-bg-dark); font-weight:600; }
 
-/* ── Chip filtre satırı: TEK SATIR, yatay kaydırmalı (kompakt) ── */
-.tlc-chips{ display:flex; flex-wrap:nowrap; gap:8px; padding:10px 0 4px; overflow-x:auto; scrollbar-width:none; -webkit-overflow-scrolling:touch; }
+/* ── Chip filtre satırı ──
+   Masaüstü: hepsi görünür (wrap). Mobil: tek satır, yatay kaydırmalı.
+   Sayfa aşağı kaydıkça (.is-collapsed) daralıp gizlenir; yukarı kaydırınca döner. */
+.tlc-chips{ display:flex; flex-wrap:wrap; gap:8px; padding:10px 0 4px; max-height:400px; opacity:1; overflow:hidden; transition:max-height .28s ease, opacity .18s ease, padding .28s ease; }
 .tlc-chips::-webkit-scrollbar{ display:none; }
+.tlc-toolbar.is-collapsed .tlc-chips{ max-height:0; opacity:0; padding-top:0; padding-bottom:0; pointer-events:none; }
 .tlc-chip{ flex-shrink:0; white-space:nowrap; display:inline-flex; align-items:center; gap:7px; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:7px 14px; cursor:pointer; transition:all .14s; }
 .tlc-chip:hover{ border-color:var(--tls-bg-dark); }
 .tlc-chip.active{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
@@ -138,6 +141,9 @@ get_header();
     .tlc-search-wrap{ flex:1 1 100%; max-width:none; order:1; }
     .tlc-count{ order:2; }
     .tlc-sort{ order:3; margin-left:auto; }
+    /* Mobilde chip'ler tek satır, yatay kaydırmalı */
+    .tlc-chips{ flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+    .tlc-toolbar.is-collapsed .tlc-chips{ overflow:hidden; }
 }
 @media (max-width:480px){
     .tlc-grid{ grid-template-columns:1fr 1fr; gap:8px; }
@@ -346,6 +352,22 @@ foreach ( $sections as $ms => $label ) :
         clearTimeout(timer); var v = this.value;
         timer = setTimeout(function () { state.q = v; render(); }, 110);
     });
+
+    // Sayfa aşağı kaydıkça chip satırını daralt; yukarı kaydırınca / tepede aç
+    var toolbar = document.getElementById('tlc-toolbar');
+    if (toolbar) {
+        var lastY = window.scrollY || 0, ticking = false;
+        function onScroll() {
+            var y = window.scrollY || 0;
+            if (y < 130) { toolbar.classList.remove('is-collapsed'); }           // tepede: açık
+            else if (y > lastY + 6) { toolbar.classList.add('is-collapsed'); }    // aşağı: daralt
+            else if (y < lastY - 6) { toolbar.classList.remove('is-collapsed'); } // yukarı: aç
+            lastY = y; ticking = false;
+        }
+        window.addEventListener('scroll', function () {
+            if (!ticking) { window.requestAnimationFrame(onScroll); ticking = true; }
+        }, { passive: true });
+    }
 
     render();
 })();
