@@ -2,7 +2,7 @@
 /**
  * Template Name: Display Categories
  *
- * Üstte ANA KATEGORİ kutucukları (chip) + aşağıda 15 konu AKORDEONU.
+ * Üstte başlık + arama/SORT çubuğu, aşağıda 15 konu AKORDEONU.
  * Kapalı: sol "+" ikonu, serif başlık + "N subcategories · M entries",
  *   açıklama, ilk 4 alt kategori düz amber metin, sağda "Open".
  * Açık: "−" ikonu, sağda "Close"; alt kategoriler İKİ SÜTUNLU liste
@@ -93,16 +93,6 @@ get_header();
 .cat-expand:hover{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
 .cat-state{ font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); white-space:nowrap; }
 
-/* Ana kategori kutucukları (chip) */
-.cat-chips{ max-width:var(--tls-container); margin:0 auto; padding:0 32px 12px; display:flex; flex-wrap:wrap; gap:8px; max-height:400px; opacity:1; overflow:hidden; transition:max-height .28s ease, opacity .18s ease, padding .28s ease; }
-.cat-chips::-webkit-scrollbar{ display:none; }
-.cat-toolbar.is-collapsed .cat-chips{ max-height:0; opacity:0; padding-top:0; padding-bottom:0; pointer-events:none; }
-.cat-chip{ flex-shrink:0; white-space:nowrap; display:inline-flex; align-items:center; gap:7px; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-bg-dark); background:#fff; border:1px solid var(--tls-border); border-radius:999px; padding:7px 14px; cursor:pointer; transition:all .14s; }
-.cat-chip:hover{ border-color:var(--tls-bg-dark); }
-.cat-chip.active{ background:var(--tls-bg-dark); color:#fff; border-color:var(--tls-bg-dark); }
-.cat-chip-n{ font-size:11px; font-weight:700; color:var(--tls-muted); }
-.cat-chip.active .cat-chip-n{ color:rgba(255,255,255,.65); }
-
 /* Akordeon */
 .cat-list{ max-width:var(--tls-container); margin:0 auto; padding:8px 32px 90px; }
 .cat-row{ border-bottom:1px solid var(--tls-border); scroll-margin-top:calc(var(--tls-nav-h) + 150px); }
@@ -157,13 +147,12 @@ get_header();
     .cat-sort{ margin-left:auto; }
     .cat-sort-lbl{ display:none; }
     .cat-count{ order:3; flex:1 1 100%; }
-    .cat-chips{ flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; }
     .cat-title{ font-size:22px; }
     .cat-head{ padding-right:70px; }
     .cat-grid{ grid-template-columns:1fr; gap:0; }
 }
 @media (max-width:480px){
-    .cat-intro,.cat-toolrow,.cat-chips,.cat-list{ padding-left:16px; padding-right:16px; }
+    .cat-intro,.cat-toolrow,.cat-list{ padding-left:16px; padding-right:16px; }
     .cat-intro{ padding-top:26px; }
     .cat-meta{ font-size:11.5px; }
 }
@@ -196,12 +185,6 @@ get_header();
         </div>
         <button class="cat-expand" id="cat-expand" type="button">Expand all</button>
         <span class="cat-state" id="cat-state">All subjects collapsed</span>
-    </div>
-    <div class="cat-chips" id="cat-chips">
-        <button class="cat-chip active" data-main="all" type="button">All subjects <span class="cat-chip-n"><?php echo number_format( $total_count ); ?></span></button>
-        <?php foreach ( $sections as $ms => $label ) : $n = count( $buckets[$ms] ?? [] ); if ( ! $n ) continue; ?>
-            <button class="cat-chip" data-main="<?php echo esc_attr( $ms ); ?>" type="button"><?php echo esc_html( $label ); ?> <span class="cat-chip-n"><?php echo number_format( $n ); ?></span></button>
-        <?php endforeach; ?>
     </div>
 </div>
 
@@ -263,8 +246,6 @@ foreach ( $sections as $ms => $label ) :
     var expandBtn = document.getElementById('cat-expand');
     var stateEl = document.getElementById('cat-state');
     var none = document.getElementById('cat-none');
-    var chipRow = document.getElementById('cat-chips');
-    var toolbar = document.getElementById('cat-toolbar');
     if (!list) return;
 
     var rows = Array.prototype.slice.call(list.querySelectorAll('.cat-row'));
@@ -318,21 +299,6 @@ foreach ( $sections as $ms => $label ) :
         applySort(btn.dataset.sort);
     });
 
-    // Chip → o konuyu aç + üstüne kaydır (all → hepsini kapat)
-    if (chipRow) chipRow.addEventListener('click', function (e) {
-        var chip = e.target.closest('.cat-chip'); if (!chip) return;
-        chipRow.querySelectorAll('.cat-chip').forEach(function(c){ c.classList.remove('active'); });
-        chip.classList.add('active');
-        var m = chip.dataset.main;
-        if (m === 'all') { rows.forEach(function(r){ open(r,false); }); window.scrollTo({top:0,behavior:'smooth'}); }
-        else {
-            rows.forEach(function(r){ open(r, r.dataset.main === m); });
-            var sec = document.getElementById('sec-'+m);
-            if (sec){ var off=(toolbar?toolbar.offsetHeight:0)+16; window.scrollTo({top:sec.getBoundingClientRect().top+window.scrollY-off, behavior:'smooth'}); }
-        }
-        syncState();
-    });
-
     var timer = null;
     function search(q) {
         q = q.trim().toLowerCase(); var on = q.length>0;
@@ -349,15 +315,6 @@ foreach ( $sections as $ms => $label ) :
         else syncState();
     }
     if (input) input.addEventListener('input', function(){ clearTimeout(timer); var v=this.value; timer=setTimeout(function(){ search(v); },110); });
-    // aramada iki sütun yerine tek akış görünür kalsın diye grid zaten .open ile açılıyor
-
-    // Chip satırı: aşağı kaydırınca daralt (sabit eşik → titremez)
-    if (toolbar) {
-        var ticking=false;
-        function onScroll(){ var y=window.scrollY||0; if(y>200) toolbar.classList.add('is-collapsed'); else if(y<120) toolbar.classList.remove('is-collapsed'); ticking=false; }
-        window.addEventListener('scroll', function(){ if(!ticking){ requestAnimationFrame(onScroll); ticking=true; } }, {passive:true});
-        onScroll();
-    }
 
     syncState();
 })();
