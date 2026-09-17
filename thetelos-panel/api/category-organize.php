@@ -174,7 +174,10 @@ if ($action === 'list') {
     foreach ($all as $c) {
         if (in_array(co_norm($c->slug), $sys, true)) continue;
         $cur = isset($saved[$c->term_id]) ? (string)$saved[$c->term_id] : '';
-        $sug = co_guess_main($c->name, $c->slug);
+        // Öneri: ÖNCE temanın motoru (functions.php — wp-load ile yüklü, tek
+        // kaynak, drift yok). Yoksa panelin kendi tahmini yedek.
+        $sug = function_exists('tls_cat_guess_main') ? tls_cat_guess_main($c->name, $c->slug) : '';
+        if ($sug === '' || !isset($mains[$sug])) $sug = co_guess_main($c->name, $c->slug);
         $rows[] = [
             'id'         => (int)$c->term_id,
             'name'       => $c->name,
