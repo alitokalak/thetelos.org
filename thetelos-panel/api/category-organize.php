@@ -246,10 +246,24 @@ if ($action === 'apply') {
 /* ── AI ile boşları öner: motorun tahmin edemediği kategorileri DeepSeek 14
       ana başlıktan birine maplar. Girdi: [{id,name,slug}] → çıktı: [{id,main}] ── */
 if ($action === 'ai_suggest') {
-    $items = json_decode((string)($_POST['items'] ?? '[]'), true);
-    if (!is_array($items) || !$items) { echo json_encode(['ok'=>true,'map'=>[]]); exit; }
-    $items = array_slice(array_values($items), 0, 120);   // tek çağrıda en çok 120
-    $mains = co_mains();
+    // ÖNEMLİ: istemciden 'items' ALMIYORUZ (o JSON yükü bir güvenlik filtresince
+    // yolda düşüyor → sunucu boş liste alıp 0 öneri döndürüyordu). Bunun yerine
+    // sunucu, ATANMAMIŞ ve MOTORUN da tahmin EDEMEDİĞİ kategorileri kendi bulur;
+    // sadece o gerçekten zor olanları DeepSeek'e sorar.
+    $mains  = co_mains();
+    $saved  = get_option('tls_cat_group_of', []);
+    if (!is_array($saved)) $saved = [];
+    $items  = [];
+    foreach (get_categories(['hide_empty'=>false]) as $c) {
+        if (in_array(co_norm($c->slug), ['general','uncategorized'], true)) continue;
+        $cur = isset($saved[$c->term_id]) ? (string)$saved[$c->term_id] : '';
+        if ($cur !== '' && isset($mains[$cur])) continue;                       // zaten kayıtlı
+        $eng = function_exists('tls_cat_guess_main') ? tls_cat_guess_main($c->name, $c->slug) : '';
+        if ($eng !== '' && isset($mains[$eng])) continue;                       // motor zaten tahmin ediyor
+        $items[] = ['id'=>(int)$c->term_id, 'name'=>$c->name, 'slug'=>$c->slug];
+    }
+    if (!$items) { echo json_encode(['ok'=>true,'map'=>[],'asked'=>0]); exit; }
+    $items = array_slice($items, 0, 120);   // tek çağrıda en çok 120
     $mainlist = '';
     foreach ($mains as $slug => $label) $mainlist .= "$slug = $label\n";
 

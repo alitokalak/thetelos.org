@@ -212,36 +212,23 @@ $('btn-autofill').addEventListener('click', ()=>{
 
 // AI ile boşları öner (motorun tahmin edemedikleri → DeepSeek 14'ten seçer)
 $('btn-ai').addEventListener('click', ()=>{
-  const byId = {}; rows.forEach(r=>byId[r.id]=r);
-  const empties = [];
-  document.querySelectorAll('.co-sel').forEach(sel=>{
-    if(sel.value) return;
-    const tr = sel.closest('tr'); const id = parseInt(tr.dataset.id,10); const r = byId[id];
-    if(r) empties.push({id:id, name:r.name, slug:r.slug});
-  });
-  if(!empties.length){ $('co-status').textContent='Boş kategori yok — hepsi atanmış.'; return; }
+  // Sunucu, atanmamış + motorun tahmin edemediği kategorileri kendi bulur;
+  // biz sadece tetikleriz ve dönen [{id,main}] önerilerini boş satırlara koyarız.
   $('btn-ai').disabled = true;
-  let i = 0, filled = 0;
-  const step = ()=>{
-    if(i >= empties.length){
-      $('btn-ai').disabled = false;
-      recount(); applyFilter();
-      $('co-status').textContent = '🤖 AI '+filled+' boşa öneri koydu. Gözden geçir ve Kaydet. (Kalan boşları elle seçebilirsin.)';
-      return;
-    }
-    const slice = empties.slice(i, i+80); i += 80;
-    $('co-status').textContent = 'AI öneriyor… ('+Math.min(i,empties.length)+'/'+empties.length+')';
-    post('action=ai_suggest&items='+encodeURIComponent(JSON.stringify(slice))).then(d=>{
-      if(d && d.ok===false){ $('btn-ai').disabled=false; $('co-status').textContent='AI hata: '+(d.error||'bilinmiyor'); return; }
-      if(d&&d.map){ d.map.forEach(m=>{
-        const sel = document.querySelector('tr[data-id="'+m.id+'"] .co-sel');
-        if(sel && !sel.value){ sel.value = m.main; sel.classList.remove('co-empty'); filled++; }
-      }); }
-      if(d && d.map && !d.map.length && d.debug){ console.log('AI debug:', d.debug); }
-      step();
-    }).catch(()=>{ $('btn-ai').disabled=false; $('co-status').textContent='AI bağlantı hatası.'; });
-  };
-  step();
+  $('co-status').textContent = 'AI öneriyor…';
+  post('action=ai_suggest').then(d=>{
+    $('btn-ai').disabled = false;
+    if(d && d.ok===false){ $('co-status').textContent='AI hata: '+(d.error||'bilinmiyor'); return; }
+    let filled = 0;
+    if(d && d.map){ d.map.forEach(m=>{
+      const sel = document.querySelector('tr[data-id="'+m.id+'"] .co-sel');
+      if(sel && !sel.value){ sel.value = m.main; sel.classList.remove('co-empty'); filled++; }
+    }); }
+    recount(); applyFilter();
+    if(filled>0){ $('co-status').textContent = '🤖 AI '+filled+' boşa öneri koydu. Gözden geçir ve Kaydet.'; }
+    else if(d && d.asked===0){ $('co-status').textContent = '✓ AI\'ya sorulacak boş kalmadı — motor hepsini tahmin etti. Kaydet yeter.'; }
+    else { $('co-status').textContent = '🤖 AI öneri döndürmedi'+(d&&d.debug?(' — '+d.debug):'')+'. Kalan boşları elle seçebilirsin.'; }
+  }).catch(()=>{ $('btn-ai').disabled=false; $('co-status').textContent='AI bağlantı hatası.'; });
 });
 
 $('btn-save').addEventListener('click', ()=>{
