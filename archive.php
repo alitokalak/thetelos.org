@@ -345,7 +345,14 @@ $is_filterable = ( is_category() || is_tag() );
     function setCount(found) {
         if (!countEl) return;
         if (found === null) { countEl.textContent = ''; return; }
-        countEl.innerHTML = '<strong>' + Number(found).toLocaleString() + '</strong> result' + (found === 1 ? '' : 's');
+        // Filtre açıkken "X / toplam" göster: küçük sonuç, kategorinin küçük
+        // olduğu değil, sadece filtrelendiği anlaşılsın (ör. tek harf seçilince).
+        var html = '<strong>' + Number(found).toLocaleString() + '</strong>';
+        if (active() && total && found < total) {
+            html += ' / ' + Number(total).toLocaleString();
+        }
+        html += ' result' + (found === 1 ? '' : 's');
+        countEl.innerHTML = html;
     }
     function setStatusVisible(v) { if (statusEl) statusEl.style.display = v ? '' : 'none'; }
 
