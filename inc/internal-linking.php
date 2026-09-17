@@ -308,6 +308,27 @@ function tls_internal_links( $content ) {
 add_filter( 'the_content', 'tls_internal_links', 12 );
 
 // -----------------------------------------------------
+// Görünüm: iç linkleri gövde metninden ayırt edilebilir kıl.
+// Zarif ama belirgin — tema link rengini korur, noktalı alt çizgi ekler;
+// üstüne gelince düz çizgiye döner. Yalnız tekil yazı/analizde basılır.
+// -----------------------------------------------------
+add_action( 'wp_head', function () {
+	if ( ! is_singular( array( 'post', 'analysis' ) ) ) {
+		return;
+	}
+	if ( ! apply_filters( 'tls_internal_links_enabled', true ) ) {
+		return;
+	}
+	echo '<style id="tls-ilink-style">'
+	   . '.article-post a.tls-ilink{'
+	   . 'text-decoration:underline;text-decoration-style:dotted;'
+	   . 'text-decoration-thickness:1px;text-underline-offset:3px;'
+	   . 'text-decoration-color:var(--tls-gold,#c9a24b);}'
+	   . '.article-post a.tls-ilink:hover{text-decoration-style:solid;}'
+	   . '</style>';
+}, 20 );
+
+// -----------------------------------------------------
 // Cache temizleme: içerik/terim değişince haritayı yenile
 // -----------------------------------------------------
 function tls_il_flush_map() {
