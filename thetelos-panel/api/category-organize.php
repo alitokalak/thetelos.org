@@ -298,8 +298,19 @@ if ($action === 'ai_suggest') {
             $out[] = ['id' => (int)$items[$idx]['id'], 'main' => $slug];
         }
     }
+    // ANINDA KAYDET: önerileri mevcut eşlemeye ekleyip DB'ye yaz. Böylece tekrar
+    // tarasan da kaybolmaz ve sitenin kategori sayfası da hemen doğru gruplar.
+    $saved_now = get_option('tls_cat_group_of', []); if (!is_array($saved_now)) $saved_now = [];
+    foreach ($out as $m) $saved_now[(int)$m['id']] = (string)$m['main'];
+    update_option('tls_cat_group_of', $saved_now, false);
+    // tema kolaylığı için ters eşlemeyi de tazele
+    $groups = []; foreach (array_keys($mains) as $ms) $groups[$ms] = [];
+    foreach ($saved_now as $tid => $ms) if (isset($groups[$ms])) $groups[$ms][] = (int)$tid;
+    update_option('tls_cat_groups', $groups, false);
+    update_option('tls_cat_main_labels', $mains, false);
+
     echo json_encode([
-        'ok'=>true, 'map'=>$out, 'asked'=>count($items),
+        'ok'=>true, 'map'=>$out, 'asked'=>count($items), 'saved'=>count($out),
         'debug'=> $out ? '' : ('AI yanıtı ayrıştırılamadı: ' . mb_substr($txt, 0, 200)),
     ], JSON_UNESCAPED_UNICODE);
     exit;

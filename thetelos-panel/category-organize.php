@@ -225,8 +225,8 @@ $('btn-ai').addEventListener('click', ()=>{
       if(sel && !sel.value){ sel.value = m.main; sel.classList.remove('co-empty'); filled++; }
     }); }
     recount(); applyFilter();
-    if(filled>0){ $('co-status').textContent = '🤖 AI '+filled+' boşa öneri koydu. Gözden geçir ve Kaydet.'; }
-    else if(d && d.asked===0){ $('co-status').textContent = '✓ AI\'ya sorulacak boş kalmadı — motor hepsini tahmin etti. Kaydet yeter.'; }
+    if(filled>0){ $('co-status').textContent = '🤖 AI '+filled+' kategoriyi eşleyip KAYDETTİ (sitede de güncel). Kalan boşları elle seçip Kaydet\'e basabilirsin.'; }
+    else if(d && d.asked===0){ $('co-status').textContent = '✓ AI\'ya sorulacak boş kalmadı — motor hepsini tahmin ediyor (sitede zaten gruplu).'; }
     else { $('co-status').textContent = '🤖 AI öneri döndürmedi'+(d&&d.debug?(' — '+d.debug):'')+'. Kalan boşları elle seçebilirsin.'; }
   }).catch(()=>{ $('btn-ai').disabled=false; $('co-status').textContent='AI bağlantı hatası.'; });
 });
