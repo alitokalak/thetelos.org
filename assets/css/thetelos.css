@@ -1426,11 +1426,25 @@
 }
 .tls-shelf-viewport::before {
   left: 0;
-  background: linear-gradient(to right, rgba(var(--shelf-fade-rgb),1) 0%, rgba(var(--shelf-fade-rgb),1) 48%, rgba(var(--shelf-fade-rgb),0) 100%);
+  background: linear-gradient(to right,
+    rgba(var(--shelf-fade-rgb),1) 0%,
+    rgba(var(--shelf-fade-rgb),.92) 12%,
+    rgba(var(--shelf-fade-rgb),.78) 26%,
+    rgba(var(--shelf-fade-rgb),.55) 45%,
+    rgba(var(--shelf-fade-rgb),.30) 66%,
+    rgba(var(--shelf-fade-rgb),.12) 84%,
+    rgba(var(--shelf-fade-rgb),0) 100%);
 }
 .tls-shelf-viewport::after {
   right: 0;
-  background: linear-gradient(to left, rgba(var(--shelf-fade-rgb),1) 0%, rgba(var(--shelf-fade-rgb),1) 48%, rgba(var(--shelf-fade-rgb),0) 100%);
+  background: linear-gradient(to left,
+    rgba(var(--shelf-fade-rgb),1) 0%,
+    rgba(var(--shelf-fade-rgb),.92) 12%,
+    rgba(var(--shelf-fade-rgb),.78) 26%,
+    rgba(var(--shelf-fade-rgb),.55) 45%,
+    rgba(var(--shelf-fade-rgb),.30) 66%,
+    rgba(var(--shelf-fade-rgb),.12) 84%,
+    rgba(var(--shelf-fade-rgb),0) 100%);
 }
 .tls-shelf-viewport.can-prev::before { opacity: 1; }
 .tls-shelf-viewport.can-next::after  { opacity: 1; }
@@ -1467,7 +1481,7 @@
 .tls-shelf-all:hover { text-decoration: underline; }
 
 /* ── Related rafı: normal kartlar, tek satır, SABİT kapak boyutu (simetri) ── */
-.tls-shelf--related { --shelf-fade-rgb: 245,243,238; --shelf-fade-w: 200px; }   /* var(--tls-bg) #F5F3EE */
+.tls-shelf--related { --shelf-fade-rgb: 245,243,238; --shelf-fade-w: 240px; }   /* var(--tls-bg) #F5F3EE */
 .tls-shelf--related .tls-book-card { width: 220px; }
 .tls-shelf--related .tls-book-card-excerpt { display: none; }   /* alt rafta açıklama metni gerekmez */
 .tls-shelf--related .tls-book-card-cover {
@@ -1486,7 +1500,7 @@
 .tls-shelf--related .tls-shelf-arrow { top: 113px; }   /* kapak ortası hizası */
 
 /* ── Yazar rafı: kompakt mini kartlar (içerik sütununda, yazının altında) ── */
-.tls-shelf--mini { --shelf-fade-rgb: 255,255,255; --shelf-fade-w: 120px; }   /* içerik sütunu #fff */
+.tls-shelf--mini { --shelf-fade-rgb: 255,255,255; --shelf-fade-w: 150px; }   /* içerik sütunu #fff */
 .tls-single-content .tls-shelf--mini {
   margin: 40px 0 8px; padding-top: 30px; border-top: 1px solid var(--tls-border);
 }
