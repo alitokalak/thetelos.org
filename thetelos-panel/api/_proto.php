@@ -708,24 +708,30 @@ function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summa
         $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text) ===\n"
             . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\n"
             . "Use these REAL divisions instead of inventing generic 'Part 1 / Part 2' labels. "
-            . "Mention each chapter heading AT MOST ONCE (as a ### subheading inside the 'Inside the Book' section); in 'Structure of the Book' describe the arrangement in prose. NEVER output the same chapter heading twice.\n";
+            . "Mention each chapter heading AT MOST ONCE, as a ### subheading inside the walk-through section. NEVER output the same chapter heading twice.\n";
     }
-    return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH. The source text and notes may be in Spanish, French, Latin, or any other language; TRANSLATE their content into fluent English. Every section heading (## About the Work, etc.) and every sentence MUST be in English. NEVER write any part of the output in the book's original language.\n\n"
-        . "You are writing a faithful, source-based book summary for a books website, in English.\n"
-        . "Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
+    return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH. The source text and notes may be in Spanish, French, Latin, or any other language; TRANSLATE their content into fluent English. Every heading and every sentence MUST be in English. NEVER write any part of the output in the book's original language.\n\n"
+        . "You are writing a faithful, source-based book summary for a books website, in the voice of a thoughtful human essayist. Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
         . $chap_block
-        . "Using ONLY these notes (from the real text), write {$target} with these ## sections, omitting any you lack material for:\n"
-        . "## About the Work\n## Context\n## Structure of the Book\n## Inside the Book\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
+        . "\nSTEP 1 — DECIDE THE FORM from the notes:\n"
+        . "  • NARRATIVE — a novel, story collection, play, epic, memoir, or poetry: it tells a story or unfolds lived experience.\n"
+        . "  • EXPOSITORY — philosophy, history, science, religion, essays, criticism, or how-to: it makes a case or explains a subject.\n"
+        . "Use the MATCHING section set below and IGNORE the other one. NEVER force argument-style headings ('Core Argument', 'Key Ideas') onto a novel, or story-style headings onto a treatise.\n\n"
+        . "OPENING (both forms): begin with a SHORT unlabeled overview — 2–4 sentences, NO heading — on what the book is, its form, and when/where it comes from. Do NOT title it 'About the Work'; do NOT restate the book title as a heading.\n\n"
+        . "IF NARRATIVE — use ONLY these ## sections, in order, omitting any you lack material for:\n"
+        . "## The Story   (the walk-through — cover the book beginning→end as ### subsections)\n## Characters\n## Themes\n## Why It Endures\n\n"
+        . "IF EXPOSITORY — use ONLY these ## sections, in order, omitting any you lack material for:\n"
+        . "## The Core Argument\n## Inside the Book   (the walk-through — chapter by chapter, as ### subsections)\n## Key Ideas\n## Themes\n## Why It Matters\n\n"
         . "RULES:\n"
-        . "0. VOICE — write like a thoughtful human essayist introducing the book to a curious reader: natural, flowing, engaged English. Do NOT read like a machine report. NEVER announce what you are doing or narrate the format (no 'Here is a summary', 'In this section', 'This section covers', 'Below is a detailed section-by-section summary', 'The following is…'). Under each heading just write the substance directly, in real paragraphs. Vary sentence length; let ideas connect naturally instead of as a mechanical checklist.\n"
+        . "0. VOICE — write like a human essayist introducing the book to a curious reader: natural, flowing, engaged English. NEVER read like a machine report and NEVER announce the format (no 'Here is a summary', 'In this section', 'This section covers', 'The following is…'). Write the substance directly, in real paragraphs; vary sentence length; let ideas connect instead of a mechanical checklist. Keep the number of headings SMALL — OMIT any section you cannot fill well rather than padding it.\n"
         . "1. Base EVERY statement only on the notes (the real text). Do NOT invent or infer chapter titles, quotations, examples, dates, or names not in the notes.\n"
-        . "1b. DATES — be very careful with publication dates. The source text may be a LATER edition or a TRANSLATION; a date on its title/imprint page (e.g. a translator's date, 'fifty-eighth edition, 1911') is NOT when the work was originally written. NEVER present an edition or translation date as the work's original date. If you are not certain of the true original date, describe the period generally (e.g. 'a nineteenth-century work') or omit the date entirely — do not guess.\n"
-        . "2. COVER THE WHOLE BOOK. The 'Inside the Book' section MUST run from the FIRST part through the LAST part in the notes — beginning to end. Budget your length so EVERY part is represented; do NOT lavish detail on the early parts and then run out of room, leaving the later parts thin or missing. Reaching the book's actual ending is more important than fully detailing the opening. If space is tight, shorten every part evenly rather than dropping the final parts.\n"
-        . "3. SYNTHESIZE — do NOT retell. Compress events and descriptions to their essence; give the substance of each part in a few sentences. Do NOT quote long passages or reproduce the text's descriptive catalogues (e.g. long lists of cloud shapes or scenery). Convey what happens and why it matters, not a paragraph-by-paragraph re-narration.\n"
-        . "4. CHRONOLOGY: follow the ACTUAL order of the book as reflected in the ordered notes (Part 1 → last part). Do not reorder or jump around.\n"
-        . "5. NO CONFLATION: keep characters and events distinct — attribute each action to the correct person; never merge two characters or two events into one. If the notes are unclear about who did what, stay general rather than guessing.\n"
-        . "6. INTERPRETATION PLACEMENT: keep 'About the Work' neutral and descriptive (what the book is, its form, when/where). Put literary-critical labels and readings (e.g. 'spiritual autobiography', 'crisis of modernity', 'Romantic nature mysticism') in 'Themes', framed as interpretation grounded in specific text — not as fact, and not in the opening.\n"
-        . "7. Separate the book's content from outside/biographical context. Clear, engaged prose, third person, in English. Do NOT pad or repeat. Do NOT restate the title as an H1; start with the ## sections. END on a complete sentence.\n\n"
+        . "1b. DATES — the source may be a LATER edition or a TRANSLATION; a date on its title/imprint page (e.g. a translator's date, 'fifty-eighth edition, 1911') is NOT when the work was originally written. NEVER present an edition/translation date as the work's original date. If unsure, describe the period generally (e.g. 'a nineteenth-century work') or omit it — do not guess.\n"
+        . "2. COVER THE WHOLE BOOK. The walk-through section (## The Story / ## Inside the Book) MUST run from the FIRST part through the LAST part in the notes — beginning to end. Budget length so EVERY part is represented; reaching the book's actual ending matters more than fully detailing the opening. If space is tight, shorten every part evenly rather than dropping the final parts.\n"
+        . "3. SYNTHESIZE — do NOT retell or quote at length; compress events/ideas to their essence, conveying what happens or is argued and why it matters, not a paragraph-by-paragraph re-narration.\n"
+        . "4. CHRONOLOGY: follow the ACTUAL order of the book (Part 1 → last part). Do not reorder.\n"
+        . "5. NO CONFLATION: keep characters and events distinct; attribute each action to the correct person; never merge two into one. If unclear, stay general.\n"
+        . "6. INTERPRETATION: keep the opening neutral and descriptive. Put critical labels/readings (e.g. 'spiritual autobiography', 'crisis of modernity', 'Romantic nature mysticism') in 'Themes', framed as interpretation grounded in specific text — not as fact, and not in the opening.\n"
+        . "7. Third person, clear engaged prose, in English. Do NOT pad or repeat. Do NOT restate the title as an H1; start with the opening paragraph. END on a complete sentence.\n\n"
         . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
 function proto_systemA_prompt($book, $author) {
@@ -759,23 +765,27 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
     $chap_block = '';
     if (!empty($chapters)) {
         $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text) ===\n"
-            . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\nUse these REAL divisions when describing structure; do NOT invent generic 'Part 1/2' labels.\n";
+            . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\nUse these REAL divisions when describing the book; do NOT invent generic 'Part 1/2' labels.\n";
     }
     return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH, even if the notes are in another language; translate their content. Never write headings or prose in the book's original language.\n\n"
-        . "You are writing the FRAMING sections of a faithful, source-based book summary for a books website, in English.\n"
-        . "Below are ORDERED notes from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ".\n"
+        . "You are writing the FRAMING sections of a faithful, source-based book summary for a books website, in the voice of a thoughtful human essayist. Below are ORDERED notes from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ".\n"
         . $chap_block
-        . "Using ONLY these notes, write {$target}, but ONLY these ## sections (the blow-by-blow narrative is produced separately — do NOT write a section-by-section retelling here), omitting any you lack material for:\n"
-        . "## About the Work\n## Context\n## Structure of the Book\n## Main Arguments\n## Key Concepts\n## Themes\n## The Author's Conclusions\n## Significance\n\n"
+        . "\nSTEP 1 — DECIDE THE FORM from the notes: NARRATIVE (novel, story collection, play, epic, memoir, poetry) or EXPOSITORY (philosophy, history, science, religion, essays, criticism, how-to). Use the MATCHING section set below and IGNORE the other. NEVER force argument-style headings onto a novel, or story-style headings onto a treatise.\n\n"
+        . "OPENING (both forms): begin with a SHORT unlabeled overview — 2–4 sentences, NO heading — on what the book is, its form, and when/where. Do NOT title it 'About the Work'; do NOT restate the book title as a heading.\n\n"
+        . "The detailed walk-through is produced SEPARATELY — do NOT write it here. Where it belongs, output its heading and then a line containing EXACTLY the token {{INSIDE}} and nothing else (no prose under it).\n\n"
+        . "IF NARRATIVE — use ONLY these ## sections, in this order, omitting any you lack material for:\n"
+        . "## The Story\n{{INSIDE}}\n## Characters\n## Themes\n## Why It Endures\n\n"
+        . "IF EXPOSITORY — use ONLY these ## sections, in this order, omitting any you lack material for:\n"
+        . "## The Core Argument\n## Inside the Book\n{{INSIDE}}\n## Key Ideas\n## Themes\n## Why It Matters\n\n"
         . "RULES:\n"
-        . "0. VOICE — write like a thoughtful human essayist introducing the book to a curious reader: natural, flowing, engaged English. Do NOT read like a machine report. NEVER announce what you are doing or narrate the format (no 'Here is…', 'In this section', 'This section covers…', 'The following is…'). Under each heading write the substance directly, in real paragraphs; vary sentence length; let ideas connect naturally rather than as a mechanical checklist.\n"
+        . "0. VOICE — write like a human essayist introducing the book to a curious reader: natural, flowing, engaged English. NEVER read like a machine report and NEVER announce the format (no 'Here is…', 'In this section', 'This section covers…', 'The following is…'). Write the substance directly, in real paragraphs; vary sentence length. Keep headings SMALL — OMIT any section you cannot fill well rather than padding it.\n"
         . "1. Base every statement only on the notes. Invent nothing (no quotes, dates, names, chapter titles not in the notes).\n"
-        . "2. Keep 'About the Work' NEUTRAL and descriptive (what the book is, its form, when/where). Put literary-critical labels/readings (e.g. 'spiritual autobiography', 'crisis of modernity') in 'Themes', framed as interpretation grounded in the text — not as fact.\n"
-        . "2b. DATES / BIBLIOGRAPHY: do NOT state a precise first-publication year, edition number, or publisher taken from the source's own title/imprint page. The source is very often a LATER edition or a TRANSLATION — a translator's date or an imprint like 'fifty-eighth edition ... 1911' is NOT when the work was originally written, and presenting it as the original date is an error. NEVER give a translation's or edition's date as the work's date. If you are not certain of the true original-publication facts, describe the period generally (e.g. 'an early-twentieth-century novel') or omit the date — do not guess.\n"
-        . "3. In 'Structure of the Book', describe the book's REAL structure (its chapters/narrative arc). The notes are labelled [Part N] — those are OUR internal processing segments, NOT the book's divisions; NEVER say the book 'is divided into N parts' based on them.\n"
-        . "4. ENDING: read the LAST notes carefully and state the book's TRUE ending (its final events and how/where it actually concludes). Do NOT mistake a mid-book episode or location for the ending. If 'Structure' or 'The Author's Conclusions' describe how the book closes, they MUST match the real final scene in the last notes.\n"
-        . "5. DISTINCT SECTIONS: keep 'Main Arguments', 'Key Concepts', and 'Themes' genuinely different — do NOT repeat the same points (e.g. nature, homesickness, love) across all three. Arguments = what the work claims/shows; Key Concepts = specific named ideas/motifs; Themes = the deeper recurring meanings. If a section would just repeat another, omit it.\n"
-        . "6. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Clear prose, third person, in English. Start with the ## sections. END on a complete sentence.\n\n"
+        . "2. Keep the OPENING neutral and descriptive (what the book is, its form, when/where). Put literary-critical labels/readings (e.g. 'spiritual autobiography', 'crisis of modernity') in 'Themes', framed as interpretation grounded in the text — not as fact.\n"
+        . "2b. DATES / BIBLIOGRAPHY: do NOT state a precise first-publication year, edition number, or publisher taken from the source's own title/imprint page. The source is very often a LATER edition or a TRANSLATION — a translator's date or an imprint like 'fifty-eighth edition ... 1911' is NOT when the work was originally written. NEVER give a translation's or edition's date as the work's date. If unsure, describe the period generally (e.g. 'an early-twentieth-century novel') or omit the date — do not guess.\n"
+        . "3. The notes are labelled [Part N] — those are OUR internal processing segments, NOT the book's divisions; NEVER say the book 'is divided into N parts' based on them. Describe the book's REAL arrangement in the opening or the relevant section, in prose.\n"
+        . "4. ENDING: read the LAST notes carefully; any section that describes how the book closes MUST match the book's TRUE final events in the last notes. Do NOT mistake a mid-book episode for the ending.\n"
+        . "5. DISTINCT SECTIONS: keep sections genuinely different — for EXPOSITORY, 'The Core Argument' = what the work claims/shows, 'Key Ideas' = specific named ideas/concepts, 'Themes' = the deeper recurring meanings; for NARRATIVE, keep 'Characters' and 'Themes' distinct. If a section would just repeat another, OMIT it.\n"
+        . "6. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Third person, English. Start with the opening paragraph. END on a complete sentence.\n\n"
         . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
 
@@ -809,12 +819,27 @@ function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_word
 /* ── Çerçeve + section-by-section'ı doğru yapısal sıraya diz ─────────────────
    Section-by-section, 'Main Arguments'tan ÖNCE (Structure'dan sonra) yerleşir. */
 function proto_assemble($frame, $sbs) {
-    if (trim((string) $sbs) === '') return $frame;
-    $block = "## Inside the Book\n\n" . trim($sbs) . "\n\n";
+    $frame = (string) $frame;
+    $sbs   = trim((string) $sbs);
+    $mark  = strpos($frame, '{{INSIDE}}');
+
+    if ($sbs === '') {
+        // Anlatı üretilemedi → çerçevedeki başlık + işaretçiyi temizle.
+        if ($mark !== false) {
+            $frame = preg_replace('/\n?##[^\n]*\n+\{\{INSIDE\}\}[^\n]*/', '', $frame, 1);
+            $frame = str_replace('{{INSIDE}}', '', $frame);
+        }
+        return trim($frame);
+    }
+    // İşaretçiyi anlatı ile değiştir (yalnız İLK eşleşme; str_replace geri-referans
+    // sorunları yaşamadan bayt-güvenli çalışır).
+    if ($mark !== false) {
+        return substr($frame, 0, $mark) . $sbs . substr($frame, $mark + strlen('{{INSIDE}}'));
+    }
+    // İşaretçi yok (model unuttu) → yeni başlıklardan birinden ÖNCE ekle, yoksa sona.
     // NOT: PREG_OFFSET_CAPTURE ofseti BAYT cinsindendir → substr (bayt) kullan.
-    // mb_substr (karakter) kullanınca em-dash gibi çok-baytlı karakterlerde
-    // ofset kayıp "Main Arguments" başlığını "Ma"+"in Arguments" diye bölüyordu.
-    if (preg_match('/^##[ \t]+Main Arguments/mi', $frame, $m, PREG_OFFSET_CAPTURE)) {
+    $block = "## Inside the Book\n\n" . $sbs . "\n\n";
+    if (preg_match('/^##[ \t]+(Key Ideas|Themes|Characters|Main Arguments)/mi', $frame, $m, PREG_OFFSET_CAPTURE)) {
         $pos = $m[0][1];
         return rtrim(substr($frame, 0, $pos)) . "\n\n" . $block . substr($frame, $pos);
     }
@@ -829,7 +854,7 @@ function proto_continue_prompt($book, $author, $md, $notes) {
         . "Below is the SUMMARY SO FAR, then the ORDERED NOTES taken from the book's ACTUAL TEXT.\n"
         . "Continue the summary with MORE depth and detail DERIVED ONLY FROM THE NOTES — go deeper into the section-by-section coverage, the main arguments, and the key concepts with specifics that are in the text but not yet written.\n"
         . "HARD RULES: Use ONLY the notes (the real text). Do NOT repeat or lightly rephrase anything already written. Do NOT invent quotations, chapter titles, examples, dates, or claims not in the notes. Do NOT write a concluding restatement.\n"
-        . "STRUCTURE: Do NOT reuse any of the ## section headings that already appear in the summary so far (e.g. do NOT write another '## Main Arguments' or '## Key Concepts'). Instead add depth under NEW, SPECIFIC ### subsection titles (e.g. '### Book IV — The Tripartite Soul', '### The Argument from Function') or as developed paragraphs. Output ONLY the NEW continuation.\n"
+        . "STRUCTURE: Do NOT reuse any ## section heading that already appears in the summary so far. Instead add depth under NEW, SPECIFIC ### subsection titles (e.g. '### Book IV — The Tripartite Soul', '### The Argument from Function', '### The Trial Scene') or as developed paragraphs. Output ONLY the NEW continuation.\n"
         . "If the notes contain nothing substantial left to add, output EXACTLY: DONE\n\n"
         . "=== SUMMARY SO FAR ===\n" . mb_substr($md, 0, 30000) . "\n\n=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
