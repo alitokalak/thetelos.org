@@ -1416,6 +1416,24 @@
 
 /* Kaydırma alanı + kenar okları */
 .tls-shelf-viewport { position: relative; }
+
+/* Kenar fade maskeleri — kenardaki kartlar arka plana doğru solar, oklar
+   bu solmuş alanın üstünde durur. Renk raf arka planına göre ayarlanır. */
+.tls-shelf-viewport::before,
+.tls-shelf-viewport::after {
+  content: ""; position: absolute; top: 0; bottom: 10px; width: 72px;
+  z-index: 3; pointer-events: none; opacity: 0; transition: opacity .25s ease;
+}
+.tls-shelf-viewport::before {
+  left: 0;
+  background: linear-gradient(to right, rgba(var(--shelf-fade-rgb),1) 22%, rgba(var(--shelf-fade-rgb),0) 100%);
+}
+.tls-shelf-viewport::after {
+  right: 0;
+  background: linear-gradient(to left, rgba(var(--shelf-fade-rgb),1) 22%, rgba(var(--shelf-fade-rgb),0) 100%);
+}
+.tls-shelf-viewport.can-prev::before { opacity: 1; }
+.tls-shelf-viewport.can-next::after  { opacity: 1; }
 .tls-shelf-track {
   display: flex; gap: 16px; overflow-x: auto; scroll-behavior: smooth;
   scroll-snap-type: x proximity; padding: 4px 2px 10px;
@@ -1449,6 +1467,7 @@
 .tls-shelf-all:hover { text-decoration: underline; }
 
 /* ── Related rafı: normal kartlar, tek satır, SABİT kapak boyutu (simetri) ── */
+.tls-shelf--related { --shelf-fade-rgb: 245,243,238; }   /* var(--tls-bg) #F5F3EE */
 .tls-shelf--related .tls-book-card { width: 220px; }
 .tls-shelf--related .tls-book-card-cover {
   height: 210px !important; min-height: 0 !important; padding: 18px !important;
@@ -1469,6 +1488,7 @@
 .tls-shelf--related .tls-shelf-arrow { top: 113px; }   /* kapak ortası hizası */
 
 /* ── Yazar rafı: kompakt mini kartlar (içerik sütununda, yazının altında) ── */
+.tls-shelf--mini { --shelf-fade-rgb: 255,255,255; }   /* içerik sütunu #fff */
 .tls-single-content .tls-shelf--mini {
   margin: 40px 0 8px; padding-top: 30px; border-top: 1px solid var(--tls-border);
 }

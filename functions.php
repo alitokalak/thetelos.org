@@ -1921,6 +1921,7 @@ add_action( 'wp_footer', function () {
         var prev = shelf.querySelector('.tls-shelf-arrow.prev');
         var next = shelf.querySelector('.tls-shelf-arrow.next');
         function step() { return Math.max(track.clientWidth * 0.85, 220); }
+        var viewport = track.parentElement;
         function update() {
             var overflow = track.scrollWidth > track.clientWidth + 4;
             var atStart  = track.scrollLeft <= 4;
@@ -1928,6 +1929,11 @@ add_action( 'wp_footer', function () {
             [prev, next].forEach(function (b) { if (b) b.style.display = overflow ? '' : 'none'; });
             if (prev) prev.disabled = atStart;
             if (next) next.disabled = atEnd;
+            // Kenar fade maskeleri: yalnız o yönde kaydırılacak içerik varsa.
+            if (viewport) {
+                viewport.classList.toggle('can-prev', overflow && !atStart);
+                viewport.classList.toggle('can-next', overflow && !atEnd);
+            }
         }
         if (prev) prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
         if (next) next.addEventListener('click', function () { track.scrollBy({ left:  step(), behavior: 'smooth' }); });
