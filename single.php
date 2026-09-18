@@ -374,11 +374,12 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
 
 <!-- More by this author (iç linkleme) -->
 <?php
+$tls_shown_ids = array();   // aynı sayfada iki kez çıkmasın diye related'dan hariç tutulur
 if ( $book_author ) :
     $tls_more_by = get_posts( [
         'post_type'      => 'post',
         'post_status'    => 'publish',
-        'posts_per_page' => 4,
+        'posts_per_page' => 6,
         'post__not_in'   => [ get_the_ID() ],
         'no_found_rows'  => true,
         'tax_query'      => [ [
@@ -387,7 +388,8 @@ if ( $book_author ) :
             'terms'    => $book_author->term_id,
         ] ],
     ] );
-    if ( ! empty( $tls_more_by ) ) : ?>
+    if ( ! empty( $tls_more_by ) ) :
+        foreach ( $tls_more_by as $tls_mb ) { $tls_shown_ids[] = $tls_mb->ID; } ?>
 <div class="tls-related tls-more-author">
     <div class="container">
         <h2 class="tls-related-title">More by <?php echo esc_html( $book_author->name ); ?></h2>
@@ -408,7 +410,7 @@ if ( $book_author ) :
 <div class="tls-related">
     <div class="container">
         <h2 class="tls-related-title">You might also enjoy</h2>
-        <?php echo mediumish_related_posts( [ 'limit' => 4 ] ); ?>
+        <?php echo mediumish_related_posts( [ 'limit' => 6, 'exclude' => $tls_shown_ids ] ); ?>
     </div>
 </div>
 <?php endif; ?>

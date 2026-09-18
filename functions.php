@@ -1888,6 +1888,7 @@ function mediumish_related_posts(  $args = array()  ) {
         'post_type' => ( !empty( $post ) ? $post->post_type : 'post' ),
         'orderby'   => 'date',
         'order'     => 'DESC',
+        'exclude'   => array(),   // aynı sayfada zaten gösterilen kitapları ele (dedup)
     ) );
     // check taxonomy
     if ( !taxonomy_exists( $args['taxonomy'] ) ) {
@@ -1902,7 +1903,7 @@ function mediumish_related_posts(  $args = array()  ) {
     }
     // query
     $related_posts = get_posts( array(
-        'post__not_in'   => (array) $args['post_id'],
+        'post__not_in'   => array_merge( (array) $args['post_id'], (array) $args['exclude'] ),
         'post_type'      => $args['post_type'],
         'limit'          => 3,
         'tax_query'      => array(array(
