@@ -1421,16 +1421,16 @@
    bu solmuş alanın üstünde durur. Renk raf arka planına göre ayarlanır. */
 .tls-shelf-viewport::before,
 .tls-shelf-viewport::after {
-  content: ""; position: absolute; top: 0; bottom: 10px; width: 72px;
+  content: ""; position: absolute; top: 0; bottom: 10px; width: var(--shelf-fade-w, 130px);
   z-index: 3; pointer-events: none; opacity: 0; transition: opacity .25s ease;
 }
 .tls-shelf-viewport::before {
   left: 0;
-  background: linear-gradient(to right, rgba(var(--shelf-fade-rgb),1) 22%, rgba(var(--shelf-fade-rgb),0) 100%);
+  background: linear-gradient(to right, rgba(var(--shelf-fade-rgb),1) 0%, rgba(var(--shelf-fade-rgb),1) 48%, rgba(var(--shelf-fade-rgb),0) 100%);
 }
 .tls-shelf-viewport::after {
   right: 0;
-  background: linear-gradient(to left, rgba(var(--shelf-fade-rgb),1) 22%, rgba(var(--shelf-fade-rgb),0) 100%);
+  background: linear-gradient(to left, rgba(var(--shelf-fade-rgb),1) 0%, rgba(var(--shelf-fade-rgb),1) 48%, rgba(var(--shelf-fade-rgb),0) 100%);
 }
 .tls-shelf-viewport.can-prev::before { opacity: 1; }
 .tls-shelf-viewport.can-next::after  { opacity: 1; }
@@ -1467,8 +1467,9 @@
 .tls-shelf-all:hover { text-decoration: underline; }
 
 /* ── Related rafı: normal kartlar, tek satır, SABİT kapak boyutu (simetri) ── */
-.tls-shelf--related { --shelf-fade-rgb: 245,243,238; }   /* var(--tls-bg) #F5F3EE */
+.tls-shelf--related { --shelf-fade-rgb: 245,243,238; --shelf-fade-w: 200px; }   /* var(--tls-bg) #F5F3EE */
 .tls-shelf--related .tls-book-card { width: 220px; }
+.tls-shelf--related .tls-book-card-excerpt { display: none; }   /* alt rafta açıklama metni gerekmez */
 .tls-shelf--related .tls-book-card-cover {
   height: 210px !important; min-height: 0 !important; padding: 18px !important;
 }
@@ -1477,18 +1478,15 @@
   width: 120px !important; height: 174px !important; object-fit: cover !important;
   border-radius: 3px !important;
 }
-/* Kart gövdesini eşitle: başlık 2 satır, açıklama 3 satır sabit */
+/* Kart gövdesini eşitle: başlık 2 satır sabit (açıklama yukarıda gizlendi) */
 .tls-shelf--related .tls-book-card-title {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
   overflow: hidden; min-height: 2.6em;
 }
-.tls-shelf--related .tls-book-card-excerpt {
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
-}
 .tls-shelf--related .tls-shelf-arrow { top: 113px; }   /* kapak ortası hizası */
 
 /* ── Yazar rafı: kompakt mini kartlar (içerik sütununda, yazının altında) ── */
-.tls-shelf--mini { --shelf-fade-rgb: 255,255,255; }   /* içerik sütunu #fff */
+.tls-shelf--mini { --shelf-fade-rgb: 255,255,255; --shelf-fade-w: 120px; }   /* içerik sütunu #fff */
 .tls-single-content .tls-shelf--mini {
   margin: 40px 0 8px; padding-top: 30px; border-top: 1px solid var(--tls-border);
 }
