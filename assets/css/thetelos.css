@@ -1406,6 +1406,85 @@
   margin-bottom: 28px;
 }
 
+/* ── Yatay kitap rafları (slider): "More by author" + "You might also enjoy" ── */
+.tls-shelf { position: relative; margin: 0; }
+.tls-shelf-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; margin-bottom: 18px;
+}
+.tls-shelf-title {
+  font-family: var(--tls-serif); font-size: 22px; font-weight: 400;
+  color: var(--tls-bg-dark); margin: 0;
+}
+.tls-shelf-nav { display: flex; gap: 8px; flex: 0 0 auto; }
+.tls-shelf-arrow {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 1px solid var(--tls-border); background: var(--tls-bg-card);
+  color: var(--tls-bg-dark); cursor: pointer; padding: 0;
+  font-size: 22px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  transition: border-color .15s ease, color .15s ease, opacity .15s ease;
+}
+.tls-shelf-arrow:hover { border-color: var(--tls-gold); color: var(--tls-gold); }
+.tls-shelf-arrow[disabled] { opacity: .3; cursor: default; border-color: var(--tls-border); color: var(--tls-bg-dark); }
+.tls-shelf-track {
+  display: flex; gap: 16px; overflow-x: auto; scroll-behavior: smooth;
+  scroll-snap-type: x proximity; padding: 4px 2px 10px;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+}
+.tls-shelf-track::-webkit-scrollbar { display: none; }
+.tls-shelf-track > * { scroll-snap-align: start; flex: 0 0 auto; }
+.tls-shelf-all {
+  display: inline-block; margin-top: 14px; font-family: var(--tls-sans);
+  font-size: 13px; color: var(--tls-gold); text-decoration: none; font-weight: 600;
+}
+.tls-shelf-all:hover { text-decoration: underline; }
+
+/* Related rafı: normal kartlar, tek satır */
+.tls-shelf--related .tls-book-card { width: 260px; }
+
+/* Yazar rafı: kompakt mini kartlar (içerik sütununda, yazının hemen altında) */
+.tls-single-content .tls-shelf--mini {
+  margin: 40px 0 8px; padding-top: 30px; border-top: 1px solid var(--tls-border);
+}
+.tls-mini-card { width: 150px; display: flex; flex-direction: column; }
+.tls-mini-cover {
+  display: block; border-radius: 4px; overflow: hidden; background: #EDEAE2;
+  box-shadow: 0 4px 14px rgba(0,0,0,.18); transition: box-shadow .2s ease, transform .2s ease;
+  line-height: 0;
+}
+.tls-mini-card:hover .tls-mini-cover { box-shadow: 0 10px 24px rgba(0,0,0,.28); transform: translateY(-3px); }
+.tls-mini-cover img {
+  width: 150px; height: 210px; object-fit: cover; display: block; border-radius: 4px;
+}
+.tls-mini-cover .thetelos-book-cover {
+  width: 150px !important; height: 210px !important; padding: 16px 12px !important;
+  box-shadow: none !important; border-radius: 4px !important;
+}
+.tls-mini-cover .thetelos-book-cover .cover-title  { font-size: 13px !important; line-height: 1.3 !important; }
+.tls-mini-cover .thetelos-book-cover .cover-author { font-size: 8px !important; }
+.tls-mini-cover .cover-frame-outer { display: none !important; }
+.tls-mini-title {
+  font-family: var(--tls-serif); font-size: 13px; line-height: 1.3;
+  color: var(--tls-bg-dark) !important; text-decoration: none !important; margin: 10px 0 2px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tls-mini-card:hover .tls-mini-title { color: var(--tls-gold) !important; }
+.tls-mini-author {
+  font-family: var(--tls-serif); font-style: italic; font-size: 11px; color: var(--tls-muted);
+}
+.tls-mini-excerpt {
+  font-family: var(--tls-sans); font-size: 11px; line-height: 1.45; color: var(--tls-muted);
+  margin: 4px 0 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+@media (max-width: 600px) {
+  .tls-shelf-title { font-size: 18px; }
+  .tls-shelf--related .tls-book-card { width: 200px; }
+  .tls-mini-card { width: 124px; }
+  .tls-mini-cover img,
+  .tls-mini-cover .thetelos-book-cover { width: 124px !important; height: 174px !important; }
+}
+
 /* Prev/next navigation */
 .tls-prevnext {
   display: grid;

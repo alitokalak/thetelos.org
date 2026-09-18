@@ -341,6 +341,41 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 </div>
                 <?php endif; ?>
 
+                <!-- More by this author (kompakt yatay slider — iç linkleme) -->
+                <?php
+                $tls_shown_ids = array();   // aynı sayfada iki kez çıkmasın diye related'dan hariç tutulur
+                if ( $book_author ) :
+                    $tls_more_by = get_posts( [
+                        'post_type'      => 'post',
+                        'post_status'    => 'publish',
+                        'posts_per_page' => 12,
+                        'post__not_in'   => [ $post_id ],
+                        'no_found_rows'  => true,
+                        'orderby'        => 'date',
+                        'order'          => 'DESC',
+                        'tax_query'      => [ [
+                            'taxonomy' => 'authors',
+                            'field'    => 'term_id',
+                            'terms'    => $book_author->term_id,
+                        ] ],
+                    ] );
+                    if ( ! empty( $tls_more_by ) ) :
+                        foreach ( $tls_more_by as $tls_mb ) { $tls_shown_ids[] = $tls_mb->ID; } ?>
+                <section class="tls-shelf tls-shelf--mini" aria-label="More by <?php echo esc_attr( $book_author->name ); ?>">
+                    <div class="tls-shelf-head">
+                        <h2 class="tls-shelf-title">More by <?php echo esc_html( $book_author->name ); ?></h2>
+                        <div class="tls-shelf-nav">
+                            <button type="button" class="tls-shelf-arrow" data-dir="-1" aria-label="Scroll left">&lsaquo;</button>
+                            <button type="button" class="tls-shelf-arrow" data-dir="1" aria-label="Scroll right">&rsaquo;</button>
+                        </div>
+                    </div>
+                    <div class="tls-shelf-track">
+                        <?php foreach ( $tls_more_by as $tls_mb ) { echo thetelos_book_card_mini( $tls_mb->ID ); } ?>
+                    </div>
+                    <a class="tls-shelf-all" href="<?php echo esc_url( get_term_link( $book_author ) ); ?>">All <?php echo (int) $book_author->count; ?> summaries by <?php echo esc_html( $book_author->name ); ?> &rarr;</a>
+                </section>
+                <?php endif; endif; ?>
+
                 <!-- Prev / Next -->
                 <nav class="tls-prevnext" aria-label="Post navigation">
                     <div>
@@ -372,48 +407,43 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
 
 <?php endwhile; endif; ?>
 
-<!-- More by this author (iç linkleme) -->
+<!-- Related books (tek satır yatay slider) -->
 <?php
-$tls_shown_ids = array();   // aynı sayfada iki kez çıkmasın diye related'dan hariç tutulur
-if ( $book_author ) :
-    $tls_more_by = get_posts( [
+if ( $disable_rp == 0 ) :
+    if ( ! isset( $tls_shown_ids ) ) $tls_shown_ids = array();
+    $tls_cats = wp_get_post_categories( $post_id );
+    $tls_related = ! empty( $tls_cats ) ? get_posts( [
         'post_type'      => 'post',
         'post_status'    => 'publish',
-        'posts_per_page' => 6,
-        'post__not_in'   => [ get_the_ID() ],
+        'posts_per_page' => 12,
+        'post__not_in'   => array_merge( [ $post_id ], $tls_shown_ids ),
         'no_found_rows'  => true,
+        'orderby'        => 'date',
+        'order'          => 'DESC',
         'tax_query'      => [ [
-            'taxonomy' => 'authors',
+            'taxonomy' => 'category',
             'field'    => 'term_id',
-            'terms'    => $book_author->term_id,
+            'terms'    => $tls_cats,
         ] ],
-    ] );
-    if ( ! empty( $tls_more_by ) ) :
-        foreach ( $tls_more_by as $tls_mb ) { $tls_shown_ids[] = $tls_mb->ID; } ?>
-<div class="tls-related tls-more-author">
+    ] ) : array();
+    if ( ! empty( $tls_related ) ) : ?>
+<div class="tls-related">
     <div class="container">
-        <h2 class="tls-related-title">More by <?php echo esc_html( $book_author->name ); ?></h2>
-        <div class="tls-books-grid">
-            <?php foreach ( $tls_more_by as $tls_mb ) { echo thetelos_book_card( $tls_mb->ID ); } ?>
-        </div>
-        <p class="tls-more-author-all">
-            <a href="<?php echo esc_url( get_term_link( $book_author ) ); ?>">
-                All <?php echo (int) $book_author->count; ?> summaries by <?php echo esc_html( $book_author->name ); ?> &rarr;
-            </a>
-        </p>
+        <section class="tls-shelf tls-shelf--related" aria-label="You might also enjoy">
+            <div class="tls-shelf-head">
+                <h2 class="tls-shelf-title">You might also enjoy</h2>
+                <div class="tls-shelf-nav">
+                    <button type="button" class="tls-shelf-arrow" data-dir="-1" aria-label="Scroll left">&lsaquo;</button>
+                    <button type="button" class="tls-shelf-arrow" data-dir="1" aria-label="Scroll right">&rsaquo;</button>
+                </div>
+            </div>
+            <div class="tls-shelf-track">
+                <?php foreach ( $tls_related as $tls_rp ) { echo thetelos_book_card( $tls_rp->ID ); } ?>
+            </div>
+        </section>
     </div>
 </div>
 <?php endif; endif; ?>
-
-<!-- Related books -->
-<?php if ( $disable_rp == 0 ) : ?>
-<div class="tls-related">
-    <div class="container">
-        <h2 class="tls-related-title">You might also enjoy</h2>
-        <?php echo mediumish_related_posts( [ 'limit' => 6, 'exclude' => $tls_shown_ids ] ); ?>
-    </div>
-</div>
-<?php endif; ?>
 
 </main>
 

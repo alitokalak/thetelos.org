@@ -1875,6 +1875,82 @@ function thetelos_book_card( $post_id ) {
 }
 
 // -----------------------------------------------------
+// Kompakt kitap kartı — yatay slider raflarında kullanılır (küçük kapak +
+// başlık + yazar + kısa açıklama). thetelos_book_card'ın minik varyantı.
+// -----------------------------------------------------
+function thetelos_book_card_mini( $post_id ) {
+    $title     = get_the_title( $post_id );
+    $permalink = get_permalink( $post_id );
+    $authors   = get_the_terms( $post_id, 'authors' );
+    $author    = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0] : null;
+    $excerpt   = wp_trim_words( get_the_excerpt( $post_id ), 12 );
+
+    ob_start();
+    ?>
+    <article class="tls-mini-card">
+        <a class="tls-mini-cover" href="<?php echo esc_url( $permalink ); ?>" tabindex="-1" aria-hidden="true">
+            <?php if ( has_post_thumbnail( $post_id ) ) : ?>
+                <?php echo get_the_post_thumbnail( $post_id, [ 150, 210 ], [ 'alt' => esc_attr( $title ) ] ); ?>
+            <?php else : ?>
+                <?php echo thetelos_render_book_cover( $post_id ); ?>
+            <?php endif; ?>
+        </a>
+        <a class="tls-mini-title" href="<?php echo esc_url( $permalink ); ?>"><?php echo esc_html( $title ); ?></a>
+        <?php if ( $author ) : ?>
+            <span class="tls-mini-author"><?php echo esc_html( $author->name ); ?></span>
+        <?php endif; ?>
+        <?php if ( $excerpt ) : ?>
+            <p class="tls-mini-excerpt"><?php echo esc_html( $excerpt ); ?></p>
+        <?php endif; ?>
+    </article>
+    <?php
+    return ob_get_clean();
+}
+
+// Yatay kitap raflarının (slider) ok butonlarını sürer — bağımsız, hafif JS.
+add_action( 'wp_footer', function () {
+    if ( ! is_singular( array( 'post', 'analysis' ) ) ) {
+        return;
+    }
+    ?>
+<script>
+(function () {
+    function initShelf(shelf) {
+        var track = shelf.querySelector('.tls-shelf-track');
+        if (!track) return;
+        var prev = shelf.querySelector('.tls-shelf-arrow[data-dir="-1"]');
+        var next = shelf.querySelector('.tls-shelf-arrow[data-dir="1"]');
+        function step() { return Math.max(track.clientWidth * 0.8, 200); }
+        function update() {
+            var atStart = track.scrollLeft <= 4;
+            var atEnd   = track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
+            if (prev) prev.disabled = atStart;
+            if (next) next.disabled = atEnd;
+            // İçerik zaten sığıyorsa okları gizle.
+            var overflow = track.scrollWidth > track.clientWidth + 4;
+            shelf.querySelectorAll('.tls-shelf-nav').forEach(function (n) {
+                n.style.visibility = overflow ? 'visible' : 'hidden';
+            });
+        }
+        [prev, next].forEach(function (btn) {
+            if (!btn) return;
+            btn.addEventListener('click', function () {
+                track.scrollBy({ left: step() * parseInt(btn.getAttribute('data-dir'), 10), behavior: 'smooth' });
+            });
+        });
+        track.addEventListener('scroll', update, { passive: true });
+        window.addEventListener('resize', update);
+        update();
+    }
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('.tls-shelf').forEach(initShelf);
+    });
+})();
+</script>
+    <?php
+}, 30 );
+
+// -----------------------------------------------------
 // Related Posts
 // -----------------------------------------------------
 function mediumish_related_posts(  $args = array()  ) {
