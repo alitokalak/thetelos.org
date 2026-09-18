@@ -364,13 +364,13 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <section class="tls-shelf tls-shelf--mini" aria-label="More by <?php echo esc_attr( $book_author->name ); ?>">
                     <div class="tls-shelf-head">
                         <h2 class="tls-shelf-title">More by <?php echo esc_html( $book_author->name ); ?></h2>
-                        <div class="tls-shelf-nav">
-                            <button type="button" class="tls-shelf-arrow" data-dir="-1" aria-label="Scroll left">&lsaquo;</button>
-                            <button type="button" class="tls-shelf-arrow" data-dir="1" aria-label="Scroll right">&rsaquo;</button>
-                        </div>
                     </div>
-                    <div class="tls-shelf-track">
-                        <?php foreach ( $tls_more_by as $tls_mb ) { echo thetelos_book_card_mini( $tls_mb->ID ); } ?>
+                    <div class="tls-shelf-viewport">
+                        <button type="button" class="tls-shelf-arrow prev" aria-label="Scroll left">&lsaquo;</button>
+                        <div class="tls-shelf-track">
+                            <?php foreach ( $tls_more_by as $tls_mb ) { echo thetelos_book_card_mini( $tls_mb->ID ); } ?>
+                        </div>
+                        <button type="button" class="tls-shelf-arrow next" aria-label="Scroll right">&rsaquo;</button>
                     </div>
                     <a class="tls-shelf-all" href="<?php echo esc_url( get_term_link( $book_author ) ); ?>">All <?php echo (int) $book_author->count; ?> summaries by <?php echo esc_html( $book_author->name ); ?> &rarr;</a>
                 </section>
@@ -432,13 +432,13 @@ if ( $disable_rp == 0 ) :
         <section class="tls-shelf tls-shelf--related" aria-label="You might also enjoy">
             <div class="tls-shelf-head">
                 <h2 class="tls-shelf-title">You might also enjoy</h2>
-                <div class="tls-shelf-nav">
-                    <button type="button" class="tls-shelf-arrow" data-dir="-1" aria-label="Scroll left">&lsaquo;</button>
-                    <button type="button" class="tls-shelf-arrow" data-dir="1" aria-label="Scroll right">&rsaquo;</button>
-                </div>
             </div>
-            <div class="tls-shelf-track">
-                <?php foreach ( $tls_related as $tls_rp ) { echo thetelos_book_card( $tls_rp->ID ); } ?>
+            <div class="tls-shelf-viewport">
+                <button type="button" class="tls-shelf-arrow prev" aria-label="Scroll left">&lsaquo;</button>
+                <div class="tls-shelf-track">
+                    <?php foreach ( $tls_related as $tls_rp ) { echo thetelos_book_card( $tls_rp->ID ); } ?>
+                </div>
+                <button type="button" class="tls-shelf-arrow next" aria-label="Scroll right">&rsaquo;</button>
             </div>
         </section>
     </div>

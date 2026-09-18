@@ -1918,28 +1918,44 @@ add_action( 'wp_footer', function () {
     function initShelf(shelf) {
         var track = shelf.querySelector('.tls-shelf-track');
         if (!track) return;
-        var prev = shelf.querySelector('.tls-shelf-arrow[data-dir="-1"]');
-        var next = shelf.querySelector('.tls-shelf-arrow[data-dir="1"]');
-        function step() { return Math.max(track.clientWidth * 0.8, 200); }
+        var prev = shelf.querySelector('.tls-shelf-arrow.prev');
+        var next = shelf.querySelector('.tls-shelf-arrow.next');
+        function step() { return Math.max(track.clientWidth * 0.85, 220); }
         function update() {
-            var atStart = track.scrollLeft <= 4;
-            var atEnd   = track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
+            var overflow = track.scrollWidth > track.clientWidth + 4;
+            var atStart  = track.scrollLeft <= 4;
+            var atEnd    = track.scrollLeft + track.clientWidth >= track.scrollWidth - 4;
+            [prev, next].forEach(function (b) { if (b) b.style.display = overflow ? '' : 'none'; });
             if (prev) prev.disabled = atStart;
             if (next) next.disabled = atEnd;
-            // İçerik zaten sığıyorsa okları gizle.
-            var overflow = track.scrollWidth > track.clientWidth + 4;
-            shelf.querySelectorAll('.tls-shelf-nav').forEach(function (n) {
-                n.style.visibility = overflow ? 'visible' : 'hidden';
-            });
         }
-        [prev, next].forEach(function (btn) {
-            if (!btn) return;
-            btn.addEventListener('click', function () {
-                track.scrollBy({ left: step() * parseInt(btn.getAttribute('data-dir'), 10), behavior: 'smooth' });
-            });
-        });
+        if (prev) prev.addEventListener('click', function () { track.scrollBy({ left: -step(), behavior: 'smooth' }); });
+        if (next) next.addEventListener('click', function () { track.scrollBy({ left:  step(), behavior: 'smooth' }); });
         track.addEventListener('scroll', update, { passive: true });
         window.addEventListener('resize', update);
+
+        // Fareyle sürükleyerek kaydırma (pointer drag). Dokunmatik zaten native.
+        var down = false, startX = 0, startScroll = 0, moved = false;
+        track.addEventListener('pointerdown', function (e) {
+            if (e.pointerType !== 'mouse') return;
+            down = true; moved = false; startX = e.clientX; startScroll = track.scrollLeft;
+            track.classList.add('dragging');
+            try { track.setPointerCapture(e.pointerId); } catch (err) {}
+        });
+        track.addEventListener('pointermove', function (e) {
+            if (!down) return;
+            var dx = e.clientX - startX;
+            if (Math.abs(dx) > 3) moved = true;
+            track.scrollLeft = startScroll - dx;
+        });
+        function endDrag() { down = false; track.classList.remove('dragging'); }
+        track.addEventListener('pointerup', endDrag);
+        track.addEventListener('pointercancel', endDrag);
+        // Sürükleme sonrası kazara link tıklamasını engelle.
+        track.addEventListener('click', function (e) {
+            if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; }
+        }, true);
+
         update();
     }
     document.addEventListener('DOMContentLoaded', function () {

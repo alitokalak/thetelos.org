@@ -1408,45 +1408,71 @@
 
 /* ── Yatay kitap rafları (slider): "More by author" + "You might also enjoy" ── */
 .tls-shelf { position: relative; margin: 0; }
-.tls-shelf-head {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; margin-bottom: 18px;
-}
+.tls-shelf-head { margin-bottom: 16px; }
 .tls-shelf-title {
   font-family: var(--tls-serif); font-size: 22px; font-weight: 400;
   color: var(--tls-bg-dark); margin: 0;
 }
-.tls-shelf-nav { display: flex; gap: 8px; flex: 0 0 auto; }
-.tls-shelf-arrow {
-  width: 38px; height: 38px; border-radius: 50%;
-  border: 1px solid var(--tls-border); background: var(--tls-bg-card);
-  color: var(--tls-bg-dark); cursor: pointer; padding: 0;
-  font-size: 22px; line-height: 1; display: flex; align-items: center; justify-content: center;
-  transition: border-color .15s ease, color .15s ease, opacity .15s ease;
-}
-.tls-shelf-arrow:hover { border-color: var(--tls-gold); color: var(--tls-gold); }
-.tls-shelf-arrow[disabled] { opacity: .3; cursor: default; border-color: var(--tls-border); color: var(--tls-bg-dark); }
+
+/* Kaydırma alanı + kenar okları */
+.tls-shelf-viewport { position: relative; }
 .tls-shelf-track {
   display: flex; gap: 16px; overflow-x: auto; scroll-behavior: smooth;
   scroll-snap-type: x proximity; padding: 4px 2px 10px;
-  -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  -webkit-overflow-scrolling: touch; scrollbar-width: none; cursor: grab;
 }
 .tls-shelf-track::-webkit-scrollbar { display: none; }
 .tls-shelf-track > * { scroll-snap-align: start; flex: 0 0 auto; }
+.tls-shelf-track.dragging {
+  cursor: grabbing; scroll-behavior: auto; scroll-snap-type: none; user-select: none;
+}
+.tls-shelf-track.dragging a { pointer-events: none; }
+
+.tls-shelf-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 4;
+  width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid var(--tls-border); background: var(--tls-bg-card);
+  color: var(--tls-bg-dark); cursor: pointer; padding: 0;
+  font-size: 22px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,.16);
+  transition: border-color .15s ease, color .15s ease, opacity .15s ease, background .15s ease;
+}
+.tls-shelf-arrow:hover { border-color: var(--tls-gold); color: var(--tls-gold); }
+.tls-shelf-arrow[disabled] { opacity: .35; cursor: default; }
+.tls-shelf-arrow.prev { left: -14px; }
+.tls-shelf-arrow.next { right: -14px; }
+
 .tls-shelf-all {
-  display: inline-block; margin-top: 14px; font-family: var(--tls-sans);
+  display: inline-block; margin-top: 16px; font-family: var(--tls-sans);
   font-size: 13px; color: var(--tls-gold); text-decoration: none; font-weight: 600;
 }
 .tls-shelf-all:hover { text-decoration: underline; }
 
-/* Related rafı: normal kartlar, tek satır */
-.tls-shelf--related .tls-book-card { width: 260px; }
+/* ── Related rafı: normal kartlar, tek satır, SABİT kapak boyutu (simetri) ── */
+.tls-shelf--related .tls-book-card { width: 220px; }
+.tls-shelf--related .tls-book-card-cover {
+  height: 210px !important; min-height: 0 !important; padding: 18px !important;
+}
+.tls-shelf--related .tls-book-card-cover img,
+.tls-shelf--related .tls-book-card-cover .thetelos-book-cover {
+  width: 120px !important; height: 174px !important; object-fit: cover !important;
+  border-radius: 3px !important;
+}
+/* Kart gövdesini eşitle: başlık 2 satır, açıklama 3 satır sabit */
+.tls-shelf--related .tls-book-card-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; min-height: 2.6em;
+}
+.tls-shelf--related .tls-book-card-excerpt {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.tls-shelf--related .tls-shelf-arrow { top: 113px; }   /* kapak ortası hizası */
 
-/* Yazar rafı: kompakt mini kartlar (içerik sütununda, yazının hemen altında) */
+/* ── Yazar rafı: kompakt mini kartlar (içerik sütununda, yazının altında) ── */
 .tls-single-content .tls-shelf--mini {
   margin: 40px 0 8px; padding-top: 30px; border-top: 1px solid var(--tls-border);
 }
-.tls-mini-card { width: 150px; display: flex; flex-direction: column; }
+.tls-mini-card { width: 128px; display: flex; flex-direction: column; }
 .tls-mini-cover {
   display: block; border-radius: 4px; overflow: hidden; background: #EDEAE2;
   box-shadow: 0 4px 14px rgba(0,0,0,.18); transition: box-shadow .2s ease, transform .2s ease;
@@ -1454,14 +1480,14 @@
 }
 .tls-mini-card:hover .tls-mini-cover { box-shadow: 0 10px 24px rgba(0,0,0,.28); transform: translateY(-3px); }
 .tls-mini-cover img {
-  width: 150px; height: 210px; object-fit: cover; display: block; border-radius: 4px;
+  width: 128px; height: 182px; object-fit: cover; display: block; border-radius: 4px;
 }
 .tls-mini-cover .thetelos-book-cover {
-  width: 150px !important; height: 210px !important; padding: 16px 12px !important;
+  width: 128px !important; height: 182px !important; padding: 14px 10px !important;
   box-shadow: none !important; border-radius: 4px !important;
 }
-.tls-mini-cover .thetelos-book-cover .cover-title  { font-size: 13px !important; line-height: 1.3 !important; }
-.tls-mini-cover .thetelos-book-cover .cover-author { font-size: 8px !important; }
+.tls-mini-cover .thetelos-book-cover .cover-title  { font-size: 12px !important; line-height: 1.3 !important; }
+.tls-mini-cover .thetelos-book-cover .cover-author { font-size: 7px !important; }
 .tls-mini-cover .cover-frame-outer { display: none !important; }
 .tls-mini-title {
   font-family: var(--tls-serif); font-size: 13px; line-height: 1.3;
@@ -1477,12 +1503,20 @@
   margin: 4px 0 0;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+.tls-shelf--mini .tls-shelf-arrow { top: 95px; }       /* mini kapak ortası hizası */
+.tls-shelf--mini .tls-shelf-arrow.prev { left: -8px; }
+.tls-shelf--mini .tls-shelf-arrow.next { right: -8px; }
+
+/* Dokunmatik/dar ekranda okları gizle (parmakla kaydırılır) */
+@media (max-width: 768px) {
+  .tls-shelf-arrow { display: none !important; }
+}
 @media (max-width: 600px) {
   .tls-shelf-title { font-size: 18px; }
-  .tls-shelf--related .tls-book-card { width: 200px; }
-  .tls-mini-card { width: 124px; }
+  .tls-shelf--related .tls-book-card { width: 170px; }
+  .tls-mini-card { width: 112px; }
   .tls-mini-cover img,
-  .tls-mini-cover .thetelos-book-cover { width: 124px !important; height: 174px !important; }
+  .tls-mini-cover .thetelos-book-cover { width: 112px !important; height: 160px !important; }
 }
 
 /* Prev/next navigation */
