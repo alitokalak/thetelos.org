@@ -9,6 +9,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Sosyal — Thetelos Panel</title>
 <link rel="stylesheet" href="assets/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&family=Cormorant+Garamond:ital,wght@0,500;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 .sc-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:18px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
 .sc-bar label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
@@ -67,6 +70,12 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <option value="recent">En yeni</option>
         </select>
       </label>
+      <label>Stil
+        <select id="sc-style">
+          <option value="cover">Kapak arka plan</option>
+          <option value="classic">Klasik (koyu)</option>
+        </select>
+      </label>
       <label>Elle başlık (opsiyonel)
         <input type="text" id="sc-title" placeholder="Örn: Meditations" style="min-width:220px">
       </label>
@@ -86,52 +95,79 @@ function status(t,c){var e=document.getElementById('sc-status');e.textContent=t;
 
 async function post(url,data){var fd=new FormData();for(var k in data)fd.append(k,data[k]);var r=await fetch('api/'+url,{method:'POST',body:fd});return r.json();}
 
-// Canvas kart üreticisi (1080×1350 portre)
-function drawCard(canvas, item){
+const SERIF='"Playfair Display", Georgia, serif';
+const SERIF2='"Cormorant Garamond", Georgia, serif';
+const SANS='"Inter", -apple-system, system-ui, sans-serif';
+
+function loadImg(url){ return new Promise(function(res){ if(!url){res(null);return;} var im=new Image(); im.crossOrigin='anonymous'; im.onload=function(){res(im);}; im.onerror=function(){res(null);}; im.src=url; }); }
+let _fontsReady=false;
+async function ensureFonts(){ if(_fontsReady)return; try{ await Promise.all([
+  document.fonts.load('600 60px "Playfair Display"'), document.fonts.load('500 60px "Playfair Display"'),
+  document.fonts.load('italic 60px "Playfair Display"'), document.fonts.load('italic 40px "Cormorant Garamond"'),
+  document.fonts.load('600 24px "Inter"'), document.fonts.load('500 24px "Inter"')
+]); await document.fonts.ready; }catch(e){} _fontsReady=true; }
+
+// Canvas kart üreticisi (1080×1350 portre) — async (font + kapak arka planı)
+async function drawCard(canvas, item, style){
+  await ensureFonts();
   const W=1080,H=1350; canvas.width=W; canvas.height=H;
-  const x=canvas.getContext('2d');
-  // arka plan: koyu dikey degrade
-  const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,'#1c1712'); g.addColorStop(1,'#0f0b08');
-  x.fillStyle=g; x.fillRect(0,0,W,H);
-  // ince çerçeve
-  x.strokeStyle='rgba(201,162,75,.35)'; x.lineWidth=3; x.strokeRect(40,40,W-80,H-80);
-  // üst marka
-  x.fillStyle=GOLD; x.font='600 26px Georgia, serif'; x.textAlign='center';
-  x.fillText('THE TELOS', W/2, 120);
-  x.strokeStyle='rgba(201,162,75,.4)'; x.lineWidth=1; x.beginPath(); x.moveTo(W/2-40,140); x.lineTo(W/2+40,140); x.stroke();
+  const x=canvas.getContext('2d'); x.textAlign='center';
 
-  // ALINTI — sığana kadar fontu küçült
-  const quote='“'+item.quote+'”';
-  let fs=70; let lines=[];
-  const maxW=W-200, maxBlockH=760;
-  function wrap(fontSize){
-    x.font='italic '+fontSize+'px Georgia, serif';
-    const words=quote.split(' '); let ln=''; const out=[];
-    for(const w of words){ const t=ln?ln+' '+w:w; if(x.measureText(t).width>maxW && ln){out.push(ln);ln=w;} else ln=t; }
-    if(ln)out.push(ln); return out;
+  // ── ARKA PLAN ──
+  const base=x.createLinearGradient(0,0,0,H); base.addColorStop(0,'#1c1712'); base.addColorStop(1,'#0d0906');
+  x.fillStyle=base; x.fillRect(0,0,W,H);
+  let overImg=false;
+  if(style==='cover'){
+    const img=await loadImg(item.cover);
+    if(img){ overImg=true;
+      // object-fit: cover
+      const r=Math.max(W/img.width,H/img.height), iw=img.width*r, ih=img.height*r;
+      x.drawImage(img,(W-iw)/2,(H-ih)/2,iw,ih);
+      // okunurluk için koyu degrade örtü
+      const ov=x.createLinearGradient(0,0,0,H);
+      ov.addColorStop(0,'rgba(8,6,4,.78)'); ov.addColorStop(.45,'rgba(8,6,4,.62)'); ov.addColorStop(1,'rgba(8,6,4,.90)');
+      x.fillStyle=ov; x.fillRect(0,0,W,H);
+    }
   }
-  while(fs>30){ lines=wrap(fs); if(lines.length*(fs*1.32)<=maxBlockH) break; fs-=3; }
-  x.font='italic '+fs+'px Georgia, serif'; x.fillStyle=CREAM; x.textAlign='center';
-  const lh=fs*1.32; let y=H/2-(lines.length*lh)/2+fs/2-40;
+  // vinyet
+  const vg=x.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.75);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.45)');
+  x.fillStyle=vg; x.fillRect(0,0,W,H);
+  // ince altın çerçeve
+  x.strokeStyle='rgba(201,162,75,.45)'; x.lineWidth=2; x.strokeRect(46,46,W-92,H-92);
+
+  // ── ÜST MARKA ──
+  x.fillStyle=GOLD; x.font='600 24px '+SANS; x.letterSpacing='6px';
+  x.fillText('THE TELOS', W/2, 122); x.letterSpacing='0px';
+  x.strokeStyle='rgba(201,162,75,.5)'; x.lineWidth=1; x.beginPath(); x.moveTo(W/2-34,142); x.lineTo(W/2+34,142); x.stroke();
+
+  // ── ALINTI (Playfair italic, sığana kadar küçült) ──
+  const quote='“'+item.quote+'”';
+  let fs=76, lines=[]; const maxW=W-210, maxBlockH=740;
+  function wrap(fontSize){ x.font='500 italic '+fontSize+'px '+SERIF; const words=quote.split(' '); let ln='',out=[];
+    for(const w of words){ const t=ln?ln+' '+w:w; if(x.measureText(t).width>maxW&&ln){out.push(ln);ln=w;}else ln=t; } if(ln)out.push(ln); return out; }
+  while(fs>32){ lines=wrap(fs); if(lines.length*(fs*1.34)<=maxBlockH) break; fs-=3; }
+  x.font='500 italic '+fs+'px '+SERIF; x.fillStyle=CREAM;
+  if(overImg){ x.shadowColor='rgba(0,0,0,.6)'; x.shadowBlur=16; x.shadowOffsetY=2; }
+  const lh=fs*1.34; let y=H/2-(lines.length*lh)/2+fs/2-30;
   for(const ln of lines){ x.fillText(ln,W/2,y); y+=lh; }
+  x.shadowColor='transparent'; x.shadowBlur=0; x.shadowOffsetY=0;
 
-  // atıf (yazar / kitap)
-  y+=30;
-  x.fillStyle=GOLD; x.font='600 30px Georgia, serif';
-  const attr=(item.quote_kind==='quote'&&item.author)?item.author.toUpperCase():(item.author?item.author.toUpperCase():'');
-  if(attr){ x.fillText(attr,W/2,y); y+=42; }
-  if(item.book){ x.fillStyle=MUTE; x.font='italic 26px Georgia, serif';
-    let b=item.book; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';}
-    x.fillText(b,W/2,y); }
+  // ── ATIF ──
+  y+=34;
+  const attr=item.author?item.author.toUpperCase():'';
+  if(attr){ x.fillStyle=GOLD; x.font='600 28px '+SANS; x.letterSpacing='3px'; x.fillText(attr,W/2,y); x.letterSpacing='0px'; y+=46; }
+  if(item.book){ x.fillStyle=overImg?'rgba(236,231,220,.85)':MUTE; x.font='500 italic 30px '+SERIF2;
+    let b=item.book; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,y); }
 
-  // alt: site + handle
-  x.fillStyle=MUTE; x.font='500 24px -apple-system, system-ui, sans-serif';
-  x.fillText(item.site||'thetelos.org', W/2, H-120);
-  x.fillStyle='rgba(201,162,75,.75)'; x.font='500 22px -apple-system, system-ui, sans-serif';
-  x.fillText(item.handle||'@thetelos', W/2, H-88);
+  // ── ALT: site + handle ──
+  x.fillStyle=overImg?'rgba(236,231,220,.7)':MUTE; x.font='500 22px '+SANS; x.letterSpacing='1px';
+  x.fillText(item.site||'thetelos.org', W/2, H-118);
+  x.fillStyle='rgba(201,162,75,.8)'; x.font='600 22px '+SANS;
+  x.fillText(item.handle||'@thetelos', W/2, H-86); x.letterSpacing='0px';
 }
 
-function makeCard(item){
+async function makeCard(item, style){
   const card=document.createElement('div'); card.className='sc-card';
   const cv=document.createElement('canvas'); card.appendChild(cv);
   const body=document.createElement('div'); body.className='sc-body';
@@ -145,8 +181,7 @@ function makeCard(item){
   acts.append(dl,cp,open);
   body.append(meta,cap,acts);
   card.append(body);
-  // çiz
-  drawCard(cv,item);
+  await drawCard(cv,item,style);
   dl.onclick=function(){ var a=document.createElement('a'); a.download=(item.book||'thetelos').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.jpg'; a.href=cv.toDataURL('image/jpeg',0.92); a.click(); };
   cp.onclick=async function(){ try{ await navigator.clipboard.writeText(cap.value); cp.textContent='✓ Kopyalandı'; setTimeout(()=>cp.textContent='📋 Caption kopyala',1500);}catch(e){ cap.select(); document.execCommand('copy'); } };
   return card;
@@ -163,7 +198,9 @@ document.getElementById('sc-gen').onclick=async function(){
   });
   if(!j.ok){status('Hata: '+(j.error||'?'),'#cc1818');return;}
   grid.innerHTML='';
-  j.items.forEach(function(it){ grid.appendChild(makeCard(it)); });
+  const style=document.getElementById('sc-style').value;
+  status('Kartlar çiziliyor…','#e6c65a');
+  for(const it of j.items){ grid.appendChild(await makeCard(it,style)); }
   status('✅ '+j.count+' kart üretildi — indir + caption kopyala.','#00ab6b');
 };
 </script>
