@@ -429,7 +429,10 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         'target_words' => $ideal,
         'timeout'      => 240,
         'on_beat'      => $hb,
-        'batch'        => $use_batch,   // "Anthropic Batch" seçiliyse −%50 async yol
+        // Son çare TOPLU/arka plan bağlamında çalışır → HER ZAMAN Batch (−%50).
+        // Böylece DeepSeek seçili olsa bile kaynaksız kitabın Claude kurtarması
+        // tam fiyat "sürpriz" kesmez; en ucuz halde denenir. ($use_batch'e bakma.)
+        'batch'        => true,
     ]);
     if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
     if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
