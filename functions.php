@@ -2304,11 +2304,15 @@ function thetelos_smart_search($query){
     if($stripped!=='')$raw=$stripped;
     $all_authors=get_transient('thetelos_all_authors');
     if(false===$all_authors){$all_authors=get_terms(['taxonomy'=>'authors','hide_empty'=>true,'number'=>0]);if(is_wp_error($all_authors))$all_authors=[];set_transient('thetelos_all_authors',$all_authors,3600);}
-    $has_sep=preg_match('/[–—\-\/]/',$raw);
+    // AYRAÇ = "Başlık – Yazar" biçimindeki AYIRICI: en/em-dash (– —, kelime içinde
+    // olmaz) VEYA iki yanı BOŞLUKLU tire/eğik ( " - ", " / " ). Kelime İÇİ tire
+    // (ör. "Anti-Capitalistic") ayraç DEĞİLDİR — yoksa hyphenli başlık bölünüp
+    // yanlış yazara kilitleniyor ve arama 0 sonuç dönüyordu.
+    $has_sep=preg_match('/\s+[-\/]\s+|[–—]/u',$raw);
     $author_term_ids=[];$title_tokens=[];
     if($has_sep){
         // "Başlık – Yazar" biçimi: her parçayı hem yazar hem başlık için dene.
-        $parts=array_values(array_filter(array_map('trim',preg_split('/\s*[–—\-\/]\s*/u',$raw)),function($p){return mb_strlen($p)>=2;}));
+        $parts=array_values(array_filter(array_map('trim',preg_split('/\s*[–—]\s*|\s+[-\/]\s+/u',$raw)),function($p){return mb_strlen($p)>=2;}));
         foreach($parts as $part){$found=false;foreach($all_authors as $term){if(thetelos_fuzzy_match($part,$term->name)){$author_term_ids[]=$term->term_id;$found=true;break;}}if(!$found)$title_tokens[]=$part;}
     }else{
         // AYRAÇSIZ DÜZ İFADE: tek tek kelimeleri YAZAR sanma (aksi halde
