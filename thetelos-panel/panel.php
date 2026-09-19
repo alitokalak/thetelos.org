@@ -46,6 +46,7 @@ if (!isset($_GET['mode'])) {
       <a href="panel.php?mode=cleaner" <?= ($_GET['mode']??'') === 'cleaner' ? 'class="active"' : '' ?>><span class="ico">🧹</span> Liste Temizle</a>
       <a href="placeholders.php"><span class="ico">⏳</span> Yer Tutucular</a>
       <a href="sources.php"><span class="ico">📚</span> Kaynak Arşivi</a>
+      <a href="social.php"><span class="ico">📣</span> Sosyal</a>
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
       <a href="content-audit.php"><span class="ico">🩺</span> İçerik Denetimi</a>
