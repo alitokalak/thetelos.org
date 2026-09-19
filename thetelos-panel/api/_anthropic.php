@@ -453,4 +453,159 @@ function tls_strip_ai_meta_html($html) {
     return trim($html);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * BATCH API — "yavaş ama ucuz" toplu üretim (−%50 fiyat, 24 saate kadar async)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * NE ZAMAN: gerçek-zamanlı olmayan TOPLU içerik üretimi. İstekler bağımsız
+ * (kitap başına tek, kendi kendine yeten üretim) olmalı — çok-adımlı bağımlı
+ * zincirler (proto notlar→sbs→frame) batch'e uygun DEĞİL; onları senkron bırak.
+ *
+ * AKIŞ: submit(çok istek) → id → status(poll) → results(JSONL, custom_id ile eşle).
+ * Prompt caching batch içinde de geçerli: her istekte AYNI system ön-eki (cache=true)
+ * → tekrar eden talimat token'ları önbellekten okunur (girdi −%90), batch −%50 ile
+ * ÜST ÜSTE biner.
+ */
+
+/** Tek bir batch isteğinin params gövdesini kur (senkron tls_claude ile aynı
+   kurallar: model, max_tokens clamp, thinking↔temperature, opsiyonel cache). */
+function tls_claude_batch_params($system, $user, $opts = []) {
+    $maxtok = (int) ($opts['max_tokens'] ?? (defined('ANTHROPIC_MAX_TOKENS') ? ANTHROPIC_MAX_TOKENS : 4096));
+    $maxtok = max(256, min(16000, $maxtok));
+    $thinking = (isset($opts['thinking']) && is_array($opts['thinking'])) ? $opts['thinking'] : null;
+    $params = [
+        'model'      => tls_anthropic_model($opts['model'] ?? ''),
+        'max_tokens' => $maxtok,
+        'messages'   => [['role' => 'user', 'content' => (string) $user]],
+    ];
+    if ($thinking) $params['thinking'] = $thinking;
+    elseif (array_key_exists('temperature', $opts)) $params['temperature'] = (float) $opts['temperature'];
+    if (trim((string) $system) !== '') {
+        $params['system'] = !empty($opts['cache'])
+            ? [['type' => 'text', 'text' => (string) $system, 'cache_control' => ['type' => 'ephemeral']]]
+            : (string) $system;
+    }
+    if (isset($opts['tools']) && is_array($opts['tools'])) $params['tools'] = $opts['tools'];
+    return $params;
+}
+
+/** Anthropic'e ortak HTTP (batch uçları). @return ['j'=>?array,'code'=>int,'err'=>string] */
+function tls_anthropic_http($method, $url, $payload = null, $timeout = 60) {
+    $key = tls_anthropic_key();
+    if ($key === '') return ['j' => null, 'code' => 0, 'err' => 'ANTHROPIC_KEY yok'];
+    $ch = curl_init($url);
+    $copts = [
+        CURLOPT_CUSTOMREQUEST  => $method,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT        => max(15, (int) $timeout),
+        CURLOPT_HTTPHEADER     => [
+            'content-type: application/json',
+            'x-api-key: ' . $key,
+            'anthropic-version: 2023-06-01',
+        ],
+    ];
+    if ($payload !== null) $copts[CURLOPT_POSTFIELDS] = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    curl_setopt_array($ch, $copts);
+    $raw  = curl_exec($ch);
+    $err  = curl_error($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($err) return ['j' => null, 'code' => 0, 'err' => 'bağlantı: ' . $err];
+    $j = json_decode((string) $raw, true);
+    if ($code >= 200 && $code < 300 && is_array($j)) return ['j' => $j, 'code' => $code, 'err' => ''];
+    $emsg = $j['error']['message'] ?? trim(preg_replace('/\s+/', ' ', strip_tags((string) $raw)));
+    return ['j' => null, 'code' => $code, 'err' => 'HTTP ' . $code . ($emsg ? ' · ' . mb_substr($emsg, 0, 200) : '')];
+}
+
+/**
+ * Bir batch gönder. $items: her biri ['custom_id'=>string,'system'=>string,
+ * 'user'=>string, ... (max_tokens/model/temperature/thinking/cache/tools)].
+ * @return array ['ok'=>bool,'id'=>string,'count'=>int,'status'=>string,'error'=>string,'http'=>int]
+ */
+function tls_claude_batch_submit(array $items, array $defaults = []) {
+    if (!tls_anthropic_ready()) return ['ok' => false, 'error' => 'ANTHROPIC_KEY yok', 'http' => 0];
+    if (!$items) return ['ok' => false, 'error' => 'boş istek listesi', 'http' => 0];
+    $requests = [];
+    $seen = [];
+    foreach ($items as $it) {
+        $cid = trim((string) ($it['custom_id'] ?? ''));
+        if ($cid === '' || isset($seen[$cid])) continue;   // custom_id zorunlu ve benzersiz
+        $seen[$cid] = true;
+        $opts = array_merge($defaults, $it);
+        $requests[] = [
+            'custom_id' => $cid,
+            'params'    => tls_claude_batch_params($it['system'] ?? '', $it['user'] ?? '', $opts),
+        ];
+    }
+    if (!$requests) return ['ok' => false, 'error' => 'geçerli istek yok (custom_id?)', 'http' => 0];
+    // Anthropic tek batch sınırı: 100k istek / 256MB. Aşırı büyükse çağıran böler.
+    $res = tls_anthropic_http('POST', 'https://api.anthropic.com/v1/messages/batches',
+        ['requests' => $requests], 120);
+    if (!is_array($res['j'])) return ['ok' => false, 'error' => $res['err'], 'http' => $res['code']];
+    return ['ok' => true, 'id' => (string) ($res['j']['id'] ?? ''),
+            'count' => count($requests), 'status' => (string) ($res['j']['processing_status'] ?? ''),
+            'http' => $res['code']];
+}
+
+/** Batch durumu. @return ['ok'=>bool,'status'=>string,'ended'=>bool,'counts'=>array,'results_url'=>string,'error'=>string] */
+function tls_claude_batch_status($batch_id) {
+    $batch_id = trim((string) $batch_id);
+    if ($batch_id === '') return ['ok' => false, 'error' => 'batch_id boş'];
+    $res = tls_anthropic_http('GET', 'https://api.anthropic.com/v1/messages/batches/' . rawurlencode($batch_id), null, 45);
+    if (!is_array($res['j'])) return ['ok' => false, 'error' => $res['err'], 'http' => $res['code']];
+    $st = (string) ($res['j']['processing_status'] ?? '');
+    return ['ok' => true, 'status' => $st, 'ended' => ($st === 'ended'),
+            'counts' => $res['j']['request_counts'] ?? [],
+            'results_url' => (string) ($res['j']['results_url'] ?? '')];
+}
+
+/**
+ * Biten bir batch'in sonuçlarını çek (JSONL) ve custom_id ile eşle.
+ * @return array ['ok'=>bool,'results'=>[custom_id=>['ok'=>bool,'text'=>string,'stop_reason'=>string,'usage'=>array,'error'=>string]], 'error'=>string]
+ */
+function tls_claude_batch_results($batch_id) {
+    $st = tls_claude_batch_status($batch_id);
+    if (empty($st['ok'])) return ['ok' => false, 'error' => $st['error'] ?? 'durum alınamadı'];
+    if (empty($st['ended'])) return ['ok' => false, 'pending' => true, 'status' => $st['status'], 'error' => 'batch henüz bitmedi (' . $st['status'] . ')'];
+    $url = $st['results_url'];
+    if ($url === '') return ['ok' => false, 'error' => 'results_url yok'];
+    // results_url JSONL döner (tek JSON değil) → ham gövdeyi çekip satır satır ayrıştır.
+    $key = tls_anthropic_key();
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 15, CURLOPT_TIMEOUT => 180,
+        CURLOPT_HTTPHEADER => ['x-api-key: ' . $key, 'anthropic-version: 2023-06-01'],
+    ]);
+    $raw  = curl_exec($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $cerr = curl_error($ch);
+    curl_close($ch);
+    if ($cerr || $code < 200 || $code >= 300) return ['ok' => false, 'error' => 'sonuç indirilemedi: ' . ($cerr ?: ('HTTP ' . $code))];
+
+    $out = [];
+    foreach (preg_split('/\r?\n/', (string) $raw) as $line) {
+        $line = trim($line);
+        if ($line === '') continue;
+        $row = json_decode($line, true);
+        if (!is_array($row)) continue;
+        $cid = (string) ($row['custom_id'] ?? '');
+        if ($cid === '') continue;
+        $r = $row['result'] ?? [];
+        $type = (string) ($r['type'] ?? '');
+        if ($type === 'succeeded' && isset($r['message'])) {
+            $text = '';
+            foreach (($r['message']['content'] ?? []) as $blk) {
+                if (($blk['type'] ?? '') === 'text') $text .= (string) ($blk['text'] ?? '');
+            }
+            $out[$cid] = ['ok' => true, 'text' => trim($text),
+                          'stop_reason' => (string) ($r['message']['stop_reason'] ?? ''),
+                          'usage' => $r['message']['usage'] ?? []];
+        } else {
+            $emsg = $r['error']['message'] ?? ($r['error']['type'] ?? $type ?: 'bilinmeyen');
+            $out[$cid] = ['ok' => false, 'error' => (string) $emsg, 'type' => $type];
+        }
+    }
+    return ['ok' => true, 'results' => $out, 'count' => count($out)];
+}
+
 } // TLS_ANTHROPIC_LOADED
