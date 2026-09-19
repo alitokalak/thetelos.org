@@ -143,6 +143,32 @@ if (file_exists(PROMPTS_FILE)) {
       </p>
     </div>
 
+    <!-- Twitter / X -->
+    <div class="card">
+      <div class="card-title">🐦 X (Twitter) Otomatik Paylaşım</div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;max-width:820px">
+        Sosyal sayfasındaki kartları tek tıkla X'e gönder. <b>Şifre kullanılmaz</b> — yalnızca
+        <a href="https://developer.x.com" target="_blank" style="color:var(--gold)">developer.x.com</a>'dan aldığın
+        4 anahtar. App iznini <b>Read and Write</b> yap. Anahtarlar sunucuda saklanır, repoya girmez.
+      </p>
+      <div style="display:grid;gap:10px;max-width:640px">
+        <label style="font-size:12px;color:var(--muted)">API Key (Consumer Key)
+          <input type="text" id="tw-ck" placeholder="••••••••" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
+        <label style="font-size:12px;color:var(--muted)">API Secret (Consumer Secret)
+          <input type="password" id="tw-cs" placeholder="••••••••" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
+        <label style="font-size:12px;color:var(--muted)">Access Token
+          <input type="text" id="tw-at" placeholder="••••••••" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
+        <label style="font-size:12px;color:var(--muted)">Access Token Secret
+          <input type="password" id="tw-ats" placeholder="••••••••" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center">
+        <button class="btn btn-primary" id="tw-save">💾 Kaydet</button>
+        <button class="btn btn-ghost btn-sm" id="tw-test">🔌 Bağlantıyı Test Et</button>
+        <span id="tw-result" style="font-size:13px"></span>
+      </div>
+      <div id="tw-current" style="font-size:12px;color:var(--muted);margin-top:10px"></div>
+    </div>
+
     <!-- Dosya İzni Durumu -->
     <div class="card">
       <div class="card-title">Sistem Durumu</div>
@@ -274,6 +300,46 @@ document.getElementById('btn-save-verify')?.addEventListener('click', async () =
     else        { out.style.color = 'var(--danger)'; out.textContent = '✗ ' + res.error; }
   } catch(e) { out.style.color = 'var(--danger)'; out.textContent = '✗ ' + e.message; }
   btn.disabled = false;
+});
+
+/* ── X (Twitter) token'ları ──────────────────────────────────────────── */
+async function twStatus(){
+  const cur = document.getElementById('tw-current');
+  try {
+    const r = await fetch('api/twitter.php?action=status').then(x=>x.json());
+    if (!r.ok || !r.configured) { cur.textContent = 'Durum: henüz token girilmedi.'; return; }
+    if (r.valid) { cur.style.color='var(--green)'; cur.textContent = '✓ Bağlı: ' + r.handle + (r.name?' ('+r.name+')':''); }
+    else { cur.style.color='var(--danger)'; cur.textContent = '✗ Token kayıtlı ama doğrulanamadı: ' + (r.error||'?'); }
+  } catch(e){ cur.textContent=''; }
+}
+twStatus();
+
+document.getElementById('tw-save')?.addEventListener('click', async () => {
+  const out = document.getElementById('tw-result');
+  const fd = new FormData();
+  fd.append('action','save');
+  fd.append('ck', document.getElementById('tw-ck').value.trim());
+  fd.append('cs', document.getElementById('tw-cs').value.trim());
+  fd.append('at', document.getElementById('tw-at').value.trim());
+  fd.append('ats', document.getElementById('tw-ats').value.trim());
+  out.style.color='var(--muted)'; out.textContent='Kaydediliyor...';
+  try {
+    const res = await fetch('api/twitter.php', {method:'POST', body:fd}).then(r=>r.json());
+    if (res.ok) { out.style.color='var(--green)'; out.textContent='✓ Kaydedildi'; ['tw-ck','tw-cs','tw-at','tw-ats'].forEach(i=>document.getElementById(i).value=''); twStatus(); }
+    else { out.style.color='var(--danger)'; out.textContent='✗ '+res.error; }
+  } catch(e){ out.style.color='var(--danger)'; out.textContent='✗ '+e.message; }
+});
+
+document.getElementById('tw-test')?.addEventListener('click', async () => {
+  const out = document.getElementById('tw-result');
+  out.style.color='var(--muted)'; out.textContent='Test ediliyor...';
+  try {
+    const r = await fetch('api/twitter.php?action=status').then(x=>x.json());
+    if (r.ok && r.configured && r.valid) { out.style.color='var(--green)'; out.textContent='✓ Bağlantı başarılı — '+r.handle; }
+    else if (r.ok && r.configured) { out.style.color='var(--danger)'; out.textContent='✗ '+(r.error||'Doğrulanamadı'); }
+    else { out.style.color='var(--danger)'; out.textContent='✗ Önce token gir ve kaydet.'; }
+  } catch(e){ out.style.color='var(--danger)'; out.textContent='✗ '+e.message; }
+  twStatus();
 });
 </script>
 

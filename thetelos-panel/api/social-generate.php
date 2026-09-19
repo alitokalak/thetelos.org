@@ -109,12 +109,20 @@ foreach ($ids as $pid) {
     $caption = '“' . $q['text'] . '”' . "\n\n" . $attrib . "\n\n"
              . 'Full summary → ' . $url . "\n\n" . $hashtags;
 
+    // Twitter/X için derli toplu metin (≤280; link t.co'da 23 sayılır)
+    $tw_tags = '#books #thetelos';
+    $tw_fixed = mb_strlen($attrib) + mb_strlen($tw_tags) + 23 + 8;  // atıf + tag + link + \n & tırnak
+    $tw_qbudget = 280 - $tw_fixed;
+    $tw_q = $q['text'];
+    if (mb_strlen($tw_q) > $tw_qbudget) $tw_q = mb_substr($tw_q, 0, max(20, $tw_qbudget - 1)) . '…';
+    $tweet = '“' . $tw_q . '”' . "\n\n" . $attrib . "\n\n" . $url . ' ' . $tw_tags;
+
     $items[] = [
         'post_id' => $pid, 'title' => $title, 'author' => $author, 'book' => $title,
         'category' => $catname, 'url' => $url, 'cover' => $cover,
         'quote' => $q['text'], 'quote_kind' => $q['kind'],
         'handle' => $brand, 'site' => $site,
-        'caption' => $caption, 'hashtags' => $hashtags,
+        'caption' => $caption, 'tweet' => $tweet, 'hashtags' => $hashtags,
     ];
 }
 if (!$items) { echo json_encode(['ok' => false, 'error' => 'Alıntı çıkarılamadı (içerik kısa olabilir).']); exit; }
