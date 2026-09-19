@@ -44,6 +44,7 @@ if (!isset($_GET['mode'])) {
       <a href="panel.php?mode=single" <?= !in_array($_GET['mode']??'', ['queue','cleaner'], true) ? 'class="active"' : '' ?>><span class="ico">✍</span> İçerik Üret</a>
       <a href="panel.php?mode=queue" <?= ($_GET['mode']??'') === 'queue' ? 'class="active"' : '' ?>><span class="ico">📋</span> Kuyruk</a>
       <a href="panel.php?mode=cleaner" <?= ($_GET['mode']??'') === 'cleaner' ? 'class="active"' : '' ?>><span class="ico">🧹</span> Liste Temizle</a>
+      <a href="claude-batch.php"><span class="ico">⏳</span> Claude Batch</a>
       <a href="placeholders.php"><span class="ico">⏳</span> Yer Tutucular</a>
       <a href="sources.php"><span class="ico">📚</span> Kaynak Arşivi</a>
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
