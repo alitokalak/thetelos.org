@@ -793,7 +793,30 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
    Notlar 5'erli gruplara bölünür; her grup AYRI (paralel) çağrıda kendi
    ### bölümlerini üretir; sonuçlar sırayla birleştirilir. Tek grup varsa null
    döner (çağıran eski tek-reduce yolunu kullanır). */
-function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_words = 0) {
+/* ── SENTEZ çağrısı: ASIL özeti yazan adım ──────────────────────────────────
+   $anthropic=true ise Claude yazar (Batch destekli, prompt-cache açık); Claude
+   boş/başarısız dönerse içerik hiç boş kalmasın diye DeepSeek'e (proto_ds) düşer.
+   Notlar (ham tam metni okuma) burada DEĞİL — orası ucuz DeepSeek'te kalır. */
+function proto_synth($prompt, $max, $beat, $anthropic, $use_batch, $model, $prov, &$diag = null) {
+    if ($anthropic) {
+        require_once __DIR__ . '/_anthropic.php';
+        $r = tls_claude('', $prompt, [
+            'model'       => $model,
+            'max_tokens'  => max(1200, min(16000, (int) $max)),
+            'temperature' => 0.4,
+            'timeout'     => 240,
+            'retries'     => 1,
+            'on_beat'     => $beat,
+            'cache'       => true,        // sabit talimat ön-eki önbelleğe (girdi −%90)
+            'batch'       => $use_batch,  // "Anthropic Batch" → −%50 async
+        ]);
+        if (!empty($r['ok']) && trim((string) $r['text']) !== '') return (string) $r['text'];
+        $diag = 'claude: ' . ($r['error'] ?? 'boş') . ' → DeepSeek yedeği';
+    }
+    return proto_ds($prompt, $max, $beat, 300, $diag, $prov);
+}
+
+function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_words = 0, $anthropic = false, $use_batch = false, $synth_model = '') {
     $groups = array_chunk($notes, 4);   // küçük grup = her segment bütçesine sığar, sonu kesmez
     $G = count($groups);
     if ($G <= 1) return null;
@@ -805,11 +828,18 @@ function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_word
     $stage("bölüm-bölüm özet {$G} segmentte üretiliyor" . ($seg_words ? " (~{$seg_words} kelime/segment)" : '') . "…");
     $prompts = [];
     foreach ($groups as $i => $gn) $prompts[$i] = proto_sbs_prompt($book, $author, implode("\n\n", $gn), $i + 1, $G, $seg_words);
-    $out = ($prov !== 'gemini') ? proto_deepseek_multi($prompts, $seg_max, $beat, 6) : [];
+    // Anthropic seçiliyse anlatı segmentlerini Claude yazar (paralel DeepSeek yok);
+    // aksi halde eski hızlı yol: hepsini paralel DeepSeek'e gönder.
+    $out = ($anthropic || $prov === 'gemini') ? [] : proto_deepseek_multi($prompts, $seg_max, $beat, 6);
     $parts = [];
     for ($i = 0; $i < $G; $i++) {
         $t = $out[$i] ?? '';
-        if ($t === '') { $dg = ''; $t = proto_ds($prompts[$i], $seg_max, $beat, 280, $dg, $prov); }
+        if ($t === '') {
+            $dg = '';
+            $t = $anthropic
+                ? proto_synth($prompts[$i], $seg_max, $beat, true, $use_batch, $synth_model, $prov, $dg)
+                : proto_ds($prompts[$i], $seg_max, $beat, 280, $dg, $prov);
+        }
         $t = proto_trim_incomplete(trim($t));
         if ($t !== '') $parts[] = $t;
     }
@@ -974,10 +1004,23 @@ function proto_generate($book, $author, $opts = []) {
     $sbs_words = (int) round($W * 0.72);
     $cfg = ['max' => $max, 'ctarget' => $ctarget, 'notes' => $notes, 'rtar' => $rtar, 'words' => $W];
 
-    // Sağlayıcı: DeepSeek erişilebiliyorsa onu (ucuz), yoksa Gemini. İş başına bir kez.
-    $prov = ($opts['provider'] ?? 'auto');
+    // SENTEZ SAĞLAYICI: 'anthropic' istenirse ASIL özeti (sbs+frame+reduce) Claude
+    // yazar. NOTLAR (ham tam metni okuma) yine ucuz DeepSeek/Gemini'de kalır →
+    // Claude'a 100K+ token okutulmaz, sadece derli toplu notlardan yazar.
+    $req_prov  = ($opts['provider'] ?? 'auto');
+    $anthropic = ($req_prov === 'anthropic');
+    $use_batch = !empty($opts['batch']);
+    $synth_model = '';
+    if ($anthropic) {
+        require_once __DIR__ . '/_anthropic.php';
+        if (!tls_anthropic_ready()) { $anthropic = false; }   // anahtar yoksa DeepSeek'e düş
+        else $synth_model = (($opts['claude_model'] ?? 'sonnet') === 'haiku')
+            ? tls_claude_fast_model() : tls_claude_quality_model();
+    }
+    // Notlar sağlayıcısı (ucuz): DeepSeek erişilebiliyorsa onu, yoksa Gemini.
+    $prov = $anthropic ? 'auto' : $req_prov;
     if ($prov === 'auto') $prov = (proto_openrouter_key() !== '' || proto_deepseek_reachable()) ? 'auto' : 'gemini';
-    $model_label = ($prov === 'gemini') ? 'gemini' : 'deepseek';
+    $model_label = $anthropic ? ('claude:' . ($synth_model ?: 'sonnet')) : (($prov === 'gemini') ? 'gemini' : 'deepseek');
 
     // MANUEL KAYNAK: kullanıcı doğrudan metin yapıştırdıysa ya da URL verdiyse
     // (Wikisource / Internet Archive / .txt / web sayfası) otomatik edinmeyi ATLA.
@@ -1037,16 +1080,16 @@ function proto_generate($book, $author, $opts = []) {
     // HİYERARŞİK: section-by-section'ı parça-gruplarında üret (tüm kitap garanti
     // kapsanır — tek reduce son parçaları düşürüyordu), çerçeve bölümlerini ayrı
     // yaz, birleştir. Tek grup (kısa kitap) → eski tek-reduce yolu.
-    $sbs = proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_words);
+    $sbs = proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_words, $anthropic, $use_batch, $synth_model);
     if ($sbs === null) {
         // Tek grup (kısa kitap): tüm özeti tek reduce yazar → hedefe göre token kıs.
         $one_max = max(1500, min(8000, (int) round($W * 2.2)));
-        $md = proto_ds(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), $one_max, $beat, 300, $dg2, $prov);
+        $md = proto_synth(proto_reduce_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), $one_max, $beat, $anthropic, $use_batch, $synth_model, $prov, $dg2);
     } else {
         $stage("çerçeve bölümleri (About/Context/Themes…) yazılıyor…");
         // Çerçeve yalnız About/Themes… yazar (anlatı ayrı) → bütçenin kalanı kadar token.
         $frame_max = max(1500, min(8000, (int) round(($W - $sbs_words) * 2.6) + 1200));
-        $frame = proto_ds(proto_frame_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), $frame_max, $beat, 300, $dg2, $prov);
+        $frame = proto_synth(proto_frame_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), $frame_max, $beat, $anthropic, $use_batch, $synth_model, $prov, $dg2);
         $md = proto_assemble($frame, $sbs);
     }
     if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,

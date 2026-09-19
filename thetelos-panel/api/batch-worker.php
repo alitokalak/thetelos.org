@@ -979,7 +979,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'words'   => (int) ($batch['source_words'] ?? 0),   // serbest hedef kelime (kaydırıcı); 0 → 'length' ön-ayarı
             'url'     => $eff_src_url,    // MANUEL kaynak: URL (kitaba özel > batch geneli)
             'text'    => $eff_src_text,   // MANUEL kaynak: yapıştırılan/yüklenen metin (kitaba özel > batch geneli)
-            'provider'=> 'auto',
+            // SENTEZ SAĞLAYICI: Anthropic seçiliyse ASIL özeti Claude yazar (notları
+            // yine ucuz DeepSeek çıkarır — Claude'a ham tam metin okutulmaz). Batch açık.
+            'provider'=> ($api_provider === 'anthropic') ? 'anthropic' : 'auto',
+            'batch'   => $use_batch,
+            'claude_model' => $claude_model,
             'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
             'on_stage'=> function ($m) use ($batch_file, $idx) { bw_set_stage($batch_file, $idx, $m); bw_touch_hb($batch_file, $idx); },
         ]);
