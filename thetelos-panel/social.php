@@ -197,17 +197,17 @@ async function drawCard(canvas, item, style){
   const quote='“'+item.quote+'”';
   const maxW=W-210, quoteBottom=attrTop-46, maxBlockH=Math.max(200, quoteBottom-quoteTop);
   let fs=cover?58:74, lines=[];
-  function wrap(fontSize){ x.font='500 italic '+fontSize+'px '+SERIF; const words=quote.split(' '); let ln='',out=[];
+  function wrap(fontSize){ x.font='500 '+fontSize+'px '+SERIF; const words=quote.split(' '); let ln='',out=[];
     for(const w of words){ const t=ln?ln+' '+w:w; if(x.measureText(t).width>maxW&&ln){out.push(ln);ln=w;}else ln=t; } if(ln)out.push(ln); return out; }
   while(fs>28){ lines=wrap(fs); if(lines.length*(fs*1.34)<=maxBlockH) break; fs-=3; }
-  x.font='500 italic '+fs+'px '+SERIF; x.fillStyle=cText;
+  x.font='500 '+fs+'px '+SERIF; x.fillStyle=cText;
   const lh=fs*1.34, blockH=lines.length*lh;
   let y=quoteTop+(maxBlockH-blockH)/2+fs*0.74;          // kalan alanda dikey ortala
   for(const ln of lines){ x.fillText(ln,W/2,y); y+=lh; }
 
   // ── ATIF (yazar + kitap, sabit konum) ──
   if(attr){ x.fillStyle=cGold; x.font='600 32px '+SERIF; x.letterSpacing='4px'; x.fillText(attr,W/2,yAuthor); x.letterSpacing='0px'; }
-  if(item.book){ x.fillStyle=cMuted; x.font='500 italic 30px '+SERIF2;
+  if(item.book){ x.fillStyle=cMuted; x.font='500 30px '+SERIF2;
     let b=item.book; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,yBook); }
 
   // ── ALT: site (sabit konum) ──
