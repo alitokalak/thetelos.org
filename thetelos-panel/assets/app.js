@@ -339,11 +339,12 @@ document.querySelectorAll('.api-btn').forEach(btn => {
     document.querySelectorAll('.api-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     activeProvider = btn.dataset.provider;
-    subGroup.style.display = activeProvider === 'anthropic' ? '' : 'none';
+    const isClaude = (activeProvider === 'anthropic' || activeProvider === 'anthropic_batch');
+    subGroup.style.display = isClaude ? '' : 'none';
     if (activeProvider === 'deepseek') activeModel = 'deepseek-chat';
-    // Toplu batch'te Claude modeli satırını göster/gizle
+    // Claude modeli (Haiku/Sonnet) satırı hem Anthropic hem Anthropic Batch'te görünür
     const cmRow = document.getElementById('claude-model-row');
-    if (cmRow) cmRow.style.display = activeProvider === 'anthropic' ? '' : 'none';
+    if (cmRow) cmRow.style.display = isClaude ? '' : 'none';
     updateActiveLabel();
   });
 });

@@ -44,7 +44,6 @@ if (!isset($_GET['mode'])) {
       <a href="panel.php?mode=single" <?= !in_array($_GET['mode']??'', ['queue','cleaner'], true) ? 'class="active"' : '' ?>><span class="ico">✍</span> İçerik Üret</a>
       <a href="panel.php?mode=queue" <?= ($_GET['mode']??'') === 'queue' ? 'class="active"' : '' ?>><span class="ico">📋</span> Kuyruk</a>
       <a href="panel.php?mode=cleaner" <?= ($_GET['mode']??'') === 'cleaner' ? 'class="active"' : '' ?>><span class="ico">🧹</span> Liste Temizle</a>
-      <a href="claude-batch.php"><span class="ico">⏳</span> Claude Batch</a>
       <a href="placeholders.php"><span class="ico">⏳</span> Yer Tutucular</a>
       <a href="sources.php"><span class="ico">📚</span> Kaynak Arşivi</a>
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
@@ -96,6 +95,9 @@ if (!isset($_GET['mode'])) {
       <div class="api-toggle-group">
         <button class="api-btn" data-provider="anthropic">
           <span class="api-dot anthropic"></span> Anthropic
+        </button>
+        <button class="api-btn" data-provider="anthropic_batch">
+          <span class="api-dot anthropic"></span> Anthropic Batch <span style="font-size:10px;opacity:.65">ucuz/yavaş</span>
         </button>
         <button class="api-btn" data-provider="gemini">
           <span class="api-dot gemini"></span> Gemini

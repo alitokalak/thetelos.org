@@ -400,7 +400,7 @@ function bw_translate_to_english($md, $hb = null) {
     return !empty($r['ok']) ? trim((string) $r['text']) : '';
 }
 
-function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0) {
+function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false) {
     require_once __DIR__ . '/_anthropic.php';
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
     $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
@@ -429,6 +429,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         'target_words' => $ideal,
         'timeout'      => 240,
         'on_beat'      => $hb,
+        'batch'        => $use_batch,   // "Anthropic Batch" seçiliyse −%50 async yol
     ]);
     if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
     if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
@@ -610,6 +611,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
     $post_status  = $batch['post_status'];
     $api_provider = $batch['api_provider'] ?? 'deepseek';
+    // "Anthropic Batch" (yavaş/ucuz, −%50): tüm mevcut Anthropic dalları AYNEN
+    // çalışsın diye sağlayıcıyı 'anthropic'e indirger; yalnız $use_batch bayrağı
+    // Claude çağrılarına geçer → tls_claude batch (submit+bekle) yoluna girer.
+    $use_batch    = ($api_provider === 'anthropic_batch');
+    if ($use_batch) $api_provider = 'anthropic';
     // Claude seçiliyse ANA İÇERİK modeli: kalite için varsayılan Sonnet, ucuz
     // isteyene Haiku. (Yoklama + meta yine DeepSeek — maliyet bölünür.)
     $claude_model = (($batch['claude_model'] ?? 'sonnet') === 'haiku') ? 'haiku' : 'sonnet';
@@ -902,7 +908,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // biliyorsa (kendi kaçışıyla: bilmiyorsa UNKNOWN) tanıtım yazsın.
                 if ($api_provider !== 'anthropic') {
                     $cl_why0 = '';
-                    $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words);
+                    $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch);
                     if ($cl !== '') {
                         $content = $cl;
                         $gen_method = 'claude';   // Claude'un kendi bilgisinden UZUN özet
@@ -1005,7 +1011,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → Claude (kendi bilgisi)', $update_pid, $rewrite ? 'rewrite' : 'create');
             $cl_why = '';
             $cl = tls_anthropic_ready()
-                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words) : '';
+                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch) : '';
             if ($cl !== '') {
                 $content = $cl;
                 $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
@@ -1075,7 +1081,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             // (Provider zaten anthropic ise Claude denenmişti → tekrar deneme.)
             $cl_why2 = '';
             $cl = ($api_provider !== 'anthropic')
-                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words) : '';
+                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words, $use_batch) : '';
             if ($cl !== '') {
                 $content = $cl;
                 $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
@@ -1241,6 +1247,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     'timeout'     => 240,
                     'retries'     => 1,            // dış döngü zaten 3 kez deniyor
                     'on_beat'     => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+                    'batch'       => $use_batch,   // "Anthropic Batch" seçiliyse −%50 async yol
                 ]);
                 bw_touch_hb($batch_file, $idx);
                 if (!empty($cres['ok'])) { $piece = (string) $cres['text']; $cerr = ''; }

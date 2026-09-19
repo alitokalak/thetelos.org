@@ -82,6 +82,13 @@ function tls_claude($system, $user, $opts = []) {
                 'error' => 'ANTHROPIC_KEY config.php’de tanımlı değil — Claude kullanılamıyor.'];
     }
 
+    // BATCH MODU: "yavaş ama ucuz" (−%50). Senkron /v1/messages yerine 1-isteklik
+    // batch gönderir, heartbeat'lerle biter beklenir, AYNI dönüş şeklini verir →
+    // çağıran kod (worker) hiç değişmeden batch'e geçer. Sadece model swap'i.
+    if (!empty($opts['batch'])) {
+        return tls_claude_batch_one($system, $user, $opts);
+    }
+
     $model   = tls_anthropic_model($opts['model'] ?? '');
     $maxtok  = (int) ($opts['max_tokens'] ?? (defined('ANTHROPIC_MAX_TOKENS') ? ANTHROPIC_MAX_TOKENS : 4096));
     $maxtok  = max(256, min(16000, $maxtok));
@@ -352,6 +359,8 @@ function tls_claude_overview($book, $author, $opts = []) {
         'temperature' => 0.2,
         'timeout'     => (int) ($opts['timeout'] ?? 180),
         'on_beat'     => $opts['on_beat'] ?? null,
+        'batch'       => !empty($opts['batch']),   // "yavaş/ucuz" mod ilet
+        'batch_wait'  => $opts['batch_wait'] ?? null,
         // PROMPT CACHE: sistem promptu (anti-uydurma yönergesi) her kitapta birebir
         // aynı → batch içinde tekrar eden ~1500 token'lık ön-ek önbelleğe alınır.
         'cache'       => true,
@@ -606,6 +615,55 @@ function tls_claude_batch_results($batch_id) {
         }
     }
     return ['ok' => true, 'results' => $out, 'count' => count($out)];
+}
+
+/**
+ * Tek istek → Batch API üzerinden (−%50), heartbeat'lerle sonuç beklenir.
+ * tls_claude ile AYNI dönüş şekli: ['ok','text','stop_reason','usage','http','error'].
+ * Uzun bekleme worker heartbeat'ini (on_beat) tazeler → iş "ölü" sayılmaz.
+ */
+function tls_claude_batch_one($system, $user, $opts = []) {
+    if (!tls_anthropic_ready()) return ['ok' => false, 'http' => 0, 'error' => 'ANTHROPIC_KEY yok'];
+    $beat = $opts['on_beat'] ?? null;
+    $poll = max(10, (int) ($opts['batch_poll'] ?? 20));       // sn: yoklama aralığı
+    $wait = max(300, (int) ($opts['batch_wait'] ?? 21600));   // sn: üst sınır (vars. 6 saat)
+    $cid  = 'one_' . substr(md5(($opts['model'] ?? '') . mb_substr((string) $user, 0, 120) . microtime()), 0, 24);
+
+    $sub = tls_claude_batch_submit([[
+        'custom_id'   => $cid,
+        'system'      => $system,
+        'user'        => $user,
+        'model'       => $opts['model'] ?? '',
+        'max_tokens'  => $opts['max_tokens'] ?? null,
+        'temperature' => array_key_exists('temperature', $opts) ? $opts['temperature'] : null,
+        'thinking'    => (isset($opts['thinking']) && is_array($opts['thinking'])) ? $opts['thinking'] : null,
+        'cache'       => !empty($opts['cache']),
+    ]]);
+    if (empty($sub['ok'])) return ['ok' => false, 'http' => $sub['http'] ?? 0, 'error' => 'batch gönderilemedi: ' . ($sub['error'] ?? '?')];
+    $bid = $sub['id'];
+    if ($bid === '') return ['ok' => false, 'http' => 0, 'error' => 'batch id boş'];
+
+    $deadline = time() + $wait;
+    while (time() < $deadline) {
+        if (is_callable($beat)) $beat();
+        @set_time_limit(max(120, $poll + 60));   // PHP zaman sınırını tazele (izin varsa)
+        $st = tls_claude_batch_status($bid);
+        if (!empty($st['ok']) && !empty($st['ended'])) break;
+        // Uyurken de heartbeat at (uzun poll'da iş ölü sayılmasın).
+        $slept = 0;
+        while ($slept < $poll) { sleep(min(5, $poll - $slept)); $slept += 5; if (is_callable($beat)) $beat(); }
+    }
+
+    $rr = tls_claude_batch_results($bid);
+    if (empty($rr['ok'])) {
+        return ['ok' => false, 'http' => 0,
+                'error' => ($rr['pending'] ?? false) ? 'batch süre aşımı (henüz bitmedi)' : ('batch sonuç: ' . ($rr['error'] ?? '?'))];
+    }
+    $one = $rr['results'][$cid] ?? null;
+    if (!$one) return ['ok' => false, 'http' => 0, 'error' => 'batch sonucunda custom_id yok'];
+    if (empty($one['ok'])) return ['ok' => false, 'http' => 0, 'error' => 'batch isteği başarısız: ' . ($one['error'] ?? '?')];
+    return ['ok' => true, 'text' => (string) $one['text'],
+            'stop_reason' => (string) ($one['stop_reason'] ?? ''), 'usage' => $one['usage'] ?? [], 'http' => 200];
 }
 
 } // TLS_ANTHROPIC_LOADED

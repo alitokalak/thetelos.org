@@ -14,6 +14,10 @@ $book         = trim($_POST['book_title']  ?? '');
 $author       = trim($_POST['author_name'] ?? '');
 $type         = trim($_POST['type']        ?? 'summary');
 $api_provider = trim($_POST['api_provider'] ?? 'deepseek'); // 'deepseek'
+// TEKLİ (canlı önizleme) modda Batch anlamsız: async, akış yok. "Anthropic Batch"
+// tekli üretimde normal (senkron) Anthropic gibi çalışır — Batch tasarrufu asıl
+// TOPLU üretimde (worker) devreye girer.
+if ($api_provider === 'anthropic_batch') $api_provider = 'anthropic';
 $api_model    = trim($_POST['api_model']    ?? '');          // model override
 $target_words = max(300, min(8000, (int)($_POST['max_tokens'] ?? 3000)));
 // İki parçalı üretimde her parça tam kapasitede yazılsın
