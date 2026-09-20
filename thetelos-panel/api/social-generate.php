@@ -19,6 +19,53 @@ header('Content-Type: application/json');
 ob_start();
 require_once '/home/thetelos/public_html/wp-load.php';
 ob_end_clean();
+require_once __DIR__ . '/_wikidata-authors.php';   // tls_wd_http (yazar portresi için)
+
+/* Commons dosya adı → thumbnail URL (yazar portresi arka planı) */
+function sg_commons_thumb($file, $w = 800) {
+    $fn = str_replace(' ', '_', $file);
+    if (preg_match('/\.(svg|pdf|tif|tiff)$/i', $fn)) return '';   // raster değil → atla
+    $h = md5($fn); $enc = rawurlencode($fn);
+    return 'https://upload.wikimedia.org/wikipedia/commons/thumb/'
+        . $h[0] . '/' . substr($h, 0, 2) . '/' . $enc . '/' . $w . 'px-' . $enc;
+}
+
+/* Yazarın Wikidata portresi (P18) — WP option'da kalıcı önbellek. '' = yok. */
+function sg_author_image($name) {
+    $name = trim((string) $name);
+    if ($name === '' || !function_exists('tls_wd_http')) return '';
+    $cache = get_option('tls_author_img', []); if (!is_array($cache)) $cache = [];
+    $key = mb_strtolower($name);
+    if (array_key_exists($key, $cache)) return $cache[$key];
+    $img = '';
+    $s = json_decode(tls_wd_http('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&limit=1&search=' . rawurlencode($name)), true);
+    $qid = $s['search'][0]['id'] ?? '';
+    if ($qid) {
+        $c = json_decode(tls_wd_http('https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&property=P18&entity=' . $qid), true);
+        $file = $c['claims']['P18'][0]['mainsnak']['datavalue']['value'] ?? '';
+        if ($file) $img = sg_commons_thumb($file, 800);
+    }
+    $cache[$key] = $img; update_option('tls_author_img', $cache, false);
+    return $img;
+}
+
+/* Carousel için özetten kısa noktalar çıkar (kapak alıntısı hariç). */
+function sg_pick_points($html, $exclude, $n = 4) {
+    $text = trim(html_entity_decode(strip_tags((string) $html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    $text = preg_replace('/\s+/u', ' ', $text);
+    $sent = preg_split('/(?<=[.!?])\s+/u', $text);
+    $ex = mb_strtolower(trim((string) $exclude)); $out = [];
+    foreach ((array) $sent as $s) {
+        $s = trim($s); $len = mb_strlen($s);
+        if ($len < 50 || $len > 190) continue;
+        if (preg_match('/^(##|the following|this summary|in this|here )/i', $s)) continue;
+        if (strpos($s, 'http') !== false) continue;
+        if ($ex !== '' && mb_strtolower($s) === $ex) continue;
+        $out[] = $s;
+        if (count($out) >= $n) break;
+    }
+    return $out;
+}
 
 $count    = max(1, min(30, (int) ($_POST['count'] ?? 10)));
 $source   = ($_POST['source'] ?? 'popular') === 'recent' ? 'recent' : 'popular';
@@ -139,6 +186,8 @@ foreach ($ids as $pid) {
         'quote' => $q['text'], 'quote_kind' => $q['kind'],
         'handle' => $brand, 'site' => $site,
         'caption' => $caption, 'tweet' => $tweet, 'hashtags' => $hashtags,
+        'author_img' => sg_author_image($author),                  // yazar portresi (Wikidata P18)
+        'slides'     => sg_pick_points($post->post_content, $q['text'], 4),  // carousel detay noktaları
         'shared'    => isset($shared[(string) $pid]),
         'shared_at' => isset($shared[(string) $pid]['t']) ? date('Y-m-d', (int) $shared[(string) $pid]['t']) : '',
     ];

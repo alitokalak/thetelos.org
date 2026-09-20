@@ -12,6 +12,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 .sc-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:18px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
 .sc-bar label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
@@ -70,10 +71,17 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
           <option value="recent">En yeni</option>
         </select>
       </label>
-      <label>Stil
+      <label>Görsel
         <select id="sc-style">
-          <option value="cover">Kapak arka plan</option>
-          <option value="classic">Klasik (koyu)</option>
+          <option value="cover">Kitap kapağı</option>
+          <option value="author">Yazar portresi</option>
+          <option value="classic">Düz (renk)</option>
+        </select>
+      </label>
+      <label>Format
+        <select id="sc-format">
+          <option value="single">Tek kart</option>
+          <option value="carousel">Carousel (slaytlar)</option>
         </select>
       </label>
       <label>Elle başlık (opsiyonel)
@@ -140,8 +148,9 @@ async function drawCard(canvas, item, style){
   let cover=null, light=false;
   let bgTop='#1c1712', bgBot='#0d0906';
   let cText=CREAM, cMuted=MUTE, cGold=GOLD, cFrame='rgba(201,162,75,.45)', cDiv='rgba(201,162,75,.5)';
-  if(style==='cover'){
-    const img=await loadImg(item.cover);
+  let bgUrl = (style==='author') ? (item.author_img||item.cover) : (style==='cover' ? item.cover : '');
+  if(bgUrl){
+    const img=await loadImg(bgUrl);
     if(img){
       cover=img;
       const col=sampleColor(img);
@@ -227,6 +236,91 @@ function composeTweet(item){
   return '“'+q+'”'+tail;
 }
 
+// ── CAROUSEL (slayt) desteği ─────────────────────────────────────────────
+function computeTheme(bgImg){
+  const t={bgTop:'#1c1712',bgBot:'#0d0906',cText:CREAM,cMuted:MUTE,cGold:GOLD,cFrame:'rgba(201,162,75,.45)',light:false,bgImg:bgImg||null};
+  if(bgImg){ const col=sampleColor(bgImg); t.light=col.l>=145;
+    if(t.light){ t.bgTop=mix(col,[255,255,255],0.80); t.bgBot=mix(col,[255,255,255],0.60); t.cText='#241b10'; t.cMuted='rgba(36,27,16,.66)'; t.cGold='#8a6a1e'; t.cFrame='rgba(90,70,30,.35)'; }
+    else { t.bgTop=mix(col,[14,10,6],0.55); t.bgBot=mix(col,[8,5,3],0.82); t.cMuted='rgba(236,231,220,.72)'; }
+  }
+  return t;
+}
+function wrapText(x,text,font,maxW){ x.font=font; const words=String(text).split(' '); let ln='',out=[];
+  for(const w of words){ const tt=ln?ln+' '+w:w; if(x.measureText(tt).width>maxW&&ln){out.push(ln);ln=w;}else ln=tt; } if(ln)out.push(ln); return out; }
+
+async function drawSlide(cv,item,th,slide,n,total){
+  await ensureFonts();
+  const W=1080,H=1350; cv.width=W; cv.height=H; const x=cv.getContext('2d'); x.textAlign='center';
+  const isCover=slide.kind==='cover', hasImg=isCover&&th.bgImg;
+  if(hasImg){
+    const img=th.bgImg, r=Math.max(W/img.width,H/img.height), iw=img.width*r, ih=img.height*r;
+    x.drawImage(img,(W-iw)/2,(H-ih)/2,iw,ih);
+    const ov=x.createLinearGradient(0,0,0,H); ov.addColorStop(0,'rgba(8,6,4,.72)'); ov.addColorStop(.5,'rgba(8,6,4,.55)'); ov.addColorStop(1,'rgba(8,6,4,.90)');
+    x.fillStyle=ov; x.fillRect(0,0,W,H);
+  } else {
+    const g=x.createLinearGradient(0,0,0,H); g.addColorStop(0,th.bgTop); g.addColorStop(1,th.bgBot); x.fillStyle=g; x.fillRect(0,0,W,H);
+    const vg=x.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.8); vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1, th.light?'rgba(0,0,0,.10)':'rgba(0,0,0,.5)'); x.fillStyle=vg; x.fillRect(0,0,W,H);
+  }
+  const tCol=hasImg?'#efe9dc':th.cText, mCol=hasImg?'rgba(236,231,220,.8)':th.cMuted, gCol=hasImg?'#e8c877':th.cGold;
+  x.strokeStyle=hasImg?'rgba(232,200,120,.5)':th.cFrame; x.lineWidth=2; x.strokeRect(46,46,W-92,H-92);
+  x.textAlign='right'; x.fillStyle=mCol; x.font='600 22px '+SANS; x.letterSpacing='2px'; x.fillText(n+' / '+total, W-70, 98); x.letterSpacing='0px'; x.textAlign='center';
+
+  if(isCover){
+    const quote='“'+item.quote+'”'; let fs=76,lines=[]; const maxW=W-200, maxBlockH=760;
+    while(fs>34){ lines=wrapText(x,quote,'500 '+fs+'px '+SERIF,maxW); if(lines.length*(fs*1.32)<=maxBlockH)break; fs-=3; }
+    x.font='500 '+fs+'px '+SERIF; x.fillStyle=tCol;
+    if(hasImg){ x.shadowColor='rgba(0,0,0,.55)'; x.shadowBlur=16; }
+    const lh=fs*1.32; let y=H/2-(lines.length*lh)/2+fs*0.7-24; for(const ln of lines){ x.fillText(ln,W/2,y); y+=lh; }
+    x.shadowColor='transparent'; x.shadowBlur=0; y+=30;
+    if(item.author){ x.fillStyle=gCol; x.font='600 30px '+SERIF; x.letterSpacing='4px'; x.fillText(item.author.toUpperCase(),W/2,y); x.letterSpacing='0px'; y+=44; }
+    if(item.book){ x.fillStyle=mCol; x.font='500 28px '+SERIF2; let b=item.book; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,y); }
+  } else if(slide.kind==='point'){
+    let fs=58,lines=[]; const maxW=W-220, maxBlockH=800;
+    while(fs>30){ lines=wrapText(x,slide.text||'','500 '+fs+'px '+SERIF,maxW); if(lines.length*(fs*1.4)<=maxBlockH)break; fs-=3; }
+    x.font='500 '+fs+'px '+SERIF; x.fillStyle=tCol;
+    const lh=fs*1.4, blockH=lines.length*lh; let y=(H-blockH)/2+fs*0.72; for(const ln of lines){ x.fillText(ln,W/2,y); y+=lh; }
+    x.fillStyle=mCol; x.font='500 24px '+SERIF2; let f=(item.book||'')+(item.author?' · '+item.author:'');
+    if(x.measureText(f).width>maxW){while(x.measureText(f+'…').width>maxW&&f.length>4)f=f.slice(0,-1);f+='…';} x.fillText(f,W/2,H-152);
+  } else {
+    x.fillStyle=gCol; x.font='600 30px '+SANS; x.letterSpacing='3px'; x.fillText('TAM ÖZET',W/2,H/2-130); x.letterSpacing='0px';
+    x.fillStyle=tCol; const bl=wrapText(x,item.book||'','500 52px '+SERIF,W-220); let y=H/2-46; x.font='500 52px '+SERIF; for(const ln of bl){ x.fillText(ln,W/2,y); y+=64; }
+    if(item.author){ x.fillStyle=mCol; x.font='500 30px '+SERIF2; x.fillText('— '+item.author,W/2,y+8); }
+    x.fillStyle=mCol; x.font='500 26px '+SANS; x.letterSpacing='1px'; x.fillText('thetelos.org',W/2,H-250); x.letterSpacing='0px';
+  }
+  const icon=await svgImg(LOGO_ICON_SVG, gCol);
+  if(icon){ const s=46; x.drawImage(icon,(W-s)/2,H-118,s,s); }
+}
+
+async function makeCarouselCard(item, style){
+  const card=document.createElement('div'); card.className='sc-card';
+  const strip=document.createElement('div'); strip.style.cssText='display:flex;gap:8px;overflow-x:auto;padding:8px;background:#14100c';
+  const body=document.createElement('div'); body.className='sc-body';
+  const meta=document.createElement('div'); meta.className='sc-meta';
+  const sharedBadge=item.shared?' <span style="color:#e0a03a;font-weight:600">✓ paylaşıldı</span>':'';
+  meta.innerHTML='<b>'+(item.book||'')+'</b>'+(item.author?' · '+item.author:'')+' <span style="color:#5aa0ff">(carousel)</span>'+sharedBadge;
+  const cap=document.createElement('textarea'); cap.className='sc-cap'; cap.value=item.caption;
+  const acts=document.createElement('div'); acts.className='sc-actions';
+  const dl=document.createElement('button'); dl.className='btn btn-primary'; dl.textContent='⬇ Slaytları indir (ZIP)';
+  const cp=document.createElement('button'); cp.className='btn'; cp.textContent='📋 Caption kopyala';
+  const open=document.createElement('a'); open.className='btn'; open.textContent='↗ Yazı'; open.href=item.url; open.target='_blank';
+  acts.append(dl,cp,open); body.append(meta,cap,acts); card.append(strip,body);
+  let bgUrl=(style==='author')?(item.author_img||item.cover):(style==='cover'?item.cover:'');
+  const bgImg=bgUrl?await loadImg(bgUrl):null;
+  const th=computeTheme(bgImg);
+  const pts=(item.slides&&item.slides.length)?item.slides:[];
+  const defs=[{kind:'cover'}].concat(pts.map(t=>({kind:'point',text:t}))).concat([{kind:'cta'}]);
+  const total=defs.length, canvases=[];
+  for(let i=0;i<defs.length;i++){ const cv=document.createElement('canvas'); cv.style.cssText='height:230px;width:auto;flex:0 0 auto;border-radius:6px'; await drawSlide(cv,item,th,defs[i],i+1,total); strip.appendChild(cv); canvases.push(cv); }
+  dl.onclick=async function(){
+    if(typeof JSZip==='undefined'){ alert('ZIP kütüphanesi yüklenemedi (internet?).'); return; }
+    const zip=new JSZip(), base=(item.book||'thetelos').replace(/[^a-z0-9]+/gi,'-').toLowerCase();
+    for(let i=0;i<canvases.length;i++){ const d=canvases[i].toDataURL('image/jpeg',0.92).split(',')[1]; zip.file(base+'-'+String(i+1).padStart(2,'0')+'.jpg', d, {base64:true}); }
+    const blob=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.download=base+'-carousel.zip'; a.href=URL.createObjectURL(blob); a.click();
+  };
+  cp.onclick=async function(){ try{ await navigator.clipboard.writeText(cap.value); cp.textContent='✓ Kopyalandı'; setTimeout(()=>cp.textContent='📋 Caption kopyala',1500);}catch(e){ cap.select(); document.execCommand('copy'); } };
+  return card;
+}
+
 async function makeCard(item, style){
   const card=document.createElement('div'); card.className='sc-card';
   const cv=document.createElement('canvas'); card.appendChild(cv);
@@ -297,9 +391,10 @@ document.getElementById('sc-gen').onclick=async function(){
   if(!j.ok){status('Hata: '+(j.error||'?'),'#cc1818');return;}
   grid.innerHTML='';
   const style=document.getElementById('sc-style').value;
+  const format=document.getElementById('sc-format').value;
   status('Kartlar çiziliyor…','#e6c65a');
-  for(const it of j.items){ grid.appendChild(await makeCard(it,style)); }
-  status('✅ '+j.count+' kart üretildi — indir + caption kopyala.','#00ab6b');
+  for(const it of j.items){ grid.appendChild(format==='carousel' ? await makeCarouselCard(it,style) : await makeCard(it,style)); }
+  status('✅ '+j.count+(format==='carousel'?' carousel':' kart')+' üretildi.','#00ab6b');
 };
 </script>
 </body>
