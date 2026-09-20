@@ -98,7 +98,7 @@ async function post(url,data){var fd=new FormData();for(var k in data)fd.append(
 const SERIF='"EB Garamond", Georgia, serif';
 const SERIF2='"EB Garamond", Georgia, serif';
 const SANS='"Inter", -apple-system, system-ui, sans-serif';
-const LOGO_ICON_SVG='<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="13.4 -0.3 13.2 13.5"><path d="M20.0128 0C21.196 6.11323e-05 22.2541 0.256124 23.1876 0.768555C24.1204 1.28101 24.858 2.01586 25.3995 2.97363C25.941 3.93147 26.2119 5.07385 26.212 6.40137C26.212 7.72887 25.9584 8.87584 25.4503 9.8418C24.9419 10.8084 24.2248 11.5567 23.2999 12.0859C22.375 12.6145 21.2791 12.8789 20.0128 12.8789C18.7463 12.8789 17.6459 12.6146 16.7129 12.0859C15.7795 11.5562 15.0591 10.8046 14.5508 9.83008C14.042 8.85591 13.7881 7.71233 13.7881 6.40137C13.7882 5.09067 14.0592 3.95683 14.6006 2.99902C15.1417 2.04162 15.8837 1.30185 16.8253 0.78125C17.7663 0.260663 18.8294 0 20.0128 0ZM19.9004 3.4502C19.472 3.4502 19.1034 3.59546 18.794 3.88574C18.4835 4.17551 18.3282 4.55845 18.3282 5.03418C18.3282 5.46592 18.4647 5.83024 18.7374 6.12695C19.0103 6.4248 19.3832 6.64875 19.8555 6.79688L20.3204 6.93066C20.1874 7.42145 20.0073 7.8385 19.7784 8.18066C19.55 8.52284 19.2871 8.81249 18.9922 9.0498L19.2139 9.42969C19.9072 9.08804 20.4906 8.55978 20.9629 7.8457C21.4347 7.13165 21.6709 6.36579 21.671 5.54688C21.671 4.90803 21.5084 4.39749 21.1836 4.01855C20.8593 3.6391 20.4317 3.45024 19.9004 3.4502Z" fill="__C__"/></svg>'
+const LOGO_ICON_SVG='<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="13.5606 0 12.8789 12.8789"><path d="M20.0128 0C21.196 6.11323e-05 22.2541 0.256124 23.1876 0.768555C24.1204 1.28101 24.858 2.01586 25.3995 2.97363C25.941 3.93147 26.2119 5.07385 26.212 6.40137C26.212 7.72887 25.9584 8.87584 25.4503 9.8418C24.9419 10.8084 24.2248 11.5567 23.2999 12.0859C22.375 12.6145 21.2791 12.8789 20.0128 12.8789C18.7463 12.8789 17.6459 12.6146 16.7129 12.0859C15.7795 11.5562 15.0591 10.8046 14.5508 9.83008C14.042 8.85591 13.7881 7.71233 13.7881 6.40137C13.7882 5.09067 14.0592 3.95683 14.6006 2.99902C15.1417 2.04162 15.8837 1.30185 16.8253 0.78125C17.7663 0.260663 18.8294 0 20.0128 0ZM19.9004 3.4502C19.472 3.4502 19.1034 3.59546 18.794 3.88574C18.4835 4.17551 18.3282 4.55845 18.3282 5.03418C18.3282 5.46592 18.4647 5.83024 18.7374 6.12695C19.0103 6.4248 19.3832 6.64875 19.8555 6.79688L20.3204 6.93066C20.1874 7.42145 20.0073 7.8385 19.7784 8.18066C19.55 8.52284 19.2871 8.81249 18.9922 9.0498L19.2139 9.42969C19.9072 9.08804 20.4906 8.55978 20.9629 7.8457C21.4347 7.13165 21.6709 6.36579 21.671 5.54688C21.671 4.90803 21.5084 4.39749 21.1836 4.01855C20.8593 3.6391 20.4317 3.45024 19.9004 3.4502Z" fill="__C__"/></svg>'
 let _logoCache={};
 function svgImg(svg,color){ var k=color+':'+svg.length; if(_logoCache[k])return _logoCache[k]; var p=loadImg('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.replace(/__C__/g,color))); _logoCache[k]=p; return p; }
 
@@ -165,17 +165,11 @@ async function drawCard(canvas, item, style){
   // ince çerçeve
   x.strokeStyle=cFrame; x.lineWidth=2; x.strokeRect(46,46,W-92,H-92);
 
-  // ── ÜST İKON (thetelos tırnak işareti, temaya göre renklendirilmiş) ──
-  const icon=await svgImg(LOGO_ICON_SVG,cGold);
-  const iw=58, ih=iw*13.5/13.2, ix=(W-iw)/2, iy=62;
-  if(icon){ x.drawImage(icon, ix, iy, iw, ih); }
-  const iconBottom=iy+ih;               // ≈ 121
-
-  // ── KAPAK GÖRSELİ (~ekranın yarısı, orantılı sığdır) ──
-  const topMargin=iconBottom+26;        // ikonun altından başla
-  let quoteTop=topMargin+30;            // kapak yoksa alıntı bloğu üstten başlar
+  // ── ÜST: ikon yok; çerçeveden ferah nefes payı ──
+  const topMargin=132;                  // çerçeve (46) ile içerik arası boşluk
+  let quoteTop=topMargin+20;            // kapak yoksa alıntı bloğu üstten başlar
   if(cover){
-    const boxW=W*0.46, boxH=H*0.42;    // ~yarım ekran kutusu
+    const boxW=W*0.46, boxH=H*0.40;    // ~yarım ekran kutusu
     const sc=Math.min(boxW/cover.width, boxH/cover.height);
     const cw=cover.width*sc, ch=cover.height*sc;
     const cx=(W-cw)/2, cy=topMargin;
@@ -188,10 +182,13 @@ async function drawCard(canvas, item, style){
     quoteTop=cy+ch+52;
   }
 
-  // ── ALT BLOK (SABİT konumlar → asla üst üste binmez) ──
+  // ── ALT BLOK (SABİT konumlar → asla üst üste binmez, ferah) ──
+  // En altta: thetelos tırnak ikonu (çerçeveden ferah boşlukla). Site yazısı YOK.
+  const icon=await svgImg(LOGO_ICON_SVG,cGold);
+  const icoW=50, icoH=icoW, icoX=(W-icoW)/2, icoY=H-152;   // ikon en altta, çizgiden ~52px yukarıda
   const attr=item.author?item.author.toUpperCase():'';
-  const ySite=H-78, yBook=H-124, yAuthor=item.book?H-172:H-128;
-  const attrTop=attr?yAuthor:(item.book?yBook:ySite);   // atıf bloğunun en üstü
+  const yBook=H-198, yAuthor=item.book?H-244:H-204;
+  const attrTop=attr?yAuthor:(item.book?yBook:(H-190));   // atıf bloğunun en üstü
 
   // ── ALINTI (Playfair italic, logo/kapak ile atıf arasına ortalanır) ──
   const quote='“'+item.quote+'”';
@@ -210,9 +207,8 @@ async function drawCard(canvas, item, style){
   if(item.book){ x.fillStyle=cMuted; x.font='500 30px '+SERIF2;
     let b=item.book; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,yBook); }
 
-  // ── ALT: site (sabit konum) ──
-  x.fillStyle=cMuted; x.font='500 22px '+SANS; x.letterSpacing='1px';
-  x.fillText(item.site||'thetelos.org', W/2, ySite); x.letterSpacing='0px';
+  // ── ALT: thetelos tırnak ikonu (site yazısı yok) ──
+  if(icon){ x.drawImage(icon, icoX, icoY, icoW, icoH); }
 }
 
 // Twitter uzunluğu: URL'ler t.co'da her zaman 23 karakter sayılır
