@@ -19,6 +19,29 @@ header('Content-Type: application/json');
 ob_start();
 require_once '/home/thetelos/public_html/wp-load.php';
 ob_end_clean();
+
+/* ── AI carousel slaytları (DeepSeek) — tutarlı, sıralı, tek-fikirli ── */
+function sg_slide_prompt($book, $author, $content) {
+    $plain = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags((string) $content), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+    $plain = mb_substr($plain, 0, 4000);
+    return "You are writing an Instagram carousel about the book \"$book\"" . ($author ? " by $author" : "") . ".\n"
+        . "Write EXACTLY 5 slides based on the summary below. Rules:\n"
+        . "- One clear idea per slide, 8-22 words, a plain declarative sentence.\n"
+        . "- In order: slide 1 states the core premise; slides 2-4 give the key ideas; slide 5 is the main takeaway.\n"
+        . "- No numbering, no quotes, no emojis, no hashtags, do not write 'this book' or 'the summary'.\n"
+        . "- Output ONLY the 5 lines, one slide per line, nothing else.\n\nSUMMARY:\n" . $plain;
+}
+function sg_parse_slides($txt) {
+    $lines = preg_split('/\r?\n/', (string) $txt); $out = [];
+    foreach ($lines as $l) {
+        $l = trim($l);
+        $l = preg_replace('/^\s*(\d+[\).\-:]|[-*•])\s*/u', '', $l);   // numara/madde işaretini at
+        $l = trim($l, " \t\"“”'’-–—");
+        if (mb_strlen($l) >= 20 && mb_strlen($l) <= 200) $out[] = $l;
+    }
+    return array_slice($out, 0, 5);
+}
+
 /* Carousel için özetten kısa noktalar çıkar (kapak alıntısı hariç). */
 function sg_pick_points($html, $exclude, $n = 4) {
     $text = trim(html_entity_decode(strip_tags((string) $html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
@@ -162,6 +185,33 @@ foreach ($ids as $pid) {
     ];
 }
 if (!$items) { echo json_encode(['ok' => false, 'error' => 'Alıntı çıkarılamadı (içerik kısa olabilir).']); exit; }
+
+/* ── AI carousel slaytları (istenirse) — DeepSeek ile tutarlı slayt metinleri.
+   Post başına WP option'da önbelleklenir → tekrar üretimde bedava/anında. ── */
+if (($_POST['ai_slides'] ?? '') === '1') {
+    require_once __DIR__ . '/_proto.php';
+    $sc = get_option('tls_carousel_slides', []); if (!is_array($sc)) $sc = [];
+    $need_i = []; $prompts = [];
+    foreach ($items as $i => $it) {
+        $pid = (string) $it['post_id'];
+        if (isset($sc[$pid]) && is_array($sc[$pid]) && count($sc[$pid]) >= 3) {
+            $items[$i]['slides'] = $sc[$pid];
+        } else {
+            $p = get_post($it['post_id']);
+            $need_i[] = $i; $prompts[] = sg_slide_prompt($it['book'], $it['author'], $p ? $p->post_content : '');
+        }
+    }
+    if ($prompts) {
+        $res = function_exists('proto_deepseek_multi') ? proto_deepseek_multi($prompts, 380, null, 6) : [];
+        foreach ($need_i as $k => $i) {
+            $txt = is_array($res) && isset($res[$k]) ? $res[$k] : '';
+            if ($txt === '' && function_exists('proto_ds')) $txt = proto_ds($prompts[$k], 380);
+            $sl = sg_parse_slides($txt);
+            if (count($sl) >= 3) { $items[$i]['slides'] = $sl; $sc[(string) $items[$i]['post_id']] = $sl; }
+        }
+        update_option('tls_carousel_slides', $sc, false);
+    }
+}
 
 /* ── Kuyruğa yaz (istenirse) ── */
 if (($_POST['queue'] ?? '') === '1') {

@@ -387,19 +387,20 @@ async function makeCard(item, style){
 }
 
 document.getElementById('sc-gen').onclick=async function(){
-  status('Üretiliyor…','#e6c65a');
+  const format=document.getElementById('sc-format').value;
+  status(format==='carousel'?'AI slaytları hazırlanıyor… (ilk seferde biraz sürebilir)':'Üretiliyor…','#e6c65a');
   const grid=document.getElementById('sc-grid');
   const j=await post('social-generate.php',{
     count:document.getElementById('sc-count').value,
     source:document.getElementById('sc-source').value,
     title:document.getElementById('sc-title').value.trim(),
     exclude_shared:document.getElementById('sc-hideshared').checked?'1':'0',
+    ai_slides:format==='carousel'?'1':'0',
     queue:'1'
   });
   if(!j.ok){status('Hata: '+(j.error||'?'),'#cc1818');return;}
   grid.innerHTML='';
   const style=document.getElementById('sc-style').value;
-  const format=document.getElementById('sc-format').value;
   status('Kartlar çiziliyor…','#e6c65a');
   for(const it of j.items){ grid.appendChild(format==='carousel' ? await makeCarouselCard(it,style) : await makeCard(it,style)); }
   status('✅ '+j.count+(format==='carousel'?' carousel':' kart')+' üretildi.','#00ab6b');
