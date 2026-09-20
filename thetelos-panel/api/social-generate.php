@@ -21,20 +21,20 @@ require_once '/home/thetelos/public_html/wp-load.php';
 ob_end_clean();
 require_once __DIR__ . '/_wikidata-authors.php';   // tls_wd_http (yazar portresi için)
 
-/* Commons dosya adı → thumbnail URL (yazar portresi arka planı) */
+/* Commons dosya adı → görsel URL. Special:FilePath güvenilir: doğru thumb'a
+   302 yönlendirir, tüm kodlama/encoding derdini kendisi halleder. */
 function sg_commons_thumb($file, $w = 800) {
-    $fn = str_replace(' ', '_', $file);
-    if (preg_match('/\.(svg|pdf|tif|tiff)$/i', $fn)) return '';   // raster değil → atla
-    $h = md5($fn); $enc = rawurlencode($fn);
-    return 'https://upload.wikimedia.org/wikipedia/commons/thumb/'
-        . $h[0] . '/' . substr($h, 0, 2) . '/' . $enc . '/' . $w . 'px-' . $enc;
+    $fn = str_replace(' ', '_', (string) $file);
+    if (preg_match('/\.(pdf|tif|tiff)$/i', $fn)) return '';   // desteklenmeyen tür
+    return 'https://commons.wikimedia.org/wiki/Special:FilePath/' . rawurlencode($fn) . '?width=' . (int) $w;
 }
 
-/* Yazarın Wikidata portresi (P18) — WP option'da kalıcı önbellek. '' = yok. */
+/* Yazarın Wikidata portresi (P18) — WP option'da kalıcı önbellek. '' = yok.
+   Not: önbellek anahtarı v2 (eski hatalı URL'leri geçersiz kılmak için). */
 function sg_author_image($name) {
     $name = trim((string) $name);
     if ($name === '' || !function_exists('tls_wd_http')) return '';
-    $cache = get_option('tls_author_img', []); if (!is_array($cache)) $cache = [];
+    $cache = get_option('tls_author_img2', []); if (!is_array($cache)) $cache = [];
     $key = mb_strtolower($name);
     if (array_key_exists($key, $cache)) return $cache[$key];
     $img = '';
@@ -45,7 +45,7 @@ function sg_author_image($name) {
         $file = $c['claims']['P18'][0]['mainsnak']['datavalue']['value'] ?? '';
         if ($file) $img = sg_commons_thumb($file, 800);
     }
-    $cache[$key] = $img; update_option('tls_author_img', $cache, false);
+    $cache[$key] = $img; update_option('tls_author_img2', $cache, false);
     return $img;
 }
 
