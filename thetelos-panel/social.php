@@ -221,8 +221,8 @@ async function drawCard(canvas, item, style){
 
   // ── ATIF (yazar + kitap, sabit konum) ──
   if(attr){ x.fillStyle=cGold; x.font='600 32px '+SERIF; x.letterSpacing='4px'; x.fillText(attr,W/2,yAuthor); x.letterSpacing='0px'; }
-  if(item.book){ x.fillStyle=cMuted; x.font='500 30px '+SERIF2;
-    let b=item.book; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,yBook); }
+  { let b=cleanBook(item); if(b){ x.fillStyle=cMuted; x.font='500 30px '+SERIF2;
+    if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,yBook); } }
 
   // ── ALT: thetelos tırnak ikonu (site yazısı yok) ──
   if(icon){ x.drawImage(icon, icoX, icoY, icoW, icoH); }
@@ -250,6 +250,10 @@ function computeTheme(bgImg){
   }
   return t;
 }
+// Kitap başlığında zaten "– Yazar" varsa onu ayıkla (yazar ayrıca gösteriliyor → tekrar olmasın)
+function cleanBook(item){ let b=String(item.book||''); const a=String(item.author||'');
+  if(a){ const esc=a.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); b=b.replace(new RegExp('\\s*[–—-]\\s*'+esc+'\\s*$','i'),''); }
+  return b.trim(); }
 function wrapText(x,text,font,maxW){ x.font=font; const words=String(text).split(' '); let ln='',out=[];
   for(const w of words){ const tt=ln?ln+' '+w:w; if(x.measureText(tt).width>maxW&&ln){out.push(ln);ln=w;}else ln=tt; } if(ln)out.push(ln); return out; }
 
@@ -278,20 +282,20 @@ async function drawSlide(cv,item,th,slide,n,total){
     const lh=fs*1.32; let y=H/2-(lines.length*lh)/2+fs*0.7-24; for(const ln of lines){ x.fillText(ln,W/2,y); y+=lh; }
     x.shadowColor='transparent'; x.shadowBlur=0; y+=30;
     if(item.author){ x.fillStyle=gCol; x.font='600 30px '+SERIF; x.letterSpacing='4px'; x.fillText(item.author.toUpperCase(),W/2,y); x.letterSpacing='0px'; y+=44; }
-    if(item.book){ x.fillStyle=mCol; x.font='500 28px '+SERIF2; let b=item.book; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,y); }
+    { let b=cleanBook(item); if(b){ x.fillStyle=mCol; x.font='500 28px '+SERIF2; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,y); } }
   } else if(slide.kind==='point'){
     let fs=58,lines=[]; const maxW=W-220, maxBlockH=800;
     while(fs>30){ lines=wrapText(x,slide.text||'','500 '+fs+'px '+SERIF,maxW); if(lines.length*(fs*1.4)<=maxBlockH)break; fs-=3; }
     x.font='500 '+fs+'px '+SERIF; x.fillStyle=tCol;
     const lh=fs*1.4, blockH=lines.length*lh; let y=(H-blockH)/2+fs*0.72; for(const ln of lines){ x.fillText(ln,W/2,y); y+=lh; }
-    x.fillStyle=mCol; x.font='500 24px '+SERIF2; let f=(item.book||'')+(item.author?' · '+item.author:'');
+    x.fillStyle=mCol; x.font='500 24px '+SERIF2; let f=cleanBook(item)+(item.author?' · '+item.author:'');
     if(x.measureText(f).width>maxW){while(x.measureText(f+'…').width>maxW&&f.length>4)f=f.slice(0,-1);f+='…';} x.fillText(f,W/2,H-152);
   } else {
     // KAPANIŞ — siteye yönlendiren tek ve net çağrı
     let cy=H*0.37;
     x.fillStyle=gCol; x.font='600 26px '+SANS; x.letterSpacing='5px'; x.fillText('READ THE FULL SUMMARY', W/2, cy); x.letterSpacing='0px';
     cy+=96; x.fillStyle=tCol; x.font='600 66px '+SERIF; x.fillText('thetelos.org', W/2, cy);
-    cy+=76; x.fillStyle=mCol; x.font='500 30px '+SERIF2; let b=item.book||''; const mw=W-240;
+    cy+=76; x.fillStyle=mCol; x.font='500 30px '+SERIF2; let b=cleanBook(item); const mw=W-240;
     if(x.measureText(b).width>mw){while(x.measureText(b+'…').width>mw&&b.length>4)b=b.slice(0,-1);b+='…';}
     if(b) x.fillText(b, W/2, cy);
     cy+=56; x.fillStyle=mCol; x.font='500 24px '+SANS; x.letterSpacing='1px'; x.fillText('@thetelos', W/2, cy); x.letterSpacing='0px';
