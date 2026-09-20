@@ -18,6 +18,17 @@ header('Content-Type: application/json');
 
 define('TW_SECRET_FILE', dirname(__DIR__) . '/twitter.secret.php');
 
+define('TW_SHARED_FILE', dirname(__DIR__) . '/social-shared.json');
+
+/* Paylaşılan yazıları kaydet (post_id → tweet bilgisi) — tekrar paylaşımı önlemek için */
+function tw_mark_shared($pid, $tid) {
+    if ($pid <= 0) return;
+    $d = is_file(TW_SHARED_FILE) ? json_decode((string) @file_get_contents(TW_SHARED_FILE), true) : [];
+    if (!is_array($d)) $d = [];
+    $d[(string) $pid] = ['tweet_id' => (string) $tid, 't' => time()];
+    @file_put_contents(TW_SHARED_FILE, json_encode($d, JSON_UNESCAPED_UNICODE));
+}
+
 function tw_load() {
     if (!file_exists(TW_SECRET_FILE)) return null;
     $d = @include TW_SECRET_FILE;
@@ -154,6 +165,7 @@ if ($action === 'post') {
     [$code, $j, $raw, $err] = tw_json_response($ch);
     if ($err) { echo json_encode(['ok' => false, 'error' => 'Tweet cURL: ' . $err]); exit; }
     if (($code === 200 || $code === 201) && !empty($j['data']['id'])) {
+        tw_mark_shared((int) ($_POST['post_id'] ?? 0), $j['data']['id']);
         echo json_encode(['ok' => true, 'id' => $j['data']['id'],
             'url' => 'https://x.com/i/web/status/' . $j['data']['id']]); exit;
     }

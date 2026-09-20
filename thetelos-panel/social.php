@@ -79,6 +79,9 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <label>Elle başlık (opsiyonel)
         <input type="text" id="sc-title" placeholder="Örn: Meditations" style="min-width:220px">
       </label>
+      <label style="flex-direction:row;align-items:center;gap:6px;align-self:end;padding-bottom:6px">
+        <input type="checkbox" id="sc-hideshared" checked> Paylaşılanları gizle
+      </label>
       <label>&nbsp;
         <button class="btn btn-primary" id="sc-gen">✦ Üret</button>
       </label>
@@ -229,7 +232,9 @@ async function makeCard(item, style){
   const cv=document.createElement('canvas'); card.appendChild(cv);
   const body=document.createElement('div'); body.className='sc-body';
   const meta=document.createElement('div'); meta.className='sc-meta';
-  meta.innerHTML='<b>'+ (item.book||'') +'</b>'+(item.author?' · '+item.author:'')+(item.quote_kind==='insight'?' <span style="color:#c58af0">(özet cümlesi)</span>':' <span style="color:#00ab6b">(alıntı)</span>');
+  const sharedBadge=item.shared?' <span class="sc-shared" style="color:#e0a03a;font-weight:600">✓ daha önce paylaşıldı'+(item.shared_at?' ('+item.shared_at+')':'')+'</span>':'';
+  meta.innerHTML='<b>'+ (item.book||'') +'</b>'+(item.author?' · '+item.author:'')+(item.quote_kind==='insight'?' <span style="color:#c58af0">(özet cümlesi)</span>':' <span style="color:#00ab6b">(alıntı)</span>')+sharedBadge;
+  if(item.shared) card.style.opacity='0.72';
   const cap=document.createElement('textarea'); cap.className='sc-cap'; cap.value=item.caption;
   const twbox=document.createElement('textarea'); twbox.className='sc-cap'; twbox.value=composeTweet(item); twbox.style.minHeight='70px';
   const twlbl=document.createElement('div'); twlbl.className='sc-meta'; twlbl.innerHTML='🐦 Tweet metni <span class="twc" style="color:var(--muted)"></span>';
@@ -248,13 +253,15 @@ async function makeCard(item, style){
   dl.onclick=function(){ var a=document.createElement('a'); a.download=(item.book||'thetelos').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.jpg'; a.href=cv.toDataURL('image/jpeg',0.92); a.click(); };
   cp.onclick=async function(){ try{ await navigator.clipboard.writeText(cap.value); cp.textContent='✓ Kopyalandı'; setTimeout(()=>cp.textContent='📋 Caption kopyala',1500);}catch(e){ cap.select(); document.execCommand('copy'); } };
   tw.onclick=async function(){
+    // Daha önce paylaşıldıysa uyar (boşa para harcama)
+    if(item.shared && !confirm('⚠️ Bu içeriği DAHA ÖNCE'+(item.shared_at?' ('+item.shared_at+')':'')+' paylaştın. Tekrar atmak X\'te tekrar ÜCRETLENDİRİLİR. Yine de atmak istiyor musun?')) return;
     // Paylaşırken 280'i aşıyorsa OTOMATİK olarak uygun formata kısalt
     let text=twbox.value;
     if(twLen(text)>280){ text=composeTweet(item); twbox.value=text; updTwc(); }
-    if(!confirm('Bu kartı görseliyle birlikte X\'e (Twitter) göndermek üzeresin. Devam?')) return;
+    if(!item.shared && !confirm('Bu kartı görseliyle birlikte X\'e (Twitter) göndermek üzeresin. Devam?')) return;
     tw.disabled=true; const old=tw.textContent; tw.textContent='⏳ Gönderiliyor…';
     let img=''; try{ img=cv.toDataURL('image/jpeg',0.92); }catch(e){ img=''; }
-    async function send(withImg){ return post('twitter.php',{action:'post',text:text,image:withImg?img:''}); }
+    async function send(withImg){ return post('twitter.php',{action:'post',text:text,image:withImg?img:'',post_id:item.post_id||''}); }
     try{
       let r=await send(true);
       // Görsel yükleme ücret istiyorsa → görselsiz (metin+link) tekrar dene
@@ -265,7 +272,12 @@ async function makeCard(item, style){
           r=await send(false);
         } else { return; }
       }
-      if(r.ok){ tw.textContent='✓ Paylaşıldı'; tw.style.color='#00ab6b'; tw.style.borderColor='#00ab6b'; if(r.url)window.open(r.url,'_blank'); }
+      if(r.ok){
+        tw.textContent='✓ Paylaşıldı'; tw.style.color='#00ab6b'; tw.style.borderColor='#00ab6b';
+        item.shared=true;   // kartı işaretle (bu oturumda tekrar atmayı önler)
+        if(!meta.querySelector('.sc-shared')){ meta.insertAdjacentHTML('beforeend',' <span class="sc-shared" style="color:#e0a03a;font-weight:600">✓ paylaşıldı</span>'); }
+        if(r.url)window.open(r.url,'_blank');
+      }
       else{ tw.textContent=old; tw.disabled=false; alert('Tweet hatası ('+(r.code||'?')+'): '+(r.error||'?')); }
     }catch(e){ tw.textContent=old; tw.disabled=false; alert('Bağlantı hatası: '+e.message); }
   };
@@ -279,6 +291,7 @@ document.getElementById('sc-gen').onclick=async function(){
     count:document.getElementById('sc-count').value,
     source:document.getElementById('sc-source').value,
     title:document.getElementById('sc-title').value.trim(),
+    exclude_shared:document.getElementById('sc-hideshared').checked?'1':'0',
     queue:'1'
   });
   if(!j.ok){status('Hata: '+(j.error||'?'),'#cc1818');return;}

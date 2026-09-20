@@ -54,6 +54,14 @@ function sg_pick_quote($html) {
     return ['text' => $best, 'kind' => 'insight'];   // özet cümlesi (yazara ATFEDİLMEZ)
 }
 
+/* ── Daha önce X'e paylaşılanlar (tekrar üretme/gösterme) ── */
+$shared_file = dirname(__DIR__) . '/social-shared.json';
+$shared      = is_file($shared_file) ? json_decode((string) @file_get_contents($shared_file), true) : [];
+if (!is_array($shared)) $shared = [];
+$shared_ids  = array_map('intval', array_keys($shared));
+$exclude_shared = (($_POST['exclude_shared'] ?? '1') === '1');
+$skip = ($exclude_shared && $shared_ids) ? $shared_ids : [];
+
 /* ── Yazı listesi seç ── */
 $ids = [];
 if ($one_pid > 0) {
@@ -65,6 +73,7 @@ if ($one_pid > 0) {
     $base = ['post_type' => 'post', 'post_status' => 'publish', 'fields' => 'ids',
              'posts_per_page' => $count, 'no_found_rows' => true, 'ignore_sticky_posts' => true];
     if ($cat > 0) $base['cat'] = $cat;
+    if ($skip) $base['post__not_in'] = $skip;   // paylaşılanları hariç tut
     if ($source === 'popular') {
         $ids = get_posts(array_merge($base, [
             'meta_key' => 'post_views_count', 'orderby' => 'meta_value_num', 'order' => 'DESC',
@@ -73,7 +82,7 @@ if ($one_pid > 0) {
     }
     if (count($ids) < $count) {   // az geldiyse tarihle tamamla
         $more = get_posts(array_merge($base, ['orderby' => 'date', 'order' => 'DESC',
-            'post__not_in' => $ids, 'posts_per_page' => $count - count($ids)]));
+            'post__not_in' => array_merge($ids, $skip), 'posts_per_page' => $count - count($ids)]));
         $ids = array_merge($ids, $more);
     }
 }
@@ -123,6 +132,8 @@ foreach ($ids as $pid) {
         'quote' => $q['text'], 'quote_kind' => $q['kind'],
         'handle' => $brand, 'site' => $site,
         'caption' => $caption, 'tweet' => $tweet, 'hashtags' => $hashtags,
+        'shared'    => isset($shared[(string) $pid]),
+        'shared_at' => isset($shared[(string) $pid]['t']) ? date('Y-m-d', (int) $shared[(string) $pid]['t']) : '',
     ];
 }
 if (!$items) { echo json_encode(['ok' => false, 'error' => 'Alıntı çıkarılamadı (içerik kısa olabilir).']); exit; }
