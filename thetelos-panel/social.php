@@ -258,10 +258,19 @@ async function makeCard(item, style){
     if(!confirm('Bu kartı görseliyle birlikte X\'e (Twitter) göndermek üzeresin. Devam?')) return;
     tw.disabled=true; const old=tw.textContent; tw.textContent='⏳ Gönderiliyor…';
     let img=''; try{ img=cv.toDataURL('image/jpeg',0.92); }catch(e){ img=''; }
+    async function send(withImg){ return post('twitter.php',{action:'post',text:text,image:withImg?img:''}); }
     try{
-      const r=await post('twitter.php',{action:'post',text:text,image:img});
+      let r=await send(true);
+      // Görsel yükleme ücret istiyorsa → görselsiz (metin+link) tekrar dene
+      if(!r.ok && r.step==='media' && r.paid){
+        tw.textContent=old; tw.disabled=false;
+        if(confirm('X görsel yüklemeyi ücretli tutuyor (Payment Required). Görselsiz — sadece metin + link — tweet atmayı denememi ister misin? (Bu genelde ücretsiz çalışır)')){
+          tw.disabled=true; tw.textContent='⏳ Metin gönderiliyor…';
+          r=await send(false);
+        } else { return; }
+      }
       if(r.ok){ tw.textContent='✓ Paylaşıldı'; tw.style.color='#00ab6b'; tw.style.borderColor='#00ab6b'; if(r.url)window.open(r.url,'_blank'); }
-      else{ tw.textContent=old; tw.disabled=false; alert('Tweet hatası: '+(r.error||'?')); }
+      else{ tw.textContent=old; tw.disabled=false; alert('Tweet hatası ('+(r.code||'?')+'): '+(r.error||'?')); }
     }catch(e){ tw.textContent=old; tw.disabled=false; alert('Bağlantı hatası: '+e.message); }
   };
   return card;

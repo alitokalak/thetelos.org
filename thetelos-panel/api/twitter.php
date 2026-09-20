@@ -134,7 +134,9 @@ if ($action === 'post') {
         if ($err) { echo json_encode(['ok' => false, 'error' => 'Medya yükleme cURL: ' . $err]); exit; }
         if ($code !== 200 || empty($j['media_id_string'])) {
             $msg = $j['errors'][0]['message'] ?? ($j['error'] ?? "Medya yükleme HTTP $code");
-            echo json_encode(['ok' => false, 'error' => $msg, 'raw' => $raw]); exit;
+            $paid = ($code === 402 || $code === 403 || $code === 453);
+            echo json_encode(['ok' => false, 'step' => 'media', 'paid' => $paid,
+                'error' => 'Görsel yükleme: ' . $msg, 'code' => $code, 'raw' => $raw]); exit;
         }
         $media_id = $j['media_id_string'];
     }
@@ -156,7 +158,9 @@ if ($action === 'post') {
             'url' => 'https://x.com/i/web/status/' . $j['data']['id']]); exit;
     }
     $msg = $j['title'] ?? ($j['detail'] ?? ($j['errors'][0]['message'] ?? "HTTP $code"));
-    echo json_encode(['ok' => false, 'error' => $msg, 'raw' => $raw]); exit;
+    $paid = ($code === 402 || $code === 403 || $code === 453);
+    echo json_encode(['ok' => false, 'step' => 'tweet', 'paid' => $paid,
+        'error' => $msg, 'code' => $code, 'raw' => $raw]); exit;
 }
 
 echo json_encode(['ok' => false, 'error' => 'Geçersiz işlem.']);
