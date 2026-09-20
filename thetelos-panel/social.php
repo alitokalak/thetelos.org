@@ -331,7 +331,12 @@ async function makeCarouselCard(item, style){
   dl.onclick=async function(){
     if(typeof JSZip==='undefined'){ alert('ZIP kütüphanesi yüklenemedi (internet?).'); return; }
     const zip=new JSZip(), base=(item.book||'thetelos').replace(/[^a-z0-9]+/gi,'-').toLowerCase();
-    for(let i=0;i<canvases.length;i++){ const d=canvases[i].toDataURL('image/jpeg',0.92).split(',')[1]; zip.file(base+'-'+String(i+1).padStart(2,'0')+'.jpg', d, {base64:true}); }
+    // Dosya adı NUMARA-ÖNCE (01-, 02-…) → hem isimle doğru sıralanır hem telefonda
+    // taranması kolay. Ayrıca her slayta ARTAN tarih ver → tarihe göre sıralayan
+    // galeriler de doğru sırada gösterir. Böylece telefonda sırayla seçebilirsin.
+    const t0=Date.now()-canvases.length*60000;
+    for(let i=0;i<canvases.length;i++){ const d=canvases[i].toDataURL('image/jpeg',0.92).split(',')[1];
+      zip.file(String(i+1).padStart(2,'0')+'-'+base+'.jpg', d, {base64:true, date:new Date(t0+i*60000)}); }
     const blob=await zip.generateAsync({type:'blob'}); const a=document.createElement('a'); a.download=base+'-carousel.zip'; a.href=URL.createObjectURL(blob); a.click();
   };
   cp.onclick=async function(){ try{ await navigator.clipboard.writeText(cap.value); cp.textContent='✓ Kopyalandı'; setTimeout(()=>cp.textContent='📋 Caption kopyala',1500);}catch(e){ cap.select(); document.execCommand('copy'); } };

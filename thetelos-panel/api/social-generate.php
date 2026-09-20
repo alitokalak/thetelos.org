@@ -25,7 +25,7 @@ function sg_slide_prompt($book, $author, $content) {
     $plain = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags((string) $content), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
     $plain = mb_substr($plain, 0, 4000);
     return "You are writing an Instagram carousel about the book \"$book\"" . ($author ? " by $author" : "") . ".\n"
-        . "Write between 3 and 5 slides based on the summary below — use ONLY as many as the material genuinely supports; do NOT pad with filler just to reach a number.\n"
+        . "Write between 3 and 5 slides based on the summary below. Aim for 3-4 in most cases; use 5 ONLY when the material is genuinely rich enough to fill them without repetition. Never pad with filler to reach a number — fewer strong slides beat more weak ones.\n"
         . "Rules:\n"
         . "- One clear idea per slide, 8-22 words, a plain declarative sentence.\n"
         . "- In order: the first slide states the core premise; the middle slides give the key ideas; the last is the main takeaway.\n"
@@ -191,7 +191,7 @@ if (!$items) { echo json_encode(['ok' => false, 'error' => 'Alıntı çıkarıla
    Post başına WP option'da önbelleklenir → tekrar üretimde bedava/anında. ── */
 if (($_POST['ai_slides'] ?? '') === '1') {
     require_once __DIR__ . '/_proto.php';
-    $sc = get_option('tls_carousel_slides', []); if (!is_array($sc)) $sc = [];
+    $sc = get_option('tls_carousel_slides_v2', []); if (!is_array($sc)) $sc = [];
     $need_i = []; $prompts = [];
     foreach ($items as $i => $it) {
         $pid = (string) $it['post_id'];
@@ -210,7 +210,7 @@ if (($_POST['ai_slides'] ?? '') === '1') {
             $sl = sg_parse_slides($txt);   // 3-5 nokta → toplam 5-7 slayt; içerik azsa daha az
             if (count($sl) >= 2) { $items[$i]['slides'] = $sl; $sc[(string) $items[$i]['post_id']] = $sl; }
         }
-        update_option('tls_carousel_slides', $sc, false);
+        update_option('tls_carousel_slides_v2', $sc, false);
     }
 }
 
