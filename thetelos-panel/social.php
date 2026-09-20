@@ -287,10 +287,14 @@ async function drawSlide(cv,item,th,slide,n,total){
     x.fillStyle=mCol; x.font='500 24px '+SERIF2; let f=(item.book||'')+(item.author?' · '+item.author:'');
     if(x.measureText(f).width>maxW){while(x.measureText(f+'…').width>maxW&&f.length>4)f=f.slice(0,-1);f+='…';} x.fillText(f,W/2,H-152);
   } else {
-    x.fillStyle=gCol; x.font='600 30px '+SANS; x.letterSpacing='3px'; x.fillText('TAM ÖZET',W/2,H/2-130); x.letterSpacing='0px';
-    x.fillStyle=tCol; const bl=wrapText(x,item.book||'','500 52px '+SERIF,W-220); let y=H/2-46; x.font='500 52px '+SERIF; for(const ln of bl){ x.fillText(ln,W/2,y); y+=64; }
-    if(item.author){ x.fillStyle=mCol; x.font='500 30px '+SERIF2; x.fillText('— '+item.author,W/2,y+8); }
-    x.fillStyle=mCol; x.font='500 26px '+SANS; x.letterSpacing='1px'; x.fillText('thetelos.org',W/2,H-250); x.letterSpacing='0px';
+    // KAPANIŞ — siteye yönlendiren tek ve net çağrı
+    let cy=H*0.37;
+    x.fillStyle=gCol; x.font='600 26px '+SANS; x.letterSpacing='5px'; x.fillText('READ THE FULL SUMMARY', W/2, cy); x.letterSpacing='0px';
+    cy+=96; x.fillStyle=tCol; x.font='600 66px '+SERIF; x.fillText('thetelos.org', W/2, cy);
+    cy+=76; x.fillStyle=mCol; x.font='500 30px '+SERIF2; let b=item.book||''; const mw=W-240;
+    if(x.measureText(b).width>mw){while(x.measureText(b+'…').width>mw&&b.length>4)b=b.slice(0,-1);b+='…';}
+    if(b) x.fillText(b, W/2, cy);
+    cy+=56; x.fillStyle=mCol; x.font='500 24px '+SANS; x.letterSpacing='1px'; x.fillText('@thetelos', W/2, cy); x.letterSpacing='0px';
   }
   const icon=await svgImg(LOGO_ICON_SVG, gCol);
   if(icon){ const s=46; x.drawImage(icon,(W-s)/2,H-118,s,s); }
