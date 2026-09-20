@@ -19,36 +19,6 @@ header('Content-Type: application/json');
 ob_start();
 require_once '/home/thetelos/public_html/wp-load.php';
 ob_end_clean();
-require_once __DIR__ . '/_wikidata-authors.php';   // tls_wd_http (yazar portresi için)
-
-/* Commons dosya adı → görsel URL. Special:FilePath güvenilir: doğru thumb'a
-   302 yönlendirir, tüm kodlama/encoding derdini kendisi halleder. */
-function sg_commons_thumb($file, $w = 800) {
-    $fn = str_replace(' ', '_', (string) $file);
-    if (preg_match('/\.(pdf|tif|tiff)$/i', $fn)) return '';   // desteklenmeyen tür
-    return 'https://commons.wikimedia.org/wiki/Special:FilePath/' . rawurlencode($fn) . '?width=' . (int) $w;
-}
-
-/* Yazarın Wikidata portresi (P18) — WP option'da kalıcı önbellek. '' = yok.
-   Not: önbellek anahtarı v2 (eski hatalı URL'leri geçersiz kılmak için). */
-function sg_author_image($name) {
-    $name = trim((string) $name);
-    if ($name === '' || !function_exists('tls_wd_http')) return '';
-    $cache = get_option('tls_author_img2', []); if (!is_array($cache)) $cache = [];
-    $key = mb_strtolower($name);
-    if (array_key_exists($key, $cache)) return $cache[$key];
-    $img = '';
-    $s = json_decode(tls_wd_http('https://www.wikidata.org/w/api.php?action=wbsearchentities&format=json&language=en&type=item&limit=1&search=' . rawurlencode($name)), true);
-    $qid = $s['search'][0]['id'] ?? '';
-    if ($qid) {
-        $c = json_decode(tls_wd_http('https://www.wikidata.org/w/api.php?action=wbgetclaims&format=json&property=P18&entity=' . $qid), true);
-        $file = $c['claims']['P18'][0]['mainsnak']['datavalue']['value'] ?? '';
-        if ($file) $img = sg_commons_thumb($file, 800);
-    }
-    $cache[$key] = $img; update_option('tls_author_img2', $cache, false);
-    return $img;
-}
-
 /* Carousel için özetten kısa noktalar çıkar (kapak alıntısı hariç). */
 function sg_pick_points($html, $exclude, $n = 4) {
     $text = trim(html_entity_decode(strip_tags((string) $html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
@@ -186,7 +156,6 @@ foreach ($ids as $pid) {
         'quote' => $q['text'], 'quote_kind' => $q['kind'],
         'handle' => $brand, 'site' => $site,
         'caption' => $caption, 'tweet' => $tweet, 'hashtags' => $hashtags,
-        'author_img' => sg_author_image($author),                  // yazar portresi (Wikidata P18)
         'slides'     => sg_pick_points($post->post_content, $q['text'], 4),  // carousel detay noktaları
         'shared'    => isset($shared[(string) $pid]),
         'shared_at' => isset($shared[(string) $pid]['t']) ? date('Y-m-d', (int) $shared[(string) $pid]['t']) : '',

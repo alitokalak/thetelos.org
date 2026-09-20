@@ -114,6 +114,12 @@ let _logoCache={};
 function svgImg(svg,color){ var k=color+':'+svg.length; if(_logoCache[k])return _logoCache[k]; var p=loadImg('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg.replace(/__C__/g,color))); _logoCache[k]=p; return p; }
 
 function loadImg(url){ return new Promise(function(res){ if(!url){res(null);return;} var im=new Image(); im.crossOrigin='anonymous'; im.onload=function(){res(im);}; im.onerror=function(){res(null);}; im.src=url; }); }
+// Arka plan görselini seç: yazar portresi (sunucu proxy) → yoksa kitap kapağı → yoksa yok
+async function pickBg(item, style){
+  if(style==='author' && item.author){ const im=await loadImg('api/author-img.php?name='+encodeURIComponent(item.author)); if(im) return im; }
+  if((style==='author'||style==='cover') && item.cover){ const im=await loadImg(item.cover); if(im) return im; }
+  return null;
+}
 let _fontsReady=false;
 async function ensureFonts(){ if(_fontsReady)return; try{ await Promise.all([
   document.fonts.load('500 60px "EB Garamond"'), document.fonts.load('600 60px "EB Garamond"'),
@@ -148,9 +154,8 @@ async function drawCard(canvas, item, style){
   let cover=null, light=false;
   let bgTop='#1c1712', bgBot='#0d0906';
   let cText=CREAM, cMuted=MUTE, cGold=GOLD, cFrame='rgba(201,162,75,.45)', cDiv='rgba(201,162,75,.5)';
-  let bgUrl = (style==='author') ? (item.author_img||item.cover) : (style==='cover' ? item.cover : '');
-  if(bgUrl){
-    const img=await loadImg(bgUrl);
+  {
+    const img=await pickBg(item, style);
     if(img){
       cover=img;
       const col=sampleColor(img);
@@ -304,8 +309,7 @@ async function makeCarouselCard(item, style){
   const cp=document.createElement('button'); cp.className='btn'; cp.textContent='📋 Caption kopyala';
   const open=document.createElement('a'); open.className='btn'; open.textContent='↗ Yazı'; open.href=item.url; open.target='_blank';
   acts.append(dl,cp,open); body.append(meta,cap,acts); card.append(strip,body);
-  let bgUrl=(style==='author')?(item.author_img||item.cover):(style==='cover'?item.cover:'');
-  const bgImg=bgUrl?await loadImg(bgUrl):null;
+  const bgImg=await pickBg(item, style);
   const th=computeTheme(bgImg);
   const pts=(item.slides&&item.slides.length)?item.slides:[];
   const defs=[{kind:'cover'}].concat(pts.map(t=>({kind:'point',text:t}))).concat([{kind:'cta'}]);
