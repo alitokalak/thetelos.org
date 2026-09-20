@@ -215,6 +215,19 @@ async function drawCard(canvas, item, style){
   x.fillText(item.site||'thetelos.org', W/2, ySite); x.letterSpacing='0px';
 }
 
+// Twitter uzunluğu: URL'ler t.co'da her zaman 23 karakter sayılır
+function twLen(s){ return [...String(s).replace(/https?:\/\/\S+/g, 'x'.repeat(23))].length; }
+// Alıntı + kısa atıf (— yazar) + link + etiket → GARANTİLİ ≤280 tweet metni
+function composeTweet(item){
+  const url=item.url||''; const author=item.author||''; const tags='#books #thetelos';
+  const attrib = author ? ('— '+author) : '';
+  const tail = (attrib?('\n\n'+attrib):'') + '\n\n' + url + ' ' + tags;
+  let qbudget = 280 - twLen(tail) - 2;                 // 2 = tırnaklar
+  let q = item.quote||'';
+  if([...q].length > qbudget) q = [...q].slice(0, Math.max(20, qbudget-1)).join('') + '…';
+  return '“'+q+'”'+tail;
+}
+
 async function makeCard(item, style){
   const card=document.createElement('div'); card.className='sc-card';
   const cv=document.createElement('canvas'); card.appendChild(cv);
@@ -222,7 +235,7 @@ async function makeCard(item, style){
   const meta=document.createElement('div'); meta.className='sc-meta';
   meta.innerHTML='<b>'+ (item.book||'') +'</b>'+(item.author?' · '+item.author:'')+(item.quote_kind==='insight'?' <span style="color:#c58af0">(özet cümlesi)</span>':' <span style="color:#00ab6b">(alıntı)</span>');
   const cap=document.createElement('textarea'); cap.className='sc-cap'; cap.value=item.caption;
-  const twbox=document.createElement('textarea'); twbox.className='sc-cap'; twbox.value=item.tweet||item.caption; twbox.style.minHeight='70px';
+  const twbox=document.createElement('textarea'); twbox.className='sc-cap'; twbox.value=composeTweet(item); twbox.style.minHeight='70px';
   const twlbl=document.createElement('div'); twlbl.className='sc-meta'; twlbl.innerHTML='🐦 Tweet metni <span class="twc" style="color:var(--muted)"></span>';
   const acts=document.createElement('div'); acts.className='sc-actions';
   const dl=document.createElement('button'); dl.className='btn btn-primary'; dl.textContent='⬇ Görseli indir (JPG)';
@@ -230,7 +243,7 @@ async function makeCard(item, style){
   const tw=document.createElement('button'); tw.className='btn'; tw.textContent='🐦 Tweet at'; tw.style.borderColor='#1d9bf0'; tw.style.color='#1d9bf0';
   const open=document.createElement('a'); open.className='btn'; open.textContent='↗ Yazı'; open.href=item.url; open.target='_blank';
   acts.append(dl,cp,tw,open);
-  function updTwc(){ const n=[...twbox.value].length; const el=twlbl.querySelector('.twc'); el.textContent='('+n+'/280)'; el.style.color=n>280?'#cc4444':'var(--muted)'; }
+  function updTwc(){ const n=twLen(twbox.value); const el=twlbl.querySelector('.twc'); el.textContent='('+n+'/280)'; el.style.color=n>280?'#cc4444':'var(--muted)'; }
   twbox.addEventListener('input',updTwc);
   body.append(meta,cap,twlbl,twbox,acts);
   card.append(body);
@@ -239,12 +252,14 @@ async function makeCard(item, style){
   dl.onclick=function(){ var a=document.createElement('a'); a.download=(item.book||'thetelos').replace(/[^a-z0-9]+/gi,'-').toLowerCase()+'.jpg'; a.href=cv.toDataURL('image/jpeg',0.92); a.click(); };
   cp.onclick=async function(){ try{ await navigator.clipboard.writeText(cap.value); cp.textContent='✓ Kopyalandı'; setTimeout(()=>cp.textContent='📋 Caption kopyala',1500);}catch(e){ cap.select(); document.execCommand('copy'); } };
   tw.onclick=async function(){
-    if([...twbox.value].length>280){ alert('Tweet 280 karakteri aşıyor, kısalt.'); return; }
+    // Paylaşırken 280'i aşıyorsa OTOMATİK olarak uygun formata kısalt
+    let text=twbox.value;
+    if(twLen(text)>280){ text=composeTweet(item); twbox.value=text; updTwc(); }
     if(!confirm('Bu kartı görseliyle birlikte X\'e (Twitter) göndermek üzeresin. Devam?')) return;
     tw.disabled=true; const old=tw.textContent; tw.textContent='⏳ Gönderiliyor…';
     let img=''; try{ img=cv.toDataURL('image/jpeg',0.92); }catch(e){ img=''; }
     try{
-      const r=await post('twitter.php',{action:'post',text:twbox.value,image:img});
+      const r=await post('twitter.php',{action:'post',text:text,image:img});
       if(r.ok){ tw.textContent='✓ Paylaşıldı'; tw.style.color='#00ab6b'; tw.style.borderColor='#00ab6b'; if(r.url)window.open(r.url,'_blank'); }
       else{ tw.textContent=old; tw.disabled=false; alert('Tweet hatası: '+(r.error||'?')); }
     }catch(e){ tw.textContent=old; tw.disabled=false; alert('Bağlantı hatası: '+e.message); }
