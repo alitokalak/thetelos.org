@@ -55,14 +55,16 @@ function sg_pick_quote($html) {
 }
 
 /* ── Daha önce X'e paylaşılanlar (tekrar üretme/gösterme) ── */
-$shared_file = dirname(__DIR__) . '/social-shared.json';
-$shared      = is_file($shared_file) ? json_decode((string) @file_get_contents($shared_file), true) : [];
+$shared = get_option('tls_social_shared', []);
 if (!is_array($shared)) $shared = [];
 $shared_ids  = array_map('intval', array_keys($shared));
 $exclude_shared = (($_POST['exclude_shared'] ?? '1') === '1');
 $skip = ($exclude_shared && $shared_ids) ? $shared_ids : [];
 
-/* ── Yazı listesi seç ── */
+/* ── Yazı listesi seç ──
+   Aynı içeriğin tekrar tekrar gelmemesi için: geniş bir HAVUZ çekilir
+   (popüler ya da yeni), paylaşılanlar çıkarılır, KARIŞTIRILIR, count kadar
+   alınır. Böylece her "Üret" farklı bir set verir. */
 $ids = [];
 if ($one_pid > 0) {
     $ids = [$one_pid];
@@ -70,17 +72,22 @@ if ($one_pid > 0) {
     $p = get_page_by_title($one_title, OBJECT, 'post');
     if ($p) $ids = [$p->ID];
 } else {
+    $pool_size = max($count * 6, 60);
     $base = ['post_type' => 'post', 'post_status' => 'publish', 'fields' => 'ids',
-             'posts_per_page' => $count, 'no_found_rows' => true, 'ignore_sticky_posts' => true];
+             'posts_per_page' => $pool_size, 'no_found_rows' => true, 'ignore_sticky_posts' => true];
     if ($cat > 0) $base['cat'] = $cat;
     if ($skip) $base['post__not_in'] = $skip;   // paylaşılanları hariç tut
     if ($source === 'popular') {
-        $ids = get_posts(array_merge($base, [
+        $pool = get_posts(array_merge($base, [
             'meta_key' => 'post_views_count', 'orderby' => 'meta_value_num', 'order' => 'DESC',
             'meta_query' => [['key' => 'post_views_count', 'value' => 0, 'compare' => '>', 'type' => 'NUMERIC']],
         ]));
+    } else {
+        $pool = get_posts(array_merge($base, ['orderby' => 'date', 'order' => 'DESC']));
     }
-    if (count($ids) < $count) {   // az geldiyse tarihle tamamla
+    shuffle($pool);                                  // her Üret farklı olsun
+    $ids = array_slice($pool, 0, $count);
+    if (count($ids) < $count) {                      // havuz az geldiyse tarihle tamamla
         $more = get_posts(array_merge($base, ['orderby' => 'date', 'order' => 'DESC',
             'post__not_in' => array_merge($ids, $skip), 'posts_per_page' => $count - count($ids)]));
         $ids = array_merge($ids, $more);

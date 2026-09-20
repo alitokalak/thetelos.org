@@ -18,15 +18,18 @@ header('Content-Type: application/json');
 
 define('TW_SECRET_FILE', dirname(__DIR__) . '/twitter.secret.php');
 
-define('TW_SHARED_FILE', dirname(__DIR__) . '/social-shared.json');
-
-/* Paylaşılan yazıları kaydet (post_id → tweet bilgisi) — tekrar paylaşımı önlemek için */
+/* Paylaşılan yazıları kaydet (post_id → tweet bilgisi) — tekrar paylaşımı
+   önlemek için. WP option'da (veritabanı) tutulur → dosya izni derdi yok. */
 function tw_mark_shared($pid, $tid) {
     if ($pid <= 0) return;
-    $d = is_file(TW_SHARED_FILE) ? json_decode((string) @file_get_contents(TW_SHARED_FILE), true) : [];
-    if (!is_array($d)) $d = [];
-    $d[(string) $pid] = ['tweet_id' => (string) $tid, 't' => time()];
-    @file_put_contents(TW_SHARED_FILE, json_encode($d, JSON_UNESCAPED_UNICODE));
+    if (!function_exists('get_option')) {
+        ob_start(); @require_once '/home/thetelos/public_html/wp-load.php'; ob_end_clean();
+    }
+    if (!function_exists('get_option')) return;
+    $s = get_option('tls_social_shared', []);
+    if (!is_array($s)) $s = [];
+    $s[(string) $pid] = ['tweet_id' => (string) $tid, 't' => time()];
+    update_option('tls_social_shared', $s, false);
 }
 
 function tw_load() {
