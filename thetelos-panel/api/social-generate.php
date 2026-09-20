@@ -25,11 +25,12 @@ function sg_slide_prompt($book, $author, $content) {
     $plain = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags((string) $content), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
     $plain = mb_substr($plain, 0, 4000);
     return "You are writing an Instagram carousel about the book \"$book\"" . ($author ? " by $author" : "") . ".\n"
-        . "Write EXACTLY 5 slides based on the summary below. Rules:\n"
+        . "Write between 3 and 5 slides based on the summary below — use ONLY as many as the material genuinely supports; do NOT pad with filler just to reach a number.\n"
+        . "Rules:\n"
         . "- One clear idea per slide, 8-22 words, a plain declarative sentence.\n"
-        . "- In order: slide 1 states the core premise; slides 2-4 give the key ideas; slide 5 is the main takeaway.\n"
+        . "- In order: the first slide states the core premise; the middle slides give the key ideas; the last is the main takeaway.\n"
         . "- No numbering, no quotes, no emojis, no hashtags, do not write 'this book' or 'the summary'.\n"
-        . "- Output ONLY the 5 lines, one slide per line, nothing else.\n\nSUMMARY:\n" . $plain;
+        . "- Output ONLY the slide lines, one slide per line, nothing else.\n\nSUMMARY:\n" . $plain;
 }
 function sg_parse_slides($txt) {
     $lines = preg_split('/\r?\n/', (string) $txt); $out = [];
@@ -206,8 +207,8 @@ if (($_POST['ai_slides'] ?? '') === '1') {
         foreach ($need_i as $k => $i) {
             $txt = is_array($res) && isset($res[$k]) ? $res[$k] : '';
             if ($txt === '' && function_exists('proto_ds')) $txt = proto_ds($prompts[$k], 380);
-            $sl = sg_parse_slides($txt);
-            if (count($sl) >= 3) { $items[$i]['slides'] = $sl; $sc[(string) $items[$i]['post_id']] = $sl; }
+            $sl = sg_parse_slides($txt);   // 3-5 nokta → toplam 5-7 slayt; içerik azsa daha az
+            if (count($sl) >= 2) { $items[$i]['slides'] = $sl; $sc[(string) $items[$i]['post_id']] = $sl; }
         }
         update_option('tls_carousel_slides', $sc, false);
     }
