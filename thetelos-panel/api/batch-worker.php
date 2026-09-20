@@ -434,8 +434,27 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         // tam fiyat "sürpriz" kesmez; en ucuz halde denenir. ($use_batch'e bakma.)
         'batch'        => true,
     ]);
-    if (!empty($r['unknown'])) { $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
     if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
+
+    // Sonnet "UNKNOWN" derse eseri gerçekten kimse bilmiyor demek DEĞİL — Opus
+    // gibi daha güçlü bir model niş eserleri bilebiliyor. Bu yüzden UNKNOWN'da
+    // O KİTAP İÇİN bir kez Opus'a YÜKSELT (yine batch −%50, düşünmesiz → ucuz;
+    // yalnız Sonnet'in bilmediği azınlıkta çalışır). Böylece "Claude biliyor ama
+    // yer tutucu koydu" durumu ortadan kalkar.
+    if (!empty($r['unknown'])) {
+        $best = defined('ANTHROPIC_BEST_MODEL') ? ANTHROPIC_BEST_MODEL : 'claude-opus-4-8';
+        if ($best && $best !== $model) {
+            $hb();
+            $r2 = tls_claude_overview($book, $author, [
+                'model' => $best, 'target_words' => $ideal, 'timeout' => 300, 'on_beat' => $hb, 'batch' => true,
+            ]);
+            if (!empty($r2['ok']) && empty($r2['unknown']) && trim((string) ($r2['md'] ?? '')) !== '') {
+                $why = ''; return bw_clean_content($r2['md']);
+            }
+            if (!empty($r2['unknown'])) { $why = 'Claude (Sonnet+Opus) bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
+        }
+        $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return '';
+    }
 
     $why = 'Claude hata/boş: ' . mb_substr((string) ($r['error'] ?? 'bilinmiyor'), 0, 80);
     return '';
