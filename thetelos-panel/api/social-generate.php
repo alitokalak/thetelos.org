@@ -21,18 +21,29 @@ require_once '/home/thetelos/public_html/wp-load.php';
 ob_end_clean();
 
 /* ── AI carousel slaytları (DeepSeek) — tutarlı, sıralı, tek-fikirli ── */
-function sg_slide_prompt($book, $author, $content) {
+/* Hedef slayt sayısı = İÇERİK ZENGİNLİĞİ (özet uzunluğu). Model "aim for 3-4"
+   gibi yumuşak yönergeye uymuyor, temp 0'da hep tavana (5) vuruyordu → hep 7'li
+   carousel. Sayıyı burada deterministik belirleyip modele "tam N yaz" diyoruz:
+   kısa özet 3, orta 4, zengin 5 içerik slaytı (+ kapak + CTA = toplam 5/6/7). */
+function sg_target_slides($content) {
+    $plain = trim(preg_replace('/\s+/u', ' ', strip_tags((string) $content)));
+    $w = str_word_count($plain);
+    if ($w < 180) return 3;
+    if ($w < 360) return 4;
+    return 5;
+}
+function sg_slide_prompt($book, $author, $content, $n = 4) {
     $plain = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags((string) $content), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
     $plain = mb_substr($plain, 0, 4000);
     return "You are writing an Instagram carousel about the book \"$book\"" . ($author ? " by $author" : "") . ".\n"
-        . "Write between 3 and 5 slides based on the summary below. Aim for 3-4 in most cases; use 5 ONLY when the material is genuinely rich enough to fill them without repetition. Never pad with filler to reach a number — fewer strong slides beat more weak ones.\n"
+        . "Write EXACTLY {$n} slides based on the summary below — not more, not fewer. Each must carry a genuinely distinct idea; never pad or repeat to reach the count. If you cannot find {$n} distinct strong ideas, write the strongest ones and stop — quality over count.\n"
         . "Rules:\n"
         . "- One clear idea per slide, 8-22 words, a plain declarative sentence.\n"
         . "- In order: the first slide states the core premise; the middle slides give the key ideas; the last is the main takeaway.\n"
         . "- No numbering, no quotes, no emojis, no hashtags, do not write 'this book' or 'the summary'.\n"
         . "- Output ONLY the slide lines, one slide per line, nothing else.\n\nSUMMARY:\n" . $plain;
 }
-function sg_parse_slides($txt) {
+function sg_parse_slides($txt, $max = 5) {
     $lines = preg_split('/\r?\n/', (string) $txt); $out = [];
     foreach ($lines as $l) {
         $l = trim($l);
@@ -40,7 +51,7 @@ function sg_parse_slides($txt) {
         $l = trim($l, " \t\"“”'’-–—");
         if (mb_strlen($l) >= 20 && mb_strlen($l) <= 200) $out[] = $l;
     }
-    return array_slice($out, 0, 5);
+    return array_slice($out, 0, max(3, min(5, (int) $max)));
 }
 
 /* Carousel için özetten kısa noktalar çıkar (kapak alıntısı hariç). */
@@ -191,15 +202,19 @@ if (!$items) { echo json_encode(['ok' => false, 'error' => 'Alıntı çıkarıla
    Post başına WP option'da önbelleklenir → tekrar üretimde bedava/anında. ── */
 if (($_POST['ai_slides'] ?? '') === '1') {
     require_once __DIR__ . '/_proto.php';
-    $sc = get_option('tls_carousel_slides_v2', []); if (!is_array($sc)) $sc = [];
-    $need_i = []; $prompts = [];
+    // v3: slayt sayısı artık içerik uzunluğuna göre değişken (3-5). v2 cache'i hep
+    // 5 slaytlıydı → sürüm yükseltip yeniden ürettiriyoruz (DeepSeek, ucuz).
+    $sc = get_option('tls_carousel_slides_v3', []); if (!is_array($sc)) $sc = [];
+    $need_i = []; $prompts = []; $targets = [];
     foreach ($items as $i => $it) {
         $pid = (string) $it['post_id'];
         if (isset($sc[$pid]) && is_array($sc[$pid]) && count($sc[$pid]) >= 3) {
             $items[$i]['slides'] = $sc[$pid];
         } else {
             $p = get_post($it['post_id']);
-            $need_i[] = $i; $prompts[] = sg_slide_prompt($it['book'], $it['author'], $p ? $p->post_content : '');
+            $body = $p ? $p->post_content : '';
+            $n = sg_target_slides($body);            // içerik zenginliği → 3/4/5
+            $need_i[] = $i; $prompts[] = sg_slide_prompt($it['book'], $it['author'], $body, $n); $targets[] = $n;
         }
     }
     if ($prompts) {
@@ -207,10 +222,10 @@ if (($_POST['ai_slides'] ?? '') === '1') {
         foreach ($need_i as $k => $i) {
             $txt = is_array($res) && isset($res[$k]) ? $res[$k] : '';
             if ($txt === '' && function_exists('proto_ds')) $txt = proto_ds($prompts[$k], 380);
-            $sl = sg_parse_slides($txt);   // 3-5 nokta → toplam 5-7 slayt; içerik azsa daha az
+            $sl = sg_parse_slides($txt, $targets[$k]);   // hedef sayıda kes → toplam 5/6/7 değişken
             if (count($sl) >= 2) { $items[$i]['slides'] = $sl; $sc[(string) $items[$i]['post_id']] = $sl; }
         }
-        update_option('tls_carousel_slides_v2', $sc, false);
+        update_option('tls_carousel_slides_v3', $sc, false);
     }
 }
 
