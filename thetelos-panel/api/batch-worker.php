@@ -355,6 +355,40 @@ function bw_placeholder_html($book, $author) {
          . " is being prepared and will be published here soon.</p>";
 }
 
+/* ── DÜRÜST YEDEK: Claude eseri kesin tanıyamadığında boş yer tutucu yerine
+   yazar/bağlam hakkında OLGUSAL bir not yazar (uydurma YOK). Kullanıcı isteği:
+   "yer tutucu yerine açıklama yapsın, gerçeği söylesin." Spesifik eser teyit
+   edilemedi → o eserin olay/argüman/tarih ayrıntısı UYDURULMAZ; yalnız yazarın
+   bilinen kimliği, eserinin karakteri ve (çözülebiliyorsa) bu başlığın hangi
+   esere karşılık geldiği dürüstçe yazılır. Başarısızsa '' (o zaman yer tutucu). */
+function bw_claude_author_note($book, $author, $hb = null) {
+    require_once __DIR__ . '/_anthropic.php';
+    if (!tls_anthropic_ready()) return '';
+    $who = trim((string) $book) . (trim((string) $author) !== '' ? ' by ' . trim((string) $author) : '');
+    $sys = 'You are a knowledgeable literary editor writing a short, FACTUAL note in English. '
+         . 'The exact edition/title given could NOT be verified against a source. Do NOT fabricate the '
+         . 'specific book\'s plot, argument, characters, quotations, chapter list, or dates. '
+         . 'Instead write 2-3 short paragraphs of context you are genuinely confident about: who the '
+         . 'author is, the themes and character of their work, and IF you can reasonably tell which of '
+         . 'the author\'s works this title corresponds to, state it carefully (e.g. "This title appears '
+         . 'to correspond to <English name> ..."). Be honest and useful; never invent specifics of an '
+         . 'unverified title. Use Markdown with 1-2 short ## headings. English only. Never mention AI, '
+         . 'yourself, or the word "I".';
+    $usr = "Title: " . trim((string) $book) . "\nAuthor: " . trim((string) $author) . "\n\n"
+         . "Write the factual note about $who as instructed — real, confident context only, no invented specifics.";
+    $r = tls_claude($sys, $usr, [
+        'model'       => tls_claude_quality_model(),
+        'max_tokens'  => 900,
+        'temperature' => 0.2,
+        'timeout'     => 120,
+        'on_beat'     => is_callable($hb) ? $hb : null,
+    ]);
+    if (empty($r['ok'])) return '';
+    $md = trim((string) ($r['text'] ?? ''));
+    if ($md === '' || strncmp($md, 'UNKNOWN', 7) === 0) return '';
+    return bw_clean_content($md);
+}
+
 /* ── SON ÇARE: Claude'un kendi bilgisinden tanıtım metni ────────────────────
    Ne tam metin ne Wikipedia bulunduğunda, yer tutucu koymadan ÖNCE çağrılır.
    Claude eseri GÜVENİLİR biliyorsa olgusal bir tanıtım döner; bilmiyorsa ''.
@@ -451,8 +485,11 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
             if (!empty($r2['ok']) && empty($r2['unknown']) && trim((string) ($r2['md'] ?? '')) !== '') {
                 $why = ''; return bw_clean_content($r2['md']);
             }
-            if (!empty($r2['unknown'])) { $why = 'Claude (Sonnet+Opus) bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return ''; }
         }
+        // Sonnet + Opus da eseri tanıyamadı → BOŞ yer tutucu yerine DÜRÜST yazar/
+        // bağlam notu yaz (kullanıcı isteği). Uydurma yok; sadece bilinen bağlam.
+        $note = bw_claude_author_note($book, $author, $hb);
+        if ($note !== '') { $why = 'Eser kesin tanınamadı → yazar/bağlam notu yazıldı (yer tutucu yerine)'; return $note; }
         $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return '';
     }
 
