@@ -390,9 +390,11 @@ foreach ($items_final as $it) {
     // eseri ELEMEDEN listede tut (kitap kaybetme > yabancı ad). Kullanıcı elle
     // düzeltebilir ya da Claude motoruyla yeniden temizleyebilir.
     $needs_en = (!preg_match('/\p{Latin}/u', $main)) || cl_looks_foreign($main);
-    // Wikidata modu LLM'siz/deterministik kalsın → çözümleyici çağrılmaz; kalan
-    // yabancı başlık (Wikidata'da olmayan niş eser) dokunulmadan korunur.
-    if ($needs_en && ($use_ai ?? false) && ($engine_sel ?? '') !== 'wikidata') {
+    // Yabancı gerçek eser (Wikidata'nın kaçırdığı, ör. "Drei Reden über das
+    // Judentum") ELENMEZ → İngilizceye çözülüp "İngilizce (Orijinal)" yapılır.
+    // Wikidata modunda bu az sayıda leftover için hep denenir (ucuz); AI
+    // modlarında use_ai açıksa denenir. Çözülemezse eser olduğu gibi korunur.
+    if ($needs_en && (($use_ai ?? false) || ($engine_sel ?? '') === 'wikidata')) {
         $en2 = cl_resolve_en($main, $author, ($engine ?? 'deepseek'), ($cl_model ?? ''));
         if ($en2 !== '' && preg_match('/\p{Latin}/u', $en2) && !cl_looks_foreign($en2)) {
             $it['title'] = (mb_strtolower($en2) !== mb_strtolower($main)) ? "$en2 ($main)" : $en2;

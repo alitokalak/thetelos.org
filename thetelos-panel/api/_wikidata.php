@@ -188,25 +188,19 @@ SPARQL;
     return $out;
 }
 
-/* Bir leftover (Wikidata'da eşleşmeyen) başlık şüpheli mi? Wikidata yazarın
-   kanonik listesini biliyor → eşleşmeyen başlık büyük olasılıkla ÇEVİRİ (İngilizceye
-   çözülmemiş), ANTOLOJİ/derleme ya da YANLIŞ ATIF'tır. Bunlar temiz listeye değil
-   Elenenler'e (geri alınabilir) gider. İngilizce görünen tek-eser artıkları
-   (Wikidata'nın kaçırmış olabileceği gerçek eser) KORUNUR. */
+/* Bir leftover (Wikidata'da eşleşmeyen) başlık GERÇEKTEN yazarın eseri DEĞİL mi?
+   ÖNEMLİ: yabancı dilde olması ELEME sebebi DEĞİL — "Drei Reden über das Judentum"
+   gerçek bir Buber eseridir; yabancı diye elenemez, İngilizceye çözülür. Yalnız
+   şunlar (tek yazarın öz eseri olmayanlar) Elenenler'e gider:
+     - antoloji/derleme (içinde yazarın da olduğu toplama) — yazarın öz eseri değil
+     - yazar HAKKINDA ikincil literatür (loop'ta ayrıca bakılır)
+     - sadece yazarın adı olan başlık
+   Yabancı gerçek eserler KORUNUR ve sonra İngilizceye çözülür. */
 function wd_leftover_suspect($t) {
     $t = trim((string)$t);
     if ($t === '') return 'boş';
-    // 1) Latin dışı alfabe (Kiril/Yunan/İbranice/Arap/CJK...) → çeviri
-    if (!preg_match('/\p{Latin}/u', $t)) return 'Latin dışı alfabe (çeviri)';
-    // 2) Aksanlı harf → yabancı dil baskısı
-    if (preg_match('/[àâäéèêëîïôöùûüçñáíóúãõœæåø]/iu', $t)) return 'yabancı dil (aksanlı)';
-    // 3) Antoloji / derleme → tek yazarın öz eseri değil
-    if (preg_match('/\b(antholog\w*|antoloji\w*|anthologie|collected|selected works|complete works|gesammelte|omnibus|reader)\b/iu', $t)) return 'antoloji/derleme';
-    // 4) Yabancı işlev kelimeleri (İngilizce kitap adlarında pratikte geçmez).
-    //    NOT: "İngilizce kelime yok" gibi gevşek kural KULLANMIYORUZ — "Christian
-    //    Wisdom" gibi gerçek İngilizce başlıkları yanlış eler, eser kaybettirir.
-    if (preg_match('/(^|\s)(de la|de los|de las|del|della|delle|di|le|les|la|el|il|une|des|du|von|vom|und|der|das|die|ich|zur|zum|sur|aux|dans|dios|het|een|van|och|ett|gli|nel|nella)(\s|$)/iu', mb_strtolower($t))) return 'yabancı işlev kelimesi';
-    return '';   // İngilizce görünüyor → koru (Wikidata kaçırmış gerçek eser olabilir)
+    if (preg_match('/\b(antholog\w*|antoloji\w*|anthologie|collected works|selected works|complete works|gesammelte werke|omnibus)\b/iu', $t)) return 'antoloji/derleme (yazarın öz eseri değil)';
+    return '';   // yabancı bile olsa gerçek eser olabilir → koru, İngilizceye çöz
 }
 
 /* Kanonik eserin görünen adını kur: "İngilizce (Orijinal)". İngilizce yoksa
