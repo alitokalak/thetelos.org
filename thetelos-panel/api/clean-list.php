@@ -131,9 +131,14 @@ if ($use_ai && count($items) >= 2) {
     foreach ($slice as $i => $it) {
         $lines .= ($i+1) . '. ' . mb_substr($it['title'], 0, 160) . "\n";
     }
-    $prompt = "You are a strict bibliographic judge. Below is a numbered list of titles catalogued under the author \"{$author}\".\n"
-        . "Your job: produce the author's clean canonical bibliography from these entries.\n"
-        . "STEP 0 — first determine which language(s) {$author} actually WROTE their works in, and return them in \"wrote_in\" "
+    // MALİYET: talimat bloğu her yazarda AYNI → cache'lenebilir SYSTEM'e alındı
+    // (yazardan bağımsız: "the author"). Değişken kısım (yazar adı + başlıklar)
+    // USER mesajına konur. tls_claude(..., ['cache'=>true]) ile bu ~1000 token'lık
+    // sabit blok ilk çağrıdan sonra %90 ucuza okunur (prompt caching).
+    $system_rules = "You are a strict bibliographic judge and a meticulous cataloguer. "
+        . "You are given a numbered list of titles all catalogued under ONE author (named in the user message as AUTHOR).\n"
+        . "Your job: produce that author's clean canonical bibliography from these entries. Output ONLY valid JSON, nothing else.\n"
+        . "STEP 0 — first determine which language(s) the author actually WROTE their works in, and return them in \"wrote_in\" "
         . "(e.g. Einstein → [\"German\",\"English\"]; Laozi → [\"Classical Chinese\"]). Every 'orig' you output must be in one of these languages.\n"
         . "OUTPUT CONTRACT — every entry number MUST appear in exactly one place: either in some group's members, or in not_by_author.\n"
         . "1) GROUP entries that are the SAME WORK (translations, different-language/script editions, transliterations, spelling variants, reprints) into ONE group. "
@@ -141,24 +146,27 @@ if ($use_ai && count($items) >= 2) {
         . "1b) POSTHUMOUS entries: a title published after the author's death may be EITHER a genuine posthumous original OR merely a later translation/edition of an existing work. Decide by the work's identity: if it is the same work as another entry (in any language), GROUP it as a translation — do NOT create a separate work for it. Only keep it separate if it is genuinely a distinct work the author wrote.\n"
         . "2) For EVERY group give:\n"
         . "   en   = the work's standard title as used in ENGLISH literature (e.g. \"Tao Te Ching\", \"Critique of Pure Reason\", \"The Evolution of Physics\")\n"
-        . "   orig = the title in the language the work was ORIGINALLY WRITTEN in by {$author} (e.g. \"道德经\" for Laozi, \"Kritik der reinen Vernunft\" for Kant).\n"
-        . "   CRITICAL: think about which language(s) {$author} actually wrote in. A TRANSLATION'S title is NEVER orig — "
+        . "   orig = the title in the language the work was ORIGINALLY WRITTEN in by the author (e.g. \"道德经\" for Laozi, \"Kritik der reinen Vernunft\" for Kant).\n"
+        . "   CRITICAL: think about which language(s) the author actually wrote in. A TRANSLATION'S title is NEVER orig — "
         . "e.g. a Japanese or Hebrew edition title of an Einstein work is NOT the original (Einstein wrote in German/English). "
         . "orig must be empty if the work was originally written in English, and ALSO empty if you don't know the true original title. "
         . "Never copy a listed foreign edition title into orig unless it IS the language the author wrote in.\n"
         . "IMPORTANT: a listed title may ITSELF be a translation (e.g. a Turkish, French, Spanish or other-language edition title such as 'Yahudi yazarlar antolojisi'). NEVER keep a translated title as the name — always resolve 'en' (the English literary name) and 'orig' (the author's-language original). The final catalogue is displayed as 'en (orig)', so both fields must be correct; a Turkish or other non-original, non-English title must NEVER appear in the output.\n"
-        . "3) not_by_author: entries that are NOT a single book written by {$author} — books ABOUT the author, secondary literature, "
+        . "3) not_by_author: entries that are NOT a single book written by the author — books ABOUT the author, secondary literature, "
         . "quote/aphorism collections (\"Quotes\", \"Words of Wisdom\"), publisher compilations (\"Collected/Complete Works\", \"Selected Writings\", omnibus editions), "
-        . "anthologies/views/studies titled \"<Something> of/about {$author}\" (a memoir the author wrote about themselves is fine), "
+        . "anthologies/views/studies titled \"<Something> of/about <the author>\" (a memoir the author wrote about themselves is fine), "
         . "titles that are just the author's name or a slogan, or entries you cannot identify at all. Short reason each.\n"
-        . "4) ERA CHECK — consider when {$author} lived and what they could have written. Entries chronologically or thematically "
+        . "4) ERA CHECK — consider when the author lived and what they could have written. Entries chronologically or thematically "
         . "IMPOSSIBLE for this author (e.g. a modern travel book under an 8th-century poet — likely a different person with the same name) MUST be flagged with reason \"implausible for this author\".\n"
         . "5) For each group also give year = the work's ORIGINAL first-publication/composition year as an integer if you know it "
         . "(e.g. 868 for the Diamond Sutra printing, 1687 for Principia) — NOT a modern reprint year; empty string if unknown.\n"
         . "Rules: judge ONLY the given entries; do NOT invent extra works; when unsure about a plausible entry, keep it as its own group.\n"
         . "Return ONLY JSON:\n"
-        . "{\"wrote_in\":[\"German\",\"English\"],\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"year\":\"1687\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
-        . $lines;
+        . "{\"wrote_in\":[\"German\",\"English\"],\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"year\":\"1687\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}";
+
+    $user_msg = "AUTHOR: {$author}\n\nEntries catalogued under this author:\n" . $lines;
+    // DeepSeek fallback tek mesaj ister → sabit + değişken birleştirilir.
+    $prompt = $system_rules . "\n\n" . $user_msg;
 
     // AYIKLAMA MOTORU: bibliyografik yargı (orijinal/çeviri/kopya ayrımı) akıl
     // yürütme ister → varsayılan CLAUDE (isabetli). 'deepseek' seçilirse ucuz
@@ -176,10 +184,12 @@ if ($use_ai && count($items) >= 2) {
             $hard = (count($slice) > 8)
                 || preg_match('/[\x{0370}-\x{03FF}\x{0400}-\x{04FF}\x{0590}-\x{05FF}\x{0600}-\x{06FF}\x{4E00}-\x{9FFF}\x{3040}-\x{30FF}]/u', $titles_txt);
             $cl_model = $hard ? tls_claude_quality_model() : tls_claude_fast_model();
+            // cache=true → sabit talimat bloğu (system) prompt-cache'e alınır; her
+            // yazar çağrısında %90 ucuza okunur. Sadece USER (yazar+başlıklar) değişir.
             $cr = tls_claude(
-                'You are a meticulous bibliographic cataloguer. Reason carefully about original works vs translations/editions/copies. Output ONLY valid JSON, nothing else.',
-                $prompt,
-                ['model' => $cl_model, 'max_tokens' => 8000, 'temperature' => 0, 'timeout' => 150, 'retries' => 2]
+                $system_rules,
+                $user_msg,
+                ['model' => $cl_model, 'max_tokens' => 8000, 'temperature' => 0, 'timeout' => 150, 'retries' => 2, 'cache' => true]
             );
             if (!empty($cr['ok'])) $txt = (string) $cr['text'];
             else { $ai_err = 'Claude: ' . mb_substr((string) ($cr['error'] ?? '?'), 0, 120); }
