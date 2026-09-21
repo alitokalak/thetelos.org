@@ -2287,7 +2287,7 @@ let cleanerCancel = false;
         const map = new Map();
         for (const a of pending) map.set(a, (job.by_author || {})[a] || []);
         document.getElementById('cleaner-progress-card').style.display = '';
-        await runCleanerLoop(pending, map, job.use_ai ? 1 : 0, job.total_in || 0, job.file_name || 'liste.csv', job.done || 0);
+        await runCleanerLoop(pending, map, job.use_ai ? 1 : 0, job.total_in || 0, job.file_name || 'liste.csv', job.done || 0, job.ai_engine || 'claude');
       };
 
       const del = document.createElement('button');
@@ -2340,9 +2340,10 @@ async function runCleaner(text, fileName) {
 
   let authors = [...byAuthor.keys()];
   const useAI   = document.getElementById('cleaner-use-ai')?.checked ? 1 : 0;
+  const engine  = document.getElementById('cleaner-engine')?.value === 'deepseek' ? 'deepseek' : 'claude';
   const dropOnsite = document.getElementById('cleaner-drop-onsite')?.checked;
   const totalIn = rows.length - 1;
-  if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${useAI ? 'AI hakem AÇIK (yazar başına 1 istek).' : 'Yalnız kural katmanı (AI kapalı).'} Başlatılsın mı?`)) return;
+  if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${useAI ? ('AI hakem AÇIK — motor: ' + (engine==='claude'?'Claude (isabetli)':'DeepSeek (ucuz)') + ' (yazar başına 1 istek).') : 'Yalnız kural katmanı (AI kapalı).'} Başlatılsın mı?`)) return;
 
   cleanerWorks = []; cleanerRemoved = [];
 
@@ -2374,17 +2375,17 @@ async function runCleaner(text, fileName) {
   const byAuthorObj = {};
   for (const a of authors) byAuthorObj[a] = byAuthor.get(a);
   await postData(API('clean-progress.php'), {
-    action: 'start', file_name: fileName, use_ai: useAI, total_in: totalIn,
+    action: 'start', file_name: fileName, use_ai: useAI, ai_engine: engine, total_in: totalIn,
     authors: JSON.stringify(authors), by_author: JSON.stringify(byAuthorObj),
     removed: JSON.stringify(cleanerRemoved)
   }, 60000).catch(()=>{});
 
-  await runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName);
+  await runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, 0, engine);
 }
 
 /* Yazar döngüsü — hem ilk çalıştırmada hem "kaldığı yerden devam"da kullanılır.
    Her yazar bitince sonuç sunucuya eklenir (checkpoint). */
-async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneOffset = 0) {
+async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneOffset = 0, engine = 'claude') {
   cleanerCancel = false;   // (works/removed yukarıda sıfırlandı; onsite elenenler korunur)
   const startBtn = document.getElementById('btn-cleaner-start');
   const cancelBtn= document.getElementById('btn-cleaner-cancel');
@@ -2408,7 +2409,7 @@ async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneO
     for (let attempt = 1; attempt <= 3; attempt++) {
       if (cleanerCancel) return;
       try {
-        res = await postData(API('clean-list.php'), { author: a, works: JSON.stringify(works), use_ai: useAI }, 150000);
+        res = await postData(API('clean-list.php'), { author: a, works: JSON.stringify(works), use_ai: useAI, ai_engine: engine }, 150000);
         if (res && res.ok) break;
       } catch(_) {}
       await new Promise(r => setTimeout(r, attempt * 2000));

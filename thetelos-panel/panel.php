@@ -714,7 +714,14 @@ if (!isset($_GET['mode'])) {
 
         <label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--muted)">
           <input type="checkbox" id="cleaner-use-ai" checked>
-          AI hakem kullan (çeviri birleştirme + yazara aidiyet kontrolü — DeepSeek)
+          AI hakem kullan (çeviri/kopya birleştirme + yazara aidiyet kontrolü)
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--muted)">
+          Motor:
+          <select id="cleaner-engine" style="padding:4px 8px;font-size:13px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)">
+            <option value="claude" selected>Claude (isabetli — önerilen)</option>
+            <option value="deepseek">DeepSeek (ucuz)</option>
+          </select>
         </label>
         <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--muted)">
           <input type="checkbox" id="cleaner-drop-onsite" checked>

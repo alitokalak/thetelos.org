@@ -136,8 +136,9 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         . "STEP 0 — first determine which language(s) {$author} actually WROTE their works in, and return them in \"wrote_in\" "
         . "(e.g. Einstein → [\"German\",\"English\"]; Laozi → [\"Classical Chinese\"]). Every 'orig' you output must be in one of these languages.\n"
         . "OUTPUT CONTRACT — every entry number MUST appear in exactly one place: either in some group's members, or in not_by_author.\n"
-        . "1) GROUP entries that are the SAME WORK (translations, different-language/script editions, transliterations, spelling variants) into ONE group. "
-        . "A single-member group is normal for works appearing once.\n"
+        . "1) GROUP entries that are the SAME WORK (translations, different-language/script editions, transliterations, spelling variants, reprints) into ONE group. "
+        . "A single-member group is normal for works appearing once. Be AGGRESSIVE: this list is full of duplicate editions and translations of a few real works — the number of groups you output should be MUCH SMALLER than the number of entries. Merge every edition/translation of the same work; never list the same work twice.\n"
+        . "1b) POSTHUMOUS entries: a title published after the author's death may be EITHER a genuine posthumous original OR merely a later translation/edition of an existing work. Decide by the work's identity: if it is the same work as another entry (in any language), GROUP it as a translation — do NOT create a separate work for it. Only keep it separate if it is genuinely a distinct work the author wrote.\n"
         . "2) For EVERY group give:\n"
         . "   en   = the work's standard title as used in ENGLISH literature (e.g. \"Tao Te Ching\", \"Critique of Pure Reason\", \"The Evolution of Physics\")\n"
         . "   orig = the title in the language the work was ORIGINALLY WRITTEN in by {$author} (e.g. \"道德经\" for Laozi, \"Kritik der reinen Vernunft\" for Kant).\n"
@@ -159,26 +160,45 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         . "{\"wrote_in\":[\"German\",\"English\"],\"groups\":[{\"en\":\"English title\",\"orig\":\"Original title or empty\",\"year\":\"1687\",\"members\":[1,4]}],\"not_by_author\":[{\"n\":3,\"reason\":\"short reason\"}]}\n\n"
         . $lines;
 
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS => json_encode([
-            'model' => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL), 'max_tokens' => 6000, 'temperature' => 0,
-            'messages' => [['role'=>'user','content'=>$prompt]],
-        ]),
-    ]);
-    $r = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+    // AYIKLAMA MOTORU: bibliyografik yargı (orijinal/çeviri/kopya ayrımı) akıl
+    // yürütme ister → varsayılan CLAUDE (isabetli). 'deepseek' seçilirse ucuz
+    // yol. Tek seferlik iş olduğu için Claude maliyeti küçük, isabet büyük.
+    $engine = ($_POST['ai_engine'] ?? 'claude') === 'deepseek' ? 'deepseek' : 'claude';
+    $txt = '';
+    if ($engine === 'claude') {
+        require_once __DIR__ . '/_anthropic.php';
+        if (tls_anthropic_ready()) {
+            $cr = tls_claude(
+                'You are a meticulous bibliographic cataloguer. Reason carefully about original works vs translations/editions/copies. Output ONLY valid JSON, nothing else.',
+                $prompt,
+                ['model' => tls_claude_quality_model(), 'max_tokens' => 8000, 'temperature' => 0, 'timeout' => 150, 'retries' => 2]
+            );
+            if (!empty($cr['ok'])) $txt = (string) $cr['text'];
+            else { $ai_err = 'Claude: ' . mb_substr((string) ($cr['error'] ?? '?'), 0, 120); }
+        } else {
+            $engine = 'deepseek';   // Claude anahtarı yoksa DeepSeek'e düş
+        }
+    }
+    if ($txt === '' && $engine === 'deepseek') {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => json_encode([
+                'model' => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL), 'max_tokens' => 6000, 'temperature' => 0,
+                'messages' => [['role'=>'user','content'=>$prompt]],
+            ]),
+        ]);
+        $r = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($http === 200 && $r) { $d = json_decode($r, true); $txt = $d['choices'][0]['message']['content'] ?? ''; }
+        elseif ($ai_err === '') { $ai_err = "AI HTTP $http"; }
+    }
 
     $parsed = null;
-    if ($http === 200 && $r) {
-        $d   = json_decode($r, true);
-        $txt = $d['choices'][0]['message']['content'] ?? '';
+    if ($txt !== '') {
         $txt = preg_replace('/```json|```/i', '', $txt);
         $s = strpos($txt, '{'); $e = strrpos($txt, '}');
         if ($s !== false && $e > $s) $parsed = json_decode(substr($txt, $s, $e - $s + 1), true);
-    } else {
-        $ai_err = "AI HTTP $http";
     }
 
     if (is_array($parsed)) {
