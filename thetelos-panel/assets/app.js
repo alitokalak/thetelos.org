@@ -2287,7 +2287,7 @@ let cleanerCancel = false;
         const map = new Map();
         for (const a of pending) map.set(a, (job.by_author || {})[a] || []);
         document.getElementById('cleaner-progress-card').style.display = '';
-        await runCleanerLoop(pending, map, job.use_ai ? 1 : 0, job.total_in || 0, job.file_name || 'liste.csv', job.done || 0, job.ai_engine || 'claude');
+        await runCleanerLoop(pending, map, job.use_ai ? 1 : 0, job.total_in || 0, job.file_name || 'liste.csv', job.done || 0, job.ai_engine || 'wikidata');
       };
 
       const del = document.createElement('button');
@@ -2340,10 +2340,13 @@ async function runCleaner(text, fileName) {
 
   let authors = [...byAuthor.keys()];
   const useAI   = document.getElementById('cleaner-use-ai')?.checked ? 1 : 0;
-  const engine  = document.getElementById('cleaner-engine')?.value === 'claude' ? 'claude' : 'deepseek';
+  const engine  = ['wikidata','claude','deepseek'].includes(document.getElementById('cleaner-engine')?.value) ? document.getElementById('cleaner-engine').value : 'wikidata';
   const dropOnsite = document.getElementById('cleaner-drop-onsite')?.checked;
   const totalIn = rows.length - 1;
-  if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${useAI ? ('AI hakem AÇIK — motor: ' + (engine==='claude'?'Claude (isabetli, pahalı)':'DeepSeek (ucuz — ~1$/3bin)') + ' (yazar başına 1 istek).') : 'Yalnız kural katmanı (AI kapalı).'} Başlatılsın mı?`)) return;
+  const motorMsg = engine==='wikidata'
+    ? 'Motor: Wikidata (kanonik veri — bedava, deterministik, her seferinde aynı sonuç). Wikidata\'da bulunmayan yazarlarda AI/kural yedeğine düşer.'
+    : ('AI hakem — motor: ' + (engine==='claude'?'Claude (isabetli, pahalı)':'DeepSeek (ucuz — ~1$/3bin)') + ' (yazar başına 1 istek).');
+  if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${motorMsg} Başlatılsın mı?`)) return;
 
   cleanerWorks = []; cleanerRemoved = [];
 
@@ -2385,7 +2388,7 @@ async function runCleaner(text, fileName) {
 
 /* Yazar döngüsü — hem ilk çalıştırmada hem "kaldığı yerden devam"da kullanılır.
    Her yazar bitince sonuç sunucuya eklenir (checkpoint). */
-async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneOffset = 0, engine = 'claude') {
+async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneOffset = 0, engine = 'wikidata') {
   cleanerCancel = false;   // (works/removed yukarıda sıfırlandı; onsite elenenler korunur)
   const startBtn = document.getElementById('btn-cleaner-start');
   const cancelBtn= document.getElementById('btn-cleaner-cancel');

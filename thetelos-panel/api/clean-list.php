@@ -86,6 +86,29 @@ $removed = [];
 $ai_used = false;
 $ai_err  = '';
 
+/* ── KATMAN: WIKIDATA KANONİK (deterministik, ücretsiz — VARSAYILAN) ──
+   Yazarın eserlerini Wikidata'dan çeker (P50 = gerçekten o yazara ait), her
+   eseri TEK kez alır (çeviriler zaten birleşik), İngilizce ad + orijinal ad +
+   yıl DB'den gelir. Kirli başlıkları bu kanonik esere token-eşleştirir →
+   "İngilizce (Orijinal)". LLM yok, uydurma yok, her seferinde AYNI sonuç.
+   Wikidata'da olmayan başlık ELENMEZ, korunur. Yazar/eser bulunamazsa AI ya da
+   kural katmanına düşer (aşağıda). */
+$engine_sel = $_POST['ai_engine'] ?? 'wikidata';
+if ($engine_sel === 'wikidata') {
+    require_once __DIR__ . '/_wikidata.php';
+    $wd = wd_clean_author($author, $items);
+    if (!empty($wd['ok'])) {
+        $items_final = $wd['items'];
+        foreach ($wd['removed'] as $r) $removed[] = $r;
+        $ai_used = 'wikidata (' . (int)($wd['matched'] ?? 0) . '/' . (int)($wd['wd_count'] ?? 0) . ')';
+    } else {
+        // Wikidata yazarı/eseri bulamadı → AI hakem açıksa DeepSeek'e düş, değilse
+        // kural katmanı. Neden düştüğünü görünür yap.
+        $ai_err = 'Wikidata: ' . ($wd['error'] ?? 'bulunamadı') . ' → yedek yol';
+        $_POST['ai_engine'] = 'deepseek';
+    }
+}
+
 /* ── Dil→alfabe eşlemesi (yapısal garanti için) ── */
 function cl_scripts_for_langs($langs) {
     $map = [
@@ -123,8 +146,8 @@ function cl_script_of($s) {
     return 'Latin';
 }
 
-/* ── AI hakem katmanı ── (tek girişli yazar zaten atlanır: >=2 şartı) */
-if ($use_ai && count($items) >= 2) {
+/* ── AI hakem katmanı ── (Wikidata çözdüyse atlanır; tek girişli yazar da atlanır) */
+if (!isset($items_final) && $use_ai && count($items) >= 2) {
     $cap = 120;                                    // token güvenliği (her giriş çıktıda yer alacak)
     $slice = array_slice($items, 0, $cap);
     $lines = '';
@@ -367,7 +390,9 @@ foreach ($items_final as $it) {
     // eseri ELEMEDEN listede tut (kitap kaybetme > yabancı ad). Kullanıcı elle
     // düzeltebilir ya da Claude motoruyla yeniden temizleyebilir.
     $needs_en = (!preg_match('/\p{Latin}/u', $main)) || cl_looks_foreign($main);
-    if ($needs_en && ($use_ai ?? false)) {
+    // Wikidata modu LLM'siz/deterministik kalsın → çözümleyici çağrılmaz; kalan
+    // yabancı başlık (Wikidata'da olmayan niş eser) dokunulmadan korunur.
+    if ($needs_en && ($use_ai ?? false) && ($engine_sel ?? '') !== 'wikidata') {
         $en2 = cl_resolve_en($main, $author, ($engine ?? 'deepseek'), ($cl_model ?? ''));
         if ($en2 !== '' && preg_match('/\p{Latin}/u', $en2) && !cl_looks_foreign($en2)) {
             $it['title'] = (mb_strtolower($en2) !== mb_strtolower($main)) ? "$en2 ($main)" : $en2;
