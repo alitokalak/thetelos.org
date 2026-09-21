@@ -302,6 +302,46 @@ if (!isset($items_final)) {
     ], $items);
 }
 
+/* Ana başlık İngilizce mi? Yüksek-isabetli yabancı sinyalleri (aksan / yabancı
+   işlev kelimeleri) — İngilizce kitap adlarında pratikte geçmez. */
+function cl_looks_foreign($s) {
+    return (bool)(preg_match('/[àâäéèêëîïôöùûüçñáíóúãõœæ]/iu', $s)
+        || preg_match('/(^|\s)(de la|de las|de los|de l\'|del|della|delle|degli|dei|di|le|les|la|el|il|un|une|des|du|von|vom|und|der|das|zur|zum|sur|aux|dans|nella|nel|å|för|van het|van de)(\s|$)/iu', mb_strtolower($s)));
+}
+/* Yabancı bir başlığın İngilizce adını ÇÖZ (yerleşik ad ya da düz çeviri). Tek
+   kısa AI çağrısı. Amaç: eseri ELEMEK yerine İngilizce adını KAZANDIRMAK. */
+function cl_resolve_en($title, $author, $engine, $cl_model = '') {
+    $sys = 'You output ONLY the ENGLISH title of the given book — nothing else. If the work has an established English-literature title, output that. Otherwise output a faithful, natural English translation of the title. Output ONLY the title text: no quotes, no author name, no explanation, no original-language text.';
+    $usr = "Book title: {$title}\nAuthor: {$author}";
+    $out = '';
+    if ($engine === 'claude') {
+        require_once __DIR__ . '/_anthropic.php';
+        if (function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
+            $m = $cl_model ?: (function_exists('tls_claude_quality_model') ? tls_claude_quality_model() : 'claude-sonnet-5');
+            $cr = tls_claude($sys, $usr, ['model' => $m, 'max_tokens' => 80, 'temperature' => 0, 'timeout' => 60, 'retries' => 1]);
+            if (!empty($cr['ok'])) $out = (string) $cr['text'];
+        }
+    }
+    if ($out === '' && defined('DEEPSEEK_API_URL')) {
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 40,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => json_encode([
+                'model' => (defined('DEEPSEEK_MODEL') && DEEPSEEK_MODEL && DEEPSEEK_MODEL !== 'deepseek-v4-flash') ? DEEPSEEK_MODEL : 'deepseek-chat',
+                'max_tokens' => 80, 'temperature' => 0,
+                'messages' => [['role' => 'system', 'content' => $sys], ['role' => 'user', 'content' => $usr]],
+            ]),
+        ]);
+        $r = curl_exec($ch); $code = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($code === 200 && $r) { $d = json_decode($r, true); $out = $d['choices'][0]['message']['content'] ?? ''; }
+    }
+    $out = trim(preg_replace('/\s+/u', ' ', (string) $out));
+    $out = trim($out, " \t\"“”'’");
+    if (mb_strlen($out) < 2 || mb_strlen($out) > 200) return '';
+    return $out;
+}
+
 /* ── SERT GÜVENLİK KATMANI (AI'dan bağımsız, çıkışta ZORUNLU) ──
    Format kuralı: "İngilizce literatür adı (Orijinal ad)" — ana kısım İngilizce,
    orijinal ad parantezde ("Critique of Pure Reason (Kritik der reinen Vernunft)"
@@ -320,25 +360,19 @@ foreach ($items_final as $it) {
         $it['title'] = trim($pm[1]);
     }
     $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana (İngilizce) başlık
-    // FORMAT "İngilizce (Orijinal)": ana kısım İngilizce literatür adı olmalı;
-    // orijinal ad parantezde. Ana kısım hâlâ Latin harfsizse İngilizce ad çözülememiş.
-    if (!preg_match('/\p{Latin}/u', $main)) {
-        $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
-                      'reason'=>'İngilizce literatür adı çözülemedi — geri alıp elle "İngilizce Ad ('.$it['title'].')" yazabilirsin'];
-        continue;
-    }
-    // ANA KISIM İNGİLİZCE DEĞİL: model İngilizce adı çözemeyip ham Fransızca/Latince/
-    // İtalyanca/Almanca başlığı bırakmış (Latin alfabesi olduğu için yukarıdaki
-    // süzgeçten geçer). Yüksek-isabetli sinyaller: aksanlı harf VEYA yabancı işlev
-    // kelimeleri (İngilizce kitap adlarında pratikte hiç geçmez). Temiz listeye
-    // giremez → Elenenler'e (geri alınabilir). NOT: bu, motorun (özellikle ucuz
-    // DeepSeek) bilmediği eserlerde olur; Claude motoru çoğunu çözer.
-    $foreign = preg_match('/[àâäéèêëîïôöùûüçñáíóúãõœæ]/iu', $main)
-        || preg_match('/(^|\s)(de la|de las|de los|de l\'|del|della|delle|degli|dei|di|le|les|la|el|il|un|une|des|du|von|vom|und|der|das|zur|zum|sur|aux|dans|nella|nel|å|för|van het|van de)(\s|$)/iu', mb_strtolower($main));
-    if ($foreign) {
-        $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
-                      'reason'=>'Başlık İngilizceye çözülmemiş (yabancı ad) — geri alıp elle "İngilizce Ad ('.$main.')" yaz ya da Claude motoruyla yeniden temizle'];
-        continue;
+    // ANA KISIM İNGİLİZCE DEĞİL Mİ? (farklı alfabe VEYA Latin ama yabancı ad —
+    // Fransızca/Latince/İtalyanca/Almanca...). ÖNEMLİ: bu bir eleme sebebi DEĞİL.
+    // Eser gerçek; sadece İngilizce adı çözülmemiş. O yüzden ELEMEK yerine tek kısa
+    // AI çağrısıyla İngilizce adı ÇÖZ, "İngilizce (Orijinal)" yap. Çözülemezse bile
+    // eseri ELEMEDEN listede tut (kitap kaybetme > yabancı ad). Kullanıcı elle
+    // düzeltebilir ya da Claude motoruyla yeniden temizleyebilir.
+    $needs_en = (!preg_match('/\p{Latin}/u', $main)) || cl_looks_foreign($main);
+    if ($needs_en && ($use_ai ?? false)) {
+        $en2 = cl_resolve_en($main, $author, ($engine ?? 'deepseek'), ($cl_model ?? ''));
+        if ($en2 !== '' && preg_match('/\p{Latin}/u', $en2) && !cl_looks_foreign($en2)) {
+            $it['title'] = (mb_strtolower($en2) !== mb_strtolower($main)) ? "$en2 ($main)" : $en2;
+            $main = $en2;
+        }
     }
     if ($auth_norm !== '' && cl_norm($main) === $auth_norm) {
         $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
