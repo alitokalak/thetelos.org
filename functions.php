@@ -2655,6 +2655,21 @@ add_action( 'init', function () {
         'show_in_rest'  => true,
         'auth_callback' => function () { return current_user_can( 'edit_posts' ); },
     ] );
+    // SEO meta açıklama + odak kelime: batch/panel bunları REST ile yazıyor. Site
+    // AIOSEO kullanıyor (Yoast yok) → bu anahtarları kimse REST'e kaydetmiyordu, bu
+    // yüzden REST yazımları SESSİZCE yok sayılıyordu (meta açıklama hiç kaydolmuyordu).
+    // Burada kaydediyoruz ki REST yazımları kalıcı olsun, tema aioseo_description ile
+    // okusun. (Yoast kurulu değil; çakışma yok.)
+    foreach ( [ '_yoast_wpseo_metadesc', '_yoast_wpseo_focuskw', '_tls_meta_desc' ] as $mk ) {
+        if ( ! registered_meta_key_exists( 'post', $mk ) ) {
+            register_post_meta( 'post', $mk, [
+                'type'          => 'string',
+                'single'        => true,
+                'show_in_rest'  => true,
+                'auth_callback' => function () { return current_user_can( 'edit_posts' ); },
+            ] );
+        }
+    }
 } );
 
 /* ══════════════════════════════════════════════
