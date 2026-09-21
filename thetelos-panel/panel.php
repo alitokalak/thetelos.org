@@ -468,7 +468,7 @@ if (!isset($_GET['mode'])) {
           <div>
             <label for="bulk_claude_model">Claude Modeli <span style="color:#c58af0;font-weight:400;font-size:11px">(Anthropic seçili)</span></label>
             <select id="bulk_claude_model">
-              <option value="sonnet" selected>Sonnet 4.5 — kaliteli (önerilen)</option>
+              <option value="sonnet" selected>Sonnet 5 — kaliteli (önerilen; bilinmeyen kitapta Opus 4.8'e yükselir)</option>
               <option value="haiku">Haiku 4.5 — ucuz/hızlı</option>
             </select>
             <span style="display:block;margin-top:6px;font-size:11px;color:#e6963c;line-height:1.5">
