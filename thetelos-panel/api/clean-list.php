@@ -145,7 +145,7 @@ if ($use_ai && count($items) >= 2) {
         . "A single-member group is normal for works appearing once. Be AGGRESSIVE: this list is full of duplicate editions and translations of a few real works — the number of groups you output should be MUCH SMALLER than the number of entries. Merge every edition/translation of the same work; never list the same work twice.\n"
         . "1b) POSTHUMOUS entries: a title published after the author's death may be EITHER a genuine posthumous original OR merely a later translation/edition of an existing work. Decide by the work's identity: if it is the same work as another entry (in any language), GROUP it as a translation — do NOT create a separate work for it. Only keep it separate if it is genuinely a distinct work the author wrote.\n"
         . "2) For EVERY group give:\n"
-        . "   en   = the work's standard title as used in ENGLISH literature (e.g. \"Tao Te Ching\", \"Critique of Pure Reason\", \"The Evolution of Physics\")\n"
+        . "   en   = MANDATORY. The work's title in ENGLISH — the established English-literature name if one exists (e.g. \"Tao Te Ching\", \"Critique of Pure Reason\", \"The Soul's Journey into God\" for Itinerarium Mentis in Deum, \"The Tree of Life\" for Lignum Vitae). If NO established English name exists, give a faithful, natural English TRANSLATION of the title (e.g. \"Le Christ maitre\" → \"Christ the Teacher\", \"Les six jours de la Création\" → \"The Six Days of Creation\"). NEVER leave 'en' blank and NEVER put a French/Latin/Italian/German/other non-English title in 'en'. 'en' must be readable by an English speaker. The foreign form belongs ONLY in 'orig'.\n"
         . "   orig = the title in the language the work was ORIGINALLY WRITTEN in by the author (e.g. \"道德经\" for Laozi, \"Kritik der reinen Vernunft\" for Kant).\n"
         . "   CRITICAL: think about which language(s) the author actually wrote in. A TRANSLATION'S title is NEVER orig — "
         . "e.g. a Japanese or Hebrew edition title of an Einstein work is NOT the original (Einstein wrote in German/English). "
@@ -316,6 +316,19 @@ foreach ($items_final as $it) {
     if (!preg_match('/\p{Latin}/u', $main)) {
         $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
                       'reason'=>'İngilizce literatür adı çözülemedi — geri alıp elle "İngilizce Ad ('.$it['title'].')" yazabilirsin'];
+        continue;
+    }
+    // ANA KISIM İNGİLİZCE DEĞİL: model İngilizce adı çözemeyip ham Fransızca/Latince/
+    // İtalyanca/Almanca başlığı bırakmış (Latin alfabesi olduğu için yukarıdaki
+    // süzgeçten geçer). Yüksek-isabetli sinyaller: aksanlı harf VEYA yabancı işlev
+    // kelimeleri (İngilizce kitap adlarında pratikte hiç geçmez). Temiz listeye
+    // giremez → Elenenler'e (geri alınabilir). NOT: bu, motorun (özellikle ucuz
+    // DeepSeek) bilmediği eserlerde olur; Claude motoru çoğunu çözer.
+    $foreign = preg_match('/[àâäéèêëîïôöùûüçñáíóúãõœæ]/iu', $main)
+        || preg_match('/(^|\s)(de la|de las|de los|de l\'|del|della|delle|degli|dei|di|le|les|la|el|il|un|une|des|du|von|vom|und|der|das|zur|zum|sur|aux|dans|nella|nel|å|för|van het|van de)(\s|$)/iu', mb_strtolower($main));
+    if ($foreign) {
+        $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
+                      'reason'=>'Başlık İngilizceye çözülmemiş (yabancı ad) — geri alıp elle "İngilizce Ad ('.$main.')" yaz ya da Claude motoruyla yeniden temizle'];
         continue;
     }
     if ($auth_norm !== '' && cl_norm($main) === $auth_norm) {
