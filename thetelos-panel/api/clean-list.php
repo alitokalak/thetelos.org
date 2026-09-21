@@ -139,7 +139,8 @@ if ($use_ai && count($items) >= 2) {
         . "You are given a numbered list of titles all catalogued under ONE author (named in the user message as AUTHOR).\n"
         . "Your job: produce that author's clean canonical bibliography from these entries. Output ONLY valid JSON, nothing else.\n"
         . "STEP 0 — first determine which language(s) the author actually WROTE their works in, and return them in \"wrote_in\" "
-        . "(e.g. Einstein → [\"German\",\"English\"]; Laozi → [\"Classical Chinese\"]). Every 'orig' you output must be in one of these languages.\n"
+        . "(e.g. Einstein → [\"German\",\"English\"]; Martin Buber → [\"German\",\"Hebrew\"]; Laozi → [\"Classical Chinese\"]). Every 'orig' you output must be in one of these languages.\n"
+        . "REASON FROM THIS: a listed title that is NOT in one of the author's writing-languages and NOT in English is a TRANSLATION into some third language — it is NEVER the original. Example: Martin Buber wrote in German/Hebrew, so a Turkish title ('Yahudi yazarlar antolojisi'), a Spanish title ('Eclipse de Dios'), or an Italian title ('I racconti dei Chassidim') is a translated edition. You MUST resolve such a title to its English name (as 'en') with the German/Hebrew original in 'orig' — or, if you cannot identify the work, put it in not_by_author. It is a hard error to output a Turkish, Spanish, Italian, Czech, Portuguese, or any non-English title as the 'en' name.\n"
         . "OUTPUT CONTRACT — every entry number MUST appear in exactly one place: either in some group's members, or in not_by_author.\n"
         . "1) GROUP entries that are the SAME WORK (translations, different-language/script editions, transliterations, spelling variants, reprints) into ONE group. "
         . "A single-member group is normal for works appearing once. Be AGGRESSIVE: this list is full of duplicate editions and translations of a few real works — the number of groups you output should be MUCH SMALLER than the number of entries. Merge every edition/translation of the same work; never list the same work twice.\n"
@@ -208,7 +209,11 @@ if ($use_ai && count($items) >= 2) {
             CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
             CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
             CURLOPT_POSTFIELDS => json_encode([
-                'model' => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL), 'max_tokens' => 6000, 'temperature' => 0,
+                // TEMİZLEME AKIL YÜRÜTME İSTER (Buber Almanca yazdı → Türkçe/İspanyolca
+                // başlık çeviridir → İngilizceye çevir/ele). 'flash' bunu yapamıyordu →
+                // gerçek modele (V3/chat) yükseltildi. Hâlâ DeepSeek, hâlâ ucuz.
+                'model' => (defined('DEEPSEEK_MODEL') && DEEPSEEK_MODEL && DEEPSEEK_MODEL !== 'deepseek-v4-flash') ? DEEPSEEK_MODEL : 'deepseek-chat',
+                'max_tokens' => 6000, 'temperature' => 0,
                 // JSON modu → geçerli JSON garantisi (parse hatasını düşürür). DeepSeek
                 // otomatik context-caching yapar: tekrar eden system/talimat ön-eki
                 // cache'ten okunur (~$0.028/1M), ek parametre gerekmez.
