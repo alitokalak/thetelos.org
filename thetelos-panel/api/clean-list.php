@@ -168,10 +168,11 @@ if ($use_ai && count($items) >= 2) {
     // DeepSeek fallback tek mesaj ister → sabit + değişken birleştirilir.
     $prompt = $system_rules . "\n\n" . $user_msg;
 
-    // AYIKLAMA MOTORU: bibliyografik yargı (orijinal/çeviri/kopya ayrımı) akıl
-    // yürütme ister → varsayılan CLAUDE (isabetli). 'deepseek' seçilirse ucuz
-    // yol. Tek seferlik iş olduğu için Claude maliyeti küçük, isabet büyük.
-    $engine = ($_POST['ai_engine'] ?? 'claude') === 'deepseek' ? 'deepseek' : 'claude';
+    // AYIKLAMA MOTORU: maliyet önceliği → varsayılan DEEPSEEK (Claude'un ~1/10'u:
+    // 3bin kitaplık liste ~1$ vs ~5-7$). Bu iş çoğunlukla örüntü (çeviri gruplama,
+    // "hakkında" kitapları ayıklama) → DeepSeek yeterli. 'claude' seçilirse isabet
+    // için pahalı yol (kademeli Haiku/Sonnet).
+    $engine = ($_POST['ai_engine'] ?? 'deepseek') === 'claude' ? 'claude' : 'deepseek';
     $txt = '';
     if ($engine === 'claude') {
         require_once __DIR__ . '/_anthropic.php';
@@ -204,6 +205,10 @@ if ($use_ai && count($items) >= 2) {
             CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
             CURLOPT_POSTFIELDS => json_encode([
                 'model' => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL), 'max_tokens' => 6000, 'temperature' => 0,
+                // JSON modu → geçerli JSON garantisi (parse hatasını düşürür). DeepSeek
+                // otomatik context-caching yapar: tekrar eden system/talimat ön-eki
+                // cache'ten okunur (~$0.028/1M), ek parametre gerekmez.
+                'response_format' => ['type' => 'json_object'],
                 'messages' => [['role'=>'user','content'=>$prompt]],
             ]),
         ]);

@@ -2340,10 +2340,10 @@ async function runCleaner(text, fileName) {
 
   let authors = [...byAuthor.keys()];
   const useAI   = document.getElementById('cleaner-use-ai')?.checked ? 1 : 0;
-  const engine  = document.getElementById('cleaner-engine')?.value === 'deepseek' ? 'deepseek' : 'claude';
+  const engine  = document.getElementById('cleaner-engine')?.value === 'claude' ? 'claude' : 'deepseek';
   const dropOnsite = document.getElementById('cleaner-drop-onsite')?.checked;
   const totalIn = rows.length - 1;
-  if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${useAI ? ('AI hakem AÇIK — motor: ' + (engine==='claude'?'Claude (isabetli)':'DeepSeek (ucuz)') + ' (yazar başına 1 istek).') : 'Yalnız kural katmanı (AI kapalı).'} Başlatılsın mı?`)) return;
+  if (!confirm(`${authors.length} yazar, ${totalIn} satır bulundu. ${useAI ? ('AI hakem AÇIK — motor: ' + (engine==='claude'?'Claude (isabetli, pahalı)':'DeepSeek (ucuz — ~1$/3bin)') + ' (yazar başına 1 istek).') : 'Yalnız kural katmanı (AI kapalı).'} Başlatılsın mı?`)) return;
 
   cleanerWorks = []; cleanerRemoved = [];
 
