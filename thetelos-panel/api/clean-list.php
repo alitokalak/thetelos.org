@@ -168,11 +168,11 @@ if ($use_ai && count($items) >= 2) {
     // DeepSeek fallback tek mesaj ister → sabit + değişken birleştirilir.
     $prompt = $system_rules . "\n\n" . $user_msg;
 
-    // AYIKLAMA MOTORU: İSABET önceliği → varsayılan CLAUDE. Bu iş eserlerin İngilizce
-    // literatür adını BİLMEYİ ister (ör. Bonaventure'ün Fransızca/Latince baskıları →
-    // "Le Christ maitre" = "Christ the Teacher"). DeepSeek bunları bilmiyordu, boş
-    // bırakıp yabancı başlığa düşüyordu → hep yabancı-only satırlar. Claude çözer.
-    $engine = ($_POST['ai_engine'] ?? 'claude') === 'deepseek' ? 'deepseek' : 'claude';
+    // AYIKLAMA MOTORU: varsayılan DEEPSEEK (ucuz). Prompt artık İngilizce adı ZORUNLU
+    // kılıyor: yerleşik ad yoksa düz İngilizce çeviri yazdırılıyor ("Les six jours de
+    // la Création" → "The Six Days of Creation") → DeepSeek de çözebilir. 'claude'
+    // alternatif (daha isabetli, pahalı).
+    $engine = ($_POST['ai_engine'] ?? 'deepseek') === 'claude' ? 'claude' : 'deepseek';
     $txt = '';
     if ($engine === 'claude') {
         require_once __DIR__ . '/_anthropic.php';
