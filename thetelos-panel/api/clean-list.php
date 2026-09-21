@@ -123,8 +123,8 @@ function cl_script_of($s) {
     return 'Latin';
 }
 
-/* ── AI hakem katmanı ── */
-if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !== '') {
+/* ── AI hakem katmanı ── (tek girişli yazar zaten atlanır: >=2 şartı) */
+if ($use_ai && count($items) >= 2) {
     $cap = 120;                                    // token güvenliği (her giriş çıktıda yer alacak)
     $slice = array_slice($items, 0, $cap);
     $lines = '';
@@ -168,10 +168,18 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
     if ($engine === 'claude') {
         require_once __DIR__ . '/_anthropic.php';
         if (tls_anthropic_ready()) {
+            // KADEMELİ MODEL (maliyet): kısa + Latin listeler kolaydır → Haiku (yarı
+            // fiyat). Uzun (>8) ya da farklı-alfabe (çeviri riski yüksek) listeler
+            // isabet ister → Sonnet. Zor işlerde kalite korunur, kolayda ucuzlar.
+            $titles_txt = '';
+            foreach ($slice as $it) $titles_txt .= ' ' . $it['title'];
+            $hard = (count($slice) > 8)
+                || preg_match('/[\x{0370}-\x{03FF}\x{0400}-\x{04FF}\x{0590}-\x{05FF}\x{0600}-\x{06FF}\x{4E00}-\x{9FFF}\x{3040}-\x{30FF}]/u', $titles_txt);
+            $cl_model = $hard ? tls_claude_quality_model() : tls_claude_fast_model();
             $cr = tls_claude(
                 'You are a meticulous bibliographic cataloguer. Reason carefully about original works vs translations/editions/copies. Output ONLY valid JSON, nothing else.',
                 $prompt,
-                ['model' => tls_claude_quality_model(), 'max_tokens' => 8000, 'temperature' => 0, 'timeout' => 150, 'retries' => 2]
+                ['model' => $cl_model, 'max_tokens' => 8000, 'temperature' => 0, 'timeout' => 150, 'retries' => 2]
             );
             if (!empty($cr['ok'])) $txt = (string) $cr['text'];
             else { $ai_err = 'Claude: ' . mb_substr((string) ($cr['error'] ?? '?'), 0, 120); }
