@@ -188,6 +188,27 @@ SPARQL;
     return $out;
 }
 
+/* Bir leftover (Wikidata'da eşleşmeyen) başlık şüpheli mi? Wikidata yazarın
+   kanonik listesini biliyor → eşleşmeyen başlık büyük olasılıkla ÇEVİRİ (İngilizceye
+   çözülmemiş), ANTOLOJİ/derleme ya da YANLIŞ ATIF'tır. Bunlar temiz listeye değil
+   Elenenler'e (geri alınabilir) gider. İngilizce görünen tek-eser artıkları
+   (Wikidata'nın kaçırmış olabileceği gerçek eser) KORUNUR. */
+function wd_leftover_suspect($t) {
+    $t = trim((string)$t);
+    if ($t === '') return 'boş';
+    // 1) Latin dışı alfabe (Kiril/Yunan/İbranice/Arap/CJK...) → çeviri
+    if (!preg_match('/\p{Latin}/u', $t)) return 'Latin dışı alfabe (çeviri)';
+    // 2) Aksanlı harf → yabancı dil baskısı
+    if (preg_match('/[àâäéèêëîïôöùûüçñáíóúãõœæåø]/iu', $t)) return 'yabancı dil (aksanlı)';
+    // 3) Antoloji / derleme → tek yazarın öz eseri değil
+    if (preg_match('/\b(antholog\w*|antoloji\w*|anthologie|collected|selected works|complete works|gesammelte|omnibus|reader)\b/iu', $t)) return 'antoloji/derleme';
+    // 4) Yabancı işlev kelimeleri (İngilizce kitap adlarında pratikte geçmez).
+    //    NOT: "İngilizce kelime yok" gibi gevşek kural KULLANMIYORUZ — "Christian
+    //    Wisdom" gibi gerçek İngilizce başlıkları yanlış eler, eser kaybettirir.
+    if (preg_match('/(^|\s)(de la|de los|de las|del|della|delle|di|le|les|la|el|il|une|des|du|von|vom|und|der|das|die|ich|zur|zum|sur|aux|dans|dios|het|een|van|och|ett|gli|nel|nella)(\s|$)/iu', mb_strtolower($t))) return 'yabancı işlev kelimesi';
+    return '';   // İngilizce görünüyor → koru (Wikidata kaçırmış gerçek eser olabilir)
+}
+
 /* Kanonik eserin görünen adını kur: "İngilizce (Orijinal)". İngilizce yoksa
    orijinali göster (nadir). Orijinal İngilizceyle aynıysa parantez yok. */
 function wd_display_title($w) {
@@ -272,10 +293,14 @@ function wd_clean_author($author, $items) {
         $t = (string)$it['title'];
         $is_secondary = ($alast !== '' && strlen($alast) >= 4
             && preg_match('/\b(of|on|to|about|and|by|life|thought|philosophy|companion|introduction|guide|study|reader)\b.*\b' . preg_quote($alast, '/') . '\b/iu', $t));
-        if ($is_secondary) {
+        $suspect = $is_secondary ? ('ikincil literatür (' . $alast . ' hakkında)') : wd_leftover_suspect($t);
+        if ($suspect !== '') {
+            // Wikidata yazarın eserlerini biliyor + bu başlık eşleşmedi + şüpheli →
+            // Elenenler'e (geri alınabilir). Gerçek eserse elle geri alınır.
             $removed[] = ['title'=>$t, 'author'=>$author, 'year'=>$it['year'] ?? '', 'cover'=>$it['cover'] ?? '',
-                          'reason'=>'Wikidata\'da yazarın eseri olarak bulunamadı; ikincil literatür olabilir'];
+                          'reason'=>'Wikidata\'da yazarın eseri değil / eşleşmedi — ' . $suspect];
         } else {
+            // İngilizce görünen eser → Wikidata kaçırmış olabilir, KORU.
             $out[] = ['title'=>$t, 'author'=>$author, 'year'=>$it['year'] ?? '', 'cover'=>$it['cover'] ?? '', 'merged'=>(int)($it['merged'] ?? 1)];
         }
     }
