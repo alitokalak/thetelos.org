@@ -376,8 +376,12 @@ function bw_claude_author_note($book, $author, $hb = null) {
          . 'yourself, or the word "I".';
     $usr = "Title: " . trim((string) $book) . "\nAuthor: " . trim((string) $author) . "\n\n"
          . "Write the factual note about $who as instructed — real, confident context only, no invented specifics.";
+    // MALİYET: bu yalnız kısa, dürüst bir yazar/bağlam notu (spesifik kitap teyit
+    // edilemedi) → ucuz model (Haiku) yeter. Böylece "yer tutucu yerine açıklama"
+    // neredeyse bedava olur. (Ana içerik zaten Sonnet→Opus'ta yazıldı; buraya
+    // yalnız hiç tanınamayan az sayıda kitap düşer.)
     $r = tls_claude($sys, $usr, [
-        'model'       => tls_claude_quality_model(),
+        'model'       => tls_claude_fast_model(),
         'max_tokens'  => 900,
         'temperature' => 0.2,
         'timeout'     => 120,
