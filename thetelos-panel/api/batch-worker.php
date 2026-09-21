@@ -1631,7 +1631,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     $snippet = mb_substr(strip_tags($content), 0, 1500);
     $mp = "Return ONLY valid JSON (no extra text, no markdown fences):\n"
-        . "{\"excerpt\":\"...\",\"meta_description\":\"...\",\"categories\":[\"slug1\",\"slug2\"],\"quotes\":[{\"text\":\"verbatim quote\",\"source\":\"section name\"}]}\n"
+        . "{\"seo_title\":\"...\",\"excerpt\":\"...\",\"meta_description\":\"...\",\"categories\":[\"slug1\",\"slug2\"],\"quotes\":[{\"text\":\"verbatim quote\",\"source\":\"section name\"}]}\n"
+        . "seo_title: a SHORT, clear SEO title — the work's COMMON English name + author (e.g. 'The Wealth of Nations — Adam Smith'), MAX 55 characters. It is the <title> tag, DIFFERENT from the long on-page H1; do NOT copy the full long book title. No site name.\n"
         . "CRITICAL: excerpt and meta_description must each be ONE COMPLETE sentence, fully finished (ending with a period), and MUST NOT exceed 150 characters. Never cut off mid-sentence. If needed, write shorter.\n"
         . "Pick 2-5 category slugs from: {$cats_list}\n"
         . "For quotes: only truly verbatim passages; 0-2 quotes max.\n"
@@ -1923,6 +1924,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     if (!empty($meta['meta_description'])) {
         bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_yoast_wpseo_metadesc'=>$meta['meta_description']]], $auth);
+    }
+
+    // SEO title (H1'den farklı, kısa <title>) — tema AIOSEO filtresi bunu kullanır.
+    if (!empty($meta['seo_title'])) {
+        $st = trim(preg_replace('/\s+/u', ' ', (string) $meta['seo_title']));
+        if (mb_strlen($st) > 60) $st = rtrim(mb_substr($st, 0, 59)) . '…';
+        if ($st !== '') bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_seo_title'=>$st]], $auth);
     }
 
     // Yoast odak anahtar kelimesi — SEO analiz skoru (kırmızı/yeşil) bunun

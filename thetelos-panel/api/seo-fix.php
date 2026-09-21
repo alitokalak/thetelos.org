@@ -30,10 +30,11 @@ $system_prompt = 'You are a JSON generator. Respond with ONLY a valid JSON objec
 $prompt = "Generate SEO metadata for the book \"{$title}\"" . ($author ? " by {$author}" : '') . ".\n\n"
     . "Respond with ONLY this JSON:\n"
     . "{\n"
+    . "  \"seo_title\": \"Concise SEO title, MAX 50 chars: the work's COMMON English name + author (e.g. 'The Wealth of Nations — Adam Smith'). NOT the long full title. No site name.\",\n"
     . "  \"excerpt\": \"1-2 compelling complete sentences. Must end with period. Max 120 chars.\",\n"
     . "  \"meta_description\": \"SEO description. Must end with period. Max 120 chars. Different from excerpt.\"\n"
     . "}\n\n"
-    . "RULES: Complete sentences ending with period. Max 120 chars each. Based on:\n\n" . $snippet;
+    . "RULES: Complete sentences ending with period. Max 120 chars each. seo_title max 50 chars. Based on:\n\n" . $snippet;
 
 $ch = curl_init(DEEPSEEK_API_URL);
 curl_setopt_array($ch,[
@@ -71,15 +72,21 @@ function trim_to_sentence($text,$max=150){
 
 $new_excerpt = !empty($meta['excerpt'])          ? trim_to_sentence($meta['excerpt'])          : '';
 $new_meta    = !empty($meta['meta_description']) ? trim_to_sentence($meta['meta_description']) : '';
+// SEO title: H1'den (uzun kitap adı) FARKLI, kısa ve net. ≤60 karakter.
+$new_title   = !empty($meta['seo_title']) ? trim(preg_replace('/\s+/u',' ',$meta['seo_title'])) : '';
+if($new_title !== '' && mb_strlen($new_title) > 60) $new_title = rtrim(mb_substr($new_title,0,59)).'…';
 
-if(!$new_excerpt && !$new_meta){
+if(!$new_excerpt && !$new_meta && $new_title===''){
     echo json_encode(['ok'=>false,'error'=>'AI yanıt üretemedi.']); exit;
 }
 
 if(($field==='excerpt'||$field==='both') && $new_excerpt) wp_update_post(['ID'=>$post_id,'post_excerpt'=>$new_excerpt]);
 if(($field==='meta'||$field==='both') && $new_meta) update_post_meta($post_id,'_yoast_wpseo_metadesc',$new_meta);
+// SEO title her zaman (both/meta) yazılır → tema AIOSEO filtresi bunu kullanır.
+if($new_title !== '' && $field!=='excerpt') update_post_meta($post_id,'_tls_seo_title',$new_title);
 
 $response=['ok'=>true];
 if($new_excerpt && ($field==='excerpt'||$field==='both')) $response['excerpt']=$new_excerpt;
 if($new_meta    && ($field==='meta'   ||$field==='both')) $response['meta_description']=$new_meta;
+if($new_title !== '' && $field!=='excerpt') $response['seo_title']=$new_title;
 echo json_encode($response);

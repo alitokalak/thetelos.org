@@ -2648,6 +2648,13 @@ add_action( 'init', function () {
         'show_in_rest'  => true,
         'auth_callback' => function () { return current_user_can( 'edit_posts' ); },
     ] );
+    // Kısa SEO title (H1'den farklı <title>) — panel REST ile yazar, tema okur.
+    register_post_meta( 'post', '_tls_seo_title', [
+        'type'          => 'string',
+        'single'        => true,
+        'show_in_rest'  => true,
+        'auth_callback' => function () { return current_user_can( 'edit_posts' ); },
+    ] );
 } );
 
 /* ══════════════════════════════════════════════
@@ -3453,3 +3460,55 @@ function tls_topic_guide_url_for_category() {
     if ( ! $url ) $url = home_url( '/existentialism-guide/' );   // her koşulda bir URL ver
     return $url;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   SEO — AIOSEO başlık/açıklama düzeltmesi.
+   SORUN: Site AIOSEO kullanıyor ama üretici Yoast meta'sına yazıyordu ve kitap
+   adları çok uzun olduğu için AIOSEO SEO-title'ı 160+ karaktere çıkıyordu.
+   ÇÖZÜM: AIOSEO'nun kendi filtreleriyle (eklenti aktifse çalışır, değilse
+   zararsız) SEO title'ı ≤60 karaktere kısalt; açıklamayı mevcut meta'dan besle.
+   DB'ye dokunmadan tüm yazılara anında etki eder.                            */
+
+/* Metni SEO için ~$max karaktere, kelime sınırında kısalt. */
+function tls_seo_shorten( $s, $max = 60 ) {
+    $s = trim( preg_replace( '/\s+/u', ' ', (string) $s ) );
+    if ( mb_strlen( $s ) <= $max ) return $s;
+    $cut = mb_substr( $s, 0, $max - 1 );
+    $sp  = mb_strrpos( $cut, ' ' );
+    if ( $sp !== false && $sp > $max * 0.5 ) $cut = mb_substr( $cut, 0, $sp );
+    return rtrim( $cut, " ,.;:–—-" ) . '…';
+}
+
+/* Yazı için nihai SEO title: özel meta (_tls_seo_title) > akıllı kısaltma + marka. */
+function tls_seo_post_title() {
+    $pid = get_queried_object_id();
+    if ( ! $pid ) return '';
+    $custom = trim( (string) get_post_meta( $pid, '_tls_seo_title', true ) );
+    if ( $custom !== '' ) return mb_substr( $custom, 0, 65 );
+    $raw   = html_entity_decode( get_the_title( $pid ), ENT_QUOTES, 'UTF-8' );
+    $brand = ' | The Telos';
+    $room  = 60 - mb_strlen( $brand );
+    // "Kitap - Yazar" biçimi ise kitabı kısalt, yazarı koru.
+    if ( preg_match( '/^(.*?)\s+-\s+([^-]{2,40})$/u', $raw, $m ) ) {
+        $book = trim( $m[1] ); $auth = trim( $m[2] );
+        $tail = ' — ' . $auth;
+        $book = tls_seo_shorten( $book, max( 18, $room - mb_strlen( $tail ) ) );
+        return tls_seo_shorten( $book . $tail, $room ) . $brand;
+    }
+    return tls_seo_shorten( $raw, $room ) . $brand;
+}
+
+add_filter( 'aioseo_title', function ( $title ) {
+    if ( is_singular( 'post' ) ) { $t = tls_seo_post_title(); if ( $t !== '' ) return $t; }
+    return $title;
+}, 20 );
+
+add_filter( 'aioseo_description', function ( $desc ) {
+    if ( is_singular( 'post' ) ) {
+        $pid = get_queried_object_id();
+        $md  = trim( (string) get_post_meta( $pid, '_yoast_wpseo_metadesc', true ) );
+        if ( $md === '' ) $md = trim( (string) get_post_meta( $pid, '_tls_meta_desc', true ) );
+        if ( $md !== '' ) return mb_substr( $md, 0, 160 );
+    }
+    return $desc;
+}, 20 );
