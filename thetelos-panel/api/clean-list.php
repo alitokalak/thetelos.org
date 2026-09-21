@@ -4,7 +4,7 @@
  *
  * Katman 1 (kural, ücretsiz): normalize tekrarları birleştir.
  * Katman 2 (AI hakem, DeepSeek): aynı eserin farklı dil/çeviri baskılarını tek
- *   kanonik girişte birleştir ("Orijinal ad (İngilizce ad)"), yazara ait
+ *   kanonik girişte birleştir ("İngilizce ad (Orijinal ad)"), yazara ait
  *   olmayanları gerekçesiyle ele. AI liste ÜRETMEZ — yalnız verilen başlıkları
  *   yargılar; listede olmayan hiçbir eser eklenmez.
  *
@@ -145,7 +145,7 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
         . "e.g. a Japanese or Hebrew edition title of an Einstein work is NOT the original (Einstein wrote in German/English). "
         . "orig must be empty if the work was originally written in English, and ALSO empty if you don't know the true original title. "
         . "Never copy a listed foreign edition title into orig unless it IS the language the author wrote in.\n"
-        . "IMPORTANT: a listed title may ITSELF be a translation (e.g. a Turkish, French, Spanish or other-language edition title such as 'Yahudi yazarlar antolojisi'). NEVER keep a translated title as the name — always resolve 'en' (the English literary name) and 'orig' (the author's-language original). The final catalogue is displayed as 'orig (en)', so both fields must be correct; a Turkish or other non-original, non-English title must NEVER appear in the output.\n"
+        . "IMPORTANT: a listed title may ITSELF be a translation (e.g. a Turkish, French, Spanish or other-language edition title such as 'Yahudi yazarlar antolojisi'). NEVER keep a translated title as the name — always resolve 'en' (the English literary name) and 'orig' (the author's-language original). The final catalogue is displayed as 'en (orig)', so both fields must be correct; a Turkish or other non-original, non-English title must NEVER appear in the output.\n"
         . "3) not_by_author: entries that are NOT a single book written by {$author} — books ABOUT the author, secondary literature, "
         . "quote/aphorism collections (\"Quotes\", \"Words of Wisdom\"), publisher compilations (\"Collected/Complete Works\", \"Selected Writings\", omnibus editions), "
         . "anthologies/views/studies titled \"<Something> of/about {$author}\" (a memoir the author wrote about themselves is fine), "
@@ -207,9 +207,9 @@ if ($use_ai && count($items) >= 2 && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY !==
             if ($orig !== '' && !empty($wrote_scripts) && !isset($wrote_scripts[cl_script_of($orig)])) {
                 $orig = '';
             }
-            // FORMAT: "Orijinal ad (İngilizce literatür adı)". Orijinal yoksa
+            // FORMAT: "İngilizce literatür adı (Orijinal ad)". Orijinal yoksa
             // (eser zaten İngilizce ya da orijinal bilinmiyorsa) yalnız İngilizce ad.
-            $final = ($orig !== '' && mb_strtolower($orig) !== mb_strtolower($en)) ? "$orig ($en)" : $en;
+            $final = ($orig !== '' && mb_strtolower($orig) !== mb_strtolower($en)) ? "$en ($orig)" : $en;
 
             // Yıl: AI'nın verdiği İLK YAYIN yılı öncelikli (modern baskı yılı değil);
             // yoksa üyelerin en küçük yılı. Kapak: ilk dolu.
@@ -251,10 +251,10 @@ if (!isset($items_final)) {
 }
 
 /* ── SERT GÜVENLİK KATMANI (AI'dan bağımsız, çıkışta ZORUNLU) ──
-   Format kuralı: "Orijinal ad (İngilizce literatür adı)" — ana kısım orijinal
-   dilde, İngilizce ad parantezde ("Kritik der reinen Vernunft (Critique of Pure
-   Reason)" GEÇERLİDİR). Şunlar temiz listeye giremez (Elenenler'e düşer, geri alınabilir):
-   1) Başlıkta hiç Latin/İngilizce kısım yoksa = AI İngilizce adı çözememiş
+   Format kuralı: "İngilizce literatür adı (Orijinal ad)" — ana kısım İngilizce,
+   orijinal ad parantezde ("Critique of Pure Reason (Kritik der reinen Vernunft)"
+   GEÇERLİDİR). Şunlar temiz listeye giremez (Elenenler'e düşer, geri alınabilir):
+   1) Ana kısmı hâlâ Latin harfsiz kalan başlık = AI eseri İngilizce adıyla çözememiş
    2) Başlık == yazar adı ("Albert Einstein")
    3) Alıntı/özlü söz derlemeleri ("Quotes", "Words of Wisdom") */
 $guarded = [];
@@ -267,13 +267,12 @@ foreach ($items_final as $it) {
         && preg_match('/\b(translation|edition|version|reprint|commentar\w*|abridged|selection|excerpt|subtitle|alternative|volume|part\s+\d)\b/i', $pm[2])) {
         $it['title'] = trim($pm[1]);
     }
-    $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana (orijinal) başlık
-    // FORMAT "Orijinal (İngilizce)": ana kısım orijinal dilde olabilir (Latin
-    // olmayan da). Şart: başlıkta İngilizce/Latin bir kısım BULUNSUN (çoğunlukla
-    // parantezdeki İngilizce ad). Hiç Latin yoksa İngilizce ad çözülememiş demektir.
-    if (!preg_match('/\p{Latin}/u', $it['title'])) {
+    $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana (İngilizce) başlık
+    // FORMAT "İngilizce (Orijinal)": ana kısım İngilizce literatür adı olmalı;
+    // orijinal ad parantezde. Ana kısım hâlâ Latin harfsizse İngilizce ad çözülememiş.
+    if (!preg_match('/\p{Latin}/u', $main)) {
         $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
-                      'reason'=>'İngilizce literatür adı çözülemedi — geri alıp elle "Orijinal Ad (İngilizce Ad)" yazabilirsin'];
+                      'reason'=>'İngilizce literatür adı çözülemedi — geri alıp elle "İngilizce Ad ('.$it['title'].')" yazabilirsin'];
         continue;
     }
     if ($auth_norm !== '' && cl_norm($main) === $auth_norm) {
