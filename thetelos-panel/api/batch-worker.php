@@ -347,6 +347,14 @@ function bw_source_mark($post_id, $book, $author, $source) {
    böylece temizlenmiş olur; eser sorunlu listeye düşer → sonra başka modelle
    gerçek içerik yazılır. */
 function bw_placeholder_html($book, $author) {
+    // KULLANICI İSTEĞİ: boş yer tutucu YOK. Yer tutucu koyan HER yol buradan geçer;
+    // önce Claude/Haiku ile kısa, DÜRÜST yazar-bağlam notu denenir (ucuz). Ancak o da
+    // olmazsa (anahtar yok / model boş) sabit metne düşülür. Böylece "biliyorsa yazsın,
+    // bilmiyorsa gerçeği söylesin" kuralı TEK yerden tüm yollara uygulanır.
+    if (function_exists('bw_claude_author_note') && function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
+        $note = bw_claude_author_note($book, $author, null);
+        if ($note !== '') return $note;
+    }
     $b = htmlspecialchars(trim((string) $book),   ENT_QUOTES, 'UTF-8');
     $a = htmlspecialchars(trim((string) $author), ENT_QUOTES, 'UTF-8');
     // Kısa, profesyonel, itirafsız. (Site İngilizce.)
