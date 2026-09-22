@@ -257,10 +257,15 @@ function cleanBook(item){ let b=String(item.book||''); const a=String(item.autho
 function wrapText(x,text,font,maxW){ x.font=font; const words=String(text).split(' '); let ln='',out=[];
   for(const w of words){ const tt=ln?ln+' '+w:w; if(x.measureText(tt).width>maxW&&ln){out.push(ln);ln=w;}else ln=tt; } if(ln)out.push(ln); return out; }
 
-async function drawSlide(cv,item,th,slide,n,total){
+async function drawSlide(cv,item,th,slide,n,total,style){
   await ensureFonts();
   const W=1080,H=1350; cv.width=W; cv.height=H; const x=cv.getContext('2d'); x.textAlign='center';
-  const isCover=slide.kind==='cover', hasImg=isCover&&th.bgImg;
+  const isCover=slide.kind==='cover';
+  // "Kitap kapağı" seçiliyse kapak ÇERÇEVELİ görsel olur (tekli kart gibi) →
+  // kapağın kendi yazısı üstüne alıntı basılmaz. "Yazar portresi" seçiliyse
+  // portre tam-ekran arka plan olarak güzel durur (eski davranış).
+  const framedCover = isCover && !!th.bgImg && style==='cover';
+  const hasImg      = isCover && !!th.bgImg && !framedCover;
   if(hasImg){
     const img=th.bgImg, r=Math.max(W/img.width,H/img.height), iw=img.width*r, ih=img.height*r;
     x.drawImage(img,(W-iw)/2,(H-ih)/2,iw,ih);
@@ -274,7 +279,23 @@ async function drawSlide(cv,item,th,slide,n,total){
   x.strokeStyle=hasImg?'rgba(232,200,120,.5)':th.cFrame; x.lineWidth=2; x.strokeRect(46,46,W-92,H-92);
   x.textAlign='right'; x.fillStyle=mCol; x.font='600 22px '+SANS; x.letterSpacing='2px'; x.fillText(n+' / '+total, W-70, 98); x.letterSpacing='0px'; x.textAlign='center';
 
-  if(isCover){
+  if(isCover && framedCover){
+    // ── KAPAK SLAYTI (çerçeveli kapak + altında alıntı + atıf) ──
+    const cover=th.bgImg;
+    const boxW=W*0.46, boxH=H*0.34, sc=Math.min(boxW/cover.width, boxH/cover.height);
+    const cw=cover.width*sc, ch=cover.height*sc, cx=(W-cw)/2, cyv=140;
+    x.save(); x.shadowColor='rgba(0,0,0,.5)'; x.shadowBlur=42; x.shadowOffsetY=20; roundRect(x,cx,cyv,cw,ch,10); x.fillStyle='#000'; x.fill(); x.restore();
+    x.save(); roundRect(x,cx,cyv,cw,ch,10); x.clip(); x.drawImage(cover,cx,cyv,cw,ch); x.restore();
+    x.strokeStyle=th.light?'rgba(0,0,0,.14)':'rgba(255,255,255,.14)'; x.lineWidth=1.5; roundRect(x,cx,cyv,cw,ch,10); x.stroke();
+    const quote='“'+item.quote+'”', maxW=W-200;
+    const yBook=H-210, yAuthor=item.author?H-256:H-216, attrTop=item.author?yAuthor:yBook;
+    const quoteTop=cyv+ch+48, quoteBottom=attrTop-40, maxBlockH=Math.max(160, quoteBottom-quoteTop);
+    let fs=52,lines=[]; while(fs>28){ lines=wrapText(x,quote,'500 '+fs+'px '+SERIF,maxW); if(lines.length*(fs*1.32)<=maxBlockH)break; fs-=3; }
+    x.font='500 '+fs+'px '+SERIF; x.fillStyle=tCol; const lh=fs*1.32, bh=lines.length*lh;
+    let y=quoteTop+(maxBlockH-bh)/2+fs*0.72; for(const ln of lines){ x.fillText(ln,W/2,y); y+=lh; }
+    if(item.author){ x.fillStyle=gCol; x.font='600 30px '+SERIF; x.letterSpacing='4px'; x.fillText(item.author.toUpperCase(),W/2,yAuthor); x.letterSpacing='0px'; }
+    { let b=cleanBook(item); if(b){ x.fillStyle=mCol; x.font='500 28px '+SERIF2; if(x.measureText(b).width>maxW){while(x.measureText(b+'…').width>maxW&&b.length>4)b=b.slice(0,-1);b+='…';} x.fillText(b,W/2,yBook); } }
+  } else if(isCover){
     const quote='“'+item.quote+'”'; let fs=76,lines=[]; const maxW=W-200, maxBlockH=760;
     while(fs>34){ lines=wrapText(x,quote,'500 '+fs+'px '+SERIF,maxW); if(lines.length*(fs*1.32)<=maxBlockH)break; fs-=3; }
     x.font='500 '+fs+'px '+SERIF; x.fillStyle=tCol;
@@ -327,7 +348,7 @@ async function makeCarouselCard(item, style){
   const pts=(item.slides&&item.slides.length)?item.slides:[];
   const defs=[{kind:'cover'}].concat(pts.map(t=>({kind:'point',text:t}))).concat([{kind:'cta'}]);
   const total=defs.length, canvases=[];
-  for(let i=0;i<defs.length;i++){ const cv=document.createElement('canvas'); cv.style.cssText='height:230px;width:auto;flex:0 0 auto;border-radius:6px'; await drawSlide(cv,item,th,defs[i],i+1,total); strip.appendChild(cv); canvases.push(cv); }
+  for(let i=0;i<defs.length;i++){ const cv=document.createElement('canvas'); cv.style.cssText='height:230px;width:auto;flex:0 0 auto;border-radius:6px'; await drawSlide(cv,item,th,defs[i],i+1,total,style); strip.appendChild(cv); canvases.push(cv); }
   dl.onclick=async function(){
     if(typeof JSZip==='undefined'){ alert('ZIP kütüphanesi yüklenemedi (internet?).'); return; }
     const zip=new JSZip(), base=(item.book||'thetelos').replace(/[^a-z0-9]+/gi,'-').toLowerCase();
