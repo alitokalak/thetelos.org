@@ -61,6 +61,28 @@ function sg_parse_slides($txt, $max = 5) {
     return array_slice($out, 0, max(3, min(5, (int) $max)));
 }
 
+/* Adı/konu adını hashtag'e çevir: aksan sadeleş, yalnız harf/rakam, küçük harf. */
+function sg_tag($s) {
+    $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string) $s); if ($t !== false && $t !== '') $s = $t;
+    $s = preg_replace('/[^a-z0-9]/', '', strtolower($s));
+    return $s !== '' ? '#' . $s : '';
+}
+/* İLGİLİ etiketler, TAM 5 adet: yazar + konu(kategori) + güçlü jenerikler + #thetelos.
+   (Platform 5'ten fazlasına izin vermiyor; alakasız sabit etiket yığını yerine
+   posta özgü, ilgili etiketler.) */
+function sg_hashtags($author, $catname) {
+    $tags = [];
+    $a = sg_tag($author);  if (strlen($a) > 3) $tags[] = $a;              // #yazaradi
+    $c = sg_tag($catname); if ($c !== '' && !in_array($c, $tags, true)) $tags[] = $c;  // #konu
+    foreach (['#books', '#booksummary', '#literature', '#reading', '#philosophy'] as $g) {
+        if (count($tags) >= 4) break;                                     // 4 + marka = 5
+        if (!in_array($g, $tags, true)) $tags[] = $g;
+    }
+    $tags = array_slice($tags, 0, 4);
+    $tags[] = '#thetelos';                                                // marka her zaman
+    return implode(' ', $tags);
+}
+
 /* Carousel için özetten kısa noktalar çıkar (kapak alıntısı hariç). */
 function sg_pick_points($html, $exclude, $n = 4) {
     $text = trim(html_entity_decode(strip_tags((string) $html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
@@ -177,10 +199,7 @@ foreach ($ids as $pid) {
     $attrib = ($q['kind'] === 'quote' && $author !== '')
         ? '— ' . $author . ($title ? ', ' . $title : '')
         : ($author !== '' ? $title . ' — ' . $author : $title);
-    $tagbits = ['#books', '#reading', '#booksummary', '#quotes'];
-    if ($catname !== '') $tagbits[] = '#' . preg_replace('/[^a-z0-9]/', '', strtolower($catname));
-    $tagbits[] = '#thetelos';
-    $hashtags = implode(' ', array_values(array_unique($tagbits)));
+    $hashtags = sg_hashtags($author, $catname);
     $caption = '“' . $q['text'] . '”' . "\n\n" . $attrib . "\n\n"
              . 'Full summary → ' . $url . "\n\n" . $hashtags;
 
