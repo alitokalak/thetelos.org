@@ -21,16 +21,23 @@ require_once '/home/thetelos/public_html/wp-load.php';
 ob_end_clean();
 
 /* ── AI carousel slaytları (DeepSeek) — tutarlı, sıralı, tek-fikirli ── */
-/* Hedef slayt sayısı = İÇERİK ZENGİNLİĞİ (özet uzunluğu). Model "aim for 3-4"
-   gibi yumuşak yönergeye uymuyor, temp 0'da hep tavana (5) vuruyordu → hep 7'li
-   carousel. Sayıyı burada deterministik belirleyip modele "tam N yaz" diyoruz:
-   kısa özet 3, orta 4, zengin 5 içerik slaytı (+ kapak + CTA = toplam 5/6/7). */
+/* Hedef slayt sayısı = özetin BÖLÜM/FİKİR sayısı (kelime sayısı DEĞİL — özetler
+   hep uzun olduğu için o hep 5'e vuruyordu, carousel hep 7 çıkıyordu). Özetlerde
+   ## başlıklar (HTML'de <h2>/<h3>) doğal fikir bölümleridir → slayt sayısını ona
+   bağlarız: gerçekten değişir. Başlık yoksa paragraf sayısından tahmin. 3-5 arası
+   içerik slaytı (+ kapak + CTA = toplam 5-7). */
 function sg_target_slides($content) {
-    $plain = trim(preg_replace('/\s+/u', ' ', strip_tags((string) $content)));
-    $w = str_word_count($plain);
-    if ($w < 180) return 3;
-    if ($w < 360) return 4;
-    return 5;
+    $html = (string) $content;
+    $h = (int) preg_match_all('/<h[23][\s>]/i', $html);           // bölüm başlıkları
+    if ($h < 1) {                                                 // başlık yoksa paragraf
+        $p = (int) preg_match_all('/<p[\s>]/i', $html);
+        $h = (int) ceil($p / 2);                                  // ~2 paragraf ≈ 1 fikir
+    }
+    if ($h < 1) {                                                 // HTML değilse metin uzunluğu
+        $w = str_word_count(strip_tags($html));
+        $h = $w < 250 ? 3 : ($w < 550 ? 4 : 5);
+    }
+    return max(3, min(5, $h));
 }
 function sg_slide_prompt($book, $author, $content, $n = 4) {
     $plain = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags((string) $content), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
@@ -204,7 +211,7 @@ if (($_POST['ai_slides'] ?? '') === '1') {
     require_once __DIR__ . '/_proto.php';
     // v3: slayt sayısı artık içerik uzunluğuna göre değişken (3-5). v2 cache'i hep
     // 5 slaytlıydı → sürüm yükseltip yeniden ürettiriyoruz (DeepSeek, ucuz).
-    $sc = get_option('tls_carousel_slides_v3', []); if (!is_array($sc)) $sc = [];
+    $sc = get_option('tls_carousel_slides_v4', []); if (!is_array($sc)) $sc = [];
     $need_i = []; $prompts = []; $targets = [];
     foreach ($items as $i => $it) {
         $pid = (string) $it['post_id'];
@@ -225,7 +232,7 @@ if (($_POST['ai_slides'] ?? '') === '1') {
             $sl = sg_parse_slides($txt, $targets[$k]);   // hedef sayıda kes → toplam 5/6/7 değişken
             if (count($sl) >= 2) { $items[$i]['slides'] = $sl; $sc[(string) $items[$i]['post_id']] = $sl; }
         }
-        update_option('tls_carousel_slides_v3', $sc, false);
+        update_option('tls_carousel_slides_v4', $sc, false);
     }
 }
 
