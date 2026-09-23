@@ -250,19 +250,8 @@ function bw_update_book($batch_file, $idx, $updates) {
                 (string) ($batch['books'][$idx]['book_title'] ?? ''),
                 (string) ($batch['books'][$idx]['author_name'] ?? ''), 'yer-tutucu');
         }
-        $done = $ok = $failed = $placeholder = $kept = 0;
-        foreach ($batch['books'] as $b) {
-            if (in_array($b['status'], ['done','error'])) $done++;
-            if ($b['status'] === 'done' && !empty($b['placeholder'])) $placeholder++;   // yayında ama içerik yok
-            elseif ($b['status'] === 'done' && !empty($b['kept'])) $kept++;             // yeni içerik yazılmadı, eski korundu
-            elseif ($b['status'] === 'done')  $ok++;                                     // taze iyi içerik yazıldı
-            if ($b['status'] === 'error') $failed++;
-        }
-        $batch['done']        = $done;
-        $batch['ok']          = $ok;
-        $batch['placeholder'] = $placeholder;
-        $batch['kept']        = $kept;
-        $batch['failed']      = $failed;
+        bw_recount_counters($batch);
+        $done = $batch['done'];
         $batch['last_activity'] = time();   // görünürlük: "en son ne zaman ilerledi"
         if ($done >= $batch['total'] && ($batch['status'] ?? '') !== 'cancelled') $batch['status'] = 'done';
         bw_write_atomic($batch_file, $batch);
@@ -2098,10 +2087,160 @@ function bw_peak_now() {
     return ($h >= 1 && $h < 4) || ($h >= 6 && $h < 10);
 }
 
+/* Sayaçları (done/ok/failed/placeholder/kept/skipped) tek yerden hesapla.
+   'skipped' (temizlikte elenen/birleştirilen) TAMAMLANMIŞ sayılır → ilerleme
+   çubuğu total'a ulaşır, %70'te asılı kalmaz. */
+function bw_recount_counters(array &$b) {
+    $done = $ok = $failed = $ph = $kept = $skip = 0;
+    foreach ($b['books'] as $x) {
+        $s = $x['status'] ?? '';
+        if (in_array($s, ['done', 'error', 'skipped'], true)) $done++;
+        if ($s === 'skipped') { $skip++; continue; }
+        if ($s === 'done' && !empty($x['placeholder'])) $ph++;
+        elseif ($s === 'done' && !empty($x['kept'])) $kept++;
+        elseif ($s === 'done') $ok++;
+        if ($s === 'error') $failed++;
+    }
+    $b['done'] = $done; $b['ok'] = $ok; $b['placeholder'] = $ph;
+    $b['kept'] = $kept; $b['failed'] = $failed; $b['skipped'] = $skip;
+}
+
+/* Bir yazarı "temizlendi" işaretle (temizlemeye gerek olmayan tekil/yazarsız
+   gruplar için — AI çağrısı yapmadan). */
+function bw_clean_mark_author_done($batch_file, $author_key) {
+    $lk = bw_lock($batch_file); if (!$lk) return;
+    $b = json_decode(@file_get_contents($batch_file), true);
+    if (is_array($b)) {
+        $da = $b['clean_done_authors'] ?? [];
+        if (!in_array($author_key, $da, true)) { $da[] = $author_key; $b['clean_done_authors'] = $da; }
+        bw_write_atomic($batch_file, $b);
+    }
+    bw_unlock($lk);
+}
+
+/* Bir yazarın temizleme sonucunu kuyruğa uygula:
+   - not_by_author → status 'skipped' (elendi),
+   - her grup için İLK üye = kanonik (başlık İngilizce ada güncellenir),
+   - grubun diğer üyeleri → status 'skipped' (birleştirildi).
+   $idx_map: 0-tabanlı üye no → gerçek kitap index'i. */
+function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res) {
+    $lk = bw_lock($batch_file); if (!$lk) return;
+    $b = json_decode(@file_get_contents($batch_file), true);
+    if (!is_array($b)) { bw_unlock($lk); return; }
+
+    if (!empty($res['ok'])) {
+        foreach ($res['not_by_author'] as $f) {
+            $m = (int) ($f['n'] ?? -1);
+            if (!isset($idx_map[$m])) continue;
+            $bi = $idx_map[$m];
+            if (($b['books'][$bi]['status'] ?? '') === 'pending') {
+                $b['books'][$bi]['status']      = 'skipped';
+                $b['books'][$bi]['skip_reason'] = 'temizlik: yazara ait değil — ' . mb_substr((string) ($f['reason'] ?? ''), 0, 140);
+                $b['books'][$bi]['clean_removed'] = 1;
+            }
+        }
+        foreach ($res['groups'] as $g) {
+            $members = array_values(array_filter((array) $g['members'], fn($m) => isset($idx_map[$m])));
+            if (empty($members)) continue;
+            $canon = $idx_map[$members[0]];
+            if (($b['books'][$canon]['status'] ?? '') === 'pending') {
+                if (trim((string) ($g['display'] ?? '')) !== '') $b['books'][$canon]['book_title'] = (string) $g['display'];
+                if (preg_match('/^\d{3,4}$/', (string) ($g['year'] ?? ''))) $b['books'][$canon]['pub_year'] = (string) $g['year'];
+                $b['books'][$canon]['clean_canonical'] = 1;
+            }
+            for ($k = 1; $k < count($members); $k++) {
+                $bi = $idx_map[$members[$k]];
+                if (($b['books'][$bi]['status'] ?? '') === 'pending') {
+                    $b['books'][$bi]['status']      = 'skipped';
+                    $b['books'][$bi]['skip_reason'] = 'temizlik: aynı eserin kopyası/çevirisi → "' . mb_substr((string) ($g['display'] ?? ''), 0, 120) . '" ile birleştirildi';
+                    $b['books'][$bi]['clean_merged'] = 1;
+                }
+            }
+        }
+    }
+
+    $da = $b['clean_done_authors'] ?? [];
+    if (!in_array($author_key, $da, true)) { $da[] = $author_key; $b['clean_done_authors'] = $da; }
+    bw_recount_counters($b);
+    bw_write_atomic($batch_file, $b);
+    bw_unlock($lk);
+}
+
+/* ── ÖN-TEMİZLEME FAZI ────────────────────────────────────────────────────
+   Anthropic seçili YENİ üretimde, yazma başlamadan ÖNCE çalışır. Bekleyen
+   kitapları YAZAR bazında gruplar; her yazar için Claude denetimi yapar
+   (cll_clean_author_ai) ve sonucu kuyruğa uygular. Yazar-yazar ilerler,
+   resume-edilebilir (clean_done_authors); bütçe/peak'te 'yield' döner.
+   @return 'done' (bitti/uygulanmaz) | 'yield' (sonra devam) */
+function bw_clean_phase($batch_file, $start, $budget, $on_beat) {
+    $b0 = json_decode(@file_get_contents($batch_file), true);
+    if (!is_array($b0) || ($b0['pre_clean'] ?? '') !== '1' || !empty($b0['clean_done'])) return 'done';
+    require_once __DIR__ . '/_clean-lib.php';
+
+    while (true) {
+        if (bw_peak_now())              return 'yield';
+        if (time() - $start >= $budget) return 'yield';
+
+        $b = json_decode(@file_get_contents($batch_file), true);
+        if (!is_array($b) || ($b['pre_clean'] ?? '') !== '1' || !empty($b['clean_done'])) return 'done';
+        if (in_array(($b['status'] ?? ''), ['cancelled', 'paused'], true)) return 'done';
+
+        $done_set = array_flip($b['clean_done_authors'] ?? []);
+        $groups   = [];   // normkey → ['author'=>display, 'idx'=>[book idx...]]
+        foreach ($b['books'] as $i => $bk) {
+            if (($bk['status'] ?? '') !== 'pending') continue;
+            $an  = trim((string) ($bk['author_name'] ?? ''));
+            $key = cll_norm($an); if ($key === '') $key = '__noauthor__';
+            if (isset($done_set[$key])) continue;
+            if (!isset($groups[$key])) $groups[$key] = ['author' => $an, 'idx' => []];
+            $groups[$key]['idx'][] = $i;
+        }
+        if (empty($groups)) {   // tüm yazarlar temizlendi
+            $lk = bw_lock($batch_file);
+            if ($lk) {
+                $bb = json_decode(@file_get_contents($batch_file), true);
+                if (is_array($bb)) { $bb['clean_done'] = time(); bw_recount_counters($bb); bw_write_atomic($batch_file, $bb); }
+                bw_unlock($lk);
+            }
+            return 'done';
+        }
+
+        $key = array_key_first($groups);
+        $grp = $groups[$key];
+        if (is_callable($on_beat)) $on_beat();
+
+        // Tek kitap ya da yazarsız → temizlemeye gerek yok (birleştirme/eleme
+        // yazar bağlamı ister). AI çağrısı yapmadan işaretle, kitabı olduğu gibi yaz.
+        if ($grp['author'] === '' || $key === '__noauthor__' || count($grp['idx']) < 2) {
+            bw_clean_mark_author_done($batch_file, $key);
+            continue;
+        }
+
+        $titles = [];
+        foreach ($grp['idx'] as $i) $titles[] = (string) ($b['books'][$i]['book_title'] ?? '');
+        // Temizleme çağrısı HER ZAMAN gerçek-zamanlı (batch değil): küçük/ucuz,
+        // hızlı bitsin ki üretim beklemesin.
+        $res = cll_clean_author_ai($grp['author'], $titles, ['batch' => false, 'on_beat' => $on_beat]);
+        bw_clean_apply($batch_file, $key, $grp['idx'], $res);
+        if (is_callable($on_beat)) $on_beat();
+    }
+}
+
 $processed = 0;
 $start     = time();
 $budget    = 70;          // saniye — sunucu uzun süreçleri öldürmeden önce kendini yenile
 $reason    = 'no_more';
+
+// ── ÖN-TEMİZLEME: üretimden ÖNCE (anthropic + yeni üretim). Bütçe dolarsa
+//    halef worker devralır (resume). ──
+$g_beat = function () use ($g_worker_hb) { if ($g_worker_hb) @touch($g_worker_hb); };
+if (bw_clean_phase($batch_file, $start, $budget, $g_beat) === 'yield') {
+    if ($g_worker_hb) @touch($g_worker_hb);
+    bw_spawn_successor($batch_id);
+    echo json_encode(['status' => 'cleaning', 'reason' => 'clean_yield']);
+    exit;
+}
+
 while (true) {
     // Yoğun saat başladıysa üretimi burada bırak: zincirleme yapılmaz, wk dosyası
     // temizlenir; saat normale dönünce cron-tick kaldığı yerden devam ettirir.

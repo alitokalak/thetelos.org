@@ -40,6 +40,11 @@ foreach ($batch['books'] as $i => $b) {
         'placeholder'      => !empty($b['placeholder']) ? 1 : 0,
         'duplicate'        => !empty($b['duplicate']) ? 1 : 0,
         'kept'             => !empty($b['kept']) ? 1 : 0,
+        // Ön-temizleme sonucu (yalnız anthropic): elenen/birleştirilen/kanonik
+        'skip_reason'      => $b['skip_reason'] ?? '',
+        'clean_removed'    => !empty($b['clean_removed']) ? 1 : 0,
+        'clean_merged'     => !empty($b['clean_merged']) ? 1 : 0,
+        'clean_canonical'  => !empty($b['clean_canonical']) ? 1 : 0,
         'method'           => $b['method'] ?? '',
         'source'           => $b['source'] ?? '',
         'words'            => (int)($b['words'] ?? 0),

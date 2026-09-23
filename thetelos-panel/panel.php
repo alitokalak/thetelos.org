@@ -1099,7 +1099,7 @@ if (!isset($_GET['mode'])) {
             if (!j.ok || !j.batch) { _tlsWatchFails[id]++; return; }
             _tlsWatchFails[id] = 0;
             var b = j.batch, st = b.status || '', books = b.books || [];
-            var pending = 0, processing = 0, done = 0, errs = 0;
+            var pending = 0, processing = 0, done = 0, errs = 0, skipped = 0;
             var nowSec = Math.floor(Date.now() / 1000);
             var _EFF_PARTS = Math.max(
                   Math.max(1, Math.min(6, b.parts || 2)),
@@ -1113,6 +1113,7 @@ if (!isset($_GET['mode'])) {
               else if (s === 'processing') processing++;
               else if (s === 'done') done++;
               else if (s === 'error') errs++;
+              else if (s === 'skipped') skipped++;   // temizlikte elendi/birleştirildi = tamamlandı sayılır
               if (s === 'processing' && !books[i].post_id) {
                 var elapsed = books[i].processing_since > 0 ? (nowSec - books[i].processing_since) : 0;
                 if (elapsed > _STALE_SECS) hasStale = true;
@@ -1123,9 +1124,19 @@ if (!isset($_GET['mode'])) {
             if (card) {
               card.setAttribute('data-pending', pending + processing);
               var meta = card.querySelector('[data-bc-meta]');
-              if (meta) meta.innerHTML = done+' &#10003; &middot; '+errs+' hata &middot; '+(pending+processing)+' bekliyor / '+tot;
+              if (meta) {
+                if (b.pre_clean && !b.clean_done) {
+                  // Ön-temizleme fazı: yazma başlamadan önce yazar-yazar denetim
+                  meta.innerHTML = '🧹 Liste temizleniyor (yazar-yazar denetim)… &middot; '
+                    + (b.clean_removed||0)+' elendi &middot; '+(b.clean_merged||0)+' birleşti';
+                } else {
+                  meta.innerHTML = done+' &#10003; &middot; '+errs+' hata'
+                    + (skipped>0 ? (' &middot; '+skipped+' temizlendi') : '')
+                    + ' &middot; '+(pending+processing)+' bekliyor / '+tot;
+                }
+              }
               var bar = card.querySelector('[data-bc-bar]');
-              if (bar) bar.style.width = (tot>0 ? Math.round(done/tot*100) : 0)+'%';
+              if (bar) bar.style.width = (tot>0 ? Math.round((done+skipped)/tot*100) : 0)+'%';
 
               // Her kitap satırını güncelle: renk, ikon, süre
               for (var k = 0; k < books.length; k++) {
@@ -1141,6 +1152,7 @@ if (!isset($_GET['mode'])) {
                 else if (bk.status === 'done' && bk.kept)         { bg='#b8860b'; symbol='⚠'; ttl='Eski içerik korundu — yenilenmedi'; }
                 else if (bk.status === 'done')                    { bg='#1f7a3d'; symbol='✓'; ttl = bk.method ? ('Yöntem: '+bk.method) : ''; }
                 else if (bk.status === 'error')                   { bg='#a33';    symbol='✕'; }
+                else if (bk.status === 'skipped')                 { bg='#555';    symbol=(bk.clean_merged?'⤳':'✂'); ttl = bk.skip_reason || 'Temizlikte elendi/birleştirildi'; }
                 else if (isStale)                                  { bg='#cc4400'; symbol='!'; }
                 else if (bk.status === 'processing')              { bg='#b8860b'; symbol='⚙'; }
                 else                                               { bg='#333';    symbol='…'; }
@@ -1149,6 +1161,7 @@ if (!isset($_GET['mode'])) {
                 var mtag = '', mcol = '#666';
                 if      (bk.status === 'done' && bk.placeholder) { mtag='⚠ yer tutucu'; mcol='#b8860b'; }
                 else if (bk.status === 'done' && bk.kept)        { mtag='⚠ eski korundu'; mcol='#b8860b'; }
+                else if (bk.status === 'skipped')                { mtag=(bk.clean_merged?'⤳ birleştirildi':'✂ elendi'); mcol='#888'; }
                 else if (bk.status === 'done' && bk.method) {
                   var _mm = {'kaynak-temelli':'📖 kaynak','bilgi-metni':'📚 bilgi','claude':'🤖 Claude','claude-bilgi':'🤖 Claude bilgi','kaynaksız':'✍ kaynaksız','yer-tutucu':'⚠ yer tutucu'};
                   mtag = _mm[bk.method] || bk.method;

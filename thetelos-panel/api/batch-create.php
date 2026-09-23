@@ -69,11 +69,24 @@ $jobs_dir   = dirname(__DIR__) . '/jobs';
 if (!is_dir($jobs_dir)) mkdir($jobs_dir, 0755, true);
 $batch_file = "$jobs_dir/{$batch_id}.json";
 
+// ── ÖN-TEMİZLEME (yalnız Anthropic / Anthropic Batch, YENİ üretimde) ──
+// Yazma başlamadan önce Claude listeyi YAZAR-YAZAR denetler: aynı eserin
+// çeviri/kopyaları tek esere iner, yazara ait olmayan/ikincil eserler elenir.
+// Yeniden-yaz modunda ÇALIŞMAZ (kullanıcı kararı).
+$pre_clean = (in_array($api_provider, ['anthropic', 'anthropic_batch'], true) && !$rewrite) ? '1' : '';
+
 $batch = [
     'id'           => $batch_id,
     'status'       => 'running',
     'created_at'   => time(),
     'type'         => $type,
+    // Ön-temizleme durumu (worker'ın ilk fazı)
+    'pre_clean'          => $pre_clean,
+    'clean_done'         => 0,     // bitince timestamp
+    'clean_done_authors' => [],    // temizlenmiş yazar anahtarları (resume için)
+    'clean_removed'      => 0,     // elenen (yazara ait değil)
+    'clean_merged'       => 0,     // birleştirilen (çeviri/kopya)
+    'skipped'            => 0,     // temizlikte atlanan toplam
     'post_status'  => $post_status,
     'max_tokens'   => $max_tokens,
     'api_provider' => $api_provider,
