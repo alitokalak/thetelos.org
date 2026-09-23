@@ -40,6 +40,10 @@ get_header();
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
       My Library
     </button>
+    <button class="tls-prof-topbtn" data-tab="saved">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
+      Saved Summaries<?php if ($cnt_saved) : ?> <span class="tls-prof-topcount"><?php echo (int) $cnt_saved; ?></span><?php endif; ?>
+    </button>
     <button class="tls-prof-topbtn" data-tab="readingpaths">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
       Reading Paths
@@ -103,7 +107,6 @@ get_header();
           <button class="tls-prof-filter" data-filter="want">❤ Want to Read <span><?php echo $cnt_want; ?></span></button>
           <button class="tls-prof-filter" data-filter="reading">📖 Reading <span><?php echo $cnt_reading; ?></span></button>
           <button class="tls-prof-filter" data-filter="read">✓ Finished <span><?php echo $cnt_read; ?></span></button>
-          <button class="tls-prof-filter" data-filter="saved">🔖 Saved summaries <span><?php echo $cnt_saved; ?></span></button>
         </div>
         <div id="tls-lib-loading" class="tls-prof-loading">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
@@ -115,6 +118,22 @@ get_header();
           <h3>No books yet</h3>
           <p>Browse the archive and mark books to build your library.</p>
           <a class="tls-botw-cta" href="<?php echo esc_url(home_url('/')); ?>">Browse Archive →</a>
+        </div>
+      </div>
+
+      <!-- SAVED SUMMARIES TAB — kaydedilen özet POSTLARI (kitap durumundan ayrı) -->
+      <div class="tls-prof-tab" id="tab-saved" style="display:none;">
+        <p class="tls-saved-intro">Summaries you saved to read later. This is separate from your book reading status.</p>
+        <div id="tls-saved-loading" class="tls-prof-loading">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+          Loading…
+        </div>
+        <div id="tls-saved-grid" class="tls-prof-books" style="display:none;"></div>
+        <div id="tls-saved-empty" class="tls-prof-empty" style="display:none;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
+          <h3>No saved summaries yet</h3>
+          <p>Tap “Read later” on any summary to keep it here for later.</p>
+          <a class="tls-botw-cta" href="<?php echo esc_url(home_url('/')); ?>">Browse Summaries →</a>
         </div>
       </div>
 
@@ -181,6 +200,9 @@ get_header();
 .tls-prof-topbtn { display:inline-flex; align-items:center; gap:7px; padding:13px 20px; background:none; border:none; font-family:var(--tls-sans); font-size:13px; font-weight:600; color:var(--tls-muted); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px; transition:color .15s,border-color .15s; }
 .tls-prof-topbtn:hover { color:var(--tls-bg-dark); }
 .tls-prof-topbtn--active { color:var(--tls-bg-dark); border-bottom-color:var(--tls-gold); }
+.tls-prof-topcount { background:var(--tls-bg); color:var(--tls-muted); border-radius:10px; padding:1px 7px; font-size:11px; font-weight:700; }
+.tls-prof-topbtn--active .tls-prof-topcount { background:var(--tls-gold); color:#fff; }
+.tls-saved-intro { font-family:var(--tls-sans); font-size:13px; color:var(--tls-muted); margin:0 0 18px; line-height:1.5; }
 
 /* Outer layout — sidebar + content */
 .tls-prof-outer { display:grid; grid-template-columns:240px 1fr; gap:32px; align-items:start; }
@@ -283,6 +305,7 @@ get_header();
     var colors    = {want:'#b84c6e', reading:'#C8A165', read:'#6a9f5e', saved:'#1f6f43'};
     var labels    = {want:'Want to Read', reading:'Currently Reading', read:'Finished', saved:'Saved summary'};
     var rlLoaded  = false;
+    var savedLoaded = false;
 
     /* ── Tab geçişi ── */
     document.querySelectorAll('.tls-prof-topbtn').forEach(function(btn){
@@ -296,9 +319,14 @@ get_header();
                 rlLoaded = true;
                 loadReadingPaths();
             }
+            if (btn.dataset.tab === 'saved' && !savedLoaded) {
+                savedLoaded = true;
+                loadSaved();
+            }
         });
     });
     if (location.search.indexOf('tab=settings')>-1) document.querySelector('[data-tab="settings"]').click();
+    if (location.search.indexOf('tab=saved')>-1) document.querySelector('[data-tab="saved"]').click();
     if (location.search.indexOf('tab=readingpaths')>-1) { rlLoaded=true; document.querySelector('[data-tab="readingpaths"]').click(); loadReadingPaths(); }
 
     /* ── Kütüphane yükle ── */
@@ -307,6 +335,22 @@ get_header();
         return '<div style="width:'+w+'px;height:'+h+'px;position:relative;overflow:hidden;border-radius:4px;flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,.2);">'
             + '<div style="position:absolute;top:0;left:0;transform:scale('+s+');transform-origin:top left;width:160px;height:220px;pointer-events:none;">'
             + html + '</div></div>';
+    }
+
+    function bookCard(b){
+        var coverHtml;
+        if(b.cover){
+            coverHtml='<img src="'+b.cover+'" alt="" loading="lazy" style="width:44px;height:62px;object-fit:cover;border-radius:3px;flex-shrink:0;">';
+        } else {
+            coverHtml = b.cover_html ? scaledCover(b.cover_html, 44, 62) : '';
+        }
+        return '<a href="'+b.url+'" class="tls-prof-book">'
+            +'<div class="tls-prof-book-cover">'+coverHtml+'</div>'
+            +'<div class="tls-prof-book-body">'
+            +'<span class="tls-prof-book-badge" style="background:'+colors[b.status]+'">'+labels[b.status]+'</span>'
+            +'<span class="tls-prof-book-title">'+b.title+'</span>'
+            +(b.author?'<div class="tls-prof-book-author">'+b.author+'</div>':'')
+            +'</div></a>';
     }
 
     function loadLib(filter) {
@@ -321,24 +365,28 @@ get_header();
             loading.style.display='none';
             if(!res.success||!res.data.books.length){empty.style.display='flex';return;}
             grid.style.display='flex';
-            grid.innerHTML=res.data.books.map(function(b){
-                var coverHtml;
-                if(b.cover){
-                    coverHtml='<img src="'+b.cover+'" alt="" loading="lazy" style="width:44px;height:62px;object-fit:cover;border-radius:3px;flex-shrink:0;">';
-                } else {
-                    coverHtml = b.cover_html ? scaledCover(b.cover_html, 44, 62) : '';
-                }
-                return '<a href="'+b.url+'" class="tls-prof-book">'
-                    +'<div class="tls-prof-book-cover">'+coverHtml+'</div>'
-                    +'<div class="tls-prof-book-body">'
-                    +'<span class="tls-prof-book-badge" style="background:'+colors[b.status]+'">'+labels[b.status]+'</span>'
-                    +'<span class="tls-prof-book-title">'+b.title+'</span>'
-                    +(b.author?'<div class="tls-prof-book-author">'+b.author+'</div>':'')
-                    +'</div></a>';
-            }).join('');
+            grid.innerHTML=res.data.books.map(bookCard).join('');
         });
     }
     loadLib('all');
+
+    /* ── Kaydedilen özetler (ayrı sekme) ── */
+    function loadSaved() {
+        var loading=document.getElementById('tls-saved-loading');
+        var grid=document.getElementById('tls-saved-grid');
+        var empty=document.getElementById('tls-saved-empty');
+        if(!loading) return;
+        loading.style.display='flex'; grid.style.display='none'; empty.style.display='none'; grid.innerHTML='';
+        var fd=new FormData(); fd.append('action','tls_get_library'); fd.append('filter','saved');
+        fetch(ajax,{method:'POST',body:fd,credentials:'same-origin'})
+        .then(function(r){return r.json();})
+        .then(function(res){
+            loading.style.display='none';
+            if(!res.success||!res.data.books.length){empty.style.display='flex';return;}
+            grid.style.display='flex';
+            grid.innerHTML=res.data.books.map(bookCard).join('');
+        });
+    }
 
     document.querySelectorAll('.tls-prof-filter').forEach(function(btn){
         btn.addEventListener('click',function(){

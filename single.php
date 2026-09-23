@@ -309,7 +309,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     fetch(ep(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(res){
                       btn.classList.remove('busy');
                       if(res&&res.success){ btn.classList.toggle('saved',!!res.data.saved); btn.setAttribute('aria-pressed',res.data.saved?'true':'false'); }
-                      else{ var m=res&&res.data&&res.data.message; if(m==='login_required'){ var ov=document.getElementById('tls-auth-overlay'); if(ov){ov.style.display='flex';document.body.style.overflow='hidden';} else { window.location.href='<?php echo esc_js( wp_login_url( get_permalink() ) ); ?>'; } } }
+                      else{ var m=res&&res.data&&res.data.message; if(m==='login_required'){ /* giriş sonrası otomatik kaydet: pending işaretle → auth popup aç */ try{sessionStorage.setItem('tls_pending_saved',pid);}catch(e){} var ov=document.getElementById('tls-auth-overlay'); if(ov){ov.style.display='flex';document.body.style.overflow='hidden';} else { window.location.href='<?php echo esc_js( wp_login_url( get_permalink() ) ); ?>'; } } }
                     }).catch(function(){ btn.classList.remove('busy'); });
                   });
                 })();

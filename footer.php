@@ -1066,6 +1066,7 @@ $ajax_url     = admin_url('admin-ajax.php');
             updateHeader();
             updateStatusButtons();
             applySessionPending();
+            applyPendingSaved();
             initStatusButtons();  /* guard sayesinde sadece UI günceller, yeniden bind etmez */
             /* initDropdown buradan çağrılmıyor — DOMContentLoaded'da bir kez çağrılıyor */
         })
@@ -1162,6 +1163,31 @@ $ajax_url     = admin_url('admin-ajax.php');
                         b.classList.toggle('active', b.dataset.status === p.status);
                     });
                     document.dispatchEvent(new Event('tls:statusChanged'));
+                }
+            }
+        }).catch(function(){});
+    }
+
+    /* ── Reload sonrası "özeti sonra oku" pending uygula ──
+         Misafir "Read later"a bastı → giriş/kayıt yaptı → özet otomatik
+         kaydedilsin ve (sayfadaysa) buton kaydedilmiş görünsün. ── */
+    function applyPendingSaved() {
+        var pendingSaved = sessionStorage.getItem('tls_pending_saved');
+        if (!pendingSaved) return;
+        sessionStorage.removeItem('tls_pending_saved');
+        var fd = new FormData();
+        fd.append('action',  'tls_toggle_saved');
+        fd.append('nonce',   (gState.nonces && gState.nonces.status) || '');
+        fd.append('post_id', pendingSaved);
+        fd.append('saved',   1);
+        fetch(ajax, {method:'POST', body:fd, credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(res){
+            if (res && res.success) {
+                var btn = document.getElementById('tls-reading-toggle');
+                if (btn && String(btn.getAttribute('data-post-id')) === String(pendingSaved)) {
+                    btn.classList.add('saved');
+                    btn.setAttribute('aria-pressed','true');
                 }
             }
         }).catch(function(){});
@@ -1704,6 +1730,7 @@ $ajax_url     = admin_url('admin-ajax.php');
             }
         });
     })();
+
 
         /* ── Başlat ── */
     document.addEventListener('DOMContentLoaded', function(){
