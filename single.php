@@ -289,8 +289,19 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 (function(){
                   var btn=document.getElementById('tls-reading-toggle'); if(!btn||btn.dataset.bound) return; btn.dataset.bound='1';
                   var pid=btn.getAttribute('data-post-id');
+                  var freshNonce='';
                   function ep(){ return (window.tlsAuth&&tlsAuth.ajaxUrl)||(window.thelosData&&thelosData.ajaxUrl)||'<?php echo esc_js( admin_url('admin-ajax.php') ); ?>'; }
-                  function nc(){ return (window.tlsAuth&&tlsAuth.statusNonce)||''; }
+                  function nc(){ return freshNonce||(window.tlsAuth&&tlsAuth.statusNonce)||''; }
+                  /* SAYFA CACHE'İ: buton durumunu sunucudan (cache'siz) çek → yenilemede
+                     kaydedilmiş görünsün. Aynı çağrıdan taze nonce'u da al. */
+                  (function loadState(){
+                    var fd=new FormData(); fd.append('action','tls_get_user_state'); fd.append('post_id',pid);
+                    fetch(ep(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(res){
+                      if(!res||!res.success) return;
+                      if(res.data.nonces&&res.data.nonces.status) freshNonce=res.data.nonces.status;
+                      var on=!!res.data.saved; btn.classList.toggle('saved',on); btn.setAttribute('aria-pressed',on?'true':'false');
+                    }).catch(function(){});
+                  })();
                   btn.addEventListener('click',function(){
                     var saved=btn.classList.contains('saved'); var next=saved?0:1;   // özet kaydı — kitap durumundan bağımsız
                     btn.classList.add('busy');

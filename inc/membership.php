@@ -382,6 +382,7 @@ function tls_handle_user_state() {
 
     $user_data = null;
     $status    = '';
+    $saved     = false;   // bu ÖZETİN "sonra oku" kaydı (reading-status'tan AYRI)
 
     if ( $logged_in ) {
         $user = wp_get_current_user();
@@ -394,6 +395,7 @@ function tls_handle_user_state() {
 
         if ( $post_id ) {
             $status = get_user_meta( $user->ID, '_tls_reading_status_' . $post_id, true ) ?: '';
+            $saved  = get_user_meta( $user->ID, '_tls_saved_summary_' . $post_id, true ) !== '';
         }
     }
 
@@ -401,6 +403,7 @@ function tls_handle_user_state() {
         'logged_in' => $logged_in,
         'user'      => $user_data,
         'status'    => $status,
+        'saved'     => $saved,
         'nonces'    => [
             'status' => wp_create_nonce( 'tls_status_nonce' ),
             'auth'   => wp_create_nonce( 'tls_auth_nonce' ),
