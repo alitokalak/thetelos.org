@@ -2118,6 +2118,23 @@ function bw_clean_mark_author_done($batch_file, $author_key) {
     bw_unlock($lk);
 }
 
+/* Bir yazar için temizleme deneme sayacını (çağrıdan ÖNCE) artır → döndür.
+   Worker çağrı sırasında ölse bile sayaç kalıcı olur; belli sayıdan sonra
+   o yazardan vazgeçilip üretime geçilir (sonsuz ölüm döngüsü kırılır). */
+function bw_clean_bump_attempt($batch_file, $key) {
+    $lk = bw_lock($batch_file); if (!$lk) return 99;
+    $n = 0;
+    $b = json_decode(@file_get_contents($batch_file), true);
+    if (is_array($b)) {
+        $m = $b['clean_attempts'] ?? [];
+        $n = (int) ($m[$key] ?? 0) + 1;
+        $m[$key] = $n; $b['clean_attempts'] = $m;
+        bw_write_atomic($batch_file, $b);
+    }
+    bw_unlock($lk);
+    return $n;
+}
+
 /* Bir yazarın temizleme sonucunu kuyruğa uygula:
    - not_by_author → status 'skipped' (elendi),
    - her grup için İLK üye = kanonik (başlık İngilizce ada güncellenir),
@@ -2225,14 +2242,26 @@ while (true) {
             // Yazarsız → yazar bağlamı olmadan ne temizlenir ne İngilizce ad çözülür.
             bw_clean_mark_author_done($batch_file, $nc['key']);
         } else {
-            set_time_limit(300);
-            // Temizleme çağrısı HER ZAMAN gerçek-zamanlı (batch değil): küçük/ucuz,
-            // hızlı bitsin ki o yazarın yazımı beklemesin. TEK kitaplı yazarlar da
-            // buraya girer → başlık İSİM KRİTERİNE ("İngilizce ad (orijinal ad)")
-            // göre yeniden yazılır (ham/yabancı ad düzeltilir), eleme/birleştirme
-            // gerekmese bile.
-            $res = cll_clean_author_ai($nc['author'], $nc['titles'], ['batch' => false, 'on_beat' => $g_beat]);
-            bw_clean_apply($batch_file, $nc['key'], $nc['idx'], $res);
+            // ÖLÜM DÖNGÜSÜ KORUMASI: denemeyi ÇAĞRIDAN ÖNCE say. Worker temizleme
+            // çağrısında ölürse (host süreci öldürür / fatal), successor aynı yazarı
+            // tekrar dener; 3 denemeden sonra vazgeç → yazarı temiz say, kitapları
+            // ham adla yazılsın. Böylece batch 0'da sonsuza dek asılı kalmaz.
+            $att = bw_clean_bump_attempt($batch_file, $nc['key']);
+            if ($att > 3) {
+                bw_clean_mark_author_done($batch_file, $nc['key']);
+                bw_flag_problem($nc['author'], $nc['author'], '', '', 'clean_skip',
+                    'ön-temizleme 3 kez yarıda kaldı → denetimsiz yazıldı');
+            } else {
+                set_time_limit(150);
+                // Gerçek-zamanlı (batch değil), kısa timeout. Herhangi bir Throwable
+                // worker'ı öldürmesin → yakala, yazarı temiz say, üretime devam et.
+                try {
+                    $res = cll_clean_author_ai($nc['author'], $nc['titles'], ['batch' => false, 'on_beat' => $g_beat]);
+                    bw_clean_apply($batch_file, $nc['key'], $nc['idx'], $res);
+                } catch (\Throwable $e) {
+                    bw_clean_mark_author_done($batch_file, $nc['key']);
+                }
+            }
         }
         $g_beat();
         if (time() - $start >= $budget) { $reason = 'budget'; break; }   // süre doldu → zincirle
