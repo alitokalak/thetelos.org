@@ -202,12 +202,6 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     <?php endif; ?>
 
                     <?php if ( ! $tls_is_placeholder ) : ?>
-                    <!-- Print post (POST içeriğini basar) — yer-tutucuda gizli -->
-                    <button class="tls-status-btn" id="tls-print-post" type="button" title="Print this summary">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z"/></svg>
-                        Print
-                    </button>
-
                     <!-- PDF indir (POST içeriğini basar) — yer-tutucuda gizli -->
                     <button class="tls-status-btn" id="tls-pdf-post" type="button" title="Save as PDF">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"/></svg>
@@ -333,6 +327,44 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 </script>
                 <?php endif; ?>
 
+
+                <!-- ── Kaydet banner'ı: mevcut okuma-listesi sistemine bağlı (tls_set_status
+                     → 'want'). Butona .tls-status-btn[data-status=want] verildiği için
+                     var olan JS otomatik yönetir: giriş yoksa auth popup, giriş varsa
+                     sunucuya kaydeder ve kenar çubuğundaki "Want to Read" ile senkron kalır.
+                     Kaydedilenler "Kütüphanem / okuma listem" sayfasında görünür. ── -->
+                <div class="tls-save-banner">
+                    <div class="tls-save-ico" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
+                    </div>
+                    <div class="tls-save-txt">
+                        <strong>Save this summary for later</strong>
+                        <span>Add it to your reading list and pick up where you left off.</span>
+                    </div>
+                    <button type="button" class="tls-status-btn tls-save-cta<?php echo $user_status === 'want' ? ' active' : ''; ?>" data-status="want">
+                        <svg class="ico-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                        <svg class="ico-done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span class="lbl-off">Add to reading list</span>
+                        <span class="lbl-on">In your reading list</span>
+                    </button>
+                </div>
+                <style>
+                .tls-save-banner{display:flex;align-items:center;gap:16px;background:#fbf8f2;border:1px solid rgba(20,16,12,.08);border-radius:16px;padding:15px 18px;margin:0 0 26px}
+                .tls-save-ico{flex:0 0 auto;width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#efe6d4,#e4d6b8);color:#8a6a1e;display:flex;align-items:center;justify-content:center}
+                .tls-save-ico svg{width:22px;height:22px}
+                .tls-save-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+                .tls-save-txt strong{font-family:var(--tls-serif,Georgia,serif);font-size:17px;line-height:1.25;color:var(--tls-text,#241b10)}
+                .tls-save-txt span{font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;color:var(--tls-muted,#8a8178)}
+                .tls-save-cta{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:0;border-radius:10px;padding:11px 18px;background:#1f6f43;color:#fff;font-family:var(--tls-sans,system-ui,sans-serif);font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,transform .1s,box-shadow .15s;white-space:nowrap}
+                .tls-save-cta:hover{background:#195c37}.tls-save-cta:active{transform:scale(.97)}
+                .tls-save-cta svg{width:17px;height:17px}
+                .tls-save-cta .ico-done,.tls-save-cta .lbl-on{display:none}
+                .tls-save-cta.active{background:#e9f3ec;color:#1f6f43;box-shadow:inset 0 0 0 1.5px #1f6f43}
+                .tls-save-cta.active:hover{background:#ddeee2}
+                .tls-save-cta.active .ico-add,.tls-save-cta.active .lbl-off{display:none}
+                .tls-save-cta.active .ico-done,.tls-save-cta.active .lbl-on{display:inline}
+                @media(max-width:560px){.tls-save-banner{flex-wrap:wrap}.tls-save-txt{flex:1 1 auto}.tls-save-cta{width:100%;justify-content:center;margin-top:4px}}
+                </style>
 
                 <!-- ── Article content (flows directly below meta) ── -->
                 <div class="tls-single-divider"></div>
