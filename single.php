@@ -267,12 +267,15 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <?php endif; ?>
 
                 <style>
-                /* Kapalıyken ikon tam ortalı temiz bir daire (Share ile aynı
-                   yükseklik). Genişleme, butonun değil ETİKETİN max-width'i ile
-                   yapılır; böylece ikon asla sağa/sola sıkışmaz. */
-                .tls-save-btn{display:inline-flex;align-items:center;justify-content:center;padding:9px;border:1px solid var(--tls-border);border-radius:24px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;line-height:normal;box-sizing:border-box;transition:background .18s,border-color .18s,color .18s}
-                .tls-save-ico{flex:0 0 16px;width:16px;height:16px;display:flex;align-items:center;justify-content:center}
-                .tls-save-ico svg{width:16px;height:16px;display:block;transition:transform .2s}
+                /* Kapalıyken ikon tam ortalı temiz bir daire — yükseklik
+                   komşu .tls-status-btn ile BİREBİR eşitlenir (JS ile ölçülüp
+                   --tls-save-h olarak set edilir; fallback 42px). aspect-ratio:1
+                   sayesinde kapalı hâl daima kusursuz daire olur. Genişleme
+                   ETİKETİN max-width'i ile; ikon asla sıkışmaz. */
+                .tls-save-btn{--tls-save-h:42px;display:inline-flex;align-items:center;justify-content:center;height:var(--tls-save-h);aspect-ratio:1;padding:0;border:1px solid var(--tls-border);border-radius:999px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;line-height:normal;box-sizing:border-box;transition:background .18s,border-color .18s,color .18s}
+                .tls-save-btn.saved,.tls-save-btn:hover,.tls-save-btn:focus-visible{aspect-ratio:auto;padding:0 16px 0 12px}
+                .tls-save-ico{flex:0 0 17px;width:17px;height:17px;display:flex;align-items:center;justify-content:center}
+                .tls-save-ico svg{width:17px;height:17px;display:block;transition:transform .2s}
                 .tls-save-label{display:inline-flex;align-items:center;line-height:normal;max-width:0;opacity:0;overflow:hidden;padding-left:0;transition:max-width .34s cubic-bezier(.2,.8,.25,1),opacity .2s,padding-left .34s}
                 .tls-save-btn:hover,.tls-save-btn:focus-visible{border-color:rgba(31,111,67,.5);color:#1f6f43}
                 .tls-save-btn:hover .tls-save-label,.tls-save-btn:focus-visible .tls-save-label{max-width:200px;opacity:1;padding-left:7px}
@@ -296,6 +299,20 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                   var btn=document.getElementById('tls-reading-toggle'); if(!btn||btn.dataset.bound) return; btn.dataset.bound='1';
                   var pid=btn.getAttribute('data-post-id');
                   var freshNonce='';
+                  /* YÜKSEKLİK EŞİTLE: kapalı daire ve genişlemiş hâl, komşu
+                     Share/Save PDF butonuyla BİREBİR aynı yükseklikte olsun.
+                     Gerçek yüksekliği çalışma anında ölç → tema/eklenti CSS'i
+                     ne olursa olsun tutar. */
+                  function sizeToSibling(){
+                    var row=btn.closest('.tls-post-actions')||btn.parentNode;
+                    var sib=row&&row.querySelector('.tls-status-btn');
+                    var h=sib?Math.round(sib.getBoundingClientRect().height):0;
+                    if(h>0) btn.style.setProperty('--tls-save-h',h+'px');
+                  }
+                  sizeToSibling();
+                  if(document.fonts&&document.fonts.ready) document.fonts.ready.then(sizeToSibling).catch(function(){});
+                  window.addEventListener('load',sizeToSibling);
+                  window.addEventListener('resize',sizeToSibling);
                   function ep(){ return (window.tlsAuth&&tlsAuth.ajaxUrl)||(window.thelosData&&thelosData.ajaxUrl)||'<?php echo esc_js( admin_url('admin-ajax.php') ); ?>'; }
                   function nc(){ return freshNonce||(window.tlsAuth&&tlsAuth.statusNonce)||''; }
                   /* SAYFA CACHE'İ: buton durumunu sunucudan (cache'siz) çek → yenilemede
