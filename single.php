@@ -322,7 +322,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     // HER ZAMAN şık popup aç (masaüstünde OS paylaşım menüsü karışıklık
                     // yaratıyordu; tutarlı, tek davranış istiyoruz).
                     if(openBtn) openBtn.addEventListener('click', function(e){ e.preventDefault(); open(); });
-                    modal.addEventListener('click', function(e){ if(e.target.hasAttribute('data-share-close')) close(); });
+                    modal.addEventListener('click', function(e){ if(e.target.closest('[data-share-close]')) close(); });
                     document.addEventListener('keydown', function(e){ if(e.key==='Escape' && !modal.hidden) close(); });
                     if(copyBtn) copyBtn.addEventListener('click', function(){
                         var done=function(){ copyBtn.textContent='Copied'; copyBtn.classList.add('done'); setTimeout(function(){ copyBtn.textContent='Copy'; copyBtn.classList.remove('done'); },1600); };
