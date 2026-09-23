@@ -267,20 +267,20 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <?php endif; ?>
 
                 <style>
-                /* Kardeş .tls-status-btn ile BİREBİR aynı kutu modeli: sabit
-                   yükseklik yok; yükseklik padding(9px)+içerik+kenarlıktan doğar,
-                   böylece Share/Save PDF ile aynı yükseklikte olur. */
-                .tls-save-btn{display:inline-flex;align-items:center;padding:9px;border:1px solid var(--tls-border);border-radius:24px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;line-height:normal;box-sizing:border-box;max-width:34px;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
-                .tls-save-ico{flex:0 0 14px;width:14px;height:14px;display:flex;align-items:center;justify-content:center}
-                .tls-save-ico svg{width:14px;height:14px;display:block;transition:transform .2s}
-                .tls-save-label{display:inline-flex;align-items:center;line-height:normal;opacity:0;transform:translateX(-4px);padding-left:7px;padding-right:9px;transition:opacity .18s .05s,transform .18s .05s}
-                .tls-save-btn:hover,.tls-save-btn:focus-visible{max-width:280px;border-color:rgba(31,111,67,.5);color:#1f6f43}
-                .tls-save-btn:hover .tls-save-label,.tls-save-btn:focus-visible .tls-save-label{opacity:1;transform:none}
+                /* Kapalıyken ikon tam ortalı temiz bir daire (Share ile aynı
+                   yükseklik). Genişleme, butonun değil ETİKETİN max-width'i ile
+                   yapılır; böylece ikon asla sağa/sola sıkışmaz. */
+                .tls-save-btn{display:inline-flex;align-items:center;justify-content:center;padding:9px;border:1px solid var(--tls-border);border-radius:24px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;line-height:normal;box-sizing:border-box;transition:background .18s,border-color .18s,color .18s}
+                .tls-save-ico{flex:0 0 16px;width:16px;height:16px;display:flex;align-items:center;justify-content:center}
+                .tls-save-ico svg{width:16px;height:16px;display:block;transition:transform .2s}
+                .tls-save-label{display:inline-flex;align-items:center;line-height:normal;max-width:0;opacity:0;overflow:hidden;padding-left:0;transition:max-width .34s cubic-bezier(.2,.8,.25,1),opacity .2s,padding-left .34s}
+                .tls-save-btn:hover,.tls-save-btn:focus-visible{border-color:rgba(31,111,67,.5);color:#1f6f43}
+                .tls-save-btn:hover .tls-save-label,.tls-save-btn:focus-visible .tls-save-label{max-width:200px;opacity:1;padding-left:7px}
                 .tls-save-btn:hover .tls-save-ico svg{transform:scale(1.08)}
                 .tls-save-btn .i-on{display:none}
                 .tls-save-label .on{display:none}
-                .tls-save-btn.saved{max-width:280px;background:#eef6f0;border-color:rgba(31,111,67,.45);color:#1f6f43}
-                .tls-save-btn.saved .tls-save-label{opacity:1;transform:none}
+                .tls-save-btn.saved{background:#eef6f0;border-color:rgba(31,111,67,.45);color:#1f6f43}
+                .tls-save-btn.saved .tls-save-label{max-width:200px;opacity:1;padding-left:7px}
                 .tls-save-btn.saved .i-off{display:none}
                 .tls-save-btn.saved .i-on{display:block}
                 .tls-save-btn.saved .off{display:none}
@@ -288,8 +288,8 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 .tls-save-btn.saved .i-on{animation:tlsRlPop .34s cubic-bezier(.2,.9,.3,1.35)}
                 @keyframes tlsRlPop{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
                 .tls-save-btn.busy{opacity:.55;pointer-events:none}
-                @media(hover:none){.tls-save-btn{max-width:280px}.tls-save-label{opacity:1;transform:none}}
-                @media(max-width:560px){.tls-save-btn{margin-left:0;max-width:280px}.tls-save-label{opacity:1;transform:none}}
+                @media(hover:none){.tls-save-label{max-width:200px;opacity:1;padding-left:7px}}
+                @media(max-width:560px){.tls-save-label{max-width:200px;opacity:1;padding-left:7px}}
                 </style>
                 <script>
                 (function(){
