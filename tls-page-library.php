@@ -35,6 +35,7 @@ get_header();
             <button class="tls-lib-tab" data-filter="want">Want to Read</button>
             <button class="tls-lib-tab" data-filter="reading">Reading</button>
             <button class="tls-lib-tab" data-filter="read">Finished</button>
+            <button class="tls-lib-tab" data-filter="saved">Saved summaries</button>
         </div>
     </div>
 </div>

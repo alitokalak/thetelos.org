@@ -192,6 +192,51 @@ add_action( 'wp_ajax_tls_set_status', function() {
     wp_send_json_success(['status' => $status]);
 } );
 
+/* ══════════════════════════════════════════════
+   ÖZET POSTUNU "SONRA OKU" İÇİN KAYDET
+   ÖNEMLİ: Bu, soldaki kitap reading-status'undan (_tls_reading_status_)
+   TAMAMEN AYRIDIR. Soldaki alan "kullanıcı KİTABI okudu mu" ile ilgilidir;
+   burası ise "kullanıcı bizim ÖZET POSTUMUZU sonra okumak için sakladı mı".
+   Ayrı meta anahtarı: _tls_saved_summary_{pid}.
+══════════════════════════════════════════════ */
+add_action( 'wp_ajax_tls_toggle_saved', function() {
+    if ( ! is_user_logged_in() ) wp_send_json_error(['message' => 'login_required']);
+    check_ajax_referer('tls_status_nonce', 'nonce', false);
+
+    $post_id = (int)($_POST['post_id'] ?? 0);
+    if ( ! $post_id ) wp_send_json_error(['message' => 'no_post']);
+
+    $uid  = get_current_user_id();
+    $key  = '_tls_saved_summary_' . $post_id;
+    $want = ! empty($_POST['saved']);   // true=ekle, false=çıkar
+
+    if ( $want ) {
+        update_user_meta($uid, $key, current_time('mysql'));
+        wp_send_json_success(['saved' => true]);
+    }
+    delete_user_meta($uid, $key);
+    wp_send_json_success(['saved' => false]);
+} );
+
+/* Kullanıcının KAYDEDİLEN ÖZETLERİ (post id listesi, yeni→eski). */
+function tls_get_saved_summaries( $uid = 0 ) {
+    $uid = $uid ?: get_current_user_id();
+    if ( ! $uid ) return [];
+    global $wpdb;
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT meta_key, meta_value FROM {$wpdb->usermeta}
+         WHERE user_id = %d AND meta_key LIKE %s",
+        $uid, '_tls_saved_summary_%'
+    ) );
+    $items = [];
+    foreach ( $rows as $r ) {
+        $pid = (int) str_replace('_tls_saved_summary_', '', $r->meta_key);
+        if ( $pid ) $items[ $pid ] = strtotime( (string) $r->meta_value ) ?: 0;
+    }
+    arsort( $items );   // en son kaydedilen en üstte
+    return array_keys( $items );
+}
+
 /* Kullanıcı kütüphanesi */
 add_action( 'wp_ajax_tls_get_library', function() {
     if ( ! is_user_logged_in() ) wp_send_json_error(['message' => 'login_required']);
@@ -200,17 +245,26 @@ add_action( 'wp_ajax_tls_get_library', function() {
     $filter = sanitize_text_field($_POST['filter'] ?? 'all');
 
     global $wpdb;
+    // 'saved' = KAYDEDİLEN ÖZETLER (ayrı meta); diğerleri = kitap reading-status.
+    $like = ( $filter === 'saved' ) ? '_tls_saved_summary_%' : '_tls_reading_status_%';
     $metas = $wpdb->get_results( $wpdb->prepare(
         "SELECT meta_key, meta_value FROM {$wpdb->usermeta}
          WHERE user_id = %d AND meta_key LIKE %s",
-        $uid, '_tls_reading_status_%'
+        $uid, $like
     ) );
 
     $books = [];
     foreach ( $metas as $m ) {
-        $pid    = (int) str_replace('_tls_reading_status_', '', $m->meta_key);
-        $status = $m->meta_value;
-        if ( $filter !== 'all' && $status !== $filter ) continue;
+        if ( $filter === 'saved' ) {
+            $pid    = (int) str_replace('_tls_saved_summary_', '', $m->meta_key);
+            $status = 'saved';
+            $date   = $m->meta_value;
+        } else {
+            $pid    = (int) str_replace('_tls_reading_status_', '', $m->meta_key);
+            $status = $m->meta_value;
+            if ( $filter !== 'all' && $status !== $filter ) continue;
+            $date   = get_user_meta($uid, '_tls_status_date_'.$pid, true);
+        }
         $post   = get_post($pid);
         if ( ! $post || $post->post_status !== 'publish' ) continue;
 
@@ -230,7 +284,7 @@ add_action( 'wp_ajax_tls_get_library', function() {
             'category'   => $cat,
             'url'        => get_permalink($pid),
             'status'     => $status,
-            'date'       => get_user_meta($uid, '_tls_status_date_'.$pid, true),
+            'date'       => $date,
             'cover'      => has_post_thumbnail($pid) ? get_the_post_thumbnail_url($pid,'medium') : '',
             'cover_html' => !has_post_thumbnail($pid) && function_exists('thetelos_render_book_cover') ? thetelos_render_book_cover($pid) : '',
             'color'      => $palette[0],

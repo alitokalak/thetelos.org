@@ -240,20 +240,26 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </button>
                     <?php endif; ?>
 
-                    <!-- ── OKUMA LİSTESİ: en sağda, üzerine gelince genişleyip metni açan
-                         buton. Mevcut sisteme bağlı (tls_set_status → 'want'): kütüphane/
-                         okuma-listesi sayfasında görünür, kenar çubuğu "Want to Read" ile
-                         senkron. Kendi bağımsız JS'i var (paylaşılan handler'a bağımlı değil). ── -->
+                    <?php
+                    // KAYDEDİLEN ÖZET durumu — soldaki kitap reading-status'undan AYRI meta.
+                    // (Bu buton "özet POSTU sonra oku" içindir; kitabın okundu/okunacak
+                    // durumuyla ilgisi yoktur.)
+                    $tls_saved = is_user_logged_in()
+                        && get_user_meta( get_current_user_id(), '_tls_saved_summary_' . $post_id, true ) !== '';
+                    ?>
+                    <!-- ── ÖZETİ SONRA OKU: Share'in yanında, üzerine gelince genişleyip metni
+                         açan buton. Kitap reading-status'undan BAĞIMSIZ (tls_toggle_saved →
+                         _tls_saved_summary_). Kendi JS'i var. ── -->
                     <button type="button" id="tls-reading-toggle"
-                            class="tls-rl-btn<?php echo $user_status === 'want' ? ' saved' : ''; ?>"
+                            class="tls-rl-btn<?php echo $tls_saved ? ' saved' : ''; ?>"
                             data-post-id="<?php echo (int) $post_id; ?>"
-                            aria-pressed="<?php echo $user_status === 'want' ? 'true' : 'false'; ?>"
-                            title="Add to your reading list">
+                            aria-pressed="<?php echo $tls_saved ? 'true' : 'false'; ?>"
+                            title="Save this summary to read later">
                         <span class="tls-rl-ico" aria-hidden="true">
                             <svg class="i-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
                             <svg class="i-on" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a1 1 0 011 1v16.5a.5.5 0 01-.77.42L12 18.1l-6.23 3.82A.5.5 0 015 21.5V4a1 1 0 011-1z"/></svg>
                         </span>
-                        <span class="tls-rl-label"><span class="off">Add to reading list</span><span class="on">In your reading list</span></span>
+                        <span class="tls-rl-label"><span class="off">Read later</span><span class="on">Saved for later</span></span>
                     </button>
                 </div>
                 <?php if ( ! empty( $tls_has_buy ) ) : ?>
@@ -261,7 +267,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <?php endif; ?>
 
                 <style>
-                .tls-rl-btn{margin-left:auto;display:inline-flex;align-items:center;height:44px;max-width:44px;padding:0;border:1px solid rgba(20,16,12,.14);border-radius:999px;background:#fff;color:#241b10;cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:14px;font-weight:600;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
+                .tls-rl-btn{display:inline-flex;align-items:center;height:44px;max-width:44px;padding:0;border:1px solid rgba(20,16,12,.14);border-radius:999px;background:#fff;color:#241b10;cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:14px;font-weight:600;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
                 .tls-rl-ico{flex:0 0 42px;width:42px;height:44px;display:flex;align-items:center;justify-content:center}
                 .tls-rl-ico svg{width:19px;height:19px;transition:transform .2s}
                 .tls-rl-label{opacity:0;transform:translateX(-4px);padding-right:18px;transition:opacity .18s .05s,transform .18s .05s}
@@ -285,14 +291,13 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                   var pid=btn.getAttribute('data-post-id');
                   function ep(){ return (window.tlsAuth&&tlsAuth.ajaxUrl)||(window.thelosData&&thelosData.ajaxUrl)||'<?php echo esc_js( admin_url('admin-ajax.php') ); ?>'; }
                   function nc(){ return (window.tlsAuth&&tlsAuth.statusNonce)||''; }
-                  function sync(saved){ document.querySelectorAll('.tls-read-status .tls-status-btn[data-status="want"]').forEach(function(b){ b.classList.toggle('active',saved); }); }
                   btn.addEventListener('click',function(){
-                    var saved=btn.classList.contains('saved'); var next=saved?'':'want';
+                    var saved=btn.classList.contains('saved'); var next=saved?0:1;   // özet kaydı — kitap durumundan bağımsız
                     btn.classList.add('busy');
-                    var fd=new FormData(); fd.append('action','tls_set_status'); fd.append('nonce',nc()); fd.append('post_id',pid); fd.append('status',next);
+                    var fd=new FormData(); fd.append('action','tls_toggle_saved'); fd.append('nonce',nc()); fd.append('post_id',pid); fd.append('saved',next);
                     fetch(ep(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(res){
                       btn.classList.remove('busy');
-                      if(res&&res.success){ btn.classList.toggle('saved',next==='want'); btn.setAttribute('aria-pressed',next==='want'?'true':'false'); sync(next==='want'); }
+                      if(res&&res.success){ btn.classList.toggle('saved',!!res.data.saved); btn.setAttribute('aria-pressed',res.data.saved?'true':'false'); }
                       else{ var m=res&&res.data&&res.data.message; if(m==='login_required'){ var ov=document.getElementById('tls-auth-overlay'); if(ov){ov.style.display='flex';document.body.style.overflow='hidden';} else { window.location.href='<?php echo esc_js( wp_login_url( get_permalink() ) ); ?>'; } } }
                     }).catch(function(){ btn.classList.remove('busy'); });
                   });
