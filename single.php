@@ -201,26 +201,6 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </a>
                     <?php endif; ?>
 
-                    <!-- Kaydet: okuma listesine ekle. Mevcut sisteme bağlı
-                         (data-status=want) → var olan JS yönetir; kenar çubuğundaki
-                         "Want to Read" ile senkron, kütüphane sayfasında görünür. -->
-                    <button type="button" class="tls-status-btn tls-save-btn<?php echo $user_status === 'want' ? ' active' : ''; ?>" data-status="want" title="Save to your reading list">
-                        <svg class="tls-save-i-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
-                        <svg class="tls-save-i-on" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3h12a1 1 0 011 1v16.5a.5.5 0 01-.77.42L12 18.1l-6.23 3.82A.5.5 0 015 21.5V4a1 1 0 011-1z"/></svg>
-                        <span class="tls-save-l-off">Save</span>
-                        <span class="tls-save-l-on">Saved</span>
-                    </button>
-                    <style>
-                    .tls-save-btn .tls-save-i-off,.tls-save-btn .tls-save-i-on{transition:transform .18s ease}
-                    .tls-save-btn:hover .tls-save-i-off{transform:translateY(-2px) scale(1.1)}   /* hover: yer imi zıplar */
-                    .tls-save-btn .tls-save-i-on,.tls-save-btn .tls-save-l-on{display:none}
-                    .tls-save-btn.active{color:#1f6f43;background:#eef6f0!important;border-color:rgba(31,111,67,.45)!important}
-                    .tls-save-btn.active .tls-save-i-off,.tls-save-btn.active .tls-save-l-off{display:none}
-                    .tls-save-btn.active .tls-save-i-on{display:inline-block;animation:tlsSavePop .32s cubic-bezier(.2,.9,.3,1.3)}
-                    .tls-save-btn.active .tls-save-l-on{display:inline}
-                    @keyframes tlsSavePop{0%{transform:scale(.4)}60%{transform:scale(1.22)}100%{transform:scale(1)}}
-                    </style>
-
                     <?php if ( ! $tls_is_placeholder ) : ?>
                     <!-- PDF indir (POST içeriğini basar) — yer-tutucuda gizli -->
                     <button class="tls-status-btn" id="tls-pdf-post" type="button" title="Save as PDF">
@@ -259,10 +239,65 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                         Share
                     </button>
                     <?php endif; ?>
+
+                    <!-- ── OKUMA LİSTESİ: en sağda, üzerine gelince genişleyip metni açan
+                         buton. Mevcut sisteme bağlı (tls_set_status → 'want'): kütüphane/
+                         okuma-listesi sayfasında görünür, kenar çubuğu "Want to Read" ile
+                         senkron. Kendi bağımsız JS'i var (paylaşılan handler'a bağımlı değil). ── -->
+                    <button type="button" id="tls-reading-toggle"
+                            class="tls-rl-btn<?php echo $user_status === 'want' ? ' saved' : ''; ?>"
+                            data-post-id="<?php echo (int) $post_id; ?>"
+                            aria-pressed="<?php echo $user_status === 'want' ? 'true' : 'false'; ?>"
+                            title="Add to your reading list">
+                        <span class="tls-rl-ico" aria-hidden="true">
+                            <svg class="i-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
+                            <svg class="i-on" viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12a1 1 0 011 1v16.5a.5.5 0 01-.77.42L12 18.1l-6.23 3.82A.5.5 0 015 21.5V4a1 1 0 011-1z"/></svg>
+                        </span>
+                        <span class="tls-rl-label"><span class="off">Add to reading list</span><span class="on">In your reading list</span></span>
+                    </button>
                 </div>
                 <?php if ( ! empty( $tls_has_buy ) ) : ?>
                 <p class="tls-affiliate-note" style="font-family:var(--tls-sans);font-size:11px;color:var(--tls-muted);margin:8px 0 0">As an Amazon Associate, The Telos earns from qualifying purchases.</p>
                 <?php endif; ?>
+
+                <style>
+                .tls-rl-btn{margin-left:auto;display:inline-flex;align-items:center;height:44px;max-width:44px;padding:0;border:1px solid rgba(20,16,12,.14);border-radius:999px;background:#fff;color:#241b10;cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:14px;font-weight:600;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
+                .tls-rl-ico{flex:0 0 42px;width:42px;height:44px;display:flex;align-items:center;justify-content:center}
+                .tls-rl-ico svg{width:19px;height:19px;transition:transform .2s}
+                .tls-rl-label{opacity:0;transform:translateX(-4px);padding-right:18px;transition:opacity .18s .05s,transform .18s .05s}
+                .tls-rl-btn:hover,.tls-rl-btn:focus-visible{max-width:280px;border-color:rgba(31,111,67,.5);color:#1f6f43}
+                .tls-rl-btn:hover .tls-rl-label,.tls-rl-btn:focus-visible .tls-rl-label{opacity:1;transform:none}
+                .tls-rl-btn:hover .tls-rl-ico svg{transform:scale(1.08)}
+                .tls-rl-btn .i-on,.tls-rl-label .on{display:none}
+                .tls-rl-btn.saved{max-width:280px;background:#eef6f0;border-color:rgba(31,111,67,.45);color:#1f6f43}
+                .tls-rl-btn.saved .tls-rl-label{opacity:1;transform:none}
+                .tls-rl-btn.saved .i-off,.tls-rl-btn.saved .off{display:none}
+                .tls-rl-btn.saved .i-on,.tls-rl-btn.saved .on{display:inline-flex}
+                .tls-rl-btn.saved .i-on{animation:tlsRlPop .34s cubic-bezier(.2,.9,.3,1.35)}
+                @keyframes tlsRlPop{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
+                .tls-rl-btn.busy{opacity:.55;pointer-events:none}
+                @media(hover:none){.tls-rl-btn{max-width:280px}.tls-rl-label{opacity:1;transform:none}}
+                @media(max-width:560px){.tls-rl-btn{margin-left:0;max-width:280px}.tls-rl-label{opacity:1;transform:none}}
+                </style>
+                <script>
+                (function(){
+                  var btn=document.getElementById('tls-reading-toggle'); if(!btn||btn.dataset.bound) return; btn.dataset.bound='1';
+                  var pid=btn.getAttribute('data-post-id');
+                  function ep(){ return (window.tlsAuth&&tlsAuth.ajaxUrl)||(window.thelosData&&thelosData.ajaxUrl)||'<?php echo esc_js( admin_url('admin-ajax.php') ); ?>'; }
+                  function nc(){ return (window.tlsAuth&&tlsAuth.statusNonce)||''; }
+                  function sync(saved){ document.querySelectorAll('.tls-read-status .tls-status-btn[data-status="want"]').forEach(function(b){ b.classList.toggle('active',saved); }); }
+                  btn.addEventListener('click',function(){
+                    var saved=btn.classList.contains('saved'); var next=saved?'':'want';
+                    btn.classList.add('busy');
+                    var fd=new FormData(); fd.append('action','tls_set_status'); fd.append('nonce',nc()); fd.append('post_id',pid); fd.append('status',next);
+                    fetch(ep(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(res){
+                      btn.classList.remove('busy');
+                      if(res&&res.success){ btn.classList.toggle('saved',next==='want'); btn.setAttribute('aria-pressed',next==='want'?'true':'false'); sync(next==='want'); }
+                      else{ var m=res&&res.data&&res.data.message; if(m==='login_required'){ var ov=document.getElementById('tls-auth-overlay'); if(ov){ov.style.display='flex';document.body.style.overflow='hidden';} else { window.location.href='<?php echo esc_js( wp_login_url( get_permalink() ) ); ?>'; } } }
+                    }).catch(function(){ btn.classList.remove('busy'); });
+                  });
+                })();
+                </script>
 
                 <?php if ( $disable_share == 0 ) :
                     $tls_u  = get_permalink();
