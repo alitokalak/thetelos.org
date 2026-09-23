@@ -2166,64 +2166,38 @@ function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res) {
     bw_unlock($lk);
 }
 
-/* ── ÖN-TEMİZLEME FAZI ────────────────────────────────────────────────────
-   Anthropic seçili YENİ üretimde, yazma başlamadan ÖNCE çalışır. Bekleyen
-   kitapları YAZAR bazında gruplar; her yazar için Claude denetimi yapar
-   (cll_clean_author_ai) ve sonucu kuyruğa uygular. Yazar-yazar ilerler,
-   resume-edilebilir (clean_done_authors); bütçe/peak'te 'yield' döner.
-   @return 'done' (bitti/uygulanmaz) | 'yield' (sonra devam) */
-function bw_clean_phase($batch_file, $start, $budget, $on_beat) {
-    $b0 = json_decode(@file_get_contents($batch_file), true);
-    if (!is_array($b0) || ($b0['pre_clean'] ?? '') !== '1' || !empty($b0['clean_done'])) return 'done';
-    require_once __DIR__ . '/_clean-lib.php';
+/* ── İÇ İÇE (LAZY) ÖN-TEMİZLEME ────────────────────────────────────────────
+   İLK bekleyen kitabın yazarı henüz temizlenmediyse, o yazarın TÜM bekleyen
+   kitaplarını döndürür (o kitaplar yazılmadan ÖNCE denetlensin diye). Yazar
+   zaten temizlendiyse ya da pre_clean kapalıysa null → üretim doğrudan sürer.
+   Böylece akış: yazar1 temizle → yazar1'i yaz → yazar2 temizle → yazar2'yi yaz…
+   @return ['key','author','idx'=>int[],'titles'=>string[]] | null */
+function bw_next_uncleaned_author($batch_file) {
+    $b = json_decode(@file_get_contents($batch_file), true);
+    if (!is_array($b) || ($b['pre_clean'] ?? '') !== '1') return null;
+    if (in_array(($b['status'] ?? ''), ['cancelled', 'paused'], true)) return null;
 
-    while (true) {
-        if (bw_peak_now())              return 'yield';
-        if (time() - $start >= $budget) return 'yield';
+    $done_set = array_flip($b['clean_done_authors'] ?? []);
 
-        $b = json_decode(@file_get_contents($batch_file), true);
-        if (!is_array($b) || ($b['pre_clean'] ?? '') !== '1' || !empty($b['clean_done'])) return 'done';
-        if (in_array(($b['status'] ?? ''), ['cancelled', 'paused'], true)) return 'done';
-
-        $done_set = array_flip($b['clean_done_authors'] ?? []);
-        $groups   = [];   // normkey → ['author'=>display, 'idx'=>[book idx...]]
-        foreach ($b['books'] as $i => $bk) {
-            if (($bk['status'] ?? '') !== 'pending') continue;
-            $an  = trim((string) ($bk['author_name'] ?? ''));
-            $key = cll_norm($an); if ($key === '') $key = '__noauthor__';
-            if (isset($done_set[$key])) continue;
-            if (!isset($groups[$key])) $groups[$key] = ['author' => $an, 'idx' => []];
-            $groups[$key]['idx'][] = $i;
-        }
-        if (empty($groups)) {   // tüm yazarlar temizlendi
-            $lk = bw_lock($batch_file);
-            if ($lk) {
-                $bb = json_decode(@file_get_contents($batch_file), true);
-                if (is_array($bb)) { $bb['clean_done'] = time(); bw_recount_counters($bb); bw_write_atomic($batch_file, $bb); }
-                bw_unlock($lk);
-            }
-            return 'done';
-        }
-
-        $key = array_key_first($groups);
-        $grp = $groups[$key];
-        if (is_callable($on_beat)) $on_beat();
-
-        // Tek kitap ya da yazarsız → temizlemeye gerek yok (birleştirme/eleme
-        // yazar bağlamı ister). AI çağrısı yapmadan işaretle, kitabı olduğu gibi yaz.
-        if ($grp['author'] === '' || $key === '__noauthor__' || count($grp['idx']) < 2) {
-            bw_clean_mark_author_done($batch_file, $key);
-            continue;
-        }
-
-        $titles = [];
-        foreach ($grp['idx'] as $i) $titles[] = (string) ($b['books'][$i]['book_title'] ?? '');
-        // Temizleme çağrısı HER ZAMAN gerçek-zamanlı (batch değil): küçük/ucuz,
-        // hızlı bitsin ki üretim beklemesin.
-        $res = cll_clean_author_ai($grp['author'], $titles, ['batch' => false, 'on_beat' => $on_beat]);
-        bw_clean_apply($batch_file, $key, $grp['idx'], $res);
-        if (is_callable($on_beat)) $on_beat();
+    // İLK bekleyen kitabı bul → yazarı temizlenmişse null (üretime devam).
+    $target_key = null; $target_author = '';
+    foreach ($b['books'] as $bk) {
+        if (($bk['status'] ?? '') !== 'pending') continue;
+        $an  = trim((string) ($bk['author_name'] ?? ''));
+        $key = cll_norm($an); if ($key === '') $key = '__noauthor__';
+        if (isset($done_set[$key])) return null;   // sıradaki yazar zaten temiz → yaz
+        $target_key = $key; $target_author = $an; break;
     }
+    if ($target_key === null) return null;   // bekleyen yok
+
+    // Bu yazarın TÜM bekleyen kitap index'leri + başlıkları
+    $idx = []; $titles = [];
+    foreach ($b['books'] as $i => $bk) {
+        if (($bk['status'] ?? '') !== 'pending') continue;
+        $an = trim((string) ($bk['author_name'] ?? '')); $k = cll_norm($an); if ($k === '') $k = '__noauthor__';
+        if ($k === $target_key) { $idx[] = $i; $titles[] = (string) ($bk['book_title'] ?? ''); }
+    }
+    return ['key' => $target_key, 'author' => $target_author, 'idx' => $idx, 'titles' => $titles];
 }
 
 $processed = 0;
@@ -2231,20 +2205,37 @@ $start     = time();
 $budget    = 70;          // saniye — sunucu uzun süreçleri öldürmeden önce kendini yenile
 $reason    = 'no_more';
 
-// ── ÖN-TEMİZLEME: üretimden ÖNCE (anthropic + yeni üretim). Bütçe dolarsa
-//    halef worker devralır (resume). ──
 $g_beat = function () use ($g_worker_hb) { if ($g_worker_hb) @touch($g_worker_hb); };
-if (bw_clean_phase($batch_file, $start, $budget, $g_beat) === 'yield') {
-    if ($g_worker_hb) @touch($g_worker_hb);
-    bw_spawn_successor($batch_id);
-    echo json_encode(['status' => 'cleaning', 'reason' => 'clean_yield']);
-    exit;
-}
 
 while (true) {
     // Yoğun saat başladıysa üretimi burada bırak: zincirleme yapılmaz, wk dosyası
     // temizlenir; saat normale dönünce cron-tick kaldığı yerden devam ettirir.
     if (bw_peak_now()) { $reason = 'peak'; break; }
+
+    /* ── İÇ İÇE ÖN-TEMİZLEME (anthropic + yeni üretim) ──
+       Sıradaki (ilk bekleyen) kitabın yazarı henüz denetlenmediyse, o kitabı
+       YAZMADAN ÖNCE o yazarın tüm kitaplarını Claude'a denetlet: elenecekler
+       'skipped' olur, çeviri/kopyalar tek kanonik esere iner. Sonra döngü
+       başa döner, artık o yazarın temiz kitapları normal biçimde yazılır.
+       Prompt SYSTEM'de cache'li → yazar başına yalnız değişen kısım gönderilir. */
+    $nc = bw_next_uncleaned_author($batch_file);
+    if ($nc !== null) {
+        require_once __DIR__ . '/_clean-lib.php';
+        if ($nc['author'] === '' || $nc['key'] === '__noauthor__' || count($nc['idx']) < 2) {
+            // Yazarsız ya da tek kitap → denetime gerek yok, olduğu gibi yaz.
+            bw_clean_mark_author_done($batch_file, $nc['key']);
+        } else {
+            set_time_limit(300);
+            // Temizleme çağrısı HER ZAMAN gerçek-zamanlı (batch değil): küçük/ucuz,
+            // hızlı bitsin ki o yazarın yazımı beklemesin.
+            $res = cll_clean_author_ai($nc['author'], $nc['titles'], ['batch' => false, 'on_beat' => $g_beat]);
+            bw_clean_apply($batch_file, $nc['key'], $nc['idx'], $res);
+        }
+        $g_beat();
+        if (time() - $start >= $budget) { $reason = 'budget'; break; }   // süre doldu → zincirle
+        continue;   // başa dön: bu yazar artık temiz, kitapları yazılabilir
+    }
+
     [$idx, $batch] = bw_claim_next($batch_file);
     if ($idx === -1) { $reason = 'done';      break; }      // bekleyen yok
     if ($idx === -3) { $reason = 'cancelled'; break; }      // iptal

@@ -1125,15 +1125,13 @@ if (!isset($_GET['mode'])) {
               card.setAttribute('data-pending', pending + processing);
               var meta = card.querySelector('[data-bc-meta]');
               if (meta) {
-                if (b.pre_clean && !b.clean_done) {
-                  // Ön-temizleme fazı: yazma başlamadan önce yazar-yazar denetim
-                  meta.innerHTML = '🧹 Liste temizleniyor (yazar-yazar denetim)… &middot; '
-                    + (b.clean_removed||0)+' elendi &middot; '+(b.clean_merged||0)+' birleşti';
-                } else {
-                  meta.innerHTML = done+' &#10003; &middot; '+errs+' hata'
-                    + (skipped>0 ? (' &middot; '+skipped+' temizlendi') : '')
-                    + ' &middot; '+(pending+processing)+' bekliyor / '+tot;
-                }
+                var _m = done+' &#10003; &middot; '+errs+' hata'
+                  + (skipped>0 ? (' &middot; '+skipped+' temizlendi') : '')
+                  + ' &middot; '+(pending+processing)+' bekliyor / '+tot;
+                // Anthropic ön-temizleme açıksa: yazar-yazar denetim sayaçları
+                // (iç içe çalışır — temizlenen yazarın kitapları hemen yazılır).
+                if (b.pre_clean) _m += ' &middot; 🧹 '+(b.clean_removed||0)+' elendi, '+(b.clean_merged||0)+' birleşti';
+                meta.innerHTML = _m;
               }
               var bar = card.querySelector('[data-bc-bar]');
               if (bar) bar.style.width = (tot>0 ? Math.round((done+skipped)/tot*100) : 0)+'%';
