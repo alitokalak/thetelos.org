@@ -292,16 +292,16 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 .tls-share-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px}
                 .tls-share-modal[hidden]{display:none}
                 .tls-share-backdrop{position:absolute;inset:0;background:rgba(20,16,12,.5);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:tlsShFade .18s ease}
-                .tls-share-card{position:relative;width:100%;max-width:400px;background:var(--tls-bg,#fff);border-radius:22px;padding:30px 26px 26px;box-shadow:0 24px 70px rgba(20,16,12,.28);text-align:center;animation:tlsShPop .22s cubic-bezier(.2,.8,.25,1);font-family:var(--tls-sans,system-ui,sans-serif)}
-                @media (prefers-color-scheme:dark){.tls-share-card{background:#1c1712}}
-                .tls-share-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(20,16,12,.06);color:var(--tls-text,#241b10);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+                /* Kart HER ZAMAN açık tema (site açık; OS koyu modu etkilemesin) */
+                .tls-share-card{position:relative;width:100%;max-width:400px;background:#fffdf9;border-radius:22px;padding:30px 26px 26px;box-shadow:0 24px 70px rgba(20,16,12,.28);text-align:center;animation:tlsShPop .22s cubic-bezier(.2,.8,.25,1);font-family:var(--tls-sans,system-ui,sans-serif)}
+                .tls-share-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(20,16,12,.06);color:#241b10;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
                 .tls-share-x:hover{background:rgba(20,16,12,.12)}.tls-share-x svg{width:16px;height:16px}
                 .tls-share-badge{width:56px;height:56px;margin:0 auto 14px;border-radius:50%;background:linear-gradient(135deg,#efe6d4,#e4d6b8);color:#8a6a1e;display:flex;align-items:center;justify-content:center}
                 .tls-share-badge svg{width:26px;height:26px}
-                .tls-share-card h3{font-family:var(--tls-serif,Georgia,serif);font-size:23px;margin:0 0 4px;color:var(--tls-text,#241b10)}
-                .tls-share-sub{font-size:13.5px;color:var(--tls-muted,#8a8178);margin:0 0 22px}
+                .tls-share-card h3{font-family:var(--tls-serif,Georgia,serif);font-size:23px;margin:0 0 4px;color:#241b10}
+                .tls-share-sub{font-size:13.5px;color:#8a8178;margin:0 0 22px}
                 .tls-share-copy{display:flex;align-items:center;gap:8px;background:rgba(20,16,12,.05);border:1px solid rgba(20,16,12,.1);border-radius:12px;padding:6px 6px 6px 14px;margin-bottom:22px}
-                .tls-share-copy input{flex:1;border:0;background:transparent;font-size:13px;color:var(--tls-text,#241b10);outline:none;min-width:0;text-overflow:ellipsis}
+                .tls-share-copy input{flex:1;border:0;background:transparent;font-size:13px;color:#241b10;outline:none;min-width:0;text-overflow:ellipsis}
                 .tls-share-copy button{flex:0 0 auto;border:0;border-radius:9px;padding:9px 16px;background:#241b10;color:#fff;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,transform .1s}
                 .tls-share-copy button:hover{background:#3a2c19}.tls-share-copy button:active{transform:scale(.96)}
                 .tls-share-copy button.done{background:#2e9e5b}
@@ -319,12 +319,9 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     var link=document.getElementById('tls-share-link');
                     function open(){ modal.hidden=false; document.body.style.overflow='hidden'; }
                     function close(){ modal.hidden=true; document.body.style.overflow=''; }
-                    if(openBtn) openBtn.addEventListener('click', function(e){
-                        e.preventDefault();
-                        // Telefonda yerel paylaşım varsa onu kullan, yoksa şık popup
-                        if(navigator.share){ navigator.share({title:document.title, url:link.value}).catch(function(){ open(); }); }
-                        else open();
-                    });
+                    // HER ZAMAN şık popup aç (masaüstünde OS paylaşım menüsü karışıklık
+                    // yaratıyordu; tutarlı, tek davranış istiyoruz).
+                    if(openBtn) openBtn.addEventListener('click', function(e){ e.preventDefault(); open(); });
                     modal.addEventListener('click', function(e){ if(e.target.hasAttribute('data-share-close')) close(); });
                     document.addEventListener('keydown', function(e){ if(e.key==='Escape' && !modal.hidden) close(); });
                     if(copyBtn) copyBtn.addEventListener('click', function(){
