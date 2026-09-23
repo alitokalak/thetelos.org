@@ -201,6 +201,26 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </a>
                     <?php endif; ?>
 
+                    <!-- Kaydet: okuma listesine ekle. Mevcut sisteme bağlı
+                         (data-status=want) → var olan JS yönetir; kenar çubuğundaki
+                         "Want to Read" ile senkron, kütüphane sayfasında görünür. -->
+                    <button type="button" class="tls-status-btn tls-save-btn<?php echo $user_status === 'want' ? ' active' : ''; ?>" data-status="want" title="Save to your reading list">
+                        <svg class="tls-save-i-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
+                        <svg class="tls-save-i-on" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 3h12a1 1 0 011 1v16.5a.5.5 0 01-.77.42L12 18.1l-6.23 3.82A.5.5 0 015 21.5V4a1 1 0 011-1z"/></svg>
+                        <span class="tls-save-l-off">Save</span>
+                        <span class="tls-save-l-on">Saved</span>
+                    </button>
+                    <style>
+                    .tls-save-btn .tls-save-i-off,.tls-save-btn .tls-save-i-on{transition:transform .18s ease}
+                    .tls-save-btn:hover .tls-save-i-off{transform:translateY(-2px) scale(1.1)}   /* hover: yer imi zıplar */
+                    .tls-save-btn .tls-save-i-on,.tls-save-btn .tls-save-l-on{display:none}
+                    .tls-save-btn.active{color:#1f6f43;background:#eef6f0!important;border-color:rgba(31,111,67,.45)!important}
+                    .tls-save-btn.active .tls-save-i-off,.tls-save-btn.active .tls-save-l-off{display:none}
+                    .tls-save-btn.active .tls-save-i-on{display:inline-block;animation:tlsSavePop .32s cubic-bezier(.2,.9,.3,1.3)}
+                    .tls-save-btn.active .tls-save-l-on{display:inline}
+                    @keyframes tlsSavePop{0%{transform:scale(.4)}60%{transform:scale(1.22)}100%{transform:scale(1)}}
+                    </style>
+
                     <?php if ( ! $tls_is_placeholder ) : ?>
                     <!-- PDF indir (POST içeriğini basar) — yer-tutucuda gizli -->
                     <button class="tls-status-btn" id="tls-pdf-post" type="button" title="Save as PDF">
@@ -327,44 +347,6 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 </script>
                 <?php endif; ?>
 
-
-                <!-- ── Kaydet banner'ı: mevcut okuma-listesi sistemine bağlı (tls_set_status
-                     → 'want'). Butona .tls-status-btn[data-status=want] verildiği için
-                     var olan JS otomatik yönetir: giriş yoksa auth popup, giriş varsa
-                     sunucuya kaydeder ve kenar çubuğundaki "Want to Read" ile senkron kalır.
-                     Kaydedilenler "Kütüphanem / okuma listem" sayfasında görünür. ── -->
-                <div class="tls-save-banner">
-                    <div class="tls-save-ico" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12a1 1 0 011 1v15l-7-4-7 4V5a1 1 0 011-1z"/></svg>
-                    </div>
-                    <div class="tls-save-txt">
-                        <strong>Save this summary for later</strong>
-                        <span>Add it to your reading list and pick up where you left off.</span>
-                    </div>
-                    <button type="button" class="tls-status-btn tls-save-cta<?php echo $user_status === 'want' ? ' active' : ''; ?>" data-status="want">
-                        <svg class="ico-add" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-                        <svg class="ico-done" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                        <span class="lbl-off">Add to reading list</span>
-                        <span class="lbl-on">In your reading list</span>
-                    </button>
-                </div>
-                <style>
-                .tls-save-banner{display:flex;align-items:center;gap:16px;background:#fbf8f2;border:1px solid rgba(20,16,12,.08);border-radius:16px;padding:15px 18px;margin:0 0 26px}
-                .tls-save-ico{flex:0 0 auto;width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#efe6d4,#e4d6b8);color:#8a6a1e;display:flex;align-items:center;justify-content:center}
-                .tls-save-ico svg{width:22px;height:22px}
-                .tls-save-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
-                .tls-save-txt strong{font-family:var(--tls-serif,Georgia,serif);font-size:17px;line-height:1.25;color:var(--tls-text,#241b10)}
-                .tls-save-txt span{font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;color:var(--tls-muted,#8a8178)}
-                .tls-save-cta{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;border:0;border-radius:10px;padding:11px 18px;background:#1f6f43;color:#fff;font-family:var(--tls-sans,system-ui,sans-serif);font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,transform .1s,box-shadow .15s;white-space:nowrap}
-                .tls-save-cta:hover{background:#195c37}.tls-save-cta:active{transform:scale(.97)}
-                .tls-save-cta svg{width:17px;height:17px}
-                .tls-save-cta .ico-done,.tls-save-cta .lbl-on{display:none}
-                .tls-save-cta.active{background:#e9f3ec;color:#1f6f43;box-shadow:inset 0 0 0 1.5px #1f6f43}
-                .tls-save-cta.active:hover{background:#ddeee2}
-                .tls-save-cta.active .ico-add,.tls-save-cta.active .lbl-off{display:none}
-                .tls-save-cta.active .ico-done,.tls-save-cta.active .lbl-on{display:inline}
-                @media(max-width:560px){.tls-save-banner{flex-wrap:wrap}.tls-save-txt{flex:1 1 auto}.tls-save-cta{width:100%;justify-content:center;margin-top:4px}}
-                </style>
 
                 <!-- ── Article content (flows directly below meta) ── -->
                 <div class="tls-single-divider"></div>
