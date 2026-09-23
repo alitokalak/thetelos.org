@@ -2221,13 +2221,16 @@ while (true) {
     $nc = bw_next_uncleaned_author($batch_file);
     if ($nc !== null) {
         require_once __DIR__ . '/_clean-lib.php';
-        if ($nc['author'] === '' || $nc['key'] === '__noauthor__' || count($nc['idx']) < 2) {
-            // Yazarsız ya da tek kitap → denetime gerek yok, olduğu gibi yaz.
+        if ($nc['author'] === '' || $nc['key'] === '__noauthor__') {
+            // Yazarsız → yazar bağlamı olmadan ne temizlenir ne İngilizce ad çözülür.
             bw_clean_mark_author_done($batch_file, $nc['key']);
         } else {
             set_time_limit(300);
             // Temizleme çağrısı HER ZAMAN gerçek-zamanlı (batch değil): küçük/ucuz,
-            // hızlı bitsin ki o yazarın yazımı beklemesin.
+            // hızlı bitsin ki o yazarın yazımı beklemesin. TEK kitaplı yazarlar da
+            // buraya girer → başlık İSİM KRİTERİNE ("İngilizce ad (orijinal ad)")
+            // göre yeniden yazılır (ham/yabancı ad düzeltilir), eleme/birleştirme
+            // gerekmese bile.
             $res = cll_clean_author_ai($nc['author'], $nc['titles'], ['batch' => false, 'on_beat' => $g_beat]);
             bw_clean_apply($batch_file, $nc['key'], $nc['idx'], $res);
         }
