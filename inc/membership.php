@@ -199,6 +199,11 @@ add_action( 'wp_ajax_tls_set_status', function() {
    burası ise "kullanıcı bizim ÖZET POSTUMUZU sonra okumak için sakladı mı".
    Ayrı meta anahtarı: _tls_saved_summary_{pid}.
 ══════════════════════════════════════════════ */
+/* Misafir (giriş yapmamış) istekleri: WordPress aksi halde "0" döner ve
+   buton JS'i login_required alamaz → popup açılmaz. nopriv ile yakala. */
+add_action( 'wp_ajax_nopriv_tls_toggle_saved', function() {
+    wp_send_json_error(['message' => 'login_required']);
+} );
 add_action( 'wp_ajax_tls_toggle_saved', function() {
     if ( ! is_user_logged_in() ) wp_send_json_error(['message' => 'login_required']);
     check_ajax_referer('tls_status_nonce', 'nonce', false);

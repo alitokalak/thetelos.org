@@ -267,18 +267,23 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <?php endif; ?>
 
                 <style>
-                .tls-rl-btn{display:inline-flex;align-items:center;height:38px;max-width:38px;padding:0;border:1px solid var(--tls-border);border-radius:24px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;line-height:1;box-sizing:border-box;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
-                .tls-rl-ico{flex:0 0 36px;width:36px;height:36px;display:flex;align-items:center;justify-content:center}
-                .tls-rl-ico svg{width:16px;height:16px;transition:transform .2s}
-                .tls-rl-label{display:inline-flex;align-items:center;line-height:1;opacity:0;transform:translateX(-4px);padding-right:16px;transition:opacity .18s .05s,transform .18s .05s}
+                .tls-rl-btn{display:inline-flex;align-items:center;height:36px;max-width:36px;padding:0;border:1px solid var(--tls-border);border-radius:24px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;box-sizing:border-box;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
+                .tls-rl-ico{flex:0 0 34px;width:34px;height:34px;display:flex;align-items:center;justify-content:center}
+                .tls-rl-ico svg{width:16px;height:16px;transition:transform .2s;display:block}
+                /* metni dikeyde tam ortala: line-height = iç yükseklik (34px),
+                   tema gövde line-height'ından etkilenmesin diye sabit. */
+                .tls-rl-label{display:inline-block;height:34px;line-height:34px;opacity:0;transform:translateX(-4px);padding-right:16px;transition:opacity .18s .05s,transform .18s .05s}
                 .tls-rl-btn:hover,.tls-rl-btn:focus-visible{max-width:280px;border-color:rgba(31,111,67,.5);color:#1f6f43}
                 .tls-rl-btn:hover .tls-rl-label,.tls-rl-btn:focus-visible .tls-rl-label{opacity:1;transform:none}
                 .tls-rl-btn:hover .tls-rl-ico svg{transform:scale(1.08)}
-                .tls-rl-btn .i-on,.tls-rl-label .on{display:none}
+                .tls-rl-btn .i-on{display:none}
+                .tls-rl-label .on{display:none}
                 .tls-rl-btn.saved{max-width:280px;background:#eef6f0;border-color:rgba(31,111,67,.45);color:#1f6f43}
                 .tls-rl-btn.saved .tls-rl-label{opacity:1;transform:none}
-                .tls-rl-btn.saved .i-off,.tls-rl-btn.saved .off{display:none}
-                .tls-rl-btn.saved .i-on,.tls-rl-btn.saved .on{display:inline-flex}
+                .tls-rl-btn.saved .i-off{display:none}
+                .tls-rl-btn.saved .i-on{display:block}
+                .tls-rl-btn.saved .off{display:none}
+                .tls-rl-btn.saved .on{display:inline}
                 .tls-rl-btn.saved .i-on{animation:tlsRlPop .34s cubic-bezier(.2,.9,.3,1.35)}
                 @keyframes tlsRlPop{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
                 .tls-rl-btn.busy{opacity:.55;pointer-events:none}
