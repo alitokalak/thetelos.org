@@ -24,6 +24,10 @@ $cnt_want    = $rows['want']->cnt    ?? 0;
 $cnt_reading = $rows['reading']->cnt ?? 0;
 $cnt_read    = $rows['read']->cnt    ?? 0;
 $cnt_total   = $cnt_want + $cnt_reading + $cnt_read;
+// KAYDEDİLEN ÖZETLER (ayrı meta — kitap durumundan bağımsız)
+$cnt_saved   = (int) $wpdb->get_var( $wpdb->prepare(
+    "SELECT COUNT(*) FROM {$wpdb->usermeta} WHERE user_id=%d AND meta_key LIKE '_tls_saved_summary_%%'", $uid
+) );
 
 get_header();
 ?>
@@ -99,6 +103,7 @@ get_header();
           <button class="tls-prof-filter" data-filter="want">❤ Want to Read <span><?php echo $cnt_want; ?></span></button>
           <button class="tls-prof-filter" data-filter="reading">📖 Reading <span><?php echo $cnt_reading; ?></span></button>
           <button class="tls-prof-filter" data-filter="read">✓ Finished <span><?php echo $cnt_read; ?></span></button>
+          <button class="tls-prof-filter" data-filter="saved">🔖 Saved summaries <span><?php echo $cnt_saved; ?></span></button>
         </div>
         <div id="tls-lib-loading" class="tls-prof-loading">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="24" height="24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
@@ -275,8 +280,8 @@ get_header();
     var ajax      = '<?php echo esc_js($ajax); ?>';
     var authNonce = '<?php echo esc_js($auth_nonce); ?>';
     var upNonce   = '<?php echo esc_js($upload_nonce); ?>';
-    var colors    = {want:'#b84c6e', reading:'#C8A165', read:'#6a9f5e'};
-    var labels    = {want:'Want to Read', reading:'Currently Reading', read:'Finished'};
+    var colors    = {want:'#b84c6e', reading:'#C8A165', read:'#6a9f5e', saved:'#1f6f43'};
+    var labels    = {want:'Want to Read', reading:'Currently Reading', read:'Finished', saved:'Saved summary'};
     var rlLoaded  = false;
 
     /* ── Tab geçişi ── */
