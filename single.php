@@ -267,12 +267,12 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <?php endif; ?>
 
                 <style>
-                .tls-save-btn{display:inline-flex;align-items:center;height:36px;max-width:36px;padding:0;border:1px solid var(--tls-border);border-radius:24px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;box-sizing:border-box;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
-                .tls-save-ico{flex:0 0 34px;width:34px;height:34px;display:flex;align-items:center;justify-content:center}
+                .tls-save-btn{display:inline-flex;align-items:center;height:34px;max-width:34px;padding:0;border:1px solid var(--tls-border);border-radius:24px;background:none;color:var(--tls-muted);cursor:pointer;overflow:hidden;white-space:nowrap;font-family:var(--tls-sans,system-ui,sans-serif);font-size:13px;font-weight:500;box-sizing:border-box;transition:max-width .34s cubic-bezier(.2,.8,.25,1),background .18s,border-color .18s,color .18s}
+                .tls-save-ico{flex:0 0 32px;width:32px;height:32px;display:flex;align-items:center;justify-content:center}
                 .tls-save-ico svg{width:16px;height:16px;transition:transform .2s;display:block}
-                /* metni dikeyde tam ortala: line-height = iç yükseklik (34px),
+                /* metni dikeyde tam ortala: line-height = iç yükseklik (32px),
                    tema gövde line-height'ından etkilenmesin diye sabit. */
-                .tls-save-label{display:inline-block;height:34px;line-height:34px;opacity:0;transform:translateX(-4px);padding-right:16px;transition:opacity .18s .05s,transform .18s .05s}
+                .tls-save-label{display:inline-block;height:32px;line-height:32px;opacity:0;transform:translateX(-4px);padding-right:16px;transition:opacity .18s .05s,transform .18s .05s}
                 .tls-save-btn:hover,.tls-save-btn:focus-visible{max-width:280px;border-color:rgba(31,111,67,.5);color:#1f6f43}
                 .tls-save-btn:hover .tls-save-label,.tls-save-btn:focus-visible .tls-save-label{opacity:1;transform:none}
                 .tls-save-btn:hover .tls-save-ico svg{transform:scale(1.08)}
