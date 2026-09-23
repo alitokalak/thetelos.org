@@ -291,8 +291,12 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 .tls-save-btn.saved .i-on{animation:tlsRlPop .34s cubic-bezier(.2,.9,.3,1.35)}
                 @keyframes tlsRlPop{0%{transform:scale(.4)}60%{transform:scale(1.25)}100%{transform:scale(1)}}
                 .tls-save-btn.busy{opacity:.55;pointer-events:none}
-                @media(hover:none){.tls-save-label{max-width:200px;opacity:1;padding-left:7px}}
-                @media(max-width:560px){.tls-save-label{max-width:200px;opacity:1;padding-left:7px}}
+                /* MOBİL: sadece ikon — hiçbir durumda metin açılmasın, daima
+                   tam daire (Save PDF/Share ile aynı yükseklik). */
+                @media(max-width:560px){
+                  .tls-save-btn,.tls-save-btn.saved,.tls-save-btn:hover,.tls-save-btn:focus-visible{aspect-ratio:1;padding:0}
+                  .tls-save-btn .tls-save-label,.tls-save-btn.saved .tls-save-label,.tls-save-btn:hover .tls-save-label,.tls-save-btn:focus-visible .tls-save-label{max-width:0;opacity:0;padding-left:0}
+                }
                 </style>
                 <script>
                 (function(){
