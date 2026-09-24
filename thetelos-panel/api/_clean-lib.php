@@ -97,24 +97,41 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
         || preg_match('/(^|\s)(de la|de l\'|del|della|delle|di|le|les|la|el|il|une|des|du|von|vom|und|der|das|sur|aux|dans)(\s|$)/iu', mb_strtolower($titles_txt));
     $hard = (count($slice) > 8) || $foreign_latin
         || preg_match('/[\x{0370}-\x{03FF}\x{0400}-\x{04FF}\x{0590}-\x{05FF}\x{0600}-\x{06FF}\x{4E00}-\x{9FFF}\x{3040}-\x{30FF}]/u', $titles_txt);
-    $model = $hard ? tls_claude_best_model() : tls_claude_quality_model();
-
-    $cr = tls_claude($system_rules, $user_msg, [
-        'model'       => $model,
-        'max_tokens'  => 8000,
-        'temperature' => 0,
-        'timeout'     => 90,
-        'retries'     => 1,
-        'cache'       => true,
-        'batch'       => !empty($opts['batch']),
-        'on_beat'     => (isset($opts['on_beat']) && is_callable($opts['on_beat'])) ? $opts['on_beat'] : null,
-    ]);
-    if (empty($cr['ok'])) {
-        return ['ok' => false, 'groups' => [], 'not_by_author' => [], 'wrote_in' => [],
-                'error' => 'Claude: ' . mb_substr((string) ($cr['error'] ?? '?'), 0, 120)];
+    // TEMİZLEME MOTORU = DeepSeek (ucuz + hızlı). Bu bir SINIFLANDIRMA işi
+    // (grupla/ele), üretim değil → pahalı Claude/Opus GEREKMEZ. İçerik motoru
+    // Claude olsa bile temizlik neredeyse bedava yapılır. DeepSeek yok/başarısızsa
+    // Claude Sonnet'e düşülür (Opus DEĞİL). $hard/$model artık kullanılmıyor.
+    $beat = (isset($opts['on_beat']) && is_callable($opts['on_beat'])) ? $opts['on_beat'] : null;
+    $txt = ''; $err = '';
+    if (defined('DEEPSEEK_API_URL') && defined('DEEPSEEK_KEY') && DEEPSEEK_KEY) {
+        $ds_model = (defined('DEEPSEEK_MODEL') && DEEPSEEK_MODEL && DEEPSEEK_MODEL !== 'deepseek-v4-flash') ? DEEPSEEK_MODEL : 'deepseek-chat';
+        $ch = curl_init(DEEPSEEK_API_URL);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 90,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_POSTFIELDS => json_encode([
+                'model' => $ds_model, 'max_tokens' => 6000, 'temperature' => 0,
+                'response_format' => ['type' => 'json_object'],
+                'messages' => [['role' => 'user', 'content' => $system_rules . "\n\n" . $user_msg]],
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+        $r = curl_exec($ch); $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($beat) $beat();
+        if ($http === 200 && $r) { $d = json_decode($r, true); $txt = (string) ($d['choices'][0]['message']['content'] ?? ''); }
+        else $err = "DeepSeek HTTP $http";
     }
-
-    $txt = (string) $cr['text'];
+    if ($txt === '' && tls_anthropic_ready()) {
+        // Yedek: Claude Sonnet (Opus değil — temizlik için gereksiz pahalı).
+        $cr = tls_claude($system_rules, $user_msg, [
+            'model' => tls_claude_quality_model(), 'max_tokens' => 8000, 'timeout' => 90,
+            'retries' => 1, 'cache' => true, 'batch' => !empty($opts['batch']), 'on_beat' => $beat,
+        ]);
+        if (!empty($cr['ok'])) $txt = (string) $cr['text'];
+        else $err = 'Claude: ' . mb_substr((string) ($cr['error'] ?? '?'), 0, 120);
+    }
+    if ($txt === '') {
+        return ['ok' => false, 'groups' => [], 'not_by_author' => [], 'wrote_in' => [], 'error' => $err ?: 'temizleme motoru yok'];
+    }
     $txt = preg_replace('/```json|```/i', '', $txt);
     $s = strpos($txt, '{'); $e = strrpos($txt, '}');
     $parsed = ($s !== false && $e > $s) ? json_decode(substr($txt, $s, $e - $s + 1), true) : null;

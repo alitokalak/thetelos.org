@@ -2211,6 +2211,9 @@ function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res, $a
     if (count($log) > 60) $log = array_slice($log, -60);   // son 60 yazar
     $b['clean_log'] = $log;
     $b['clean_now'] = '';   // bu yazarın denetimi bitti
+    // GLOBAL sayaçlar (log 60 ile sınırlı → doğrudan artır, kaybolmasın).
+    $b['clean_removed'] = (int) ($b['clean_removed'] ?? 0) + $n_removed;
+    $b['clean_merged']  = (int) ($b['clean_merged'] ?? 0) + $n_merged;
 
     $da = $b['clean_done_authors'] ?? [];
     if (!in_array($author_key, $da, true)) { $da[] = $author_key; $b['clean_done_authors'] = $da; }
