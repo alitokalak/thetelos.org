@@ -182,9 +182,11 @@ function tls_claude($system, $user, $opts = []) {
             'max_tokens' => $maxtok,
             'messages'   => $messages,
         ];
-        // Düşünme açıksa temperature GÖNDERME (yeni modeller reddeder); yoksa gönder.
+        // TEMPERATURE GÖNDERİLMEZ: güncel modeller (Sonnet 5, Opus 4.8, Haiku 4.5…)
+        // bu parametreyi reddediyor → "HTTP 400 temperature is deprecated for this
+        // model" → tüm çağrılar patlıyordu. Varsayılan kullanılır (determinizm için
+        // şart değil). Düşünme yalnız açıkça verilirse eklenir.
         if ($thinking) $payload['thinking'] = $thinking;
-        else           $payload['temperature'] = $temp;
         if ($tools) $payload['tools'] = $tools;
         if (trim((string) $system) !== '') {
             // PROMPT CACHE (opsiyonel): sistem promptu çağrılar arası AYNIysa
@@ -493,8 +495,8 @@ function tls_claude_batch_params($system, $user, $opts = []) {
         'max_tokens' => $maxtok,
         'messages'   => [['role' => 'user', 'content' => (string) $user]],
     ];
+    // TEMPERATURE GÖNDERİLMEZ (batch): güncel modeller reddediyor (HTTP 400).
     if ($thinking) $params['thinking'] = $thinking;
-    elseif (array_key_exists('temperature', $opts)) $params['temperature'] = (float) $opts['temperature'];
     if (trim((string) $system) !== '') {
         $params['system'] = !empty($opts['cache'])
             ? [['type' => 'text', 'text' => (string) $system, 'cache_control' => ['type' => 'ephemeral']]]
