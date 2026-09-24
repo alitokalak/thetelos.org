@@ -2224,6 +2224,11 @@ $reason    = 'no_more';
 
 $g_beat = function () use ($g_worker_hb) { if ($g_worker_hb) @touch($g_worker_hb); };
 
+// KRİTİK: cll_norm() gibi temizleme yardımcıları döngünün ilk adımında
+// (bw_next_uncleaned_author) çağrılıyor → kütüphane döngüden ÖNCE yüklenmeli,
+// yoksa "tanımsız fonksiyon" fatal'ı worker'ı anında öldürür (batch 0'da asılı kalır).
+require_once __DIR__ . '/_clean-lib.php';
+
 while (true) {
     // Yoğun saat başladıysa üretimi burada bırak: zincirleme yapılmaz, wk dosyası
     // temizlenir; saat normale dönünce cron-tick kaldığı yerden devam ettirir.
