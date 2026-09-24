@@ -21,18 +21,31 @@ if (!file_exists($file)) { http_response_code(404); exit; }
 $batch = json_decode(file_get_contents($file), true);
 if (!$batch || empty($batch['books'])) { http_response_code(404); exit; }
 
-/* Her kitabın nihai YÖNTEM/DURUM etiketini normalize et. Öncelik sırası:
-   hata → yer-tutucu → eski-korundu → kaynak-temelli/bilgi/kaynaksız (method alanı). */
+/* Kısa SONUÇ etiketi — insan okuyabilsin: NE OLDU?
+   Öncelik: temizlik(elendi/birleştirildi) → hata → yer-tutucu → eski-korundu →
+   yazıldı(yöntem) → bekliyor/işleniyor. */
 function br_label(array $b): string {
+    if (($b['status'] ?? '') === 'skipped') {
+        if (!empty($b['clean_merged']))  return 'birleştirildi (çeviri/kopya)';
+        if (!empty($b['clean_removed'])) return 'elendi (yazara ait değil)';
+        return 'atlandı';
+    }
     if (($b['status'] ?? '') === 'error')       return 'hata';
     if (!empty($b['placeholder']))              return 'yer-tutucu (içerik yok)';
     if (!empty($b['kept']))                     return 'eski-korundu (yenilenmedi)';
     if (!empty($b['gated']))                    return 'kapıda (yayında değil)';
+    if (($b['status'] ?? '') === 'pending')     return 'bekliyor';
+    if (($b['status'] ?? '') === 'processing')  return 'işleniyor';
     $m = trim((string)($b['method'] ?? ''));
-    if ($m !== '')                              return $m;
-    if (($b['status'] ?? '') === 'done')        return 'yazıldı';
+    if (($b['status'] ?? '') === 'done')        return 'YAZILDI' . ($m !== '' ? " ($m)" : '');
     if (($b['status'] ?? '') === 'duplicate')   return 'zaten var';
     return $b['status'] ?? '?';
+}
+/* Bu satır için açıklama: temizlik sebebi / hata metni / kaynak. */
+function br_reason(array $b): string {
+    if (($b['status'] ?? '') === 'skipped') return trim((string)($b['skip_reason'] ?? ''));
+    if (($b['status'] ?? '') === 'error')   return trim((string)($b['error'] ?? ''));
+    return trim((string)($b['source'] ?? ''));
 }
 /* "Sorunlu mu?" — üç durum, kafa karışmasın:
    • hayır       → gerçek içerik var (kaynak-temelli / kaynaksız-tam)
@@ -51,25 +64,34 @@ $fname = 'sonuc-' . $batch_id . '.csv';
 header('Content-Type: text/csv; charset=utf-8');
 header('Content-Disposition: attachment; filename="' . $fname . '"');
 
+// YAZARA GÖRE SIRALA (gruplu okunsun) — orijinal sırayı koruyarak.
+$rows = $batch['books'];
+$ord  = range(0, count($rows) - 1);
+usort($ord, function ($a, $b) use ($rows) {
+    $aa = mb_strtolower(trim((string)($rows[$a]['author_name'] ?? '')), 'UTF-8');
+    $bb = mb_strtolower(trim((string)($rows[$b]['author_name'] ?? '')), 'UTF-8');
+    if ($aa !== $bb) return $aa <=> $bb;
+    return $a <=> $b;   // aynı yazarda özgün sıra
+});
+
 $out = fopen('php://output', 'w');
 fprintf($out, "\xEF\xBB\xBF");   // UTF-8 BOM (Excel için)
-fputcsv($out, ['#', 'Post ID', 'Kitap Adı', 'Yazar Adı', 'Durum/Yöntem', 'Sorunlu?', 'Kaynak', 'URL']);
+fputcsv($out, ['#', 'Yazar', 'Kitap (nihai ad)', 'Sonuç', 'Açıklama / Sebep', 'Post ID', 'URL']);
 
 $i = 0;
-foreach ($batch['books'] as $b) {
+foreach ($ord as $ix) {
+    $b = $rows[$ix];
     $i++;
-    $label = br_label($b);
-    $pid   = (int) ($b['post_id'] ?? $b['target_pid'] ?? 0);
-    $url   = $b['post_url'] ?? '';
+    $pid = (int) ($b['post_id'] ?? $b['target_pid'] ?? 0);
+    $url = $b['post_url'] ?? '';
     if ($url === '' && $pid) $url = rtrim(WP_URL, '/') . '/?p=' . $pid;
     fputcsv($out, [
         $i,
-        $pid ?: '',
-        $b['book_title']  ?? '',
         $b['author_name'] ?? '',
-        $label,
-        br_problem($label),
-        $b['source'] ?? '',
+        $b['book_title']  ?? '',
+        br_label($b),
+        br_reason($b),
+        $pid ?: '',
         $url,
     ]);
 }

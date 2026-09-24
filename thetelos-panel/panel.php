@@ -867,6 +867,10 @@ if (!isset($_GET['mode'])) {
           $pending = $b['_remaining'];
           $errs    = $cnt['error'];
           $okc     = $cnt['done'];
+          $skips   = (int) ($cnt['skipped'] ?? 0);   // temizlikte elendi/birleştirildi
+          $crem    = (int) ($b['clean_removed'] ?? 0);
+          $cmrg    = (int) ($b['clean_merged'] ?? 0);
+          $preclean = ($b['pre_clean'] ?? '') === '1';
           $pct     = $tot > 0 ? round($okc / $tot * 100) : 0;
           $bid     = htmlspecialchars($b['id'] ?? '');
           $when    = !empty($b['created_at']) ? date('d.m.Y H:i', (int)$b['created_at']) : '';
@@ -890,7 +894,7 @@ if (!isset($_GET['mode'])) {
                 <span style="font-weight:400;font-size:11px;color:<?= $alive ? 'var(--green)' : '#cc6b00' ?>"> &middot; <?= $alive ? '● çalışıyor' : '⏸ duraklamış olabilir' ?> &middot; <?= $agoTxt ?> ilerledi</span>
               <?php endif; ?>
             </span>
-            <span style="font-size:12px;color:var(--muted)" data-bc-meta><?= $okc ?> &#10003; &middot; <?= $errs ?> hata &middot; <?= $pending ?> bekliyor / <?= $tot ?></span>
+            <span style="font-size:12px;color:var(--muted)" data-bc-meta><?= $okc ?> &#10003; &middot; <?= $errs ?> hata<?= $skips > 0 ? ' &middot; ' . $skips . ' temizlendi' : '' ?> &middot; <?= $pending ?> bekliyor / <?= $tot ?><?= $preclean ? ' &middot; 🧹 ' . $crem . ' elendi, ' . $cmrg . ' birleşti' : '' ?></span>
           </div>
           <?php if ($dup_hint): ?>
           <div style="font-size:12px;color:#cc6b00;margin-bottom:8px">⚠ Bu, aynı listenin hiç ilerlememiş eski kopyası görünüyor — güvenle silebilirsin.</div>
