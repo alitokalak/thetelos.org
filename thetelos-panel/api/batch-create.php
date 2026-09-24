@@ -69,11 +69,11 @@ $jobs_dir   = dirname(__DIR__) . '/jobs';
 if (!is_dir($jobs_dir)) mkdir($jobs_dir, 0755, true);
 $batch_file = "$jobs_dir/{$batch_id}.json";
 
-// ── ÖN-TEMİZLEME (yalnız Anthropic / Anthropic Batch, YENİ üretimde) ──
-// Yazma başlamadan önce Claude listeyi YAZAR-YAZAR denetler: aynı eserin
-// çeviri/kopyaları tek esere iner, yazara ait olmayan/ikincil eserler elenir.
-// Yeniden-yaz modunda ÇALIŞMAZ (kullanıcı kararı).
-$pre_clean = (in_array($api_provider, ['anthropic', 'anthropic_batch'], true) && !$rewrite) ? '1' : '';
+// ── ÖN-TEMİZLEME: artık VARSAYILAN KAPALI. Temizlik ayrı, GÖRÜNÜR bir adım:
+// soldaki "Liste Temizle" aracı (yazar-yazar, elenen/birleşen tablosu, temiz CSV).
+// Batch yazım işi listeyi olduğu gibi yazar → sürpriz/kör temizlik yok.
+// Yalnız kullanıcı açıkça isterse (pre_clean=1 gönderilirse, yeni üretimde) çalışır.
+$pre_clean = ((($_POST['pre_clean'] ?? '') === '1') && !$rewrite) ? '1' : '';
 
 $batch = [
     'id'           => $batch_id,
