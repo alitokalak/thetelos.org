@@ -1026,20 +1026,36 @@ document.getElementById('btn-clear-list')?.addEventListener('click', () => {
 });
 
 async function uploadFile(file) {
+  if (!file) { notify('bulk-notif', 'Dosya seçilmedi.', 'err'); return; }
+  notify('bulk-notif', '⏳ "' + file.name + '" yükleniyor…', 'ok');
   const fd = new FormData();
   fd.append('bulk_file', file);
-  const res = await fetch(API('bulk-upload.php'), {method:'POST', body:fd}).then(r=>r.json());
-  if (!res.ok) { notify('bulk-notif', res.error, 'err'); return; }
+  let res;
+  try {
+    const resp = await fetch(API('bulk-upload.php'), { method: 'POST', body: fd });
+    const raw  = await resp.text();
+    if (!resp.ok) { notify('bulk-notif', 'Yükleme hatası (HTTP ' + resp.status + '): ' + raw.slice(0, 200), 'err'); return; }
+    try { res = JSON.parse(raw); }
+    catch (e) { notify('bulk-notif', 'Sunucu geçersiz yanıt verdi: ' + raw.slice(0, 200), 'err'); return; }
+  } catch (e) {
+    notify('bulk-notif', 'Bağlantı hatası: ' + (e && e.message ? e.message : e), 'err');
+    return;
+  }
+  if (!res || !res.ok) { notify('bulk-notif', (res && res.error) || 'Bilinmeyen yükleme hatası.', 'err'); return; }
+  if (!res.books || res.books.length === 0) { notify('bulk-notif', 'Dosyada okunabilir satır yok (biçim: Kitap Adı | Yazar).', 'err'); return; }
 
   // Sitedeki yazarları kontrol et (checkbox işaretliyse)
   const skipOnSite = document.getElementById('bulk-skip-onsite')?.checked !== false;
   const uniqueAuthors = [...new Set(res.books.map(b => b.author_name).filter(Boolean))];
   let onSiteAuthors = new Set();
   if (skipOnSite) {
+    notify('bulk-notif', '⏳ ' + uniqueAuthors.length + ' yazar sitede zaten var mı diye kontrol ediliyor… (biraz sürebilir)', 'ok');
     try {
       const chk = await postData(API('author-check.php'), { authors: JSON.stringify(uniqueAuthors) }, 60000);
       if (chk.ok && chk.on_site?.length) onSiteAuthors = new Set(chk.on_site.map(a => a.toLowerCase()));
-    } catch(_) {}
+    } catch(_) {
+      notify('bulk-notif', '⚠ Yazar kontrolü zaman aşımına uğradı — liste yine de yüklendi (kontrol atlandı).', 'err');
+    }
   }
 
   // post_id taşıyan satırlar zaten sitedeki BELİRLİ bir yazıyı yeniden yazmak

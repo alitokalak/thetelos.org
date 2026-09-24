@@ -11,8 +11,20 @@ $ext  = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 $rows = [];   // TÜM satırlar (başlık dâhil) — başlık tespiti aşağıda yapılır.
 
 if ($ext === 'csv') {
+    // AYRAÇ OTOMATİK: TR Excel çoğu zaman ';' kullanır; sekme de olabilir. İlk
+    // dolu satırda hangi ayraç en çok sütun veriyorsa onu seç (virgül varsayılan).
+    $delim = ',';
+    if (($peek = fopen($file['tmp_name'], 'r')) !== false) {
+        $sample = '';
+        for ($i = 0; $i < 5 && ($ln = fgets($peek)) !== false; $i++) { if (trim($ln) !== '') { $sample = $ln; break; } }
+        fclose($peek);
+        $best = 1;
+        foreach ([',' => substr_count($sample, ','), ';' => substr_count($sample, ';'), "\t" => substr_count($sample, "\t")] as $d => $n) {
+            if ($n > $best) { $best = $n; $delim = $d; }
+        }
+    }
     $handle = fopen($file['tmp_name'], 'r');
-    while (($row = fgetcsv($handle, 0, ',')) !== false) {
+    while (($row = fgetcsv($handle, 0, $delim)) !== false) {
         // Tamamen boş satırı atla; başlığı BURADA atma (aşağıda tespit edip mapliyoruz).
         $joined = trim(implode('', array_map(fn($c) => (string)$c, $row)));
         if ($joined === '') continue;
