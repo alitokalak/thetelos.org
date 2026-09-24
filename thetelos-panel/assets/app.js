@@ -1331,6 +1331,24 @@ function renderBatchStatus(b) {
   document.getElementById('bulk-bar-label').textContent =
     `${b.done.toLocaleString('tr')} / ${b.total.toLocaleString('tr')} — %${pct}`;
 
+  // ── ÖN-TEMİZLEME GÖRÜNÜRLÜĞÜ (anthropic) ──
+  // "Şu an X yazarı kontrol ediliyor", toplam elenen/birleşen ve son yazarın
+  // özeti worker durum satırında gösterilsin → "ne yapıyor belli değil" bitsin.
+  if (b.pre_clean) {
+    const sw = document.getElementById('batch-worker-status');
+    if (sw) {
+      let line = '';
+      if (b.clean_now) {
+        line = `🔍 ${b.clean_now}`;
+      } else {
+        const lg = (b.clean_log && b.clean_log.length) ? b.clean_log[b.clean_log.length - 1] : null;
+        const last = lg ? ` · son: ${lg.author} → ${lg.kept} kaldı, ${lg.merged} birleşti, ${lg.removed} elendi` : '';
+        line = `🧹 Denetim: ${(b.clean_removed||0)} elendi · ${(b.clean_merged||0)} birleşti${last} · ✍ yazılıyor`;
+      }
+      sw.textContent = line;
+    }
+  }
+
   // YÖNTEM KIRILIMI: "taze içerik"in kaç kaynak-temelli / bilgi / Claude olduğunu
   // say → "ne yaptı belli değil" bitsin. Kitap listesindeki method alanından.
   let mSrc = 0, mInfo = 0, mClaude = 0, mClaudeInfo = 0, mOther = 0;

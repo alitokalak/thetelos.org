@@ -464,10 +464,11 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         'target_words' => $ideal,
         'timeout'      => 240,
         'on_beat'      => $hb,
-        // Son çare TOPLU/arka plan bağlamında çalışır → HER ZAMAN Batch (−%50).
-        // Böylece DeepSeek seçili olsa bile kaynaksız kitabın Claude kurtarması
-        // tam fiyat "sürpriz" kesmez; en ucuz halde denenir. ($use_batch'e bakma.)
-        'batch'        => true,
+        // KULLANICI SEÇİMİNE UY: "Anthropic Batch" seçtiyse batch API (yavaş, −%50);
+        // düz "Anthropic" seçtiyse GERÇEK-ZAMANLI (hızlı, tam fiyat). Eskiden hep
+        // batch'ti → düz Anthropic'te bile her kitap dakikalarca batch API'de
+        // bekliyordu. Artık seçime saygı: hız isteyen düz Anthropic seçer.
+        'batch'        => $use_batch,
     ]);
     if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
 
@@ -481,7 +482,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         if ($best && $best !== $model) {
             $hb();
             $r2 = tls_claude_overview($book, $author, [
-                'model' => $best, 'target_words' => $ideal, 'timeout' => 300, 'on_beat' => $hb, 'batch' => true,
+                'model' => $best, 'target_words' => $ideal, 'timeout' => 300, 'on_beat' => $hb, 'batch' => $use_batch,
             ]);
             if (!empty($r2['ok']) && empty($r2['unknown']) && trim((string) ($r2['md'] ?? '')) !== '') {
                 $why = ''; return bw_clean_content($r2['md']);
@@ -2140,11 +2141,12 @@ function bw_clean_bump_attempt($batch_file, $key) {
    - her grup için İLK üye = kanonik (başlık İngilizce ada güncellenir),
    - grubun diğer üyeleri → status 'skipped' (birleştirildi).
    $idx_map: 0-tabanlı üye no → gerçek kitap index'i. */
-function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res) {
+function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res, $author_disp = '') {
     $lk = bw_lock($batch_file); if (!$lk) return;
     $b = json_decode(@file_get_contents($batch_file), true);
     if (!is_array($b)) { bw_unlock($lk); return; }
 
+    $n_removed = 0; $n_merged = 0;
     if (!empty($res['ok'])) {
         foreach ($res['not_by_author'] as $f) {
             $m = (int) ($f['n'] ?? -1);
@@ -2154,6 +2156,7 @@ function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res) {
                 $b['books'][$bi]['status']      = 'skipped';
                 $b['books'][$bi]['skip_reason'] = 'temizlik: yazara ait değil — ' . mb_substr((string) ($f['reason'] ?? ''), 0, 140);
                 $b['books'][$bi]['clean_removed'] = 1;
+                $n_removed++;
             }
         }
         foreach ($res['groups'] as $g) {
@@ -2171,15 +2174,40 @@ function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res) {
                     $b['books'][$bi]['status']      = 'skipped';
                     $b['books'][$bi]['skip_reason'] = 'temizlik: aynı eserin kopyası/çevirisi → "' . mb_substr((string) ($g['display'] ?? ''), 0, 120) . '" ile birleştirildi';
                     $b['books'][$bi]['clean_merged'] = 1;
+                    $n_merged++;
                 }
             }
         }
     }
 
+    // ── GÖRÜNÜRLÜK: bu yazarın denetim özeti (log) + "kontrol ediliyor" bitti ──
+    $kept = max(0, count($idx_map) - $n_removed - $n_merged);   // yazılacak gerçek eser
+    $log  = $b['clean_log'] ?? [];
+    $log[] = [
+        'author'  => $author_disp !== '' ? $author_disp : $author_key,
+        'total'   => count($idx_map),
+        'removed' => $n_removed,
+        'merged'  => $n_merged,
+        'kept'    => $kept,
+        'ok'      => !empty($res['ok']) ? 1 : 0,
+        'at'      => time(),
+    ];
+    if (count($log) > 60) $log = array_slice($log, -60);   // son 60 yazar
+    $b['clean_log'] = $log;
+    $b['clean_now'] = '';   // bu yazarın denetimi bitti
+
     $da = $b['clean_done_authors'] ?? [];
     if (!in_array($author_key, $da, true)) { $da[] = $author_key; $b['clean_done_authors'] = $da; }
     bw_recount_counters($b);
     bw_write_atomic($batch_file, $b);
+    bw_unlock($lk);
+}
+
+/* "Şu an X yazarı kontrol ediliyor" durumunu ayarla (görünürlük). */
+function bw_clean_set_now($batch_file, $text) {
+    $lk = bw_lock($batch_file); if (!$lk) return;
+    $b = json_decode(@file_get_contents($batch_file), true);
+    if (is_array($b)) { $b['clean_now'] = (string) $text; bw_write_atomic($batch_file, $b); }
     bw_unlock($lk);
 }
 
@@ -2258,12 +2286,15 @@ while (true) {
                     'ön-temizleme 3 kez yarıda kaldı → denetimsiz yazıldı');
             } else {
                 set_time_limit(150);
+                // GÖRÜNÜRLÜK: "X yazarı kontrol ediliyor" durumunu yaz (panel gösterir).
+                bw_clean_set_now($batch_file, $nc['author'] . ' — ' . count($nc['idx']) . ' kitap kontrol ediliyor…');
                 // Gerçek-zamanlı (batch değil), kısa timeout. Herhangi bir Throwable
                 // worker'ı öldürmesin → yakala, yazarı temiz say, üretime devam et.
                 try {
                     $res = cll_clean_author_ai($nc['author'], $nc['titles'], ['batch' => false, 'on_beat' => $g_beat]);
-                    bw_clean_apply($batch_file, $nc['key'], $nc['idx'], $res);
+                    bw_clean_apply($batch_file, $nc['key'], $nc['idx'], $res, $nc['author']);
                 } catch (\Throwable $e) {
+                    bw_clean_set_now($batch_file, '');
                     bw_clean_mark_author_done($batch_file, $nc['key']);
                 }
             }
