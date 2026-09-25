@@ -100,9 +100,13 @@ $batch = [
     // Yeniden yaz modunda yeni gövdeden taze excerpt+meta description üret
     // (gövdeye çıpalı, uydurma değil). '0' → dokunma (eski davranış). Vars. açık.
     'rewrite_meta' => (($_POST['rewrite_meta'] ?? '1') !== '0') ? '1' : '0',
-    // Kademeli hakem (Gemini denetler, şüphede Claude): üretilen bilgi metnini
-    // kaynaklarla kıyaslar; uydurma bulursa yayınlamaz. '0' → kapat. Vars. açık.
-    'referee'      => (($_POST['referee'] ?? '1') !== '0') ? '1' : '0',
+    // Kademeli hakem (Gemini/Claude denetler): üretilen metni kaynakla kıyaslar,
+    // uydurma bulursa engeller. ARTIK VARSAYILAN KAPALI: kaynaksız modda gerçek
+    // kaynak yok, hakem içeriği İNCE bir Wikipedia özetiyle kıyaslayıp doğru ama
+    // özette geçmeyen ayrıntıları ("Felicity/Donald" gibi GERÇEK detaylar) "uydurma"
+    // sanıp gerçek kitapları blokluyordu (yanlış pozitif). Uydurma koruması zaten
+    // yazım prompt'unda + mekanik kapıda var. Açmak isteyen referee=1 gönderir.
+    'referee'      => (($_POST['referee'] ?? '0') === '1') ? '1' : '0',
     // Kaynak-temelli özet (source) uzunluğu: kisa | standart | kapsamli (geriye dönük)
     'length'       => in_array($_POST['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $_POST['length'] : 'standart',
     // Serbest hedef kelime (kaydırıcı) — verilirse 'length' ön-ayarını geçersiz kılar.
