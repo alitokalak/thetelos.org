@@ -965,16 +965,27 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         if (!empty($pr['ok'])) {
             $src = $pr['src'] ?? null;
             if (empty($pr['known'])) {
-                // SON ÇARE: probe kitabı doğrulayamadı — ama Claude eseri GÜVENİLİR
-                // biliyorsa (kendi kaçışıyla: bilmiyorsa UNKNOWN) tanıtım yazsın.
-                if ($api_provider !== 'anthropic') {
-                    $cl_why0 = '';
-                    $cl = bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch);
-                    if ($cl !== '') {
-                        $content = $cl;
-                        $gen_method = 'claude';   // Claude'un kendi bilgisinden UZUN özet
-                        $skip_generation = true;   // içerik hazır → normal üretimi atla, yayına geç
-                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'probe bilmiyor → Claude bilgi metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+                // SON ÇARE 1: probe doğrulayamadı — ama Claude eseri GÜVENİLİR
+                // biliyorsa (bilmiyorsa kendi kaçışıyla UNKNOWN) UZUN özet yazsın.
+                // Sağlayıcı ne olursa olsun dene (anthropic dahil).
+                $cl_why0 = '';
+                $cl = tls_anthropic_ready()
+                    ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch) : '';
+                if ($cl !== '') {
+                    $content = $cl;
+                    $gen_method = 'claude';   // Claude'un kendi bilgisinden UZUN özet
+                    $skip_generation = true;   // içerik hazır → normal üretimi atla, yayına geç
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'probe bilmiyor → Claude kendi bilgisinden özet', $update_pid, $rewrite ? 'rewrite' : 'create');
+                }
+                // SON ÇARE 2: Claude tam özet yazamasa bile DÜRÜST kısa bilgi/bağlam
+                // notu yaz (uydurma yok). Boş "hata" YOK — az da olsa içerik olsun.
+                if (empty($skip_generation)) {
+                    $note = bw_claude_author_note($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); });
+                    if ($note !== '') {
+                        $content = $note;
+                        $gen_method = 'bilgi-notu';
+                        $skip_generation = true;
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'tam doğrulanamadı → kısa bilgi/bağlam notu (uydurma yok)', $update_pid, $rewrite ? 'rewrite' : 'create');
                     }
                 }
                 if (empty($skip_generation) && $rewrite && $update_pid) {
@@ -1142,15 +1153,23 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $pr_reason = $ref_fab
                 ? ('hakem uydurma buldu (' . ($ir['referee']['judge'] ?? '?') . ')' . ($pr_probs ? ': ' . $pr_probs : ''))
                 : 'kaynak yetersiz (bilgi metni)';
-            // SON ÇARE: Claude eseri güvenilir biliyorsa tanıtım metni yazsın.
-            // (Provider zaten anthropic ise Claude denenmişti → tekrar deneme.)
+            // SON ÇARE 1: Claude eseri güvenilir biliyorsa uzun özet yazsın.
             $cl_why2 = '';
-            $cl = ($api_provider !== 'anthropic')
+            $cl = tls_anthropic_ready()
                 ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words, $use_batch) : '';
+            // SON ÇARE 2: Claude tam özet yazamasa bile DÜRÜST kısa bilgi/bağlam
+            // notu yaz (uydurma yok). Boş "hata" YOK — az da olsa içerik.
+            if ($cl === '') {
+                $note2 = bw_claude_author_note($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); });
+                if ($note2 !== '') { $content = $note2; $gen_method = 'bilgi-notu';
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynak yetersiz → kısa bilgi/bağlam notu (uydurma yok)', $update_pid, $rewrite ? 'rewrite' : 'create'); }
+            }
             if ($cl !== '') {
                 $content = $cl;
                 $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'kaynak yok → Claude kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
+            } elseif (trim((string) ($content ?? '')) !== '') {
+                // bilgi-notu yazıldı → aşağıda normal yayınlanır (hata yok).
             } else {
                 // Rewrite'ta yer tutucu (yayında kalsın), create'te atla.
                 if ($rewrite && $update_pid) {
