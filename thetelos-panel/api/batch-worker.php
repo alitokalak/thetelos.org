@@ -1687,23 +1687,16 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
     $cats_list = $palette ? implode(',', $palette) : $cats_fallback;
 
-    // ALINTI KURALI: gerçek birebir (verbatim) alıntı yalnız GERÇEK TAM METİNDEN
-    // yazıldıysa (kaynak-temelli) savunulabilir. Kaynaksız/claude/bilgi modlarında
-    // elimizde kitabın metni YOK → çıkarılan "alıntı" aslında özetin parafrazıdır
-    // (uydurma). Kullanıcı kuralı: emin olmadığı alıntıyı KOYMA → bu modlarda alıntı
-    // hiç istenmez ve kaydedilmez.
-    $allow_quotes = (strpos((string) $gen_method, 'kaynak-temelli') === 0);
+    // ALINTI KUTUSU KALDIRILDI: ayrı "KEY PASSAGES / ÖNEMLİ BÖLÜMLER" kutusu artık
+    // ÜRETİLMİYOR. Sebep: kaynaksızda gerçek metin yok → çıkarılan "alıntı" özetin
+    // parafrazı oluyordu (uydurma) + ekstra maliyet. Kullanıcı kararı: model, EMİN
+    // olduğunda alıntıyı zaten metnin İÇİNE (gövdeye) koyabilir; ayrı kutu YOK.
     $snippet = mb_substr(strip_tags($content), 0, 1500);
-    $q_schema = $allow_quotes ? ",\"quotes\":[{\"text\":\"verbatim quote\",\"source\":\"section name\"}]" : ",\"quotes\":[]";
-    $q_rule = $allow_quotes
-        ? "For quotes: include ONLY passages copied WORD-FOR-WORD from the source text above; 0-2 max; if you are not certain it is exactly verbatim, leave quotes empty ([]). Never paraphrase or invent a quote.\n"
-        : "For quotes: return an EMPTY array []. Do NOT produce any quote — there is no source text, so any quote would be invented/paraphrased.\n";
     $mp = "Return ONLY valid JSON (no extra text, no markdown fences):\n"
-        . "{\"seo_title\":\"...\",\"excerpt\":\"...\",\"meta_description\":\"...\",\"categories\":[\"slug1\",\"slug2\"]{$q_schema}}\n"
+        . "{\"seo_title\":\"...\",\"excerpt\":\"...\",\"meta_description\":\"...\",\"categories\":[\"slug1\",\"slug2\"]}\n"
         . "seo_title: a SHORT, clear SEO title — the work's COMMON English name + author (e.g. 'The Wealth of Nations — Adam Smith'), MAX 55 characters. It is the <title> tag, DIFFERENT from the long on-page H1; do NOT copy the full long book title. No site name.\n"
         . "CRITICAL: excerpt and meta_description must each be ONE COMPLETE sentence, fully finished (ending with a period), and MUST NOT exceed 150 characters. Never cut off mid-sentence. If needed, write shorter.\n"
         . "Pick 2-5 category slugs from: {$cats_list}\n"
-        . $q_rule
         . "Book: \"{$book}\" by {$author}\n\n{$snippet}";
 
     // Meta/kategori isteği. max_tokens dar tutulursa JSON yarıda kesilir →
@@ -2012,19 +2005,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // Yıl bulunduysa onu, bulunamadıysa "(–)" işareti olarak '-' kaydet.
     bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_pub_year'=>($pub_year !== '' ? $pub_year : '-')]], $auth);
 
-    bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_disable_quotes'=>'1']], $auth);
-    // ALINTILAR: yalnız kaynak-temelli (gerçek tam metin) modda kaydedilir.
-    // Kaynaksız/claude/bilgi modlarında alıntı = uydurma riski → HİÇ kaydetme,
-    // (yeniden yazımda) eski alıntıları da TEMİZLE ki eski uydurma kalmasın.
-    $clean_quotes = [];
-    if ($allow_quotes) {
-        foreach ($meta['quotes'] ?? [] as $q) {
-            $t = trim($q['text'] ?? ''); $s = trim($q['source'] ?? '');
-            if ($t) $clean_quotes[] = ['text'=>$t,'source'=>$s];
-        }
-    }
-    // Kaynak-temelli + alıntı varsa yaz; aksi halde alanı boşalt (eski kalıntı gitsin).
-    bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_quotes'=>$clean_quotes]], $auth);
+    // AYRI ALINTI KUTUSU KAPATILDI: _tls_quotes her zaman BOŞ yazılır → tema
+    // "KEY PASSAGES / ÖNEMLİ BÖLÜMLER" kutusunu hiç göstermez. (Yeniden yazımda
+    // eski uydurma alıntılar da böylece temizlenir.) Emin olunan alıntı zaten
+    // gövdenin içinde blockquote olarak yer alabilir.
+    bw_wp("$wp_api/$ep/$pid", 'POST', ['meta'=>['_tls_disable_quotes'=>'1', '_tls_quotes'=>[]]], $auth);
 
     // Kapak yükle
     $cover_set = false;
