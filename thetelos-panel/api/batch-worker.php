@@ -340,7 +340,12 @@ function bw_placeholder_html($book, $author) {
     // önce Claude/Haiku ile kısa, DÜRÜST yazar-bağlam notu denenir (ucuz). Ancak o da
     // olmazsa (anahtar yok / model boş) sabit metne düşülür. Böylece "biliyorsa yazsın,
     // bilmiyorsa gerçeği söylesin" kuralı TEK yerden tüm yollara uygulanır.
-    if (function_exists('bw_claude_author_note') && function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
+    // OpenRouter aktifse önce Qwen ile dürüst not (Claude parası yakma); değilse Claude/Haiku.
+    require_once dirname(__DIR__) . '/or-config.php';
+    if (function_exists('tls_or_active') && tls_or_active()) {
+        $note = bw_or_author_note($book, $author, null);
+        if ($note !== '') return $note;
+    } elseif (function_exists('bw_claude_author_note') && function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
         $note = bw_claude_author_note($book, $author, null);
         if ($note !== '') return $note;
     }
@@ -497,6 +502,81 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
 
     $why = 'Claude hata/boş: ' . mb_substr((string) ($r['error'] ?? 'bilinmiyor'), 0, 80);
     return '';
+}
+
+/* ── OpenRouter (Qwen) SON ÇARE: kendi bilgisinden uzun özet ─────────────────
+   OpenRouter aktifse Claude yerine BU kullanılır → yedekte de Claude parası
+   yakılmaz. Model eseri bilmiyorsa "UNKNOWN" der, biz boş döneriz (uydurma yok). */
+function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why = '') {
+    require_once dirname(__DIR__) . '/or-config.php';
+    require_once __DIR__ . '/_proto.php';   // proto_openrouter() burada tanımlı
+    if (!tls_or_active()) { $why = 'OpenRouter kapalı'; return ''; }
+    $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
+    $who   = trim((string) $book) . (trim((string) $author) !== '' ? ' by ' . trim((string) $author) : '');
+    $prompt = "You are a knowledgeable literary scholar writing a comprehensive, FACTUAL overview in English.\n"
+        . "Write ONLY about the specific work if you genuinely know it. NEVER fabricate plot, characters, "
+        . "quotations, chapter lists, or dates. If you do NOT reliably know this specific work, reply with "
+        . "exactly the single word: UNKNOWN\n"
+        . "Otherwise write a rich Markdown article (## / ### headings) of about {$ideal} words covering: a clear "
+        . "overview, the main themes, the structure/argument, key ideas, and the work's significance. English only. "
+        . "Never mention AI, yourself, or the word \"I\". No invented specifics.\n\n"
+        . "Work: " . trim((string) $book) . "\nAuthor: " . trim((string) $author) . "\n\n"
+        . "Write the overview of {$who} now, or reply UNKNOWN if unsure.";
+    $diag = '';
+    $txt = proto_openrouter($prompt, min(8000, (int) round($ideal * 2.2)), $diag);
+    if (is_callable($beat)) $beat();
+    $txt = trim((string) $txt);
+    if ($txt === '')                       { $why = 'OpenRouter boş: ' . $diag; return ''; }
+    if (strncmp($txt, 'UNKNOWN', 7) === 0) { $why = 'Qwen bu eseri kesin bilmiyor (UNKNOWN)'; return ''; }
+    return bw_clean_content($txt);
+}
+
+/* OpenRouter (Qwen) ile kısa, dürüst yazar/bağlam notu (Claude Haiku muadili). */
+function bw_or_author_note($book, $author, $beat = null) {
+    require_once dirname(__DIR__) . '/or-config.php';
+    require_once __DIR__ . '/_proto.php';   // proto_openrouter() burada tanımlı
+    if (!tls_or_active()) return '';
+    $who = trim((string) $book) . (trim((string) $author) !== '' ? ' by ' . trim((string) $author) : '');
+    $prompt = "You are a literary editor writing a short, FACTUAL note in English. The exact edition/title given "
+        . "could NOT be verified against a source. Do NOT fabricate the specific book's plot, argument, characters, "
+        . "quotations, chapter list, or dates. Instead write 2-3 short paragraphs of context you are genuinely "
+        . "confident about: who the author is, the themes and character of their work, and if you can reasonably "
+        . "tell which of the author's works this corresponds to, state it carefully. Be honest and useful; never "
+        . "invent specifics. Use Markdown with 1-2 short ## headings. English only. Never mention AI, yourself, or "
+        . "the word \"I\".\n\nTitle: " . trim((string) $book) . "\nAuthor: " . trim((string) $author) . "\n\n"
+        . "Write the factual note about {$who} — real, confident context only, no invented specifics.";
+    $diag = '';
+    $txt = trim((string) proto_openrouter($prompt, 1400, $diag));
+    if (is_callable($beat)) $beat();
+    if ($txt === '' || strncmp($txt, 'UNKNOWN', 7) === 0) return '';
+    return bw_clean_content($txt);
+}
+
+/* SON ÇARE (uzun özet) DAĞITICI: kullanıcı Claude seçtiyse Claude; aksi halde
+   OpenRouter aktifse Qwen — ve Qwen bilmezse Claude'a DÜŞMEZ (maliyet). */
+function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false, $api_provider = 'deepseek') {
+    require_once dirname(__DIR__) . '/or-config.php';
+    if ($api_provider !== 'anthropic' && tls_or_active()) {
+        $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
+        return bw_or_overview($book, $author, $target_words, $hb, $why);
+    }
+    return tls_anthropic_ready()
+        ? bw_claude_last_resort($book, $author, $batch_file, $idx, $why, $target_words, $use_batch)
+        : (($why = 'Claude anahtarı yok') ? '' : '');
+}
+
+/* KISA NOT DAĞITICI: OpenRouter aktifse Qwen, değilse Claude (Haiku). */
+function bw_author_note_any($book, $author, $beat = null, $api_provider = 'deepseek') {
+    require_once dirname(__DIR__) . '/or-config.php';
+    if ($api_provider !== 'anthropic' && tls_or_active()) return bw_or_author_note($book, $author, $beat);
+    return bw_claude_author_note($book, $author, $beat);
+}
+
+/* Aktif ucuz motorun adı (kullanıcıya doğru mesaj için: "Qwen" / "Claude"). */
+function bw_engine_name($api_provider = 'deepseek') {
+    require_once dirname(__DIR__) . '/or-config.php';
+    if ($api_provider === 'anthropic') return 'Claude';
+    return tls_or_active() ? 'OpenRouter (Qwen)' : 'Claude';
 }
 
 /* ── MEKANİK KUSUR TARAMASI (BEDAVA) ────────────────────────────────────────
@@ -969,18 +1049,17 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // biliyorsa (bilmiyorsa kendi kaçışıyla UNKNOWN) UZUN özet yazsın.
                 // Sağlayıcı ne olursa olsun dene (anthropic dahil).
                 $cl_why0 = '';
-                $cl = tls_anthropic_ready()
-                    ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch) : '';
+                $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch, $api_provider);
                 if ($cl !== '') {
                     $content = $cl;
-                    $gen_method = 'claude';   // Claude'un kendi bilgisinden UZUN özet
+                    $gen_method = 'model';   // modelin kendi bilgisinden UZUN özet
                     $skip_generation = true;   // içerik hazır → normal üretimi atla, yayına geç
-                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'probe bilmiyor → Claude kendi bilgisinden özet', $update_pid, $rewrite ? 'rewrite' : 'create');
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'probe bilmiyor → ' . bw_engine_name($api_provider) . ' kendi bilgisinden özet', $update_pid, $rewrite ? 'rewrite' : 'create');
                 }
                 // SON ÇARE 2: Claude tam özet yazamasa bile DÜRÜST kısa bilgi/bağlam
                 // notu yaz (uydurma yok). Boş "hata" YOK — az da olsa içerik olsun.
                 if (empty($skip_generation)) {
-                    $note = bw_claude_author_note($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); });
+                    $note = bw_author_note_any($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); }, $api_provider);
                     if ($note !== '') {
                         $content = $note;
                         $gen_method = 'bilgi-notu';
@@ -1083,15 +1162,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $ref_on = (($batch['referee'] ?? '1') !== '0');
             $info_hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
 
-            // 1) Claude KENDİ bilgisinden uzun özet (arama/okuma YOK, yalnız hafıza).
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → Claude (kendi bilgisi)', $update_pid, $rewrite ? 'rewrite' : 'create');
+            // 1) Model KENDİ bilgisinden uzun özet (arama/okuma YOK, yalnız hafıza).
+            //    OpenRouter aktifse Qwen; Claude yalnız kullanıcı Anthropic seçtiyse.
+            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → ' . bw_engine_name($api_provider) . ' (kendi bilgisi)', $update_pid, $rewrite ? 'rewrite' : 'create');
             $cl_why = '';
-            $cl = tls_anthropic_ready()
-                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch) : '';
+            $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch, $api_provider);
             if ($cl !== '') {
                 $content = $cl;
-                $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'tam metin yok → Claude kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
+                $gen_method = 'model';   // modelin KENDİ bilgisinden UZUN özet
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'tam metin yok → ' . bw_engine_name($api_provider) . ' kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
             } else {
                 // 2) Claude eseri bilmiyor (UNKNOWN) → Bilgi Metni (kaynaktan).
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($cl_why ?: 'Claude bilmiyor') . ' → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
@@ -1101,7 +1180,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     'provider' => $info_prov, 'referee' => $ref_on, 'on_beat' => $info_hb,
                 ]);
                 // 2b) DeepSeek yetersiz/uydurma bulundu → Claude aynı kaynaklardan yazsın.
-                if (!empty($ir['insufficient']) && tls_anthropic_ready()) {
+                //     OpenRouter aktifken (kullanıcı Claude seçmediyse) Claude'a düşme (maliyet).
+                if (!empty($ir['insufficient']) && tls_anthropic_ready() && !($api_provider !== 'anthropic' && tls_or_active())) {
                     bw_touch_hb($batch_file, $idx);
                     $ir2 = tls_info_generate($search_book, $author, [
                         'provider' => 'anthropic', 'model' => tls_claude_quality_model(), 'referee' => $ref_on, 'on_beat' => $info_hb,
@@ -1153,21 +1233,21 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $pr_reason = $ref_fab
                 ? ('hakem uydurma buldu (' . ($ir['referee']['judge'] ?? '?') . ')' . ($pr_probs ? ': ' . $pr_probs : ''))
                 : 'kaynak yetersiz (bilgi metni)';
-            // SON ÇARE 1: Claude eseri güvenilir biliyorsa uzun özet yazsın.
+            // SON ÇARE 1: Model eseri güvenilir biliyorsa uzun özet yazsın.
+            //             OpenRouter aktifse Qwen; Claude yalnız Anthropic seçiliyse.
             $cl_why2 = '';
-            $cl = tls_anthropic_ready()
-                ? bw_claude_last_resort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words, $use_batch) : '';
-            // SON ÇARE 2: Claude tam özet yazamasa bile DÜRÜST kısa bilgi/bağlam
-            // notu yaz (uydurma yok). Boş "hata" YOK — az da olsa içerik.
+            $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words, $use_batch, $api_provider);
+            // SON ÇARE 2: Uzun özet yazamasa bile DÜRÜST kısa bilgi/bağlam notu
+            // yaz (uydurma yok). Boş "hata" YOK — az da olsa içerik.
             if ($cl === '') {
-                $note2 = bw_claude_author_note($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); });
+                $note2 = bw_author_note_any($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); }, $api_provider);
                 if ($note2 !== '') { $content = $note2; $gen_method = 'bilgi-notu';
                     bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynak yetersiz → kısa bilgi/bağlam notu (uydurma yok)', $update_pid, $rewrite ? 'rewrite' : 'create'); }
             }
             if ($cl !== '') {
                 $content = $cl;
-                $gen_method = 'claude';   // Claude'un KENDİ bilgisinden UZUN özet
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'kaynak yok → Claude kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
+                $gen_method = 'model';   // modelin KENDİ bilgisinden UZUN özet
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'kaynak yok → ' . bw_engine_name($api_provider) . ' kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
             } elseif (trim((string) ($content ?? '')) !== '') {
                 // bilgi-notu yazıldı → aşağıda normal yayınlanır (hata yok).
             } else {
