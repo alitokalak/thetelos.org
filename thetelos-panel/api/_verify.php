@@ -62,7 +62,12 @@ function tv_settings() {
     if (!is_array($j)) $j = [];
     $s = [
         'probe'      => !isset($j['verify_probe'])      || (bool) $j['verify_probe'],
-        'factcheck'  => !isset($j['verify_factcheck'])  || (bool) $j['verify_factcheck'],
+        // OLGU DENETİMİ (LLM factcheck): ARTIK VARSAYILAN KAPALI. Hakem gibi yanlış
+        // pozitif verip DOĞRU yazıları "yanlış/şüpheli" sanarak taslağa düşürüyor +
+        // her yazıda ekstra API parası harcıyordu. Mekanik kapı (üretim reddi, prompt
+        // dökümü, yarım cümle, tekrar bölüm) + yazım prompt'unun uydurma yasağı zaten
+        // korur. Açmak isteyen settings.json'da verify_factcheck=true yapar.
+        'factcheck'  => isset($j['verify_factcheck']) ? (bool) $j['verify_factcheck'] : false,
         'min_conf'   => max(0, min(100, (int) ($j['verify_min_conf'] ?? 55))),
         'gate'       => !isset($j['verify_gate'])       || (bool) $j['verify_gate'],
         // Doğrulama sağlayıcısı: VARSAYILAN DEEPSEEK (ucuz). Claude yalnız açık
