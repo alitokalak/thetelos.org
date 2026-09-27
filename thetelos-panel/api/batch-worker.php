@@ -507,20 +507,80 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
 /* ── OpenRouter (Qwen) SON ÇARE: kendi bilgisinden uzun özet ─────────────────
    OpenRouter aktifse Claude yerine BU kullanılır → yedekte de Claude parası
    yakılmaz. Model eseri bilmiyorsa "UNKNOWN" der, biz boş döneriz (uydurma yok). */
+/* ── KATALOG GERÇEKLERİ (grounding) ─────────────────────────────────────────
+   Open Library'den DOĞRULANMIŞ künye çeker: gerçek başlık, YAZAR LİSTESİ, yıl,
+   konular. Model ezberden "emin ama yanlış" yazmasın diye kaynaksız üretime
+   bu gerçekler dayatılır. Antoloji/derleme ve yanlış-atıf (verilen yazar katalog
+   yazarları arasında yoksa) işaretlenir → model künyeyi düzeltir. */
+function bw_catalog_facts($book, $author) {
+    $q = function ($bk, $au) {
+        $url = 'https://openlibrary.org/search.json?limit=3&fields=title,author_name,first_publish_year,subject'
+             . '&title=' . rawurlencode((string) $bk) . ($au ? '&author=' . rawurlencode((string) $au) : '');
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTPHEADER => ['Accept: application/json', 'User-Agent: thetelos.org/1.0 (verify)']]);
+        $r = curl_exec($ch); $c = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
+        if ($c !== 200 || !$r) return null;
+        $j = json_decode($r, true); return $j['docs'][0] ?? false;
+    };
+    $d = $q($book, $author);
+    $mismatch = false;
+    if ($d === false && $author) { $d = $q($book, ''); if ($d) $mismatch = true; }  // yazarla bulunamadı → yanlış atıf olabilir
+    if (!$d) return ['ok' => false];
+    $authors  = array_slice(array_values(array_filter((array) ($d['author_name'] ?? []))), 0, 6);
+    $subjects = array_slice(array_values(array_filter((array) ($d['subject'] ?? []))), 0, 12);
+    $year     = isset($d['first_publish_year']) ? (int) $d['first_publish_year'] : null;
+    $title    = (string) ($d['title'] ?? '');
+    $blob     = mb_strtolower($title . ' ' . implode(' ', $subjects));
+    $anthology = (bool) preg_match('/antholog|collection\b|collected|reader\b|essays|readings|selected works|omnibus|various authors/i', $blob);
+    if ($author && $authors && !$mismatch) {
+        $hit = false;
+        foreach ($authors as $a) { if (mb_stripos($a, $author) !== false || mb_stripos($author, $a) !== false) { $hit = true; break; } }
+        $mismatch = !$hit;
+    }
+    $facts = "Verified catalog title: {$title}\n"
+        . 'Catalogued author(s)/editor(s): ' . (implode('; ', $authors) ?: '—') . "\n"
+        . ($year ? "First published: {$year}\n" : '')
+        . ($subjects ? 'Subjects: ' . implode(', ', $subjects) . "\n" : '');
+    return ['ok' => true, 'facts' => $facts, 'authors' => $authors, 'subjects' => $subjects,
+            'year' => $year, 'title' => $title, 'anthology' => $anthology, 'mismatch' => $mismatch];
+}
+
 function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why = '') {
     require_once dirname(__DIR__) . '/or-config.php';
     require_once __DIR__ . '/_proto.php';   // proto_openrouter() burada tanımlı
     if (!tls_or_active()) { $why = 'OpenRouter kapalı'; return ''; }
     $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
     $who   = trim((string) $book) . (trim((string) $author) !== '' ? ' by ' . trim((string) $author) : '');
+
+    // GROUNDING: doğrulanmış katalog künyesini çek ve prompt'a DAYAT.
+    $cf = bw_catalog_facts($book, $author);
+    if (is_callable($beat)) $beat();
+    $ground = ''; $warn = '';
+    if (!empty($cf['ok'])) {
+        $ground = "\n\n=== VERIFIED CATALOG FACTS (from Open Library) ===\n" . $cf['facts']
+            . "You MUST respect these facts. If the author I gave you is NOT among the catalogued "
+            . "author(s)/editor(s), the attribution is likely wrong — trust the catalog, not my label.\n"
+            . "=== END CATALOG FACTS ===";
+        if (!empty($cf['anthology'])) {
+            $warn = "\nIMPORTANT: This is an ANTHOLOGY / edited collection / multi-author volume. Do NOT present it "
+                . "as a single-author work. Describe it as a collection: its editor/publisher and that it gathers "
+                . "texts by MANY authors. Do not invent a single-author argument or plot.";
+        } elseif (!empty($cf['mismatch'])) {
+            $warn = "\nIMPORTANT: The author label I gave may be WRONG for this title (it does not match the catalogue). "
+                . "Write about the ACTUAL work as catalogued; if you cannot reconcile the title with a work you truly "
+                . "know, reply UNKNOWN rather than guessing.";
+        }
+    }
+
     $prompt = "You are a knowledgeable literary scholar writing a comprehensive, FACTUAL overview in English.\n"
         . "Write ONLY about the specific work if you genuinely know it. NEVER fabricate plot, characters, "
-        . "quotations, chapter lists, or dates. If you do NOT reliably know this specific work, reply with "
-        . "exactly the single word: UNKNOWN\n"
+        . "quotations, chapter lists, subtitles, structure, or dates. If you do NOT reliably know this specific "
+        . "work (or the facts below conflict with what you remember), reply with exactly the single word: UNKNOWN\n"
         . "Otherwise write a rich Markdown article (## / ### headings) of about {$ideal} words covering: a clear "
         . "overview, the main themes, the structure/argument, key ideas, and the work's significance. English only. "
-        . "Never mention AI, yourself, or the word \"I\". No invented specifics.\n\n"
-        . "Work: " . trim((string) $book) . "\nAuthor: " . trim((string) $author) . "\n\n"
+        . "Never mention AI, yourself, or the word \"I\". No invented specifics." . $warn . $ground . "\n\n"
+        . "Work: " . trim((string) $book) . "\nAuthor (may be wrong): " . trim((string) $author) . "\n\n"
         . "Write the overview of {$who} now, or reply UNKNOWN if unsure.";
     $diag = '';
     $txt = proto_openrouter($prompt, min(8000, (int) round($ideal * 2.2)), $diag);
@@ -528,6 +588,21 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
     $txt = trim((string) $txt);
     if ($txt === '')                       { $why = 'OpenRouter boş: ' . $diag; return ''; }
     if (strncmp($txt, 'UNKNOWN', 7) === 0) { $why = 'Qwen bu eseri kesin bilmiyor (UNKNOWN)'; return ''; }
+
+    // UZUNLUK: model kısa kestiyse (hedefin yarısından az) BİR kez devam ettir —
+    // yalnız eseri bildiği için (UNKNOWN değil) uydurma riski düşük. Yeni bilgi
+    // uydurmadan, mevcut metni sürdürüp derinleştirmesi istenir.
+    $wc = str_word_count(strip_tags(bw_md2html($txt)));
+    if ($wc < (int) ($ideal * 0.5)) {
+        $cont_prompt = "Continue the following English Markdown overview of {$who}. Write MORE depth on themes, "
+            . "structure and significance to reach about {$ideal} words in total. Keep the same factual, non-"
+            . "fabricating style; do NOT repeat what is already written; do NOT invent quotations or specifics. "
+            . "Output ONLY the continuation Markdown." . $ground . "\n\n=== TEXT SO FAR ===\n" . mb_substr($txt, -3000);
+        $d2 = '';
+        $more = trim((string) proto_openrouter($cont_prompt, min(8000, (int) round($ideal * 1.6)), $d2));
+        if (is_callable($beat)) $beat();
+        if ($more !== '' && strncmp($more, 'UNKNOWN', 7) !== 0) $txt .= "\n\n" . $more;
+    }
     return bw_clean_content($txt);
 }
 
