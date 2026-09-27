@@ -104,9 +104,18 @@ if (!isset($_GET['mode'])) {
         <button class="api-btn" data-provider="gemini">
           <span class="api-dot gemini"></span> Gemini
         </button>
-        <button class="api-btn active" data-provider="deepseek">
-          <span class="api-dot deepseek"></span> <?= tls_or_active() ? 'OpenRouter' : 'DeepSeek' ?>
+        <button class="api-btn<?= tls_or_active() ? '' : ' active' ?>" data-provider="deepseek">
+          <span class="api-dot deepseek"></span> DeepSeek
         </button>
+        <?php if (tls_or_active()): ?>
+        <button class="api-btn active" data-provider="openrouter" data-model="<?= htmlspecialchars(tls_or_model()) ?>">
+          <span class="api-dot" style="background:#7c5cff"></span> OpenRouter <span style="font-size:10px;opacity:.65"><?= htmlspecialchars(tls_or_model()) ?></span>
+        </button>
+        <?php else: ?>
+        <button class="api-btn" data-provider="openrouter" data-model="" title="Önce Ayarlar → OpenRouter'dan anahtar ekle" onclick="return (window.__orWarn&&window.__orWarn())">
+          <span class="api-dot" style="background:#7c5cff;opacity:.5"></span> OpenRouter <span style="font-size:10px;opacity:.65">Ayarlar'dan aç</span>
+        </button>
+        <?php endif; ?>
       </div>
       <div class="api-sub-group" id="api-sub-anthropic" style="display:none">
         <button class="api-sub-btn active" data-model="claude-haiku-4-5-20251001" data-label="haiku">Haiku <span class="api-sub-hint">Hızlı</span></button>
@@ -114,6 +123,10 @@ if (!isset($_GET['mode'])) {
       </div>
       <span class="api-active-label" id="api-active-label"><?= tls_or_active() ? htmlspecialchars(tls_or_model()) : (defined('DEEPSEEK_MODEL') ? htmlspecialchars(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL) : 'deepseek') ?></span>
     </div>
+    <script>
+      window.TLS_OR = { active: <?= tls_or_active() ? 'true' : 'false' ?>, model: <?= json_encode(tls_or_model()) ?> };
+      window.__orWarn = function(){ alert("OpenRouter/Qwen kapalı. Önce Ayarlar → OpenRouter kartından anahtarı ekleyip 'ana motor yap' kutusunu işaretle ve kaydet."); return false; };
+    </script>
 
     <div id="gen-notif"  class="notif"></div>
     <div id="bulk-notif" class="notif"></div>

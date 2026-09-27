@@ -1354,13 +1354,30 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 if (!empty($gres['ok'])) { $piece = (string) $gres['text']; $cerr = ''; }
                 else { $cerr = 'Gemini: ' . ($gres['error'] ?? 'boş yanıt'); $raw_tail = $cerr; }
             } else {
-            $ch = curl_init(DEEPSEEK_API_URL);
-            curl_setopt_array($ch, [
-                CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
-                CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-                CURLOPT_POSTFIELDS => json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>16000,'stream'=>true,'messages'=>[['role'=>'user','content'=>$pr]]]),
-                CURLOPT_WRITEFUNCTION => $stream_cb,
-            ]);
+            /* ── UCUZ MOTOR (akışlı) ──────────────────────────────────────
+               OpenRouter (Qwen vb.) panelden açıksa ana metni ONA yazdır —
+               sunucu DeepSeek'e doğrudan bağlanamadığı için asıl yol budur.
+               Aksi halde doğrudan DeepSeek (engel kalkınca otomatik). Her iki
+               uç da OpenAI-uyumlu akış (choices[].delta.content) döndürür. */
+            require_once dirname(__DIR__) . '/or-config.php';
+            if (tls_or_active()) {
+                $ch = curl_init('https://openrouter.ai/api/v1/chat/completions');
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true, CURLOPT_TIMEOUT => 280, CURLOPT_CONNECTTIMEOUT => 20,
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.tls_or_key(),
+                        'HTTP-Referer: https://thetelos.org','X-Title: The Telos'],
+                    CURLOPT_POSTFIELDS => json_encode(['model'=>tls_or_model(),'max_tokens'=>16000,'stream'=>true,'messages'=>[['role'=>'user','content'=>$pr]]], JSON_UNESCAPED_UNICODE),
+                    CURLOPT_WRITEFUNCTION => $stream_cb,
+                ]);
+            } else {
+                $ch = curl_init(DEEPSEEK_API_URL);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true, CURLOPT_TIMEOUT => 280,
+                    CURLOPT_HTTPHEADER => ['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
+                    CURLOPT_POSTFIELDS => json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>16000,'stream'=>true,'messages'=>[['role'=>'user','content'=>$pr]]]),
+                    CURLOPT_WRITEFUNCTION => $stream_cb,
+                ]);
+            }
             curl_exec($ch); $cerr = curl_error($ch); curl_close($ch);
             }
 

@@ -417,22 +417,33 @@ if ($api_provider === 'gemini') {
     exit;
 }
 
-$ch = curl_init(DEEPSEEK_API_URL);
+/* Ucuz motor: OpenRouter (Qwen vb.) panelden açıksa ana metni ONA yazdır
+   (sunucu DeepSeek'e doğrudan bağlanamıyor); aksi halde doğrudan DeepSeek. */
+require_once dirname(__DIR__) . '/or-config.php';
+if (tls_or_active()) {
+    $ep      = 'https://openrouter.ai/api/v1/chat/completions';
+    $hdr     = ['Content-Type: application/json', 'Authorization: Bearer ' . tls_or_key(),
+                'HTTP-Referer: https://thetelos.org', 'X-Title: The Telos'];
+    $ds_model = tls_or_model();
+} else {
+    $ep      = DEEPSEEK_API_URL;
+    $hdr     = ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY];
+    $ds_model = (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL);
+}
+$ch = curl_init($ep);
 curl_setopt_array($ch, [
     CURLOPT_POST          => true,
     CURLOPT_TIMEOUT       => 280,
+    CURLOPT_CONNECTTIMEOUT   => 20,
     CURLOPT_NOPROGRESS       => false,
     CURLOPT_XFERINFOFUNCTION => $beat,
-    CURLOPT_HTTPHEADER    => [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . DEEPSEEK_KEY,
-    ],
+    CURLOPT_HTTPHEADER    => $hdr,
     CURLOPT_POSTFIELDS    => json_encode([
-        'model'       => (in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
+        'model'       => $ds_model,
         'max_tokens'  => $max_tokens,
         'stream'      => true,
         'messages'    => [['role'=>'user','content'=>$prompt]],
-    ]),
+    ], JSON_UNESCAPED_UNICODE),
     CURLOPT_WRITEFUNCTION => $write_fn,
 ]);
 

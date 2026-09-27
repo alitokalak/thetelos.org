@@ -321,14 +321,17 @@ let state = { content:'', categories:[], selectedCover:'', quotes:[] };
 let pollTimer = null;
 
 /* ── API Provider Toggle ─────────────────────────── */
-let activeProvider = 'deepseek';
+// Başlangıç sağlayıcısını sunucunun işaretlediği düğmeden al (OpenRouter açıksa
+// varsayılan o olur), yoksa DeepSeek.
+let activeProvider = document.querySelector('.api-btn.active')?.dataset.provider || 'deepseek';
 let activeModel    = 'claude-haiku-4-5-20251001';
 
 const subGroup = document.getElementById('api-sub-anthropic');
 
 function updateActiveLabel() {
   let label;
-  if (activeProvider === 'deepseek')      label = 'deepseek-chat';
+  if (activeProvider === 'openrouter')    label = (window.TLS_OR && window.TLS_OR.model) || 'qwen';
+  else if (activeProvider === 'deepseek') label = 'deepseek-chat';
   else if (activeProvider === 'gemini')   label = 'gemini-2.5-flash';
   else label = document.querySelector('.api-sub-btn.active')?.dataset.label || 'haiku';
   document.getElementById('api-active-label').textContent = label;
