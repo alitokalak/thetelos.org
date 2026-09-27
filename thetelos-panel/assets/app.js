@@ -511,6 +511,7 @@ async function runSingleSource(book, author) {
       source_url:  (document.getElementById('single_source_url')?.value || '').trim(),
       source_text: (document.getElementById('single_source_text')?.value || ''),
       workers: '1', api_provider: activeProvider,
+      single: '1',   // TEKLİ üretim: kaynak/Qwen bulamazsa Claude'a DEVRETME (kullanıcı kuralı)
     });
   } catch (e) { res = { ok: false, error: e.message }; }
   if (!res || !res.ok) {

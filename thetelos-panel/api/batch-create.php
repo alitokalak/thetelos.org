@@ -107,6 +107,9 @@ $batch = [
     // sanıp gerçek kitapları blokluyordu (yanlış pozitif). Uydurma koruması zaten
     // yazım prompt'unda + mekanik kapıda var. Açmak isteyen referee=1 gönderir.
     'referee'      => (($_POST['referee'] ?? '0') === '1') ? '1' : '0',
+    // TEKLİ kitap üretimi: kaynak yok + model bilmiyorsa Claude'a DEVRETME (kullanıcı
+    // kuralı). Yalnız toplu üretimde son çare Claude devreye girebilir.
+    'single'       => (($_POST['single'] ?? '') === '1') ? '1' : '',
     // Kaynak-temelli özet (source) uzunluğu: kisa | standart | kapsamli (geriye dönük)
     'length'       => in_array($_POST['length'] ?? 'standart', ['kisa', 'standart', 'kapsamli'], true) ? $_POST['length'] : 'standart',
     // Serbest hedef kelime (kaydırıcı) — verilirse 'length' ön-ayarını geçersiz kılar.

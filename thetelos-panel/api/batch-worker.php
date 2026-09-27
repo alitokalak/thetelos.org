@@ -554,21 +554,35 @@ function bw_or_author_note($book, $author, $beat = null) {
 
 /* SON ÇARE (uzun özet) DAĞITICI: kullanıcı Claude seçtiyse Claude; aksi halde
    OpenRouter aktifse Qwen — ve Qwen bilmezse Claude'a DÜŞMEZ (maliyet). */
-function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false, $api_provider = 'deepseek') {
+function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false, $api_provider = 'deepseek', $is_single = false) {
     require_once dirname(__DIR__) . '/or-config.php';
+    // 1) Ana ucuz motor (OpenRouter/Qwen) KENDİ bilgisinden — açıksa ve kullanıcı
+    //    Claude seçmediyse. Model eseri kesin biliyorsa yazar; bilmiyorsa UNKNOWN → ''.
     if ($api_provider !== 'anthropic' && tls_or_active()) {
         $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
-        return bw_or_overview($book, $author, $target_words, $hb, $why);
+        $t = bw_or_overview($book, $author, $target_words, $hb, $why);
+        if ($t !== '') return $t;
+        // Qwen bilmiyor → TEKLİ üretimde Claude'a DEVRETME (kullanıcı kuralı).
+        if ($is_single) { $why = $why ?: 'tekli: model bilmiyor, Claude devri kapalı'; return ''; }
+        // Toplu: son çare Claude (nadir — yalnız Qwen UNKNOWN dönünce).
     }
+    // TEKLİ + kullanıcı Claude seçmemiş → Claude'a hiç gitme.
+    if ($is_single && $api_provider !== 'anthropic') { $why = $why ?: 'tekli: Claude devri kapalı'; return ''; }
     return tls_anthropic_ready()
         ? bw_claude_last_resort($book, $author, $batch_file, $idx, $why, $target_words, $use_batch)
-        : (($why = 'Claude anahtarı yok') ? '' : '');
+        : (($why = $why ?: 'Claude anahtarı yok') ? '' : '');
 }
 
-/* KISA NOT DAĞITICI: OpenRouter aktifse Qwen, değilse Claude (Haiku). */
-function bw_author_note_any($book, $author, $beat = null, $api_provider = 'deepseek') {
+/* KISA NOT DAĞITICI: OpenRouter aktifse Qwen; değilse Claude (Haiku).
+   TEKLİ + Claude seçilmemişse → Claude'a devretme (kullanıcı kuralı). */
+function bw_author_note_any($book, $author, $beat = null, $api_provider = 'deepseek', $is_single = false) {
     require_once dirname(__DIR__) . '/or-config.php';
-    if ($api_provider !== 'anthropic' && tls_or_active()) return bw_or_author_note($book, $author, $beat);
+    if ($api_provider !== 'anthropic' && tls_or_active()) {
+        $n = bw_or_author_note($book, $author, $beat);
+        if ($n !== '') return $n;
+        if ($is_single) return '';
+    }
+    if ($is_single && $api_provider !== 'anthropic') return '';
     return bw_claude_author_note($book, $author, $beat);
 }
 
@@ -752,6 +766,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     }
     $post_status  = $batch['post_status'];
     $api_provider = $batch['api_provider'] ?? 'deepseek';
+    // TEKLİ üretim: kaynak yok + model bilmiyorsa Claude'a otomatik DEVRETME
+    // (kullanıcı kuralı). Kullanıcı açıkça "Anthropic" seçtiyse o ayrı — o zaman
+    // Claude zaten kullanıcının tercihidir. Yalnız otomatik devir tekli'de kapalı.
+    $is_single    = (($batch['single'] ?? '') === '1');
     // "Anthropic Batch" (yavaş/ucuz, −%50): tüm mevcut Anthropic dalları AYNEN
     // çalışsın diye sağlayıcıyı 'anthropic'e indirger; yalnız $use_batch bayrağı
     // Claude çağrılarına geçer → tls_claude batch (submit+bekle) yoluna girer.
@@ -1049,7 +1067,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // biliyorsa (bilmiyorsa kendi kaçışıyla UNKNOWN) UZUN özet yazsın.
                 // Sağlayıcı ne olursa olsun dene (anthropic dahil).
                 $cl_why0 = '';
-                $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch, $api_provider);
+                $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch, $api_provider, $is_single);
                 if ($cl !== '') {
                     $content = $cl;
                     $gen_method = 'model';   // modelin kendi bilgisinden UZUN özet
@@ -1059,7 +1077,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // SON ÇARE 2: Claude tam özet yazamasa bile DÜRÜST kısa bilgi/bağlam
                 // notu yaz (uydurma yok). Boş "hata" YOK — az da olsa içerik olsun.
                 if (empty($skip_generation)) {
-                    $note = bw_author_note_any($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); }, $api_provider);
+                    $note = bw_author_note_any($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); }, $api_provider, $is_single);
                     if ($note !== '') {
                         $content = $note;
                         $gen_method = 'bilgi-notu';
@@ -1166,7 +1184,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             //    OpenRouter aktifse Qwen; Claude yalnız kullanıcı Anthropic seçtiyse.
             bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → ' . bw_engine_name($api_provider) . ' (kendi bilgisi)', $update_pid, $rewrite ? 'rewrite' : 'create');
             $cl_why = '';
-            $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch, $api_provider);
+            $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch, $api_provider, $is_single);
             if ($cl !== '') {
                 $content = $cl;
                 $gen_method = 'model';   // modelin KENDİ bilgisinden UZUN özet
@@ -1181,7 +1199,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 ]);
                 // 2b) DeepSeek yetersiz/uydurma bulundu → Claude aynı kaynaklardan yazsın.
                 //     OpenRouter aktifken (kullanıcı Claude seçmediyse) Claude'a düşme (maliyet).
-                if (!empty($ir['insufficient']) && tls_anthropic_ready() && !($api_provider !== 'anthropic' && tls_or_active())) {
+                if (!empty($ir['insufficient']) && tls_anthropic_ready() && !($api_provider !== 'anthropic' && tls_or_active()) && !($is_single && $api_provider !== 'anthropic')) {
                     bw_touch_hb($batch_file, $idx);
                     $ir2 = tls_info_generate($search_book, $author, [
                         'provider' => 'anthropic', 'model' => tls_claude_quality_model(), 'referee' => $ref_on, 'on_beat' => $info_hb,
@@ -1236,11 +1254,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             // SON ÇARE 1: Model eseri güvenilir biliyorsa uzun özet yazsın.
             //             OpenRouter aktifse Qwen; Claude yalnız Anthropic seçiliyse.
             $cl_why2 = '';
-            $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words, $use_batch, $api_provider);
+            $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why2, $cl_target_words, $use_batch, $api_provider, $is_single);
             // SON ÇARE 2: Uzun özet yazamasa bile DÜRÜST kısa bilgi/bağlam notu
             // yaz (uydurma yok). Boş "hata" YOK — az da olsa içerik.
             if ($cl === '') {
-                $note2 = bw_author_note_any($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); }, $api_provider);
+                $note2 = bw_author_note_any($book, $author, function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); }, $api_provider, $is_single);
                 if ($note2 !== '') { $content = $note2; $gen_method = 'bilgi-notu';
                     bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynak yetersiz → kısa bilgi/bağlam notu (uydurma yok)', $update_pid, $rewrite ? 'rewrite' : 'create'); }
             }
