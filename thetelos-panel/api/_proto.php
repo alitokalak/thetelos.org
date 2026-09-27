@@ -1125,12 +1125,12 @@ function proto_generate($book, $author, $opts = []) {
             'trace' => $src['source'] . " {$bw}w → " . count($chunks) . ' parça/' . count($notes) . " not → özet {$fw}w ({$model_label})"];
 }
 
-/* ── OpenRouter anahtarı (DeepSeek'i erişilebilir kapıdan kullanmak için) ── */
+/* ── OpenRouter anahtarı ──────────────────────────────────────────────────
+   Öncelik: panelden kaydedilen ayar (or-config.php → openrouter.secret.php),
+   yoksa config.php sabitleri. Panelden Qwen açılınca toplu özetler Qwen'e gider. */
 function proto_openrouter_key() {
-    foreach (['OPENROUTER_KEY', 'OPENROUTER_API_KEY', 'OPENROUTER'] as $c) {
-        if (defined($c) && constant($c)) return (string) constant($c);
-    }
-    return '';
+    require_once dirname(__DIR__) . '/or-config.php';
+    return tls_or_key();
 }
 
 /* ── OpenRouter üzerinden DeepSeek (bloklu, OpenAI-uyumlu) ──────────────────
@@ -1139,7 +1139,8 @@ function proto_openrouter_key() {
    deepseek/deepseek-chat — DeepSeek'in ucuz V3'ü. */
 function proto_openrouter($prompt, $max_tokens, &$diag = null) {
     $key = proto_openrouter_key();
-    $model = (defined('OPENROUTER_MODEL') && OPENROUTER_MODEL) ? OPENROUTER_MODEL : 'deepseek/deepseek-chat';
+    require_once dirname(__DIR__) . '/or-config.php';
+    $model = tls_or_model();
     $body = json_encode(['model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)),
         'temperature' => 0.3, 'messages' => [['role' => 'user', 'content' => $prompt]]], JSON_UNESCAPED_UNICODE);
     for ($try = 1; $try <= 3; $try++) {
@@ -1221,25 +1222,46 @@ function proto_deepseek_direct($prompt, $max_tokens, &$diag = null, $ping = null
    kalanları çağıran taraf sıralı proto_ds (Gemini yedeği) ile telafi eder.
    $beat düzenli çağrılır → worker "ölü" sanılmaz. */
 function proto_deepseek_multi($prompts, $max_tokens, $beat = null, $conc = 8) {
-    if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY || !$prompts) return [];
-    $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
-           ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
-    $mkbody = function ($prompt) use ($model, $max_tokens) {
-        return json_encode([
-            'model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)), 'temperature' => 0.3,
-            'thinking' => ['type' => 'disabled'],
-            'messages' => [['role' => 'user', 'content' => $prompt]],
-        ], JSON_UNESCAPED_UNICODE);
-    };
+    if (!$prompts) return [];
+    // OpenRouter (Qwen vb.) devredeyse paralel çağrıları ONA gönder — DeepSeek'e
+    // doğrudan bağlanılamayan sunucuda hız burada kazanılır (sıralıya düşmeden).
+    require_once dirname(__DIR__) . '/or-config.php';
+    $use_or = tls_or_active();
+    if (!$use_or && (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY)) return [];
+
+    if ($use_or) {
+        $endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+        $model    = tls_or_model();
+        $headers  = ['Content-Type: application/json', 'Authorization: Bearer ' . tls_or_key(),
+                     'HTTP-Referer: https://thetelos.org', 'X-Title: The Telos'];
+        $mkbody = function ($prompt) use ($model, $max_tokens) {
+            return json_encode([
+                'model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)), 'temperature' => 0.3,
+                'messages' => [['role' => 'user', 'content' => $prompt]],
+            ], JSON_UNESCAPED_UNICODE);
+        };
+    } else {
+        $endpoint = DEEPSEEK_API_URL;
+        $model = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
+               ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
+        $headers = ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY];
+        $mkbody = function ($prompt) use ($model, $max_tokens) {
+            return json_encode([
+                'model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)), 'temperature' => 0.3,
+                'thinking' => ['type' => 'disabled'],
+                'messages' => [['role' => 'user', 'content' => $prompt]],
+            ], JSON_UNESCAPED_UNICODE);
+        };
+    }
     $hid = fn($ch) => is_object($ch) ? spl_object_id($ch) : (int) $ch;
     $keys = array_keys($prompts); $n = count($keys); $pos = 0;
     $out = []; $map = [];
     $mh = curl_multi_init();
-    $add = function ($k) use ($mh, $mkbody, $prompts, &$map, $hid) {
-        $ch = curl_init(DEEPSEEK_API_URL);
+    $add = function ($k) use ($mh, $mkbody, $prompts, &$map, $hid, $endpoint, $headers) {
+        $ch = curl_init($endpoint);
         curl_setopt_array($ch, [
             CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 12, CURLOPT_TIMEOUT => 280,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_POSTFIELDS => $mkbody($prompts[$k]),
         ]);
         curl_multi_add_handle($mh, $ch); $map[$hid($ch)] = $k;

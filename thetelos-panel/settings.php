@@ -143,6 +143,33 @@ if (file_exists(PROMPTS_FILE)) {
       </p>
     </div>
 
+    <!-- OpenRouter / Qwen -->
+    <div class="card">
+      <div class="card-title">🧠 OpenRouter — Ana İçerik Modeli (Qwen vb.)</div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.7;margin-bottom:14px;max-width:820px">
+        Toplu kitap özetlerini <b>OpenRouter</b> üzerinden istediğin modele yönlendir.
+        Anahtarı <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--gold)">openrouter.ai/keys</a>'ten al.
+        Açık olduğunda, kaynak-temelli/kaynaksız özet motoru <b>önce bu modeli</b> dener; boş dönerse
+        eski motora (DeepSeek/Gemini) düşer. Anahtar <b>sunucuda saklanır, repoya girmez</b>.
+        Model kimliğini olduğu gibi yapıştır (ör. <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen-2.5-72b-instruct</code>).
+      </p>
+      <div style="display:grid;gap:10px;max-width:640px">
+        <label style="font-size:12px;color:var(--muted)">API Key (sk-or-v1-…)
+          <input type="password" id="or-key" placeholder="••••••••" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
+        <label style="font-size:12px;color:var(--muted)">Model ID
+          <input type="text" id="or-model" placeholder="qwen/qwen-2.5-72b-instruct" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
+        <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;margin-top:2px">
+          <input type="checkbox" id="or-enabled"> OpenRouter'ı ana motor yap (aç/kapat)
+        </label>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-primary" id="or-save">💾 Kaydet</button>
+        <button class="btn btn-ghost btn-sm" id="or-test">🔌 Modeli Test Et</button>
+        <span id="or-result" style="font-size:13px"></span>
+      </div>
+      <div id="or-current" style="font-size:12px;color:var(--muted);margin-top:10px"></div>
+    </div>
+
     <!-- Twitter / X -->
     <div class="card">
       <div class="card-title">🐦 X (Twitter) Otomatik Paylaşım</div>
@@ -340,6 +367,62 @@ document.getElementById('tw-test')?.addEventListener('click', async () => {
     else { out.style.color='var(--danger)'; out.textContent='✗ Önce token gir ve kaydet.'; }
   } catch(e){ out.style.color='var(--danger)'; out.textContent='✗ '+e.message; }
   twStatus();
+});
+
+/* ── OpenRouter / Qwen ───────────────────────────────────────────────── */
+async function orStatus(){
+  const cur = document.getElementById('or-current');
+  try {
+    const r = await fetch('api/openrouter-save.php?action=status').then(x=>x.json());
+    if (!r.ok) { cur.textContent=''; return; }
+    document.getElementById('or-model').value = r.model || '';
+    document.getElementById('or-enabled').checked = !!r.enabled;
+    let s = '';
+    if (r.active) {
+      const src = r.active_source === 'panel' ? 'panelden' : (r.active_source === 'config' ? 'config.php' : '');
+      s = '✓ Devrede: ' + r.active_model + (src ? ' (' + src + ')' : '');
+      cur.style.color = 'var(--green)';
+    } else if (r.has_key) {
+      s = '⏸ Anahtar kayıtlı ('+r.key_mask+') ama kapalı — açmak için kutuyu işaretle ve kaydet.';
+      cur.style.color = 'var(--warn)';
+    } else {
+      s = 'Henüz anahtar girilmedi.';
+      cur.style.color = 'var(--muted)';
+    }
+    if (!r.writable) s += ' ⚠ Klasör yazılamıyor (chmod 755 gerekli).';
+    cur.textContent = s;
+  } catch(e){ cur.textContent=''; }
+}
+orStatus();
+
+document.getElementById('or-save')?.addEventListener('click', async () => {
+  const out = document.getElementById('or-result');
+  const fd = new FormData();
+  fd.append('action','save');
+  fd.append('key', document.getElementById('or-key').value.trim());
+  fd.append('model', document.getElementById('or-model').value.trim());
+  if (document.getElementById('or-enabled').checked) fd.append('enabled','1');
+  out.style.color='var(--muted)'; out.textContent='Kaydediliyor...';
+  try {
+    const res = await fetch('api/openrouter-save.php', {method:'POST', body:fd}).then(r=>r.json());
+    if (res.ok) { out.style.color='var(--green)'; out.textContent='✓ Kaydedildi'; document.getElementById('or-key').value=''; orStatus(); }
+    else { out.style.color='var(--danger)'; out.textContent='✗ '+res.error; }
+  } catch(e){ out.style.color='var(--danger)'; out.textContent='✗ '+e.message; }
+});
+
+document.getElementById('or-test')?.addEventListener('click', async () => {
+  const out = document.getElementById('or-result');
+  const fd = new FormData();
+  fd.append('action','test');
+  fd.append('key', document.getElementById('or-key').value.trim());   // boşsa kayıtlı kullanılır
+  fd.append('model', document.getElementById('or-model').value.trim());
+  out.style.color='var(--muted)'; out.textContent='Test ediliyor...';
+  try {
+    const r = await fetch('api/openrouter-save.php', {method:'POST', body:fd}).then(x=>x.json());
+    const t = r.result || {};
+    if (r.ok && t.ok) { out.style.color='var(--green)'; out.textContent='✓ Model yanıt verdi — "'+(t.reply||'OK')+'"'; }
+    else { out.style.color='var(--danger)'; out.textContent='✗ '+(t.error||'Başarısız')+(t.http?(' (HTTP '+t.http+')'):''); }
+  } catch(e){ out.style.color='var(--danger)'; out.textContent='✗ '+e.message; }
 });
 </script>
 
