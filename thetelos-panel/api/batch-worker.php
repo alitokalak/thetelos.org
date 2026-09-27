@@ -573,15 +573,26 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
         }
     }
 
-    $prompt = "You are a knowledgeable literary scholar writing a comprehensive, FACTUAL overview in English.\n"
-        . "Write ONLY about the specific work if you genuinely know it. NEVER fabricate plot, characters, "
-        . "quotations, chapter lists, subtitles, structure, or dates. If you do NOT reliably know this specific "
-        . "work (or the facts below conflict with what you remember), reply with exactly the single word: UNKNOWN\n"
-        . "Otherwise write a rich Markdown article (## / ### headings) of about {$ideal} words covering: a clear "
-        . "overview, the main themes, the structure/argument, key ideas, and the work's significance. English only. "
-        . "Never mention AI, yourself, or the word \"I\". No invented specifics." . $warn . $ground . "\n\n"
+    $prompt = "You are a knowledgeable literary scholar writing a FACTUAL overview of a SPECIFIC BOOK in English.\n\n"
+        . "CRITICAL RULES (follow exactly):\n"
+        . "1. Summarize the ACTUAL CONTENTS OF THIS BOOK — what this specific work itself says and covers. Do NOT "
+        . "write the author's life story. NEVER substitute the author's general biography for the book's contents.\n"
+        . "2. Do NOT include biographical events (e.g. later conversions, death, other works, events after the book's "
+        . "own time span) UNLESS this book itself actually covers them. A memoir/diary/letters covers only its own period.\n"
+        . "3. Do NOT invent a subtitle, chapter/section names, a structure, or the book's time span. If you don't know "
+        . "the real structure, write flowing prose WITHOUT fabricated headings.\n"
+        . "4. Do NOT state any publication, composition, or historical date UNLESS it appears in the VERIFIED CATALOG "
+        . "FACTS below. Never contradict those facts.\n"
+        . "5. NEVER fabricate plot, characters, quotations, or specifics.\n"
+        . "6. If you are not genuinely sure what THIS book actually contains (its real scope and content) — as opposed "
+        . "to who the author is — reply with exactly the single word: UNKNOWN. A short honest note is far better than a "
+        . "confident but wrong summary.\n\n"
+        . "If you DO know the book: write a Markdown article (## / ### headings only where you know real structure) that "
+        . "is as thorough as your GENUINE knowledge of THIS BOOK supports, up to about {$ideal} words. Do NOT pad with "
+        . "biography or invention to reach a length. English only. Never mention AI, yourself, or the word \"I\"."
+        . $warn . $ground . "\n\n"
         . "Work: " . trim((string) $book) . "\nAuthor (may be wrong): " . trim((string) $author) . "\n\n"
-        . "Write the overview of {$who} now, or reply UNKNOWN if unsure.";
+        . "Write the overview of the BOOK {$who} now, or reply UNKNOWN if you are not sure what the book itself contains.";
     $diag = '';
     $txt = proto_openrouter($prompt, min(8000, (int) round($ideal * 2.2)), $diag);
     if (is_callable($beat)) $beat();
@@ -594,10 +605,11 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
     // uydurmadan, mevcut metni sürdürüp derinleştirmesi istenir.
     $wc = str_word_count(strip_tags(bw_md2html($txt)));
     if ($wc < (int) ($ideal * 0.5)) {
-        $cont_prompt = "Continue the following English Markdown overview of {$who}. Write MORE depth on themes, "
-            . "structure and significance to reach about {$ideal} words in total. Keep the same factual, non-"
-            . "fabricating style; do NOT repeat what is already written; do NOT invent quotations or specifics. "
-            . "Output ONLY the continuation Markdown." . $ground . "\n\n=== TEXT SO FAR ===\n" . mb_substr($txt, -3000);
+        $cont_prompt = "Continue the following English Markdown overview of the BOOK {$who}. Add more depth ONLY on what "
+            . "THIS BOOK actually contains (its themes, ideas, significance). Do NOT add the author's biography or events "
+            . "outside the book's own scope. Do NOT invent structure, dates, quotations, or specifics. Do NOT repeat what "
+            . "is already written. If you have nothing further you genuinely know, output nothing. Output ONLY the "
+            . "continuation Markdown." . $ground . "\n\n=== TEXT SO FAR ===\n" . mb_substr($txt, -3000);
         $d2 = '';
         $more = trim((string) proto_openrouter($cont_prompt, min(8000, (int) round($ideal * 1.6)), $d2));
         if (is_callable($beat)) $beat();
