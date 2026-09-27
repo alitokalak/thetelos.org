@@ -447,8 +447,13 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
 
                 <!-- ── Key Quotes ── -->
                 <?php
-                $quotes = function_exists('tls_get_quotes') ? tls_get_quotes($post_id) : [];
-                if ( ! empty($quotes) ) :
+                // KAPATILDI (kullanıcı isteği): ayrı "Key Passages" kutusu artık HİÇ
+                // gösterilmez. Otomatik üretimde bu kutu, özetin kendi cümlelerini
+                // "yazar alıntısı" gibi sunup yanıltıyordu (uydurma alıntı). Emin
+                // olunan gerçek bir alıntı gerekiyorsa gövdenin içine blockquote
+                // olarak konur. Tüm yazılarda (eski/yeni) geçerli.
+                $quotes = [];
+                if ( false ) :
                     $book_title  = get_the_title();
                     $author_name = $book_author ? $book_author->name : '';
                 ?>
