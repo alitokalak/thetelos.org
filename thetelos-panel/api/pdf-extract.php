@@ -83,15 +83,20 @@ if ($action === 'work') {
     $bytes = (string) file_get_contents($pdf);
     $pages = (int) ($job['pages'] ?? pex_page_count($bytes));
 
+    // MOTOR SEÇİMİ: OpenRouter (Qwen vb.) aktifse OCR/digest'i ONA yaptır — kullanıcı
+    // OpenRouter seçmişken Claude token'ı YAKMA. Aksi halde eski Claude yolu.
+    require_once dirname(__DIR__) . '/or-config.php';
     require_once __DIR__ . '/_anthropic.php';
-    if (!tls_anthropic_ready()) {
-        $job['status']='error'; $job['error']='OCR için Anthropic (Claude) anahtarı config.php\'de yok.'; pex_job_write($JOBDIR, $id, $job); @unlink($pdf); echo json_encode(['ok'=>false]); exit;
+    $use_or = function_exists('tls_or_active') && tls_or_active();
+    if (!$use_or && !tls_anthropic_ready()) {
+        $job['status']='error'; $job['error']='OCR için OpenRouter (Ayarlar) ya da Anthropic anahtarı gerekli.'; pex_job_write($JOBDIR, $id, $job); @unlink($pdf); echo json_encode(['ok'=>false]); exit;
     }
-    // Claude PDF sınırı: ~32MB / ~100 sayfa.
     if (strlen($bytes) > 30*1024*1024) { $job['status']='error'; $job['error']='PDF çok büyük (~32MB üstü) — bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
-    if ($pages > 100)                  { $job['status']='error'; $job['error']='PDF '.$pages.' sayfa — Claude tek istekte ~100 sayfa OCR eder; bölün.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
+    if ($pages > 100)                  { $job['status']='error'; $job['error']='PDF '.$pages.' sayfa — tek istekte ~100 sayfa okunur; bölün.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
 
-    $model = defined('ANTHROPIC_OCR_MODEL') ? ANTHROPIC_OCR_MODEL : tls_claude_quality_model();
+    // OpenRouter modeli (:online son ekini at — dosya işinde web aramaya gerek yok).
+    $or_model = $use_or ? preg_replace('/:online$/i', '', (string) tls_or_model()) : '';
+    $model = defined('ANTHROPIC_OCR_MODEL') ? ANTHROPIC_OCR_MODEL : (function_exists('tls_claude_quality_model') ? tls_claude_quality_model() : 'claude-sonnet-5');
     $b64   = base64_encode($bytes);
     // DÖNÜŞTÜRÜCÜ DİGEST — telif korumalı kitabı KELİMESİ KELİMESİNE kopyalamak
     // (reproduction) Claude tarafından reddediliyor; zaten thetelos'un işi de
@@ -118,9 +123,11 @@ if ($action === 'work') {
                     . "Continue the digest from that point, covering the remaining parts of the book to the end. "
                     . "Do NOT repeat what you already wrote. Output only the continuation.";
         }
-        $r = pex_claude_ocr($key = tls_anthropic_key(), $model, $sys, $b64, $prompt, 16000);
+        $r = $use_or
+            ? pex_openrouter_ocr(tls_or_key(), $or_model, $sys, $b64, $prompt, 16000)
+            : pex_claude_ocr(tls_anthropic_key(), $model, $sys, $b64, $prompt, 16000);
         if (!$r['ok']) {
-            if ($acc === '') { $job['status']='error'; $job['error']='Claude digest hatası: '.$r['error']; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
+            if ($acc === '') { $job['status']='error'; $job['error']=($use_or?'OpenRouter':'Claude').' digest hatası: '.$r['error']; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
             $truncated = true; break;   // eldekiyle bitir
         }
         $chunk = $r['text'];
@@ -136,7 +143,7 @@ if ($action === 'work') {
 
     $acc = pex_tidy($acc);
     if ($acc === '') { $job['status']='error'; $job['error']='Digest boş döndü.'; }
-    else { $job = ['status'=>'done','method'=>'claude-digest','text'=>$acc,'chars'=>mb_strlen($acc),'pages'=>$pages,'truncated'=>$truncated,'round'=>$job['round'] ?? 0,'ts'=>time()]; }
+    else { $job = ['status'=>'done','method'=>($use_or?'openrouter-digest':'claude-digest'),'text'=>$acc,'chars'=>mb_strlen($acc),'pages'=>$pages,'truncated'=>$truncated,'round'=>$job['round'] ?? 0,'ts'=>time()]; }
     pex_job_write($JOBDIR, $id, $job);
     @unlink($pdf);
     echo json_encode(['ok'=>true,'status'=>$job['status']]);
@@ -333,6 +340,48 @@ function pex_claude_ocr($key, $model, $system, $b64, $prompt, $maxtok) {
         if ($code===429 || $code>=500) { if ($try<3){ sleep(5*$try); continue; } }
         $m = $j['error']['message'] ?? ('HTTP '.$code);
         return ['ok'=>false,'error'=>$m];
+    }
+    return ['ok'=>false,'error'=>'bilinmeyen hata'];
+}
+
+/**
+ * OpenRouter (Qwen vb.) ile PDF digest. OpenRouter 'file-parser' eklentisi PDF'i
+ * ayrıştırır; taranmış/görsel PDF'ler için 'mistral-ocr' motoruyla OCR yapar.
+ * Böylece kullanıcı OpenRouter seçtiyse OCR de Claude yerine ORADAN gider.
+ */
+function pex_openrouter_ocr($key, $model, $system, $b64, $prompt, $maxtok) {
+    if (trim((string)$key) === '' || trim((string)$model) === '') return ['ok'=>false,'error'=>'OpenRouter anahtarı/modeli yok'];
+    $payload = [
+        'model'      => $model,
+        'max_tokens' => (int) $maxtok,
+        'messages'   => [
+            ['role'=>'system','content'=>$system],
+            ['role'=>'user','content'=>[
+                ['type'=>'text','text'=>$prompt],
+                ['type'=>'file','file'=>['filename'=>'book.pdf','file_data'=>'data:application/pdf;base64,'.$b64]],
+            ]],
+        ],
+        // Taranmış PDF'leri de okuyabilmek için OCR motorlu ayrıştırıcı.
+        'plugins'    => [['id'=>'file-parser','pdf'=>['engine'=>'mistral-ocr']]],
+    ];
+    for ($try=1; $try<=3; $try++) {
+        $ch = curl_init('https://openrouter.ai/api/v1/chat/completions');
+        curl_setopt_array($ch, [
+            CURLOPT_POST=>true, CURLOPT_RETURNTRANSFER=>true, CURLOPT_CONNECTTIMEOUT=>20, CURLOPT_TIMEOUT=>240,
+            CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.$key,
+                'HTTP-Referer: https://thetelos.org','X-Title: The Telos'],
+            CURLOPT_POSTFIELDS=>json_encode($payload, JSON_UNESCAPED_UNICODE),
+        ]);
+        $raw=curl_exec($ch); $err=curl_error($ch); $code=(int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+        if ($err) { if ($try<3){ sleep(3*$try); continue; } return ['ok'=>false,'error'=>'bağlantı: '.$err]; }
+        $j = json_decode((string)$raw, true);
+        if ($code>=200 && $code<300 && is_array($j)) {
+            $text = trim((string)($j['choices'][0]['message']['content'] ?? ''));
+            if ($text === '') return ['ok'=>false,'error'=>'boş yanıt'];
+            return ['ok'=>true,'text'=>$text,'stop'=>(string)($j['choices'][0]['finish_reason'] ?? '')];
+        }
+        if ($code===429 || $code>=500) { if ($try<3){ sleep(5*$try); continue; } }
+        return ['ok'=>false,'error'=>($j['error']['message'] ?? ('HTTP '.$code))];
     }
     return ['ok'=>false,'error'=>'bilinmeyen hata'];
 }
