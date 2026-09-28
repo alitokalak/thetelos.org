@@ -73,6 +73,12 @@ function tv_settings() {
         // Doğrulama sağlayıcısı: VARSAYILAN DEEPSEEK (ucuz). Claude yalnız açık
         // istekle — maliyet güvenliği. Panelden her denetimde ayrı seçilebilir.
         'provider'   => (($j['verify_provider'] ?? 'deepseek') === 'anthropic') ? 'anthropic' : 'deepseek',
+        // DOĞRULUK ÖNCE (accuracy-first): VARSAYILAN AÇIK. Açıkken model ASLA kendi
+        // hafızasından uzun özet yazmaz (uydurmanın kökü buydu). Kaynak (tam metin
+        // ya da kitabın GERÇEK açıklaması: Wikipedia/Google Books/Open Library) yoksa
+        // dolu özet üretilmez; kısa, doğrulanmış bir not yazılıp "sorunlu" işaretlenir.
+        // Kapatmak isteyen settings.json'da accuracy_first=false yapar (kapsam modu).
+        'accuracy_first' => !isset($j['accuracy_first']) || (bool) $j['accuracy_first'],
     ];
     return $s;
 }
@@ -117,6 +123,20 @@ function tv_ask($prompt, $max_tokens = 700, $timeout = 90, $provider = null, $mo
             ]);
             if (!empty($r['ok'])) return ['ok' => true, 'text' => $r['text']];
             // Gemini başarısız → DeepSeek yedeğine düş (aşağıda).
+        }
+    }
+
+    // OpenRouter (Qwen) açıksa: ucuz/varsayılan yazım+doğrulama çağrılarını ONA
+    // yaptır. Sunucu DeepSeek'e doğrudan bağlanamıyor; Qwen hem erişilebilir hem
+    // kullanıcının seçtiği ana model → kaynak-temelli (grounded) Bilgi Metni'ni de
+    // Qwen yazar. Boş dönerse aşağıdaki DeepSeek/Gemini yoluna düşülür.
+    if (!function_exists('tls_or_active')) @require_once dirname(__DIR__) . '/or-config.php';
+    if (function_exists('tls_or_active') && tls_or_active()) {
+        if (!function_exists('proto_openrouter')) @require_once __DIR__ . '/_proto.php';
+        if (function_exists('proto_openrouter')) {
+            $ord = '';
+            $ot = proto_openrouter($prompt, min(8000, max(500, (int) $max_tokens)), $ord);
+            if (trim((string) $ot) !== '') return ['ok' => true, 'text' => $ot];
         }
     }
 

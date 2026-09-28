@@ -643,6 +643,10 @@ function bw_or_author_note($book, $author, $beat = null) {
    OpenRouter aktifse Qwen — ve Qwen bilmezse Claude'a DÜŞMEZ (maliyet). */
 function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false, $api_provider = 'deepseek', $is_single = false) {
     require_once dirname(__DIR__) . '/or-config.php';
+    require_once __DIR__ . '/_verify.php';
+    // DOĞRULUK ÖNCE: hafızadan uzun özet YOK. Kaynak yoksa boş dön → çağıran taraf
+    // kaynak-temelli Bilgi Metni'ne, o da yetmezse kısa dürüst nota düşer (uydurma yok).
+    if (!empty(tv_settings()['accuracy_first'])) { $why = 'doğruluk-önce: hafızadan özet kapalı → kaynak-temelli yola düş'; return ''; }
     // 1) Ana ucuz motor (OpenRouter/Qwen) KENDİ bilgisinden — açıksa ve kullanıcı
     //    Claude seçmediyse. Model eseri kesin biliyorsa yazar; bilmiyorsa UNKNOWN → ''.
     if ($api_provider !== 'anthropic' && tls_or_active()) {
@@ -1269,16 +1273,17 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
             // 1) Model KENDİ bilgisinden uzun özet (arama/okuma YOK, yalnız hafıza).
             //    OpenRouter aktifse Qwen; Claude yalnız kullanıcı Anthropic seçtiyse.
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → ' . bw_engine_name($api_provider) . ' (kendi bilgisi)', $update_pid, $rewrite ? 'rewrite' : 'create');
             $cl_why = '';
             $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch, $api_provider, $is_single);
+            if ($cl === '') {
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → doğrulanmış kaynaktan Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+            }
             if ($cl !== '') {
                 $content = $cl;
                 $gen_method = 'model';   // modelin KENDİ bilgisinden UZUN özet
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'tam metin yok → ' . bw_engine_name($api_provider) . ' kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
             } else {
-                // 2) Claude eseri bilmiyor (UNKNOWN) → Bilgi Metni (kaynaktan).
-                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($cl_why ?: 'Claude bilmiyor') . ' → Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
+                // 2) Hafızadan yazım kapalı/boş → DOĞRULANMIŞ kaynaktan Bilgi Metni.
                 $info_prov = proto_deepseek_reachable() ? 'deepseek' : 'gemini';
                 // 2a) DeepSeek YALNIZ çekilen kaynaktan + CLAUDE denetler (hakem).
                 $ir = tls_info_generate($search_book, $author, [
@@ -1298,18 +1303,28 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     }
                 }
                 if (!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '') {
-                    // 3) Hiçbiri → UYDURMA YOK, yer tutucu.
-                    $ph_reason = 'kaynak yok · ' . ($cl_why ?: ($ir['error'] ?? $sr_trace));
-                    if ($rewrite && $update_pid) {
-                        $ph = bw_placeholder_html($book, $author);
-                        [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
-                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', $ph_reason, $update_pid, 'rewrite');
-                        bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu · '.($cl_why?:'—'),'placeholder'=>1,'method'=>'yer-tutucu']);
+                    // 3) Kaynak yetersiz. DOĞRULUK ÖNCE: uydurma UZUN özet YOK. Ama boş
+                    //    hata da verme — doğrulanmış katalog künyesine dayalı KISA, dürüst
+                    //    bir not yaz (varsa) ve 'sorunlu' işaretle. Yoksa yer tutucu/atla.
+                    $note3 = bw_author_note_any($book, $author, $info_hb, $api_provider, $is_single);
+                    if ($note3 !== '') {
+                        // Kısa dürüst not bulundu → normal yayın akışına düş (return yok).
+                        $content = bw_clean_content($note3);
+                        $gen_method = 'bilgi-notu';
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynak yetersiz → kısa dürüst not (doğruluk-önce; uydurma yok)', $update_pid, $rewrite ? 'rewrite' : 'create');
+                    } else {
+                        $ph_reason = 'kaynak yok · ' . ($cl_why ?: ($ir['error'] ?? $sr_trace));
+                        if ($rewrite && $update_pid) {
+                            $ph = bw_placeholder_html($book, $author);
+                            [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'placeholder', $ph_reason, $update_pid, 'rewrite');
+                            bw_update_book($batch_file, $idx, ['status'=>'done','post_id'=>$update_pid,'post_url'=>$rp['link']??'','edit_url'=>rtrim(WP_URL,'/').'/wp-admin/post.php?post='.$update_pid.'&action=edit','error'=>'kaynak yok → yer tutucu · '.($cl_why?:'—'),'placeholder'=>1,'method'=>'yer-tutucu']);
+                            return;
+                        }
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', $ph_reason, 0, 'create');
+                        bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: doğrulanmış kaynak/tam metin/Wikipedia yok · '.($cl_why?:'—')]);
                         return;
                     }
-                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', $ph_reason, 0, 'create');
-                    bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: Claude bilmiyor, tam metin/Wikipedia yok · '.($cl_why?:'—')]);
-                    return;
                 } else {
                     $content = bw_clean_content($ir['md']);
                     if (!empty($ir['shortnote'])) bw_flag_problem($book, $author, $pre_cover, $pre_year, 'shortnote', 'kaynaksız kısa not (tam metin yok, Wikipedia zayıf)', $update_pid, $rewrite ? 'rewrite' : 'create');
