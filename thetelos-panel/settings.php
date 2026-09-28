@@ -151,16 +151,18 @@ if (file_exists(PROMPTS_FILE)) {
         Anahtarı <a href="https://openrouter.ai/keys" target="_blank" style="color:var(--gold)">openrouter.ai/keys</a>'ten al.
         Açık olduğunda, kaynak-temelli/kaynaksız özet motoru <b>önce bu modeli</b> dener; boş dönerse
         eski motora (DeepSeek/Gemini) düşer. Anahtar <b>sunucuda saklanır, repoya girmez</b>.
-        Model kimliğini olduğu gibi yapıştır (ör. <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen-2.5-72b-instruct</code>).
+        Model kimliğini olduğu gibi yapıştır. <b>Önerilen (en iyi kalite):</b>
+        <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen3.8-max</code>.
+        Ucuz toplu iş için: <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen3.8-27b</code>.
         <br><b>Canlı web araması:</b> model kimliğinin sonuna <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">:online</code>
-        eklersen (ör. <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen-2.5-72b-instruct:online</code>)
-        OpenRouter her istekte internetten arayıp modele gerçek kaynak verir — doğruluğu artırır ama <b>istek başına ek ücret</b> alır.
+        eklersen (ör. <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen3.8-max:online</code>)
+        model her istekte güvenilir kaynaklardan arayıp oradan yazar — doğruluğu ciddi artırır ama <b>istek başına ek ücret</b> alır.
       </p>
       <div style="display:grid;gap:10px;max-width:640px">
         <label style="font-size:12px;color:var(--muted)">API Key (sk-or-v1-…)
           <input type="password" id="or-key" placeholder="••••••••" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
         <label style="font-size:12px;color:var(--muted)">Model ID
-          <input type="text" id="or-model" placeholder="qwen/qwen-2.5-72b-instruct" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
+          <input type="text" id="or-model" placeholder="qwen/qwen3.8-max:online" autocomplete="off" style="width:100%;padding:7px 10px;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text)"></label>
         <label style="font-size:13px;color:var(--text);display:flex;align-items:center;gap:8px;margin-top:2px">
           <input type="checkbox" id="or-enabled"> OpenRouter'ı ana motor yap (aç/kapat)
         </label>

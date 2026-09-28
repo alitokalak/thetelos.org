@@ -75,4 +75,6 @@ if (!defined('TLS_OR_CONFIG_LOADED')) {
     function tls_or_model() { $c = tls_or_conf(); return $c['model']; }
     /** OpenRouter şu an devrede mi? */
     function tls_or_active(){ $c = tls_or_conf(); return (bool) $c['active']; }
+    /** Model canlı web aramalı mı? (model kimliği ":online" ile bitiyorsa). */
+    function tls_or_is_online(){ $c = tls_or_conf(); return $c['active'] && preg_match('/:online$/i', (string) $c['model']); }
 }

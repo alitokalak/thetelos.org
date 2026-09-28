@@ -553,6 +553,16 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
     $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
     $who   = trim((string) $book) . (trim((string) $author) !== '' ? ' by ' . trim((string) $author) : '');
 
+    // CANLI WEB ARAMASI (:online): modele "birçok güvenilir kaynağa git, oradan yaz" talimatı.
+    $web = '';
+    if (tls_or_is_online()) {
+        $web = "\n\nYou have LIVE WEB ACCESS. Before writing, SEARCH the web and gather what RELIABLE sources actually say "
+            . "about THIS SPECIFIC book — the publisher's page, Wikipedia, reputable encyclopedias, academic/library "
+            . "catalogs and serious reviews. If you cannot find the book's real full text, still collect solid general "
+            . "information ABOUT the book from these trustworthy sources and write from THAT. Do NOT rely on memory alone, "
+            . "and do NOT fill gaps with guesses. If, even after searching, you cannot verify what THIS book contains, reply UNKNOWN.";
+    }
+
     // GROUNDING: doğrulanmış katalog künyesini çek ve prompt'a DAYAT.
     $cf = bw_catalog_facts($book, $author);
     if (is_callable($beat)) $beat();
@@ -590,7 +600,7 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
         . "If you DO know the book: write a Markdown article (## / ### headings only where you know real structure) that "
         . "is as thorough as your GENUINE knowledge of THIS BOOK supports, up to about {$ideal} words. Do NOT pad with "
         . "biography or invention to reach a length. English only. Never mention AI, yourself, or the word \"I\"."
-        . $warn . $ground . "\n\n"
+        . $warn . $web . $ground . "\n\n"
         . "Work: " . trim((string) $book) . "\nAuthor (may be wrong): " . trim((string) $author) . "\n\n"
         . "Write the overview of the BOOK {$who} now, or reply UNKNOWN if you are not sure what the book itself contains.";
     $diag = '';
@@ -644,9 +654,10 @@ function bw_or_author_note($book, $author, $beat = null) {
 function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false, $api_provider = 'deepseek', $is_single = false) {
     require_once dirname(__DIR__) . '/or-config.php';
     require_once __DIR__ . '/_verify.php';
-    // DOĞRULUK ÖNCE: hafızadan uzun özet YOK. Kaynak yoksa boş dön → çağıran taraf
-    // kaynak-temelli Bilgi Metni'ne, o da yetmezse kısa dürüst nota düşer (uydurma yok).
-    if (!empty(tv_settings()['accuracy_first'])) { $why = 'doğruluk-önce: hafızadan özet kapalı → kaynak-temelli yola düş'; return ''; }
+    // DOĞRULUK ÖNCE: hafızadan uzun özet YOK. AMA model CANLI WEB ARAMALI (:online)
+    // ise yazım ezberden değil, canlı kaynak taramasına dayanır → buna izin ver
+    // (grounded). Web aramalı değilse boş dön → kaynak-temelli Bilgi Metni'ne düşülür.
+    if (!empty(tv_settings()['accuracy_first']) && !tls_or_is_online()) { $why = 'doğruluk-önce: web aramasız hafıza özeti kapalı → kaynak-temelli yola düş'; return ''; }
     // 1) Ana ucuz motor (OpenRouter/Qwen) KENDİ bilgisinden — açıksa ve kullanıcı
     //    Claude seçmediyse. Model eseri kesin biliyorsa yazar; bilmiyorsa UNKNOWN → ''.
     if ($api_provider !== 'anthropic' && tls_or_active()) {

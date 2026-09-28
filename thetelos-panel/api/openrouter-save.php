@@ -16,7 +16,7 @@ require_once dirname(__DIR__) . '/or-config.php';
 header('Content-Type: application/json');
 
 $action       = $_GET['action'] ?? $_POST['action'] ?? 'status';
-$default_model = 'qwen/qwen-2.5-72b-instruct';
+$default_model = 'qwen/qwen3.8-max';
 
 /* Kayıtlı ham paneli oku (maskesiz — sadece sunucu içi mantık için) */
 function or_raw() {
@@ -46,7 +46,7 @@ function or_ping($key, $model) {
             'HTTP-Referer: https://thetelos.org', 'X-Title: The Telos',
         ],
         CURLOPT_POSTFIELDS => json_encode([
-            'model' => $model ?: 'qwen/qwen-2.5-72b-instruct',
+            'model' => $model ?: 'qwen/qwen3.8-max',
             'max_tokens' => 8,
             'messages' => [['role' => 'user', 'content' => 'Reply with the single word: OK']],
         ], JSON_UNESCAPED_UNICODE),
