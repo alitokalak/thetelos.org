@@ -152,6 +152,9 @@ if (file_exists(PROMPTS_FILE)) {
         Açık olduğunda, kaynak-temelli/kaynaksız özet motoru <b>önce bu modeli</b> dener; boş dönerse
         eski motora (DeepSeek/Gemini) düşer. Anahtar <b>sunucuda saklanır, repoya girmez</b>.
         Model kimliğini olduğu gibi yapıştır (ör. <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen-2.5-72b-instruct</code>).
+        <br><b>Canlı web araması:</b> model kimliğinin sonuna <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">:online</code>
+        eklersen (ör. <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;color:var(--gold)">qwen/qwen-2.5-72b-instruct:online</code>)
+        OpenRouter her istekte internetten arayıp modele gerçek kaynak verir — doğruluğu artırır ama <b>istek başına ek ücret</b> alır.
       </p>
       <div style="display:grid;gap:10px;max-width:640px">
         <label style="font-size:12px;color:var(--muted)">API Key (sk-or-v1-…)
