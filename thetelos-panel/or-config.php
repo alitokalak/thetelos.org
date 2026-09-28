@@ -75,12 +75,19 @@ if (!defined('TLS_OR_CONFIG_LOADED')) {
         return $c;
     }
 
-    /** Etkin anahtar (yoksa boş). proto_ds bunu görürse OpenRouter'ı ÖNCE dener. */
-    function tls_or_key()   { $c = tls_or_conf(); return $c['active'] ? $c['key'] : ''; }
-    /** Etkin model kimliği (örn. qwen/qwen-2.5-72b-instruct). */
-    function tls_or_model() { $c = tls_or_conf(); return $c['model']; }
-    /** OpenRouter şu an devrede mi? */
-    function tls_or_active(){ $c = tls_or_conf(); return (bool) $c['active']; }
-    /** Model canlı web aramalı mı? (model kimliği ":online" ile bitiyorsa). */
-    function tls_or_is_online(){ $c = tls_or_conf(); return $c['active'] && preg_match('/:online$/i', (string) $c['model']); }
+    // ═══════════════════════════════════════════════════════════════════════
+    // OPENROUTER SİSTEMDEN KALDIRILDI (kullanıcı kararı).
+    // Ana kapatma anahtarı: aşağıdaki fonksiyonlar artık DAİMA "kapalı" döner →
+    // proto_ds / tv_ask / batch-worker / pdf-extract otomatik olarak DeepSeek →
+    // Claude kademesine düşer. (Kod dosyaları kalıyor ama devrede değil.)
+    // Geri açmak istenirse bu üç satırı eski haline çevirmek yeterli.
+    // ═══════════════════════════════════════════════════════════════════════
+    /** KAPALI: OpenRouter kaldırıldı. */
+    function tls_or_key()   { return ''; }
+    /** Etkin model kimliği — kullanılmıyor. */
+    function tls_or_model() { return ''; }
+    /** KAPALI: OpenRouter devrede değil. */
+    function tls_or_active(){ return false; }
+    /** Model canlı web aramalı mı? (kapalı). */
+    function tls_or_is_online(){ return false; }
 }

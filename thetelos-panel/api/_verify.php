@@ -78,6 +78,9 @@ function tv_settings() {
         // ya da kitabın GERÇEK açıklaması: Wikipedia/Google Books/Open Library) yoksa
         // dolu özet üretilmez; kısa, doğrulanmış bir not yazılıp "sorunlu" işaretlenir.
         // Kapatmak isteyen settings.json'da accuracy_first=false yapar (kapsam modu).
+        // Kademe: kaynak (DeepSeek gerçek metin) → kaynak yoksa DOĞRULANMIŞ kaynaktan
+        // Bilgi Metni (DeepSeek, uydurma yok) → kısa dürüst not → hiçbiri olmazsa Claude.
+        // accuracy_first AÇIK: hafızadan uydurma özet yok; Claude yalnız son çare.
         'accuracy_first' => !isset($j['accuracy_first']) || (bool) $j['accuracy_first'],
     ];
     return $s;
