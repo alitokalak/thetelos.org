@@ -533,6 +533,9 @@ function bw_catalog_facts($book, $author) {
     $title    = (string) ($d['title'] ?? '');
     $blob     = mb_strtolower($title . ' ' . implode(' ', $subjects));
     $anthology = (bool) preg_match('/antholog|collection\b|collected|reader\b|essays|readings|selected works|omnibus|various authors/i', $blob);
+    // Anı/otobiyografi/günlük/mektup: model bunlarda kitabın kapsadığı dönemi bırakıp
+    // yazarın SONRAKİ hayatını (Wikipedia biyografisi) dolduruyor. Ayrı işaretle.
+    $memoir = (bool) preg_match('/autobiograph|memoir|diary|diaries|journal|letters|correspondence|reminiscence/i', $blob);
     if ($author && $authors && !$mismatch) {
         $hit = false;
         foreach ($authors as $a) { if (mb_stripos($a, $author) !== false || mb_stripos($author, $a) !== false) { $hit = true; break; } }
@@ -543,7 +546,7 @@ function bw_catalog_facts($book, $author) {
         . ($year ? "First published: {$year}\n" : '')
         . ($subjects ? 'Subjects: ' . implode(', ', $subjects) . "\n" : '');
     return ['ok' => true, 'facts' => $facts, 'authors' => $authors, 'subjects' => $subjects,
-            'year' => $year, 'title' => $title, 'anthology' => $anthology, 'mismatch' => $mismatch];
+            'year' => $year, 'title' => $title, 'anthology' => $anthology, 'memoir' => $memoir, 'mismatch' => $mismatch];
 }
 
 function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why = '') {
@@ -572,7 +575,12 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
             . "You MUST respect these facts. If the author I gave you is NOT among the catalogued "
             . "author(s)/editor(s), the attribution is likely wrong — trust the catalog, not my label.\n"
             . "=== END CATALOG FACTS ===";
-        if (!empty($cf['anthology'])) {
+        if (!empty($cf['memoir'])) {
+            $warn = "\nIMPORTANT: This is a MEMOIR / autobiography / diary / letters. Describe ONLY the life period and "
+                . "events the BOOK ITSELF narrates, and STOP where the book stops. Do NOT continue into the author's later "
+                . "life, death, or posthumous fame just because you know it — if the book ends at a certain year, your "
+                . "summary ends there too. Do NOT copy the author's encyclopedia biography.";
+        } elseif (!empty($cf['anthology'])) {
             $warn = "\nIMPORTANT: This is an ANTHOLOGY / edited collection / multi-author volume. Do NOT present it "
                 . "as a single-author work. Describe it as a collection: its editor/publisher and that it gathers "
                 . "texts by MANY authors. Do not invent a single-author argument or plot.";
@@ -587,12 +595,15 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
         . "CRITICAL RULES (follow exactly):\n"
         . "1. Summarize the ACTUAL CONTENTS OF THIS BOOK — what this specific work itself says and covers. Do NOT "
         . "write the author's life story. NEVER substitute the author's general biography for the book's contents.\n"
-        . "2. Do NOT include biographical events (e.g. later conversions, death, other works, events after the book's "
-        . "own time span) UNLESS this book itself actually covers them. A memoir/diary/letters covers only its own period.\n"
+        . "2. Cover ONLY what the book itself contains, within its OWN time span. Do NOT write the author's later life, "
+        . "death, legacy, canonization/beatification, adaptations, films, memorials, schools named after them, reception, "
+        . "or publishing history. If the book ends at a certain point in the author's life, your summary ends there too — "
+        . "never continue with famous later events just because you know them (that is the #1 mistake to avoid).\n"
         . "3. Do NOT invent a subtitle, chapter/section names, a structure, or the book's time span. If you don't know "
         . "the real structure, write flowing prose WITHOUT fabricated headings.\n"
-        . "4. Do NOT state any publication, composition, or historical date UNLESS it appears in the VERIFIED CATALOG "
-        . "FACTS below. Never contradict those facts.\n"
+        . "4. Do NOT state publication dates or publishing history in the body (e.g. 'first published in ...') — these are "
+        . "often ambiguous (original vs. translation) and are stored separately. Do NOT state any other historical date "
+        . "unless you are certain and it does not contradict the VERIFIED CATALOG FACTS below.\n"
         . "5. NEVER fabricate plot, characters, quotations, or specifics.\n"
         . "6. If you are not genuinely sure what THIS book actually contains (its real scope and content) — as opposed "
         . "to who the author is — reply with exactly the single word: UNKNOWN. A short honest note is far better than a "
