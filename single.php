@@ -381,11 +381,12 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 </div>
                 <style>
                 .tls-share-open svg{width:15px;height:15px}
-                .tls-share-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px}
+                .tls-share-modal{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto}
                 .tls-share-modal[hidden]{display:none}
                 .tls-share-backdrop{position:absolute;inset:0;background:rgba(20,16,12,.5);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);animation:tlsShFade .18s ease}
                 /* Kart HER ZAMAN açık tema (site açık; OS koyu modu etkilemesin) */
-                .tls-share-card{position:relative;width:100%;max-width:400px;background:#fffdf9;border-radius:22px;padding:30px 26px 26px;box-shadow:0 24px 70px rgba(20,16,12,.28);text-align:center;animation:tlsShPop .22s cubic-bezier(.2,.8,.25,1);font-family:var(--tls-sans,system-ui,sans-serif)}
+                .tls-share-card{position:relative;width:100%;max-width:400px;margin:auto;max-height:calc(100dvh - 40px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fffdf9;border-radius:22px;padding:30px 26px 26px;box-shadow:0 24px 70px rgba(20,16,12,.28);text-align:center;animation:tlsShPop .22s cubic-bezier(.2,.8,.25,1);font-family:var(--tls-sans,system-ui,sans-serif)}
+                @media (max-width:480px){.tls-share-card{padding:26px 18px 20px;border-radius:18px}.tls-share-net{width:46px;height:46px}.tls-share-card h3{font-size:21px}}
                 .tls-share-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(20,16,12,.06);color:#241b10;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
                 .tls-share-x:hover{background:rgba(20,16,12,.12)}.tls-share-x svg{width:16px;height:16px}
                 .tls-share-badge{width:56px;height:56px;margin:0 auto 14px;border-radius:50%;background:linear-gradient(135deg,#efe6d4,#e4d6b8);color:#8a6a1e;display:flex;align-items:center;justify-content:center}
@@ -409,7 +410,11 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     var openBtn=document.getElementById('tls-share-open');
                     var copyBtn=document.getElementById('tls-share-copy');
                     var link=document.getElementById('tls-share-link');
-                    function open(){ modal.hidden=false; document.body.style.overflow='hidden'; }
+                    // MOBİL/TABLET FİX: modal'ı <body>'ye taşı. Aksi halde bir üst
+                    // kapsayıcının transform/filter'ı position:fixed'i hapsedip kartı
+                    // ekran dışına atıyordu (tıklayınca sadece karartı görünüyordu).
+                    var moved=false;
+                    function open(){ if(!moved){ document.body.appendChild(modal); moved=true; } modal.hidden=false; document.body.style.overflow='hidden'; }
                     function close(){ modal.hidden=true; document.body.style.overflow=''; }
                     // HER ZAMAN şık popup aç (masaüstünde OS paylaşım menüsü karışıklık
                     // yaratıyordu; tutarlı, tek davranış istiyoruz).
