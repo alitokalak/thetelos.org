@@ -128,7 +128,11 @@ if ($action === 'work') {
             ? pex_openrouter_ocr($or_key, $or_model, $sys, $b64, $prompt, 16000)
             : pex_claude_ocr(tls_anthropic_key(), $model, $sys, $b64, $prompt, 16000);
         if (!$r['ok']) {
-            $diag = $use_or ? (' [anahtar ' . strlen($or_key) . ' hane · model ' . $or_model . ']') : '';
+            $ocf = function_exists('tls_or_conf') ? tls_or_conf() : [];
+            $sec = defined('TLS_OR_SECRET') ? TLS_OR_SECRET : '';
+            $diag = $use_or ? (' [anahtar ' . strlen($or_key) . ' hane · kaynak ' . ($ocf['source'] ?? '?')
+                . ' · gizli-dosya ' . ($sec !== '' && is_file($sec) ? 'var' : 'yok') . '/' . ($sec !== '' && is_readable($sec) ? 'okunur' : 'okunmaz')
+                . ' · model ' . $or_model . ']') : '';
             if ($acc === '') { $job['status']='error'; $job['error']=($use_or?'OpenRouter':'Claude').' digest hatası: '.$r['error'].$diag; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
             $truncated = true; break;   // eldekiyle bitir
         }

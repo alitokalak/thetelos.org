@@ -35,9 +35,15 @@ if (!defined('TLS_OR_CONFIG_LOADED')) {
         }
 
         // 2) config.php sabitleri (eski/yedek yol — DeepSeek köprüsü)
+        //    GEÇERSİZ/BOZUK kısa sabitleri YOK SAY: gerçek OpenRouter anahtarı
+        //    "sk-or-" ile başlar ve uzundur. 12 haneli eski bir dummy sabit,
+        //    panelden girilen geçerli anahtarın önüne geçmemeli.
         $cfg_key = '';
         foreach (['OPENROUTER_KEY', 'OPENROUTER_API_KEY', 'OPENROUTER'] as $k) {
-            if (defined($k) && constant($k)) { $cfg_key = (string) constant($k); break; }
+            if (defined($k) && constant($k)) {
+                $v = trim((string) constant($k));
+                if (strlen($v) >= 20 || strncmp($v, 'sk-or', 5) === 0) { $cfg_key = $v; break; }
+            }
         }
         $cfg_model = (defined('OPENROUTER_MODEL') && OPENROUTER_MODEL) ? (string) OPENROUTER_MODEL : '';
 
