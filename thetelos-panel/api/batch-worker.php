@@ -569,6 +569,17 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
     // GROUNDING: doğrulanmış katalog künyesini çek ve prompt'a DAYAT.
     $cf = bw_catalog_facts($book, $author);
     if (is_callable($beat)) $beat();
+
+    // ANI/OTOBİYOGRAFİ/GÜNLÜK/MEKTUP: serbest overview'da model kaçınılmaz olarak
+    // yazarın ünlü hayat hikâyesini (Wikipedia biyografisi) dolduruyor — prompt
+    // kuralları bunu durduramadı. Bu türleri REDDET → çağıran taraf DİSİPLİNLİ
+    // Bilgi Metni yoluna (tls_info_generate: "yazar değil kitap, biyografi yazma")
+    // düşer. Böylece biyografi taşması yapısal olarak engellenir.
+    if (!empty($cf['ok']) && !empty($cf['memoir'])) {
+        $why = 'anı/otobiyografi → disiplinli Bilgi Metni yoluna yönlendirildi (biyografi taşmasını önlemek için)';
+        return '';
+    }
+
     $ground = ''; $warn = '';
     if (!empty($cf['ok'])) {
         $ground = "\n\n=== VERIFIED CATALOG FACTS (from Open Library) ===\n" . $cf['facts']
