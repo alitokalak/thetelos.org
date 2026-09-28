@@ -220,7 +220,11 @@ if (!isset($_GET['mode'])) {
                 st=document.getElementById('single_source_file_status');
             if(!drop||!f) return;
 
-            function setStatus(html,color){ st.innerHTML=html; if(color) st.style.color=color; }
+            function setStatus(html,color){ st.innerHTML=html; if(color) st.style.color=color;
+              // ÜRETİM KİLİDİ: '✓' veya '✗' = terminal (serbest); '⏫'/'🔎' = hâlâ okunuyor (meşgul).
+              // Böylece kullanıcı PDF okunmadan "İçerik Üret"e basıp "bulunamadı" almaz.
+              var t=String(html||''); window.__tlsSrcBusy = !(t.indexOf('✓')===0 || t.indexOf('✗')===0);
+            }
 
             function handleTxt(file){
               var r=new FileReader();
@@ -276,6 +280,7 @@ if (!isset($_GET['mode'])) {
 
             function handle(file){
               if(!file) return;
+              window.__tlsSrcBusy=true;   // dosya seçildi → okunana kadar üretimi kilitle
               var isPdf = /\.pdf$/i.test(file.name) || file.type==='application/pdf';
               if(isPdf) handlePdf(file); else handleTxt(file);
             }

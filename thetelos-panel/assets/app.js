@@ -489,6 +489,12 @@ function runGenerateStream(params, onLive, label) {
    canlı SSE'ye uymaz (Cloudflare keser). Bu yüzden 1 kitaplık batch açıp
    ilerlemeyi yokluyoruz — batch sistemi üretim+yayın+kademe+kapıyı zaten yapar. */
 async function runSingleSource(book, author) {
+  // PDF/dosya hâlâ okunuyorsa üretimi başlatma — aksi halde kaynak metni boş gider
+  // ve "tam metin bulunamadı" (Bilgi metni) çıkar. "✓ okundu" yazısını bekle.
+  if (window.__tlsSrcBusy) {
+    alert('Yüklediğin kaynak (PDF) hâlâ okunuyor. Manuel kaynak kutusunda "✓ … okundu" yazısını bekle, sonra tekrar "İçerik Üret"e bas.');
+    return;
+  }
   const sourceWords = parseInt(document.getElementById('single-source-words')?.value || '3500');
   const length = sourceWords <= 2200 ? 'kisa' : sourceWords >= 5500 ? 'kapsamli' : 'standart';
   const status = document.getElementById('post_status')?.value || 'publish';
