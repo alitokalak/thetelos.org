@@ -94,8 +94,10 @@ if ($action === 'work') {
     if (strlen($bytes) > 30*1024*1024) { $job['status']='error'; $job['error']='PDF çok büyük (~32MB üstü) — bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
     if ($pages > 100)                  { $job['status']='error'; $job['error']='PDF '.$pages.' sayfa — tek istekte ~100 sayfa okunur; bölün.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
 
-    // OpenRouter modeli (:online son ekini at — dosya işinde web aramaya gerek yok).
-    $or_model = $use_or ? preg_replace('/:online$/i', '', (string) tls_or_model()) : '';
+    // OpenRouter OCR modeli: MALİYET İÇİN UCUZ model kullan (digest'i OCR metninden
+    // yazmak amiral gemisi gerektirmez). Tüm kitap input olarak gittiği için pahalı
+    // modelde maliyet patlıyordu. Varsayılan ucuz: qwen3.8-27b (config ile değişir).
+    $or_model = $use_or ? (defined('OPENROUTER_OCR_MODEL') ? OPENROUTER_OCR_MODEL : 'qwen/qwen3.8-27b') : '';
     $model = defined('ANTHROPIC_OCR_MODEL') ? ANTHROPIC_OCR_MODEL : (function_exists('tls_claude_quality_model') ? tls_claude_quality_model() : 'claude-sonnet-5');
     $b64   = base64_encode($bytes);
     // DÖNÜŞTÜRÜCÜ DİGEST — telif korumalı kitabı KELİMESİ KELİMESİNE kopyalamak
@@ -110,7 +112,10 @@ if ($action === 'work') {
     $job['status']='working'; $job['ts']=time(); pex_job_write($JOBDIR, $id, $job);
 
     // SERT KAYNAK TAVANI: sunucuyu (shared hosting) uzun süre tutmasın.
-    $MAX_ROUNDS = 4;              // digest yoğunlaştırılmış → az tur yeter
+    // OpenRouter'da TEK TUR: her tur PDF'i yeniden OCR'a yolluyordu (cache yok) →
+    // 4 tur = 4× OCR + 4× tam-kitap input = maliyet patlaması ($5 tek işlemde).
+    // Claude'da prompt-cache var, çok tur ucuz; orada 4 kalır.
+    $MAX_ROUNDS = $use_or ? 1 : 4;
     $deadline   = time() + 600;   // ~10 dk toplam; sonra worker'ı serbest bırak
     for ($round = ((int)($job['round'] ?? 0)) + 1; $round <= $MAX_ROUNDS; $round++) {
         if (time() > $deadline) { $truncated = true; break; }
