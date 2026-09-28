@@ -99,6 +99,12 @@ if ($action === 'save') {
     $enabled = (($_POST['enabled'] ?? '') === '1');
 
     if ($key === '') { echo json_encode(['ok' => false, 'error' => 'API anahtarı gerekli.']); exit; }
+    // Geçerlilik kontrolü: OpenRouter anahtarı 'sk-or-' ile başlar ve uzundur.
+    // Eksik/yanlış (ör. 12 karakter) anahtarın sessizce kaydını engelle.
+    if (strncmp($key, 'sk-or-', 6) !== 0 || strlen($key) < 40) {
+        echo json_encode(['ok' => false, 'error' => 'Anahtar geçersiz görünüyor (' . strlen($key) . ' hane). Tam OpenRouter anahtarını (sk-or-v1-… ~73 hane) eksiksiz yapıştır.']);
+        exit;
+    }
 
     $php = "<?php\n// OpenRouter gizli ayarı — panelden yazıldı. Repoya GİRMEZ.\n"
          . "return " . var_export(['enabled' => $enabled, 'key' => $key, 'model' => $model], true) . ";\n";
