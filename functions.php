@@ -1945,14 +1945,20 @@ add_action( 'wp_footer', function () {
         track.addEventListener('pointerdown', function (e) {
             if (e.pointerType !== 'mouse') return;
             down = true; moved = false; startX = e.clientX; startScroll = track.scrollLeft;
-            track.classList.add('dragging');
-            try { track.setPointerCapture(e.pointerId); } catch (err) {}
+            // NOT: pointer capture'ı BURADA alma. Aksi halde basit bir tıklamada bile
+            // click olayı track'e yönlenip <a> linkinin çalışmasını engelliyordu
+            // (masaüstünde "kart tıklanmıyor" sorunu). Capture yalnız gerçek
+            // sürükleme başlayınca (pointermove) alınır.
         });
         track.addEventListener('pointermove', function (e) {
             if (!down) return;
             var dx = e.clientX - startX;
-            if (Math.abs(dx) > 3) moved = true;
-            track.scrollLeft = startScroll - dx;
+            if (!moved && Math.abs(dx) > 4) {
+                moved = true;
+                track.classList.add('dragging');
+                try { track.setPointerCapture(e.pointerId); } catch (err) {}
+            }
+            if (moved) track.scrollLeft = startScroll - dx;
         });
         function endDrag() { down = false; track.classList.remove('dragging'); }
         track.addEventListener('pointerup', endDrag);
