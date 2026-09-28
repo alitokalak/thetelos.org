@@ -235,7 +235,9 @@ if (!isset($_GET['mode'])) {
 
             function fillDone(file,j){
               ta.value=j.text||'';
-              var how = (j.method==='claude-digest'||j.method==='claude-ocr') ? 'Claude digest (tarama/telifli PDF — dönüştürücü özet)' : 'metin katmanı (anında)';
+              var how = (j.method==='openrouter-digest') ? 'OpenRouter/Qwen digest (tarama/telifli PDF — dönüştürücü özet)'
+                       : (j.method==='claude-digest'||j.method==='claude-ocr') ? 'Claude digest (tarama/telifli PDF — dönüştürücü özet)'
+                       : 'metin katmanı (anında)';
               var warn = j.truncated ? ' <span style="color:#e6c65a">⚠ çok uzun; bir kısmı alınamamış olabilir</span>' : '';
               setStatus('✓ '+file.name+' okundu — '+how+' · '+(j.pages||'?')+' sayfa · '+(j.chars||ta.value.length).toLocaleString()+' karakter.'+warn,'#8fd18f');
             }
@@ -244,14 +246,14 @@ if (!isset($_GET['mode'])) {
             }
             function pollOcr(file,job,pages){
               var t0=Date.now(), fired=Date.now();
-              setStatus('🔎 Claude kitabı okuyor ('+file.name+' · '+pages+' sayfa) — dönüştürücü digest çıkarılıyor, kapatma. Sürebilir…','#e6c65a');
+              setStatus('🔎 Model kitabı okuyor ('+file.name+' · '+pages+' sayfa) — dönüştürücü digest çıkarılıyor, kapatma. Sürebilir…','#e6c65a');
               var iv=setInterval(function(){
                 fetch('api/pdf-extract.php?action=status&job='+encodeURIComponent(job)).then(function(r){return r.json();}).then(function(j){
                   if(!j.ok){ clearInterval(iv); setStatus('✗ '+(j.error||'iş bulunamadı'),'#e88'); return; }
                   if(j.status==='done'){ clearInterval(iv); fillDone(file,j); return; }
                   if(j.status==='error'){ clearInterval(iv); setStatus('✗ OCR hatası: '+(j.error||'—'),'#e88'); return; }
                   var sec=Math.round((Date.now()-t0)/1000);
-                  setStatus('🔎 Claude digest çıkarıyor… tur '+(j.round||0)+' · ~'+(j.chars||0).toLocaleString()+' karakter · '+sec+' sn ('+file.name+')','#e6c65a');
+                  setStatus('🔎 Digest çıkarılıyor… tur '+(j.round||0)+' · ~'+(j.chars||0).toLocaleString()+' karakter · '+sec+' sn ('+file.name+')','#e6c65a');
                   // Worker düşmüş/ateşleme kaybolmuşsa yeniden ateşle (work çift-ateşlemeye karşı korumalı).
                   if((j.status==='queued' || (j.status==='working' && j.age!=null && j.age>150)) && (Date.now()-fired)>150000){ fired=Date.now(); fireWork(job); }
                   if(sec>1200){ clearInterval(iv); setStatus('✗ OCR çok uzun sürdü (20 dk). PDF\'i bölüp deneyin ya da .txt verin.','#e88'); }

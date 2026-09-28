@@ -123,11 +123,13 @@ if ($action === 'work') {
                     . "Continue the digest from that point, covering the remaining parts of the book to the end. "
                     . "Do NOT repeat what you already wrote. Output only the continuation.";
         }
+        $or_key = $use_or ? (string) tls_or_key() : '';
         $r = $use_or
-            ? pex_openrouter_ocr(tls_or_key(), $or_model, $sys, $b64, $prompt, 16000)
+            ? pex_openrouter_ocr($or_key, $or_model, $sys, $b64, $prompt, 16000)
             : pex_claude_ocr(tls_anthropic_key(), $model, $sys, $b64, $prompt, 16000);
         if (!$r['ok']) {
-            if ($acc === '') { $job['status']='error'; $job['error']=($use_or?'OpenRouter':'Claude').' digest hatası: '.$r['error']; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
+            $diag = $use_or ? (' [anahtar ' . strlen($or_key) . ' hane · model ' . $or_model . ']') : '';
+            if ($acc === '') { $job['status']='error'; $job['error']=($use_or?'OpenRouter':'Claude').' digest hatası: '.$r['error'].$diag; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
             $truncated = true; break;   // eldekiyle bitir
         }
         $chunk = $r['text'];
