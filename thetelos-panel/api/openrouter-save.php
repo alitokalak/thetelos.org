@@ -36,18 +36,22 @@ function or_mask($key) {
 /* OpenRouter'a küçük bir doğrulama isteği at → [ok, http, error, model] */
 function or_ping($key, $model) {
     if ($key === '') return ['ok' => false, 'http' => 0, 'error' => 'anahtar boş'];
+    // Test için ':online' son ekini at (web aramaya gerek yok, sadece kimlik+model
+    // doğrulanıyor) ve daha büyük max_tokens ver: qwen3.8-max gibi "reasoning"
+    // modeller küçük bütçeyi düşünmeye harcayıp içeriği boş bırakabiliyor.
+    $test_model = preg_replace('/:online$/i', '', (string) $model) ?: 'qwen/qwen3.8-max';
     $ch = curl_init('https://openrouter.ai/api/v1/chat/completions');
     curl_setopt_array($ch, [
         CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CONNECTTIMEOUT => 15, CURLOPT_TIMEOUT => 45,
+        CURLOPT_CONNECTTIMEOUT => 15, CURLOPT_TIMEOUT => 60,
         CURLOPT_HTTPHEADER => [
             'Content-Type: application/json',
             'Authorization: Bearer ' . $key,
             'HTTP-Referer: https://thetelos.org', 'X-Title: The Telos',
         ],
         CURLOPT_POSTFIELDS => json_encode([
-            'model' => $model ?: 'qwen/qwen3.8-max',
-            'max_tokens' => 8,
+            'model' => $test_model,
+            'max_tokens' => 512,
             'messages' => [['role' => 'user', 'content' => 'Reply with the single word: OK']],
         ], JSON_UNESCAPED_UNICODE),
     ]);
@@ -56,9 +60,14 @@ function or_ping($key, $model) {
     $cerr = curl_error($ch);
     curl_close($ch);
     $j = json_decode((string) $r, true);
-    $txt = trim((string) ($j['choices'][0]['message']['content'] ?? ''));
-    if ($http >= 200 && $http < 300 && $txt !== '') {
-        return ['ok' => true, 'http' => $http, 'reply' => mb_substr($txt, 0, 40), 'model' => $model];
+    $msgobj = $j['choices'][0]['message'] ?? [];
+    $txt = trim((string) ($msgobj['content'] ?? ''));
+    if ($txt === '') $txt = trim((string) ($msgobj['reasoning'] ?? ($msgobj['reasoning_content'] ?? '')));
+    // HTTP 2xx = kimlik + model erişimi tamam. İçerik gelirse onu göster; gelmese
+    // bile (reasoning modeli) auth doğrulandığı için başarılı say — üretimde büyük
+    // token bütçesiyle içerik zaten geliyor.
+    if ($http >= 200 && $http < 300 && isset($j['choices'])) {
+        return ['ok' => true, 'http' => $http, 'reply' => ($txt !== '' ? mb_substr($txt, 0, 40) : 'bağlantı tamam'), 'model' => $test_model];
     }
     $msg = $j['error']['message'] ?? ($cerr ?: 'boş yanıt');
     return ['ok' => false, 'http' => $http, 'error' => mb_substr((string) $msg, 0, 180)];
