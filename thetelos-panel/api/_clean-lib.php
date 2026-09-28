@@ -120,8 +120,18 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
         if ($http === 200 && $r) { $d = json_decode($r, true); $txt = (string) ($d['choices'][0]['message']['content'] ?? ''); }
         else $err = "DeepSeek HTTP $http";
     }
+    // UCUZ YEDEK: DeepSeek boş/erişilemez → GEMİNİ (Claude'dan önce, çok ucuz).
+    if ($txt === '') {
+        require_once __DIR__ . '/_gemini.php';
+        if (function_exists('tls_gemini_ready') && tls_gemini_ready()) {
+            $prompt = $system_rules . "\n\n" . $user_msg;
+            $gr = tls_gemini('', $prompt, ['max_tokens' => 8000, 'temperature' => 0, 'timeout' => 120, 'retries' => 1, 'on_beat' => $beat]);
+            if (!empty($gr['ok']) && trim((string) $gr['text']) !== '') $txt = (string) $gr['text'];
+            elseif ($err === '') $err = 'Gemini: ' . mb_substr((string) ($gr['error'] ?? '?'), 0, 120);
+        }
+    }
     if ($txt === '' && tls_anthropic_ready()) {
-        // Yedek: Claude Sonnet (Opus değil — temizlik için gereksiz pahalı).
+        // Son yedek: Claude Sonnet (Opus değil — temizlik için gereksiz pahalı).
         $cr = tls_claude($system_rules, $user_msg, [
             'model' => tls_claude_quality_model(), 'max_tokens' => 8000, 'timeout' => 90,
             'retries' => 1, 'cache' => true, 'batch' => !empty($opts['batch']), 'on_beat' => $beat,

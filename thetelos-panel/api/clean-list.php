@@ -207,12 +207,9 @@ if (!isset($items_final) && $use_ai && count($items) >= 2) {
             // Latince/İtalyanca baskılar) → Opus (en isabetli, hepsini bilir).
             $titles_txt = '';
             foreach ($slice as $it) $titles_txt .= ' ' . $it['title'];
-            $foreign_latin = preg_match('/[àâäéèêëîïôöùûüçñáíóúãõœæ]/iu', $titles_txt)
-                || preg_match('/(^|\s)(de la|de l\'|del|della|delle|di|le|les|la|el|il|une|des|du|von|vom|und|der|das|sur|aux|dans)(\s|$)/iu', mb_strtolower($titles_txt));
-            $hard = (count($slice) > 8)
-                || $foreign_latin
-                || preg_match('/[\x{0370}-\x{03FF}\x{0400}-\x{04FF}\x{0590}-\x{05FF}\x{0600}-\x{06FF}\x{4E00}-\x{9FFF}\x{3040}-\x{30FF}]/u', $titles_txt);
-            $cl_model = $hard ? tls_claude_best_model() : tls_claude_quality_model();
+            // MALİYET: otomatik Opus yükseltmesi KAPATILDI (zor listede Opus'a çıkıp
+            // para yakıyordu). Claude seçilse bile taban kaliteli model (Sonnet) kalır.
+            $cl_model = tls_claude_quality_model();
             // cache=true → sabit talimat bloğu (system) prompt-cache'e alınır; her
             // yazar çağrısında %90 ucuza okunur. Sadece USER (yazar+başlıklar) değişir.
             $cr = tls_claude(
@@ -247,6 +244,18 @@ if (!isset($items_final) && $use_ai && count($items) >= 2) {
         $r = curl_exec($ch); $http = curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
         if ($http === 200 && $r) { $d = json_decode($r, true); $txt = $d['choices'][0]['message']['content'] ?? ''; }
         elseif ($ai_err === '') { $ai_err = "AI HTTP $http"; }
+    }
+
+    // GEMİNİ YEDEĞİ (ucuz): DeepSeek boş/erişilemez döndüyse ayıklamayı Gemini
+    // yapsın. Böylece sunucu DeepSeek'e bağlanamasa bile Claude'a MECBUR kalmadan
+    // ucuz devam eder. (Claude başarılıysa $txt dolu → buraya girilmez.)
+    if ($txt === '') {
+        require_once __DIR__ . '/_gemini.php';
+        if (function_exists('tls_gemini_ready') && tls_gemini_ready()) {
+            $gr = tls_gemini('', $prompt, ['max_tokens' => 8000, 'temperature' => 0, 'timeout' => 120, 'retries' => 2]);
+            if (!empty($gr['ok']) && trim((string) $gr['text']) !== '') { $txt = (string) $gr['text']; $engine = 'gemini'; $ai_err = ''; }
+            elseif ($ai_err === '') { $ai_err = 'Gemini: ' . mb_substr((string) ($gr['error'] ?? '?'), 0, 120); }
+        }
     }
 
     $parsed = null;
