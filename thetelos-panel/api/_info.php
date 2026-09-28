@@ -425,10 +425,17 @@ function tls_info_prompt($book, $author, $dossier, $allow_own = false) {
         ? "Every specific, concrete claim about THIS work — a plot event, a named person, a precise date, a statistic, a chapter structure — must be either supported by the sources OR something you are genuinely certain is true. If you are not certain, omit it rather than assert it."
         : "Every specific claim about THIS work must be supported by the source material. If the sources do not say it, do not assert it.";
     $len_basis = $allow_own ? "the sources plus your own certain knowledge of this work" : "the source material";
+    // CANLI WEB (:online): kaynağı sonuna kadar ARAT — ama yalnız doğrulayabildiğini yaz.
+    require_once dirname(__DIR__) . '/or-config.php';
+    $web = (function_exists('tls_or_is_online') && tls_or_is_online())
+        ? " You ALSO have LIVE WEB ACCESS. Search the web THOROUGHLY and persistently across reliable sources (the publisher's page, Wikipedia, reputable encyclopedias, serious reviews, academic and library catalogs) to find and verify real, specific information about THIS EXACT book — dig hard, try multiple searches, do not give up early. BUT: use ONLY what you can actually verify from those sources. If, after genuinely searching, you still cannot confirm something, LEAVE IT OUT — never guess, never fill gaps with plausible-sounding claims. Verified-and-short always beats long-and-fabricated."
+        : "";
     return <<<TXT
 You are writing a FACTUAL, encyclopedic INFORMATIONAL ARTICLE about a book, in English, for a books website (thetelos.org).
 
-You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. {$basis} This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book (its subject, ideas, themes, and significance).
+CORE RULE ABOVE ALL ELSE: Work hard to FIND real information, but write ONLY what you are CERTAIN is true about THIS exact book. If you do not know something for sure, do NOT write it. Never guess, never invent, never fill gaps to look complete. It is completely acceptable — and required — to write a SHORT article, or to omit a section, when you are not certain. A short, fully-true article is a success; a long article with even one invented detail is a failure.
+
+You are given VERIFIED SOURCE MATERIAL collected from Wikipedia (possibly in another language), Google Books, Open Library, and Wikidata. {$basis}{$web} This is NOT a chapter-by-chapter summary and NOT a retelling of the book's contents — it is an informational article ABOUT the book (its subject, ideas, themes, and significance).
 
 ABSOLUTE RULES (a violation is worse than a short article):
 - {$len_rule}
