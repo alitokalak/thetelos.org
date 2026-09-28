@@ -358,7 +358,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     <div class="tls-share-backdrop" data-share-close></div>
                     <div class="tls-share-card" role="document">
                         <button class="tls-share-x" type="button" data-share-close aria-label="Close">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
                         </button>
                         <div class="tls-share-badge" aria-hidden="true">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/></svg>
@@ -387,8 +387,8 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 /* Kart HER ZAMAN açık tema (site açık; OS koyu modu etkilemesin) */
                 .tls-share-card{position:relative;width:100%;max-width:400px;margin:auto;max-height:calc(100dvh - 40px);overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fffdf9;border-radius:22px;padding:30px 26px 26px;box-shadow:0 24px 70px rgba(20,16,12,.28);text-align:center;animation:tlsShPop .22s cubic-bezier(.2,.8,.25,1);font-family:var(--tls-sans,system-ui,sans-serif)}
                 @media (max-width:480px){.tls-share-card{padding:26px 18px 20px;border-radius:18px}.tls-share-net{width:46px;height:46px}.tls-share-card h3{font-size:21px}}
-                .tls-share-x{position:absolute;top:14px;right:14px;width:34px;height:34px;border:0;border-radius:50%;background:rgba(20,16,12,.06);color:#241b10;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
-                .tls-share-x:hover{background:rgba(20,16,12,.12)}.tls-share-x svg{width:16px;height:16px}
+                .tls-share-x{position:absolute;top:14px;right:14px;width:40px;height:40px;border:0;border-radius:50%;background:rgba(20,16,12,.06);color:#241b10;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s}
+                .tls-share-x:hover{background:rgba(20,16,12,.12)}.tls-share-x svg{width:22px !important;height:22px !important;display:block}
                 .tls-share-badge{width:56px;height:56px;margin:0 auto 14px;border-radius:50%;background:linear-gradient(135deg,#efe6d4,#e4d6b8);color:#8a6a1e;display:flex;align-items:center;justify-content:center}
                 .tls-share-badge svg{width:26px;height:26px}
                 .tls-share-card h3{font-family:var(--tls-serif,Georgia,serif);font-size:23px;margin:0 0 4px;color:#241b10}
