@@ -1,0 +1,264 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/theme.json",
+	"version": 3,
+	"settings": {
+		"appearanceTools": true,
+		"useRootPaddingAwareAlignments": true,
+		"color": {
+			"defaultPalette": false,
+			"defaultGradients": false,
+			"defaultDuotone": false,
+			"custom": true,
+			"palette": [
+				{ "slug": "primary", "name": "Orman yeşili", "color": "#1B4332" },
+				{ "slug": "primary-dark", "name": "Koyu orman yeşili", "color": "#123024" },
+				{ "slug": "cream", "name": "Krem", "color": "#F7F3EA" },
+				{ "slug": "hazel", "name": "Fındık kahvesi", "color": "#9C6B3F" },
+				{ "slug": "hazel-dark", "name": "Koyu fındık (küçük metin)", "color": "#7A5230" },
+				{ "slug": "kraft", "name": "Kraft", "color": "#E9DDC7" },
+				{ "slug": "leaf", "name": "Açık yaprak yeşili", "color": "#DDE8D8" },
+				{ "slug": "ink", "name": "Metin", "color": "#1E2A23" },
+				{ "slug": "muted", "name": "İkincil metin", "color": "#4A564E" },
+				{ "slug": "sale", "name": "Kampanya kırmızısı", "color": "#C0392B" },
+				{ "slug": "white", "name": "Beyaz", "color": "#FFFFFF" }
+			]
+		},
+		"typography": {
+			"defaultFontSizes": false,
+			"fluid": true,
+			"writingMode": false,
+			"fontFamilies": [
+				{
+					"slug": "fraunces",
+					"name": "Fraunces",
+					"fontFamily": "Fraunces, Georgia, 'Times New Roman', serif",
+					"fontFace": [
+						{
+							"fontFamily": "Fraunces",
+							"fontStyle": "normal",
+							"fontWeight": "100 900",
+							"fontDisplay": "swap",
+							"src": [ "file:./assets/fonts/fraunces/fraunces-latin-wght-normal.woff2" ],
+							"unicodeRange": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+						},
+						{
+							"fontFamily": "Fraunces",
+							"fontStyle": "normal",
+							"fontWeight": "100 900",
+							"fontDisplay": "swap",
+							"src": [ "file:./assets/fonts/fraunces/fraunces-latin-ext-wght-normal.woff2" ],
+							"unicodeRange": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"
+						}
+					]
+				},
+				{
+					"slug": "manrope",
+					"name": "Manrope",
+					"fontFamily": "Manrope, system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif",
+					"fontFace": [
+						{
+							"fontFamily": "Manrope",
+							"fontStyle": "normal",
+							"fontWeight": "200 800",
+							"fontDisplay": "swap",
+							"src": [ "file:./assets/fonts/manrope/manrope-latin-wght-normal.woff2" ],
+							"unicodeRange": "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD"
+						},
+						{
+							"fontFamily": "Manrope",
+							"fontStyle": "normal",
+							"fontWeight": "200 800",
+							"fontDisplay": "swap",
+							"src": [ "file:./assets/fonts/manrope/manrope-latin-ext-wght-normal.woff2" ],
+							"unicodeRange": "U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF"
+						}
+					]
+				}
+			],
+			"fontSizes": [
+				{ "slug": "x-small", "name": "Çok küçük", "size": "0.8125rem", "fluid": false },
+				{ "slug": "small", "name": "Küçük", "size": "0.9375rem", "fluid": false },
+				{ "slug": "medium", "name": "Orta", "size": "1.0625rem", "fluid": false },
+				{ "slug": "large", "name": "Büyük", "size": "1.25rem", "fluid": { "min": "1.125rem", "max": "1.375rem" } },
+				{ "slug": "x-large", "name": "Çok büyük", "size": "1.75rem", "fluid": { "min": "1.5rem", "max": "2rem" } },
+				{ "slug": "xx-large", "name": "Başlık", "size": "2.5rem", "fluid": { "min": "2rem", "max": "3rem" } },
+				{ "slug": "huge", "name": "Dev", "size": "3.5rem", "fluid": { "min": "2.5rem", "max": "4.25rem" } }
+			]
+		},
+		"spacing": {
+			"defaultSpacingSizes": false,
+			"units": [ "px", "rem", "em", "%", "vw", "vh" ],
+			"spacingSizes": [
+				{ "slug": "10", "name": "2XS", "size": "0.25rem" },
+				{ "slug": "20", "name": "XS", "size": "0.5rem" },
+				{ "slug": "30", "name": "S", "size": "clamp(0.75rem, 0.6rem + 0.5vw, 1rem)" },
+				{ "slug": "40", "name": "M", "size": "clamp(1rem, 0.8rem + 1vw, 1.5rem)" },
+				{ "slug": "50", "name": "L", "size": "clamp(1.5rem, 1.1rem + 1.8vw, 2.5rem)" },
+				{ "slug": "60", "name": "XL", "size": "clamp(2rem, 1.3rem + 3vw, 4rem)" },
+				{ "slug": "70", "name": "2XL", "size": "clamp(3rem, 2rem + 4.5vw, 6rem)" },
+				{ "slug": "80", "name": "3XL", "size": "clamp(4rem, 2.5rem + 6vw, 8rem)" }
+			]
+		},
+		"layout": {
+			"contentSize": "760px",
+			"wideSize": "1280px"
+		},
+		"shadow": {
+			"defaultPresets": false,
+			"presets": [
+				{ "slug": "soft", "name": "Yumuşak", "shadow": "0 1px 2px rgba(30,42,35,0.06), 0 8px 24px rgba(30,42,35,0.08)" },
+				{ "slug": "raised", "name": "Yükseltilmiş", "shadow": "0 12px 40px rgba(27,67,50,0.16)" }
+			]
+		},
+		"custom": {
+			"radius": {
+				"small": "8px",
+				"medium": "14px",
+				"large": "24px",
+				"pill": "999px"
+			},
+			"touch-target": "44px",
+			"header-height": "72px",
+			"transition": "180ms ease"
+		},
+		"blocks": {
+			"core/button": {
+				"border": { "radius": true }
+			}
+		}
+	},
+	"styles": {
+		"color": {
+			"background": "var(--wp--preset--color--cream)",
+			"text": "var(--wp--preset--color--ink)"
+		},
+		"typography": {
+			"fontFamily": "var(--wp--preset--font-family--manrope)",
+			"fontSize": "var(--wp--preset--font-size--medium)",
+			"fontWeight": "400",
+			"lineHeight": "1.65"
+		},
+		"spacing": {
+			"blockGap": "1.25rem",
+			"padding": {
+				"top": "0",
+				"bottom": "0",
+				"left": "var(--wp--preset--spacing--40)",
+				"right": "var(--wp--preset--spacing--40)"
+			}
+		},
+		"elements": {
+			"heading": {
+				"color": { "text": "var(--wp--preset--color--primary)" },
+				"typography": {
+					"fontFamily": "var(--wp--preset--font-family--fraunces)",
+					"fontWeight": "600",
+					"lineHeight": "1.15",
+					"letterSpacing": "-0.01em"
+				}
+			},
+			"h1": { "typography": { "fontSize": "var(--wp--preset--font-size--huge)" } },
+			"h2": { "typography": { "fontSize": "var(--wp--preset--font-size--xx-large)" } },
+			"h3": { "typography": { "fontSize": "var(--wp--preset--font-size--x-large)" } },
+			"h4": { "typography": { "fontSize": "var(--wp--preset--font-size--large)" } },
+			"h5": { "typography": { "fontSize": "var(--wp--preset--font-size--medium)" } },
+			"h6": { "typography": { "fontSize": "var(--wp--preset--font-size--small)", "textTransform": "uppercase", "letterSpacing": "0.08em" } },
+			"link": {
+				"color": { "text": "var(--wp--preset--color--primary)" },
+				"typography": { "textDecoration": "underline" },
+				":hover": { "color": { "text": "var(--wp--preset--color--hazel-dark)" } },
+				":focus": { "color": { "text": "var(--wp--preset--color--hazel-dark)" } }
+			},
+			"button": {
+				"color": {
+					"background": "var(--wp--preset--color--primary)",
+					"text": "var(--wp--preset--color--cream)"
+				},
+				"border": { "radius": "var(--wp--custom--radius--pill)", "width": "0" },
+				"spacing": {
+					"padding": { "top": "0.8rem", "bottom": "0.8rem", "left": "1.6rem", "right": "1.6rem" }
+				},
+				"typography": {
+					"fontFamily": "var(--wp--preset--font-family--manrope)",
+					"fontSize": "var(--wp--preset--font-size--medium)",
+					"fontWeight": "700",
+					"lineHeight": "1.2",
+					"textDecoration": "none"
+				},
+				":hover": {
+					"color": {
+						"background": "var(--wp--preset--color--primary-dark)",
+						"text": "var(--wp--preset--color--cream)"
+					}
+				},
+				":focus": {
+					"color": {
+						"background": "var(--wp--preset--color--primary-dark)",
+						"text": "var(--wp--preset--color--cream)"
+					}
+				}
+			},
+			"caption": {
+				"color": { "text": "var(--wp--preset--color--muted)" },
+				"typography": { "fontSize": "var(--wp--preset--font-size--x-small)" }
+			}
+		},
+		"blocks": {
+			"core/site-title": {
+				"typography": {
+					"fontFamily": "var(--wp--preset--font-family--fraunces)",
+					"fontSize": "var(--wp--preset--font-size--large)",
+					"fontWeight": "600",
+					"letterSpacing": "0.12em",
+					"textTransform": "uppercase"
+				},
+				"elements": {
+					"link": { "typography": { "textDecoration": "none" } }
+				}
+			},
+			"core/navigation": {
+				"typography": {
+					"fontSize": "var(--wp--preset--font-size--small)",
+					"fontWeight": "600"
+				},
+				"elements": {
+					"link": { "typography": { "textDecoration": "none" } }
+				}
+			},
+			"core/separator": {
+				"color": { "text": "var(--wp--preset--color--kraft)" },
+				"border": { "width": "1px" }
+			},
+			"core/quote": {
+				"border": { "left": { "color": "var(--wp--preset--color--hazel)", "width": "3px", "style": "solid" } },
+				"spacing": { "padding": { "left": "var(--wp--preset--spacing--40)" } },
+				"typography": { "fontFamily": "var(--wp--preset--font-family--fraunces)", "fontSize": "var(--wp--preset--font-size--large)", "fontStyle": "italic" }
+			},
+			"core/details": {
+				"border": { "bottom": { "color": "var(--wp--preset--color--kraft)", "width": "1px", "style": "solid" } },
+				"spacing": { "padding": { "top": "var(--wp--preset--spacing--30)", "bottom": "var(--wp--preset--spacing--30)" } }
+			},
+			"core/post-title": {
+				"elements": {
+					"link": { "typography": { "textDecoration": "none" } }
+				}
+			},
+			"core/search": {
+				"border": { "radius": "var(--wp--custom--radius--pill)" }
+			},
+			"woocommerce/product-price": {
+				"color": { "text": "var(--wp--preset--color--primary)" },
+				"typography": { "fontWeight": "700" }
+			}
+		}
+	},
+	"templateParts": [
+		{ "name": "header", "title": "Header", "area": "header" },
+		{ "name": "header-checkout", "title": "Header (sade — ödeme)", "area": "header" },
+		{ "name": "footer", "title": "Footer", "area": "footer" }
+	],
+	"customTemplates": [
+		{ "name": "page-wide", "title": "Geniş sayfa (başlıksız)", "postTypes": [ "page" ] },
+		{ "name": "page-legal", "title": "Yasal metin", "postTypes": [ "page" ] }
+	]
+}

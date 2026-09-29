@@ -1,0 +1,17 @@
+/*
+Theme Name: Köytarla
+Theme URI: https://koytarla.com
+Author: Köytarla
+Description: Köytarla için hafif, özel WooCommerce blok teması (FSE). Giresun'daki aile bahçesinden fındık ve fındık ürünleri.
+Version: 0.1.0
+Requires at least: 6.6
+Tested up to: 7.1
+Requires PHP: 7.4
+WC requires at least: 9.0
+License: GNU General Public License v2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Text Domain: koytarla
+Tags: e-commerce, block-themes, full-site-editing, custom-colors, custom-logo
+*/
+
+/* Stillerin tamamı theme.json ve assets/css/theme.css içindedir. */

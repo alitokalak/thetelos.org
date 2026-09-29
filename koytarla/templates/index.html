@@ -1,0 +1,33 @@
+<!-- wp:template-part {"slug":"header","area":"header","tagName":"header"} /-->
+
+<!-- wp:group {"tagName":"main","style":{"spacing":{"padding":{"top":"var:preset|spacing|60","bottom":"var:preset|spacing|70"}}},"layout":{"type":"constrained","wideSize":"1280px"}} -->
+<main class="wp-block-group" style="padding-top:var(--wp--preset--spacing--60);padding-bottom:var(--wp--preset--spacing--70)">
+
+<!-- wp:query-title {"type":"archive","align":"wide"} /-->
+
+<!-- wp:query {"queryId":1,"query":{"perPage":9,"pages":0,"offset":0,"postType":"post","order":"desc","orderBy":"date","inherit":true},"align":"wide"} -->
+<div class="wp-block-query alignwide">
+<!-- wp:post-template {"layout":{"type":"grid","columnCount":3,"minimumColumnWidth":"16rem"}} -->
+<!-- wp:post-featured-image {"isLink":true,"aspectRatio":"4/3","style":{"border":{"radius":"var:custom|radius|medium"}}} /-->
+<!-- wp:post-title {"isLink":true,"level":2,"fontSize":"large"} /-->
+<!-- wp:post-excerpt {"excerptLength":24,"fontSize":"small"} /-->
+<!-- /wp:post-template -->
+
+<!-- wp:query-pagination {"layout":{"type":"flex","justifyContent":"center"}} -->
+<!-- wp:query-pagination-previous {"label":"Önceki"} /-->
+<!-- wp:query-pagination-numbers /-->
+<!-- wp:query-pagination-next {"label":"Sonraki"} /-->
+<!-- /wp:query-pagination -->
+
+<!-- wp:query-no-results -->
+<!-- wp:paragraph -->
+<p>Henüz içerik yok.</p>
+<!-- /wp:paragraph -->
+<!-- /wp:query-no-results -->
+</div>
+<!-- /wp:query -->
+
+</main>
+<!-- /wp:group -->
+
+<!-- wp:template-part {"slug":"footer","area":"footer","tagName":"div"} /-->
