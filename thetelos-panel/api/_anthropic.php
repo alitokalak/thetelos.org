@@ -52,10 +52,11 @@ function tls_claude_fast_model() {
 }
 
 /** KALİTELİ model — yeniden yazma/özet gibi uzun, önemli üretim için.
-   Sonnet 5: Sonnet 4.5'e göre hem daha ucuz ($2/$10 vs $3/$15) hem daha yeni. */
+   Sonnet 5.5: Sonnet 5 ile AYNI fiyat ($2/$10) ama ~%30 daha hızlı, çoğu işte
+   ~%30 daha ucuz ve daha yeni/iyi (Anthropic 29 Eyl 2026 duyurusu). */
 function tls_claude_quality_model() {
     return (defined('ANTHROPIC_QUALITY_MODEL') && ANTHROPIC_QUALITY_MODEL)
-        ? (string) ANTHROPIC_QUALITY_MODEL : 'claude-sonnet-5';
+        ? (string) ANTHROPIC_QUALITY_MODEL : 'claude-sonnet-5-5';
 }
 
 /** EN GÜÇLÜ model — son-çare "bu eseri biliyor musun" için. Opus, geniş
