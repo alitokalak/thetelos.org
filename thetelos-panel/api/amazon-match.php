@@ -176,6 +176,7 @@ if ($action === 'scan') {
             'author'   => $author,
             'edit_url' => get_edit_post_link($pid, 'raw'),
             'asin'     => '', 'ol_title' => '', 'ol_year' => '', 'cover' => '',
+            'confident' => false,
         ];
 
         $ol = json_decode((string) am_http_get(
@@ -215,10 +216,11 @@ if ($action === 'scan') {
 
         $pick = $confident ?: $fallback;
         if ($pick) {
-            $row['asin']     = $pick['asin'];
-            $row['ol_title'] = $pick['title'];
-            $row['ol_year']  = $pick['year'];
-            $row['cover']    = $pick['cover'];
+            $row['asin']      = $pick['asin'];
+            $row['ol_title']  = $pick['title'];
+            $row['ol_year']   = $pick['year'];
+            $row['cover']     = $pick['cover'];
+            $row['confident'] = ($confident !== null);
         }
         $rows[] = $row;
     }

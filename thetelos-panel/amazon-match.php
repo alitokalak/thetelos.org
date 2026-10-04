@@ -21,6 +21,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600}
 .badge-ok{background:rgba(0,171,107,.15);color:#00ab6b}
 .badge-err{background:rgba(204,24,24,.15);color:#cc1818}
+.badge-warn{background:rgba(214,158,0,.18);color:#d69e00}
 .am-cover{width:34px;height:50px;object-fit:cover;border-radius:3px;background:var(--surface2)}
 .am-book{font-weight:600}
 .am-book small{display:block;color:var(--muted);font-weight:400;font-size:11px}
@@ -134,15 +135,17 @@ function ensureTable(){
 function addRow(r){
   ensureTable();
   const found = !!r.asin;
+  const sure  = !!r.confident;   // yalnızca başlık+yazar kesin tutanlar
   const tr = document.createElement('tr');
   tr.dataset.postId = r.post_id;
   tr.dataset.found  = found ? '1' : '0';
   tr.innerHTML =
-    '<td>'+(found?'<input type="checkbox" class="am-cb" checked>':'')+'</td>'+
+    '<td>'+(found?'<input type="checkbox" class="am-cb"'+(sure?' checked':'')+'>':'')+'</td>'+
     '<td>'+(r.cover?'<img class="am-cover" src="'+escH(r.cover)+'" loading="lazy">':'<div class="am-cover"></div>')+'</td>'+
     '<td class="am-book">'+escH(r.book)+'<small>'+escH(r.author)+'</small></td>'+
     '<td class="am-ol">'+(found
         ? escH(r.ol_title)+(r.ol_year?' <span style="opacity:.7">('+escH(r.ol_year)+')</span>':'')
+          +(sure?'':' <span class="badge badge-warn">belirsiz — kontrol et</span>')
         : '<span class="badge badge-err">Bulunamadı</span>')+'</td>'+
     '<td class="am-asin"><input type="text" value="'+escH(r.asin)+'" placeholder="elle gir…" maxlength="10"></td>'+
     '<td>'+(found?'<a class="am-link" href="https://www.amazon.com/dp/'+escH(r.asin)+'" target="_blank" rel="noopener">Amazon\'da Aç ↗</a>':'')+'</td>';
