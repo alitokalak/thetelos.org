@@ -84,6 +84,53 @@ function am_parse_book($post_id) {
     return [$book, $author];
 }
 
+/* Başlık/yazar karşılaştırması için normalize: küçük harf, aksan/işaret temizliği. */
+function am_norm($s) {
+    $s = html_entity_decode((string) $s, ENT_QUOTES, 'UTF-8');
+    $s = function_exists('mb_strtolower') ? mb_strtolower($s, 'UTF-8') : strtolower($s);
+    if (function_exists('transliterator_transliterate')) {
+        $t = transliterator_transliterate('Any-Latin; Latin-ASCII; Lower()', $s);
+        if (is_string($t)) $s = $t;
+    } else {
+        $map = ['á'=>'a','à'=>'a','â'=>'a','ä'=>'a','ã'=>'a','å'=>'a','ā'=>'a',
+                'é'=>'e','è'=>'e','ê'=>'e','ë'=>'e','ē'=>'e',
+                'í'=>'i','ì'=>'i','î'=>'i','ï'=>'i','ī'=>'i',
+                'ó'=>'o','ò'=>'o','ô'=>'o','ö'=>'o','õ'=>'o','ø'=>'o','ō'=>'o',
+                'ú'=>'u','ù'=>'u','û'=>'u','ü'=>'u','ū'=>'u',
+                'ç'=>'c','ñ'=>'n','ß'=>'ss','ş'=>'s','ğ'=>'g','ı'=>'i'];
+        $s = strtr($s, $map);
+    }
+    $s = preg_replace('/[^a-z0-9]+/', ' ', $s);
+    return trim(preg_replace('/\s+/', ' ', (string) $s));
+}
+
+/* İki başlık güçlü eşleşiyor mu? (tam eşit / biri diğerini kapsıyor / %90+ benzer) */
+function am_title_match($our, $ol) {
+    $a = am_norm($our); $b = am_norm($ol);
+    if ($a === '' || $b === '') return false;
+    if ($a === $b) return true;
+    if (strlen($a) >= 6 && strpos($b, $a) !== false) return true;
+    if (strlen($b) >= 6 && strpos($a, $b) !== false) return true;
+    $pct = 0.0; similar_text($a, $b, $pct);
+    return $pct >= 90;
+}
+
+/* Yazar eşleşiyor mu? null = bizde yazar yok (bilinmiyor). */
+function am_author_match($our, $ol_authors) {
+    $a = am_norm($our);
+    if ($a === '') return null;
+    $parts = explode(' ', $a); $sur = end($parts);
+    foreach ((array) $ol_authors as $ol) {
+        $b = am_norm($ol);
+        if ($b === '') continue;
+        if ($a === $b) return true;
+        if ($sur !== '' && strlen($sur) >= 3 && strpos($b, $sur) !== false) return true;
+        $pct = 0.0; similar_text($a, $b, $pct);
+        if ($pct >= 85) return true;
+    }
+    return false;
+}
+
 function am_stats() {
     global $wpdb;
     $total   = (int) wp_count_posts('post')->publish;
@@ -99,10 +146,13 @@ function am_stats() {
 
 $action = $_POST['action'] ?? '';
 
-/* ── Tara: sıradaki kitaplar için ASIN önerisi üret ── */
+/* ── Tara: sıradaki kitaplar için ASIN önerisi üret ──
+   auto=1 ise: başlık+yazar güçlü eşleşen (kesin emin olunan) kitaplar
+   DOĞRUDAN kaydedilir; yalnızca şüpheli/bulunamayanlar elle onaya döner. */
 if ($action === 'scan') {
     $exclude = array_values(array_filter(array_map('intval', explode(',', (string)($_POST['exclude'] ?? '')))));
-    $chunk   = 6;
+    $auto    = !empty($_POST['auto']);
+    $chunk   = $auto ? 10 : 6;
 
     $q = new WP_Query([
         'post_type'      => 'post',
@@ -116,7 +166,8 @@ if ($action === 'scan') {
         'meta_query'     => [[ 'key' => '_tls_amazon_asin', 'compare' => 'NOT EXISTS' ]],
     ]);
 
-    $rows = [];
+    $rows       = [];
+    $auto_saved = 0;
     foreach ($q->posts as $pid) {
         [$book, $author] = am_parse_book($pid);
         $row = [
@@ -133,24 +184,51 @@ if ($action === 'scan') {
             . '&limit=5&fields=title,author_name,first_publish_year,isbn,cover_i'
         ), true);
 
+        $fallback  = null;   // ISBN'li ilk sonuç (elle öneri)
+        $confident = null;   // başlık+yazar kesin eşleşen sonuç
         foreach (($ol['docs'] ?? []) as $doc) {
             $isbn10 = am_pick_isbn10($doc['isbn'] ?? []);
             if ($isbn10 === '') continue;
-            $row['asin']     = $isbn10;
-            $row['ol_title'] = (string) ($doc['title'] ?? '');
-            $row['ol_year']  = (string) ($doc['first_publish_year'] ?? '');
-            $row['cover']    = !empty($doc['cover_i'])
-                ? 'https://covers.openlibrary.org/b/id/' . (int) $doc['cover_i'] . '-S.jpg' : '';
-            break;
+            $cand = [
+                'asin'  => $isbn10,
+                'title' => (string) ($doc['title'] ?? ''),
+                'year'  => (string) ($doc['first_publish_year'] ?? ''),
+                'cover' => !empty($doc['cover_i'])
+                    ? 'https://covers.openlibrary.org/b/id/' . (int) $doc['cover_i'] . '-S.jpg' : '',
+            ];
+            if ($fallback === null) $fallback = $cand;
+
+            $tmatch = am_title_match($book, $cand['title']);
+            $amatch = am_author_match($author, $doc['author_name'] ?? []);
+            // Kesin emin: başlık güçlü eşleşir VE (yazar da eşleşir YA DA
+            // yazar bilinmiyorsa başlık birebir aynıdır).
+            $sure = $tmatch && ($amatch === true
+                     || ($amatch === null && am_norm($book) === am_norm($cand['title'])));
+            if ($sure) { $confident = $cand; break; }
+        }
+
+        if ($auto && $confident !== null) {
+            update_post_meta($pid, '_tls_amazon_asin', $confident['asin']);
+            $auto_saved++;
+            continue;   // kaydedildi, elle onaya gönderme
+        }
+
+        $pick = $confident ?: $fallback;
+        if ($pick) {
+            $row['asin']     = $pick['asin'];
+            $row['ol_title'] = $pick['title'];
+            $row['ol_year']  = $pick['year'];
+            $row['cover']    = $pick['cover'];
         }
         $rows[] = $row;
     }
 
     echo json_encode([
-        'ok'    => true,
-        'rows'  => $rows,
-        'done'  => count($q->posts) === 0,
-        'stats' => am_stats(),
+        'ok'         => true,
+        'rows'       => $rows,
+        'auto_saved' => $auto_saved,
+        'done'       => count($q->posts) === 0,
+        'stats'      => am_stats(),
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }

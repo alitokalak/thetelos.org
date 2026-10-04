@@ -71,18 +71,21 @@ label.auto{font-size:12px;color:var(--muted);display:flex;align-items:center;gap
     </div>
 
     <div class="bulk-row">
-      <button class="btn btn-primary" id="btn-scan">🔎 Tara ve Öner</button>
-      <label class="auto"><input type="checkbox" id="auto-loop"> Otomatik devam et</label>
+      <button class="btn btn-primary" id="btn-auto">⚡ Güvenli Otomatik Eşleştir</button>
+      <button class="btn" id="btn-stop" style="display:none">⏹ Durdur</button>
+      <button class="btn" id="btn-scan">🔎 Elle Tara (6'şar)</button>
+      <label class="auto"><input type="checkbox" id="auto-loop"> Elle taramayı sürdür</label>
       <button class="btn" id="btn-save" style="display:none">💾 Seçilenleri Kaydet</button>
       <button class="btn" id="btn-skip" style="display:none">🚫 Bulunamayanları bir daha sorma</button>
       <span id="am-status"></span>
     </div>
 
-    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:720px">
-      Her satırda önerilen Amazon eşleşmesi var. <b>"Amazon'da Aç"</b> ile doğrula,
-      yanlışsa kutudaki ASIN'i elle düzelt ya da işaretini kaldır. <b>Kaydet</b>'e
-      basınca onaylananların butonu doğrudan ürün sayfasına gider.
-      Kaydedilmeyenler sonraki taramalarda tekrar gelir.
+    <p style="font-size:12px;color:var(--muted);margin-bottom:14px;max-width:760px">
+      <b>⚡ Güvenli Otomatik Eşleştir:</b> başlık <u>ve</u> yazarı kesin eşleşen kitapları
+      kendisi kaydeder (sen uğraşmazsın); yalnızca <b>şüpheli veya bulunamayan</b> kitaplar
+      aşağıda elle onayına kalır. Yanlış kitap riski yoktur — emin olmadığını asla kaydetmez.
+      Aşağıdaki satırlarda <b>"Amazon'da Aç"</b> ile doğrula, gerekirse ASIN'i elle düzelt,
+      sonra <b>Kaydet</b>'e bas.
     </p>
 
     <div id="result"><div style="text-align:center;padding:40px;color:var(--muted)">Tara butonuna bas.</div></div>
@@ -96,6 +99,9 @@ const $  = id => document.getElementById(id);
 let shown = [];          // bu oturumda gösterilen post_id'ler
 let tbody = null;
 let scanning = false;
+let autoMode = false;    // güvenli otomatik eşleştirme aktif mi
+let stopFlag = false;
+let autoSavedTotal = 0;  // otomatik kaydedilen toplam
 
 function post(body){
   return fetch(API('amazon-match.php'), {
@@ -165,25 +171,59 @@ function refreshButtons(){
 function scanOnce(){
   if(scanning) return;
   scanning = true;
-  $('btn-scan').disabled = true; $('btn-scan').textContent = 'Aranıyor…';
-  $('am-status').textContent = 'OpenLibrary üzerinden eşleşme aranıyor (6 kitap)…';
-  post('action=scan&exclude=' + encodeURIComponent(shown.join(',')))
+  const auto = autoMode;
+  $('btn-scan').disabled = true;
+  $('btn-auto').disabled = true;
+  $('am-status').textContent = auto
+    ? 'Otomatik eşleştiriliyor… (kesin olanlar kaydediliyor)'
+    : 'OpenLibrary üzerinden eşleşme aranıyor (6 kitap)…';
+  post('action=scan' + (auto?'&auto=1':'') + '&exclude=' + encodeURIComponent(shown.join(',')))
     .then(d => {
       scanning = false;
-      $('btn-scan').disabled = false; $('btn-scan').textContent = '🔎 Tara ve Öner';
-      if(!d || !d.ok){ $('am-status').textContent = 'Hata oluştu.'; return; }
+      $('btn-scan').disabled = false;
+      $('btn-auto').disabled = false;
+      if(!d || !d.ok){ $('am-status').textContent = 'Hata oluştu.'; stopAuto(); return; }
       setStats(d.stats);
+      autoSavedTotal += (d.auto_saved||0);
       d.rows.forEach(r => { shown.push(r.post_id); addRow(r); });
       refreshButtons();
-      if(d.done){ $('am-status').textContent = '✓ Eşleştirilecek kitap kalmadı.'; $('auto-loop').checked = false; return; }
-      $('am-status').textContent = d.rows.length + ' öneri eklendi.';
-      if($('auto-loop').checked) setTimeout(scanOnce, 400);
+      const pending = tbody ? tbody.children.length : 0;
+      if(d.done){
+        $('am-status').textContent = '✓ Bitti. Otomatik kaydedilen: ' + autoSavedTotal.toLocaleString()
+          + (pending ? ' · Elle onay bekleyen: ' + pending : '');
+        $('auto-loop').checked = false; stopAuto(); return;
+      }
+      if(auto){
+        $('am-status').textContent = 'Otomatik: ' + autoSavedTotal.toLocaleString()
+          + ' kaydedildi · ' + pending + ' elle onay bekliyor…';
+        if(stopFlag){ stopAuto(); $('am-status').textContent = '⏸ Durduruldu. Otomatik kaydedilen: '
+          + autoSavedTotal.toLocaleString() + (pending ? ' · Elle onay bekleyen: ' + pending : ''); }
+        else setTimeout(scanOnce, 300);
+      } else {
+        $('am-status').textContent = d.rows.length + ' öneri eklendi.';
+        if($('auto-loop').checked) setTimeout(scanOnce, 400);
+      }
     })
-    .catch(() => { scanning = false; $('btn-scan').disabled = false; $('btn-scan').textContent = '🔎 Tara ve Öner'; $('am-status').textContent = 'Bağlantı hatası.'; });
+    .catch(() => { scanning = false; $('btn-scan').disabled = false; $('btn-auto').disabled = false; $('am-status').textContent = 'Bağlantı hatası.'; stopAuto(); });
 }
 
-$('btn-scan').addEventListener('click', scanOnce);
-$('auto-loop').addEventListener('change', function(){ if(this.checked && !scanning) scanOnce(); });
+function startAuto(){
+  if(scanning) return;
+  autoMode = true; stopFlag = false;
+  $('btn-stop').style.display = '';
+  $('btn-auto').style.display = 'none';
+  scanOnce();
+}
+function stopAuto(){
+  autoMode = false; stopFlag = false;
+  $('btn-stop').style.display = 'none';
+  $('btn-auto').style.display = '';
+}
+
+$('btn-auto').addEventListener('click', startAuto);
+$('btn-stop').addEventListener('click', () => { stopFlag = true; $('am-status').textContent = 'Durduruluyor…'; });
+$('btn-scan').addEventListener('click', () => { autoMode = false; scanOnce(); });
+$('auto-loop').addEventListener('change', function(){ if(this.checked && !scanning){ autoMode = false; scanOnce(); } });
 
 document.addEventListener('change', e => { if(e.target.classList.contains('am-cb')) refreshButtons(); });
 
