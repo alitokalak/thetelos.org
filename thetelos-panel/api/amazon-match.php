@@ -174,6 +174,7 @@ if ($action === 'scan') {
             'post_id'  => $pid,
             'book'     => $book,
             'author'   => $author,
+            'url'      => get_permalink($pid),
             'edit_url' => get_edit_post_link($pid, 'raw'),
             'asin'     => '', 'ol_title' => '', 'ol_year' => '', 'cover' => '',
             'confident' => false,

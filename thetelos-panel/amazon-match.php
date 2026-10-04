@@ -25,6 +25,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 .am-cover{width:34px;height:50px;object-fit:cover;border-radius:3px;background:var(--surface2)}
 .am-book{font-weight:600}
 .am-book small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+.am-booklink{color:var(--text);text-decoration:none;border-bottom:1px dotted var(--muted)}
+.am-booklink:hover{color:var(--tls-gold);border-bottom-color:var(--tls-gold)}
 .am-ol{font-size:12px;color:var(--muted);max-width:260px}
 .am-asin input{width:120px;padding:5px 8px;font-size:12px;font-family:monospace;background:var(--surface2);border:1px solid var(--border);border-radius:5px;color:var(--text)}
 .am-link{font-size:12px;color:var(--tls-gold);text-decoration:none;white-space:nowrap}
@@ -142,7 +144,9 @@ function addRow(r){
   tr.innerHTML =
     '<td>'+(found?'<input type="checkbox" class="am-cb"'+(sure?' checked':'')+'>':'')+'</td>'+
     '<td>'+(r.cover?'<img class="am-cover" src="'+escH(r.cover)+'" loading="lazy">':'<div class="am-cover"></div>')+'</td>'+
-    '<td class="am-book">'+escH(r.book)+'<small>'+escH(r.author)+'</small></td>'+
+    '<td class="am-book">'+(r.url
+        ? '<a href="'+escH(r.url)+'" target="_blank" rel="noopener" class="am-booklink">'+escH(r.book)+' ↗</a>'
+        : escH(r.book))+'<small>'+escH(r.author)+'</small></td>'+
     '<td class="am-ol">'+(found
         ? escH(r.ol_title)+(r.ol_year?' <span style="opacity:.7">('+escH(r.ol_year)+')</span>':'')
           +(sure?'':' <span class="badge badge-warn">belirsiz — kontrol et</span>')
