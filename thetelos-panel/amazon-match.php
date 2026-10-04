@@ -80,6 +80,7 @@ label.auto{font-size:12px;color:var(--muted);display:flex;align-items:center;gap
       <label class="auto"><input type="checkbox" id="auto-loop"> Elle taramayı sürdür</label>
       <button class="btn" id="btn-save" style="display:none">💾 Seçilenleri Kaydet</button>
       <button class="btn" id="btn-skip" style="display:none">🚫 Bulunamayanları bir daha sorma</button>
+      <button class="btn" id="btn-reset" style="margin-left:auto;color:#cc1818;border-color:#cc1818">🗑 Tüm Eşleşmeleri Sıfırla</button>
       <span id="am-status"></span>
     </div>
 
@@ -226,6 +227,21 @@ function stopAuto(){
   $('btn-stop').style.display = 'none';
   $('btn-auto').style.display = '';
 }
+
+$('btn-reset').addEventListener('click', () => {
+  if(scanning){ alert('Önce taramayı durdur.'); return; }
+  if(!confirm('TÜM kaydedilmiş Amazon (ASIN) eşleşmeleri silinecek ve her kitap yeniden güvenli aramaya dönecek.\n\nEmin misin?')) return;
+  $('btn-reset').disabled = true;
+  $('am-status').textContent = 'Sıfırlanıyor…';
+  post('action=reset').then(d => {
+    $('btn-reset').disabled = false;
+    if(!d || !d.ok){ $('am-status').textContent = 'Sıfırlama hatası.'; return; }
+    setStats(d.stats);
+    shown = []; tbody = null; autoSavedTotal = 0;
+    $('result').innerHTML = '<div style="text-align:center;padding:40px;color:var(--muted)">Sıfırlandı. ⚡ Güvenli Otomatik Eşleştir ile yeniden başlayabilirsin.</div>';
+    $('am-status').textContent = '✓ ' + (d.cleared||0).toLocaleString() + ' eşleşme silindi. Hepsi aramaya döndü.';
+  }).catch(() => { $('btn-reset').disabled = false; $('am-status').textContent = 'Bağlantı hatası.'; });
+});
 
 $('btn-auto').addEventListener('click', startAuto);
 $('btn-stop').addEventListener('click', () => { stopFlag = true; $('am-status').textContent = 'Durduruluyor…'; });

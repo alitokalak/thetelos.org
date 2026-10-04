@@ -115,18 +115,23 @@ function am_title_match($our, $ol) {
     return $pct >= 90;
 }
 
-/* Yazar eşleşiyor mu? null = bizde yazar yok (bilinmiyor). */
+/* Yazar eşleşiyor mu? null = bizde yazar yok (bilinmiyor).
+   Katı: soyad (son anlamlı kelime) OL yazar adında TAM KELİME olarak geçmeli
+   ("stein" → "edith stein" ✓ ama "steinbeck" ✗), ya da isim %90+ benzer olmalı. */
 function am_author_match($our, $ol_authors) {
     $a = am_norm($our);
     if ($a === '') return null;
-    $parts = explode(' ', $a); $sur = end($parts);
+    $toks = array_values(array_filter(explode(' ', $a), function ($t) { return strlen($t) >= 2; }));
+    if (!$toks) return null;
+    $sur = end($toks);
     foreach ((array) $ol_authors as $ol) {
         $b = am_norm($ol);
         if ($b === '') continue;
         if ($a === $b) return true;
-        if ($sur !== '' && strlen($sur) >= 3 && strpos($b, $sur) !== false) return true;
+        $btoks = explode(' ', $b);
+        if (strlen($sur) >= 3 && in_array($sur, $btoks, true)) return true;
         $pct = 0.0; similar_text($a, $b, $pct);
-        if ($pct >= 85) return true;
+        if ($pct >= 90) return true;
     }
     return false;
 }
@@ -200,12 +205,13 @@ if ($action === 'scan') {
             ];
             if ($fallback === null) $fallback = $cand;
 
-            $tmatch = am_title_match($book, $cand['title']);
+            // Kesin emin kuralı (KATI): yazar MUTLAKA olmalı ve eşleşmeli,
+            // başlık da birebir ya da %92+ benzer olmalı. Yazarsız kitaplar
+            // asla "emin" sayılmaz (ör. "On Nature" → yanlış eşleşme engellenir).
             $amatch = am_author_match($author, $doc['author_name'] ?? []);
-            // Kesin emin: başlık güçlü eşleşir VE (yazar da eşleşir YA DA
-            // yazar bilinmiyorsa başlık birebir aynıdır).
-            $sure = $tmatch && ($amatch === true
-                     || ($amatch === null && am_norm($book) === am_norm($cand['title'])));
+            $pct = 0.0; similar_text(am_norm($book), am_norm($cand['title']), $pct);
+            $strong_title = (am_norm($book) === am_norm($cand['title'])) || $pct >= 92;
+            $sure = ($author !== '') && ($amatch === true) && $strong_title;
             if ($sure) { $confident = $cand; break; }
         }
 
@@ -265,6 +271,19 @@ if ($action === 'skip') {
         $done++;
     }
     echo json_encode(['ok' => true, 'skipped' => $done, 'stats' => am_stats()]);
+    exit;
+}
+
+/* ── Sıfırla: tüm kaydedilmiş ASIN eşleşmelerini sil (hepsi aramaya döner) ── */
+if ($action === 'reset') {
+    global $wpdb;
+    $cleared = (int) $wpdb->query(
+        "DELETE pm FROM {$wpdb->postmeta} pm
+         JOIN {$wpdb->posts} p ON p.ID = pm.post_id AND p.post_type = 'post'
+         WHERE pm.meta_key = '_tls_amazon_asin'"
+    );
+    wp_cache_flush();
+    echo json_encode(['ok' => true, 'cleared' => $cleared, 'stats' => am_stats()]);
     exit;
 }
 
