@@ -60,6 +60,37 @@ add_filter( 'manage_users_custom_column', function ( $val, $col, $uid ) {
     );
 }, 10, 3 );
 
+/* ── Users listesi: "Kayıt Tarihi" sütunu ── */
+add_filter( 'manage_users_columns', function ( $cols ) {
+    $cols['tls_registered'] = 'Kayıt Tarihi';
+    return $cols;
+} );
+
+add_filter( 'manage_users_custom_column', function ( $val, $col, $uid ) {
+    if ( $col !== 'tls_registered' ) return $val;
+    $u = get_userdata( $uid );
+    if ( ! $u || empty( $u->user_registered ) ) return '—';
+    $ts = strtotime( $u->user_registered );
+    return '<span title="' . esc_attr( date_i18n( 'Y-m-d H:i', $ts ) ) . '">'
+         . esc_html( date_i18n( 'j M Y, H:i', $ts ) ) . '</span>';
+}, 10, 3 );
+
+/* Sütunu sıralanabilir yap (başlığa tıklayınca sıralar). */
+add_filter( 'manage_users_sortable_columns', function ( $cols ) {
+    $cols['tls_registered'] = 'registered';
+    return $cols;
+} );
+
+/* Varsayılan sıralama: Users listesinde en yeni kayıt en üstte.
+   Kullanıcı bir sütun başlığına tıklayıp kendi sıralamasını seçmediyse uygulanır. */
+add_action( 'pre_get_users', function ( $query ) {
+    global $pagenow;
+    if ( ! is_admin() || $pagenow !== 'users.php' ) return;
+    if ( ! empty( $_GET['orderby'] ) ) return;   // kullanıcı kendi sıralamasını seçti
+    $query->set( 'orderby', 'user_registered' );
+    $query->set( 'order', 'DESC' );
+} );
+
 /* ── Edit User ekranı: tam aktivite kutusu ── */
 function tls_render_user_activity_box( $user ) {
     if ( ! current_user_can( 'list_users' ) ) return;
