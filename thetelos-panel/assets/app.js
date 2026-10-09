@@ -1054,41 +1054,50 @@ async function uploadFile(file) {
   if (!res || !res.ok) { notify('bulk-notif', (res && res.error) || 'Bilinmeyen yükleme hatası.', 'err'); return; }
   if (!res.books || res.books.length === 0) { notify('bulk-notif', 'Dosyada okunabilir satır yok (biçim: Kitap Adı | Yazar).', 'err'); return; }
 
-  // Sitedeki yazarları kontrol et (checkbox işaretliyse)
-  const skipOnSite = document.getElementById('bulk-skip-onsite')?.checked !== false;
-  const uniqueAuthors = [...new Set(res.books.map(b => b.author_name).filter(Boolean))];
-  let onSiteAuthors = new Set();
-  if (skipOnSite) {
-    notify('bulk-notif', '⏳ ' + uniqueAuthors.length + ' yazar sitede zaten var mı diye kontrol ediliyor… (biraz sürebilir)', 'ok');
-    try {
-      const chk = await postData(API('author-check.php'), { authors: JSON.stringify(uniqueAuthors) }, 60000);
-      if (chk.ok && chk.on_site?.length) onSiteAuthors = new Set(chk.on_site.map(a => a.toLowerCase()));
-    } catch(_) {
-      notify('bulk-notif', '⚠ Yazar kontrolü zaman aşımına uğradı — liste yine de yüklendi (kontrol atlandı).', 'err');
-    }
-  }
-
-  // post_id taşıyan satırlar zaten sitedeki BELİRLİ bir yazıyı yeniden yazmak
-  // içindir → "sitede var" filtresine takılmamalı (asıl amaç onları güncellemek).
-  const filteredBooks = res.books.filter(b => b.post_id || !onSiteAuthors.has((b.author_name || '').toLowerCase()));
-  const skippedAuthors = uniqueAuthors.filter(a => onSiteAuthors.has(a.toLowerCase()));
-
-  // Listeye ekle (dedup by title+author)
+  // ── Listeyi HEMEN göster (yazar kontrolünü BEKLEMEDEN) ──
+  // Eskiden önce ~1 dk'lık yazar kontrolü yapılıp liste ondan sonra görünüyordu
+  // → kullanıcı boş ekranda bekliyordu. Artık liste anında gelir; sitede-var
+  // kontrolü ARKA PLANDA yapılır ve bitince sitedekiler listeden düşülür.
   const existing = new Set(batchBooks.map(b => (b.book_title + '||' + b.author_name).toLowerCase()));
   let added = 0;
-  for (const bk of filteredBooks) {
+  for (const bk of res.books) {
     const key = (bk.book_title + '||' + bk.author_name).toLowerCase();
     if (!existing.has(key)) { batchBooks.push(bk); existing.add(key); added++; }
   }
-
   uploadedFiles.push(file.name);
   updateFileList();
   updateBatchBadge();
   renderBulkTable(batchBooks);
   document.getElementById('btn-batch-start').disabled = false;
   document.getElementById('upload-actions').style.display = 'flex';
-  const skipMsg = skippedAuthors.length ? ` · ${skippedAuthors.length} yazar sitede var, çıkarıldı (${skippedAuthors.slice(0,3).join(', ')}${skippedAuthors.length>3?'…':''})` : '';
-  notify('bulk-notif', `✓ ${file.name}: ${added} kitap eklendi. Toplam: ${batchBooks.length}${skipMsg}`, 'ok');
+  notify('bulk-notif', `✓ ${file.name}: ${added} kitap eklendi. Toplam: ${batchBooks.length}.`, 'ok');
+
+  // ── Arka planda: sitede zaten olan yazarları listeden çıkar ──
+  const skipOnSite = document.getElementById('bulk-skip-onsite')?.checked !== false;
+  if (!skipOnSite) return;
+  const uniqueAuthors = [...new Set(res.books.map(b => b.author_name).filter(Boolean))];
+  if (!uniqueAuthors.length) return;
+  notify('bulk-notif', `⏳ Liste hazır (${batchBooks.length}). Arka planda ${uniqueAuthors.length} yazar sitede var mı kontrol ediliyor… (liste kullanılabilir)`, 'ok');
+  try {
+    const chk = await postData(API('author-check.php'), { authors: JSON.stringify(uniqueAuthors) }, 90000);
+    if (chk.ok && chk.on_site?.length) {
+      const onSite  = new Set(chk.on_site.map(a => a.toLowerCase()));
+      const before  = batchBooks.length;
+      // post_id taşıyanlar (belirli yazıyı yeniden yazma) korunur.
+      const kept    = batchBooks.filter(b => b.post_id || !onSite.has((b.author_name || '').toLowerCase()));
+      batchBooks.length = 0; batchBooks.push(...kept);
+      const removed = before - batchBooks.length;
+      updateBatchBadge(); renderBulkTable(batchBooks);
+      const names = chk.on_site.slice(0, 3).join(', ') + (chk.on_site.length > 3 ? '…' : '');
+      notify('bulk-notif', removed
+        ? `✓ Kontrol bitti: ${removed} kitap çıkarıldı (yazarı sitede var: ${names}). Kalan: ${batchBooks.length}.`
+        : `✓ Kontrol bitti: sitede olan yazar yok. Toplam: ${batchBooks.length}.`, 'ok');
+    } else {
+      notify('bulk-notif', `✓ Kontrol bitti: sitede olan yazar yok. Toplam: ${batchBooks.length}.`, 'ok');
+    }
+  } catch(_) {
+    notify('bulk-notif', '⚠ Yazar kontrolü zaman aşımına uğradı — liste olduğu gibi kaldı (kontrol atlandı).', 'err');
+  }
 }
 
 function updateFileList() {
