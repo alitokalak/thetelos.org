@@ -26,6 +26,29 @@ if ($author === '' || !is_array($works) || empty($works)) {
     echo json_encode(['ok'=>false,'error'=>'author ve works gerekli']); exit;
 }
 
+/* ── ÖNBELLEK (dosya tabanlı, WP'siz) ──
+   Aynı yazar + aynı giriş listesi + aynı motor daha önce temizlendiyse API'ye
+   HİÇ gitmeden anında döner → tekrar eden temizlemelerde para harcanmaz, anında
+   gelir. Giriş listesi değişirse anahtar değişir → otomatik yeniden işlenir.
+   Kural/motor geliştirilince CL_CACHE_VER artırılarak tüm önbellek tazelenir.
+   POST nocache=1 → önbelleği atla (zorla yeniden temizle). */
+define('CL_CACHE_VER', '1');
+$cl_titles = array_values(array_filter(array_map(
+    function ($w) { return mb_strtolower(trim((string) ($w['title'] ?? ''))); }, $works)));
+sort($cl_titles);
+$cl_key  = md5(CL_CACHE_VER . '|' . mb_strtolower($author) . '|' . ($_POST['ai_engine'] ?? 'wikidata')
+    . '|' . ($use_ai ? '1' : '0') . '|' . implode("\n", $cl_titles));
+$cl_cache_dir  = __DIR__ . '/cache/clean';
+$cl_cache_file = $cl_cache_dir . '/' . $cl_key . '.json';
+if (empty($_POST['nocache']) && is_file($cl_cache_file)) {
+    $cl_hit = json_decode((string) file_get_contents($cl_cache_file), true);
+    if (is_array($cl_hit) && !empty($cl_hit['ok'])) {
+        $cl_hit['cached'] = true;
+        echo json_encode($cl_hit, JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+}
+
 /* ── Normalizasyon (kural katmanı) ── */
 function cl_norm($s) {
     $s = mb_strtolower(trim((string)$s));
@@ -514,7 +537,7 @@ if ($missing > 0) {
     unset($it);
 }
 
-echo json_encode([
+$cl_resp = [
     'ok'      => true,
     'author'  => $author,
     'works'   => $items_final,
@@ -523,4 +546,10 @@ echo json_encode([
     'ai_err'  => $ai_err,
     'in'      => count($works),
     'out'     => count($items_final),
-], JSON_UNESCAPED_UNICODE);
+];
+// Başarılı sonucu önbelleğe yaz (bir sonraki aynı istek API'siz döner).
+if (!empty($cl_cache_file)) {
+    if (!is_dir($cl_cache_dir)) @mkdir($cl_cache_dir, 0775, true);
+    @file_put_contents($cl_cache_file, json_encode($cl_resp, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+echo json_encode($cl_resp, JSON_UNESCAPED_UNICODE);
