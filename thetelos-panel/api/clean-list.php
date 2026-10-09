@@ -366,6 +366,13 @@ function cl_looks_foreign($s) {
 /* Yabancı bir başlığın İngilizce adını ÇÖZ (yerleşik ad ya da düz çeviri). Tek
    kısa AI çağrısı. Amaç: eseri ELEMEK yerine İngilizce adını KAZANDIRMAK. */
 function cl_resolve_en($title, $author, $engine, $cl_model = '') {
+    // Önbellek: aynı yabancı başlık (yazar) daha önce çözüldüyse API'ye gitme.
+    $en_dir  = __DIR__ . '/cache/clean';
+    $en_file = $en_dir . '/en_' . md5('en1|' . mb_strtolower(trim((string) $title)) . '|' . mb_strtolower(trim((string) $author))) . '.json';
+    if (is_file($en_file)) {
+        $en_hit = json_decode((string) file_get_contents($en_file), true);
+        if (is_array($en_hit) && !empty($en_hit['en'])) return (string) $en_hit['en'];
+    }
     $sys = 'You output ONLY the ENGLISH title of the given book — nothing else. If the work has an established English-literature title, output that. Otherwise output a faithful, natural English translation of the title. Output ONLY the title text: no quotes, no author name, no explanation, no original-language text.';
     $usr = "Book title: {$title}\nAuthor: {$author}";
     $out = '';
@@ -394,6 +401,8 @@ function cl_resolve_en($title, $author, $engine, $cl_model = '') {
     $out = trim(preg_replace('/\s+/u', ' ', (string) $out));
     $out = trim($out, " \t\"“”'’");
     if (mb_strlen($out) < 2 || mb_strlen($out) > 200) return '';
+    if (!is_dir($en_dir)) @mkdir($en_dir, 0775, true);
+    @file_put_contents($en_file, json_encode(['en' => $out], JSON_UNESCAPED_UNICODE), LOCK_EX);
     return $out;
 }
 

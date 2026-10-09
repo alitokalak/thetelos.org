@@ -56,6 +56,20 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
     $titles = array_values($titles);
     $n = count($titles);
     if ($n === 0)  return ['ok' => true,  'groups' => [], 'not_by_author' => [], 'wrote_in' => [], 'error' => ''];
+
+    /* ── ÖNBELLEK (dosya) ── Aynı yazar + aynı başlık listesi daha önce
+       denetlendiyse API'ye HİÇ gitmeden döner → toplu üretimde zaten temizlenmiş
+       yazar tekrar para harcamaz, anında geçer. Liste değişirse anahtar değişir. */
+    $cll_norm_titles = array_map('cll_norm', $titles);
+    sort($cll_norm_titles);
+    $cll_key  = md5('cll1|' . mb_strtolower(trim((string) $author)) . '|' . implode("\n", $cll_norm_titles));
+    $cll_dir  = __DIR__ . '/cache/clean';
+    $cll_file = $cll_dir . '/a_' . $cll_key . '.json';
+    if (is_file($cll_file)) {
+        $cll_hit = json_decode((string) file_get_contents($cll_file), true);
+        if (is_array($cll_hit) && !empty($cll_hit['ok'])) return $cll_hit;
+    }
+
     if (!tls_anthropic_ready()) return ['ok' => false, 'groups' => [], 'not_by_author' => [], 'wrote_in' => [], 'error' => 'anthropic hazır değil'];
 
     $cap   = 120;                          // token güvenliği
@@ -193,11 +207,15 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
     $flags = [];
     foreach ($flagged as $ix => $reason) $flags[] = ['n' => $ix, 'reason' => $reason];
 
-    return [
+    $cll_result = [
         'ok'            => true,
         'groups'        => $groups,
         'not_by_author' => $flags,
         'wrote_in'      => array_values((array) ($parsed['wrote_in'] ?? [])),
         'error'         => '',
     ];
+    // Başarılı denetimi önbelleğe yaz (aynı yazar bir daha API'ye gitmez).
+    if (!is_dir($cll_dir)) @mkdir($cll_dir, 0775, true);
+    @file_put_contents($cll_file, json_encode($cll_result, JSON_UNESCAPED_UNICODE), LOCK_EX);
+    return $cll_result;
 }
