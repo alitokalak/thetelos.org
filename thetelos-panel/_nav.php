@@ -1,67 +1,106 @@
 <?php
 /**
- * _nav.php — TÜM panel sayfaları için ORTAK sol menü.
- * Her sayfa kendi kopyası yerine bunu include eder → menü her yerde AYNI.
- * Aktif sayfa otomatik işaretlenir (script adı + panel.php için ?mode).
+ * _nav.php — TÜM panel sayfaları için ORTAK, açılır-kapanır (accordion) sol menü.
+ * Her sayfa bunu include eder → menü her yerde AYNI. Aktif grup otomatik açılır;
+ * kullanıcının açtığı/kapattığı gruplar localStorage'da hatırlanır.
  */
-if (!function_exists('tls_navlink')) {
-    function tls_navlink($file, $ico, $label, $mode = null, $ext = false) {
-        $cur     = basename($_SERVER['SCRIPT_NAME'] ?? '');
-        $curmode = $_GET['mode'] ?? '';
-        $active  = '';
-        $target  = '';
-        if ($ext) {
-            $href = $file; $target = ' target="_blank" rel="noopener"';
-        } elseif ($mode !== null) {                       // panel.php alt sekmeleri
-            $href = 'panel.php?mode=' . $mode;
-            if ($cur === 'panel.php') {
-                $effective = in_array($curmode, ['queue', 'cleaner'], true) ? $curmode : 'single';
-                if ($mode === $effective) $active = ' class="active"';
-            }
-        } else {
-            $href = $file;
-            if ($cur === $file) $active = ' class="active"';
+$tls_cur     = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$tls_curmode = $_GET['mode'] ?? '';
+
+/* Bir menü öğesi aktif mi? ($mode: panel.php alt sekmeleri için) */
+if (!function_exists('tls_nav_active')) {
+    function tls_nav_active($file, $mode, $cur, $curmode) {
+        if ($mode !== null) {
+            if ($cur !== 'panel.php') return false;
+            $eff = in_array($curmode, ['queue', 'cleaner'], true) ? $curmode : 'single';
+            return $mode === $eff;
         }
-        echo '<a href="' . $href . '"' . $active . $target . '><span class="ico">' . $ico . '</span> ' . $label . '</a>';
+        return $cur === $file;
     }
 }
+
+/* Gruplar: her biri açılır-kapanır. item = [dosya, etiket, mode?] */
+$tls_groups = [
+    ['key' => 'icerik', 'ico' => '✍', 'label' => 'İçerik', 'items' => [
+        ['panel.php', 'İçerik Üret', 'single'],
+        ['panel.php', 'Kuyruk', 'queue'],
+        ['panel.php', 'Liste Temizle', 'cleaner'],
+        ['placeholders.php', 'Yer Tutucular', null],
+        ['sources.php', 'Kaynak Arşivi', null],
+        ['social.php', 'Sosyal', null],
+        ['authors-bio.php', 'Yazar Bio', null],
+    ]],
+    ['key' => 'seo', 'ico' => '🔍', 'label' => 'SEO', 'items' => [
+        ['seo.php', 'İçerik SEO', null],
+        ['seo-site.php', 'Site SEO', null],
+    ]],
+    ['key' => 'denetim', 'ico' => '🩺', 'label' => 'Denetim', 'items' => [
+        ['content-audit.php', 'İçerik Denetimi', null],
+        ['content-guard.php', 'İçerik Koruma', null],
+    ]],
+    ['key' => 'kategori', 'ico' => '🗂️', 'label' => 'Kategoriler', 'items' => [
+        ['category-organize.php', 'Organize', null],
+        ['recategorize.php', 'Düzelt', null],
+        ['category-cleanup.php', 'Temizle', null],
+    ]],
+    ['key' => 'arac', 'ico' => '🧰', 'label' => 'Araçlar', 'items' => [
+        ['cover-backfill.php', 'Kapak Bul', null],
+        ['amazon-match.php', 'Amazon', null],
+    ]],
+];
 $WP = defined('WP_URL') ? rtrim(WP_URL, '/') : '';
 ?>
 <aside class="tls-sidebar">
   <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
   <nav class="tls-nav">
+    <?php foreach ($tls_groups as $g):
+        // Grupta aktif öğe var mı? (varsa grup açık + başlık vurgulu)
+        $has = false;
+        foreach ($g['items'] as $it) { if (tls_nav_active($it[0], $it[2], $tls_cur, $tls_curmode)) { $has = true; break; } }
+        $cls = 'tls-grp' . ($has ? ' open has-active' : '');
+    ?>
+    <div class="<?= $cls ?>" data-key="<?= $g['key'] ?>">
+      <button type="button" class="tls-grp-h">
+        <span class="ico"><?= $g['ico'] ?></span>
+        <span class="tls-grp-lbl"><?= $g['label'] ?></span>
+        <span class="tls-grp-chev">▸</span>
+      </button>
+      <div class="tls-grp-items">
+        <?php foreach ($g['items'] as $it):
+            [$file, $label, $mode] = $it;
+            $href = ($mode !== null) ? 'panel.php?mode=' . $mode : $file;
+            $act  = tls_nav_active($file, $mode, $tls_cur, $tls_curmode) ? ' class="active"' : '';
+        ?>
+        <a href="<?= $href ?>"<?= $act ?>><?= $label ?></a>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endforeach; ?>
 
-    <div class="tls-nav-sec">İçerik</div>
-    <?php tls_navlink('panel.php', '✍', 'İçerik Üret', 'single'); ?>
-    <?php tls_navlink('panel.php', '📋', 'Kuyruk', 'queue'); ?>
-    <?php tls_navlink('panel.php', '🧹', 'Liste Temizle', 'cleaner'); ?>
-    <?php tls_navlink('placeholders.php', '⏳', 'Yer Tutucular'); ?>
-    <?php tls_navlink('sources.php', '📚', 'Kaynak Arşivi'); ?>
-    <?php tls_navlink('social.php', '📣', 'Sosyal'); ?>
-    <?php tls_navlink('authors-bio.php', '👤', 'Yazar Bio'); ?>
-
-    <div class="tls-nav-sec">SEO</div>
-    <?php tls_navlink('seo.php', '🔍', 'İçerik SEO'); ?>
-    <?php tls_navlink('seo-site.php', '🌐', 'Site SEO'); ?>
-
-    <div class="tls-nav-sec">Denetim</div>
-    <?php tls_navlink('content-audit.php', '🩺', 'İçerik Denetimi'); ?>
-    <?php tls_navlink('content-guard.php', '🛡️', 'İçerik Koruma'); ?>
-
-    <div class="tls-nav-sec">Kategoriler</div>
-    <?php tls_navlink('category-organize.php', '🗄️', 'Organize'); ?>
-    <?php tls_navlink('recategorize.php', '🗂️', 'Düzelt'); ?>
-    <?php tls_navlink('category-cleanup.php', '🧽', 'Temizle'); ?>
-
-    <div class="tls-nav-sec">Araçlar</div>
-    <?php tls_navlink('cover-backfill.php', '🖼', 'Kapak Bul'); ?>
-    <?php tls_navlink('amazon-match.php', '🛒', 'Amazon'); ?>
-
-    <div class="tls-nav-sec">Sistem</div>
-    <?php tls_navlink('settings.php', '⚙', 'Ayarlar'); ?>
-    <?php tls_navlink($WP . '/wp-admin/', '🔗', 'WP Admin', null, true); ?>
-    <?php tls_navlink($WP . '/', '↗', 'Siteyi Gör', null, true); ?>
-
+    <div class="tls-nav-div"></div>
+    <div class="tls-nav-flat">
+      <a href="settings.php"<?= $tls_cur === 'settings.php' ? ' class="active"' : '' ?>><span class="ico">⚙</span> Ayarlar</a>
+      <a href="<?= $WP ?>/wp-admin/" target="_blank" rel="noopener"><span class="ico">🔗</span> WP Admin</a>
+      <a href="<?= $WP ?>/" target="_blank" rel="noopener"><span class="ico">↗</span> Siteyi Gör</a>
+    </div>
   </nav>
   <div class="tls-sidebar-footer"><a href="index.php?logout=1">Çıkış Yap</a></div>
 </aside>
+<script>
+(function(){
+  if (window.__tlsNavInit) return; window.__tlsNavInit = 1;
+  var KEY='tlsNavOpen', open={};
+  try { open = JSON.parse(localStorage.getItem(KEY)||'{}') || {}; } catch(e){}
+  document.querySelectorAll('.tls-grp').forEach(function(g){
+    var k=g.getAttribute('data-key');
+    // Aktif grup her zaman açık; değilse hatırlanan tercihe göre
+    if (!g.classList.contains('has-active') && open[k]) g.classList.add('open');
+    var h=g.querySelector('.tls-grp-h');
+    if(h) h.addEventListener('click', function(){
+      g.classList.toggle('open');
+      open[k]=g.classList.contains('open');
+      try { localStorage.setItem(KEY, JSON.stringify(open)); } catch(e){}
+    });
+  });
+})();
+</script>

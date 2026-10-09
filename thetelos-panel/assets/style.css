@@ -22,11 +22,25 @@ button,input,textarea,select{font-family:inherit;font-size:inherit}
 .tls-nav a{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--muted);transition:.15s;border-left:3px solid transparent;font-size:13px}
 .tls-nav a:hover,.tls-nav a.active{color:var(--text);background:var(--surface2);border-left-color:var(--gold)}
 .tls-sidebar-footer{padding:16px 20px;border-top:1px solid var(--border)}
-/* Gruplu menü: bölüm başlıkları + sığması için kaydırma + daha sıkı satırlar */
-.tls-nav{padding:8px 0;overflow-y:auto}
-.tls-nav a{padding:7px 20px}
-.tls-nav-sec{padding:12px 20px 4px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);opacity:.55}
-.tls-nav-sec:first-child{padding-top:2px}
+/* ── Açılır-kapanır (accordion) gruplu menü ── */
+.tls-nav{padding:8px 6px;overflow-y:auto}
+.tls-grp{margin-bottom:1px}
+.tls-grp-h{display:flex;align-items:center;gap:10px;width:100%;padding:9px 14px;background:none;border:0;border-radius:8px;
+  color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;text-align:left;transition:.15s}
+.tls-grp-h:hover{color:var(--text);background:var(--surface2)}
+.tls-grp-lbl{flex:1}
+.tls-grp-chev{font-size:10px;opacity:.55;transition:transform .18s}
+.tls-grp.open>.tls-grp-h .tls-grp-chev{transform:rotate(90deg)}
+.tls-grp.has-active>.tls-grp-h{color:var(--text)}
+.tls-grp-items{max-height:0;overflow:hidden;transition:max-height .22s ease}
+.tls-grp.open>.tls-grp-items{max-height:420px}
+.tls-grp-items a{display:block;padding:7px 14px 7px 40px;color:var(--muted);font-size:12.5px;border-left:3px solid transparent;border-radius:0 6px 6px 0;transition:.12s}
+.tls-grp-items a:hover{color:var(--text);background:var(--surface2)}
+.tls-grp-items a.active{color:var(--text);background:var(--surface2);border-left-color:var(--gold);font-weight:600}
+.tls-nav-div{height:1px;background:var(--border);margin:8px 10px}
+.tls-nav-flat a{display:flex;align-items:center;gap:10px;padding:9px 14px;border-radius:8px;color:var(--muted);font-size:13px;border-left:3px solid transparent;transition:.15s}
+.tls-nav-flat a:hover,.tls-nav-flat a.active{color:var(--text);background:var(--surface2)}
+.tls-nav-flat a.active{border-left-color:var(--gold)}
 
 /* Header */
 .tls-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;gap:16px}
