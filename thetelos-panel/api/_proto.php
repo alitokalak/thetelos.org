@@ -445,37 +445,50 @@ function proto_author_in_text($author, $text, $book = '') {
     $norm = function ($s) {
         $s = mb_strtolower((string) $s, 'UTF-8');
         $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
-        return preg_replace('/[^a-z ]+/', ' ', $s);
+        $s = preg_replace('/[^a-z ]+/', ' ', $s);
+        return ' ' . preg_replace('/\s+/', ' ', trim($s)) . ' ';   // tam-kelime araması için boşlukla sar
     };
-    $head = $norm(mb_substr($text, 0, 8000));
+    $head = $norm(mb_substr($text, 0, 12000));    // ön sayfa / künye (title page)
     $full = $norm(mb_substr($text, 0, 300000));
+    $wh = function ($hay, $w) { return $w !== '' && strpos($hay, ' ' . $w . ' ') !== false; };     // tam kelime
+    $cnt = function ($hay, $w) { return $w === '' ? 0 : substr_count($hay, ' ' . $w . ' '); };
 
-    // (a) YAZAR soyadı
+    /* ── YAZAR soyadı (tam kelime) ── */
+    $sn = '';
     if ($author !== '') {
-        $ap = preg_split('/\s+/', $author);
-        $surname = (string) end($ap);
+        $ap = preg_split('/\s+/', $author); $surname = (string) end($ap);
         if (mb_strlen($surname) < 3) $surname = $author;
         $sn = trim($norm($surname));
-        if ($sn !== '' && mb_strlen($sn) >= 3) {
-            if (strpos($head, $sn) !== false || strpos($full, $sn) !== false) return true;
-        }
     }
+    $haveAuthor     = ($sn !== '' && mb_strlen($sn) >= 3);
+    $authorHeadHit  = $haveAuthor && $wh($head, $sn);
+    $authorStrong   = $haveAuthor && ($authorHeadHit || $cnt($full, $sn) >= 2);   // künyede VEYA metinde ≥2 kez
 
-    // (b) KİTAP BAŞLIĞI (anlamlı kelimeler): çoğu metinde geçiyorsa doğru eser.
+    /* ── KİTAP BAŞLIĞI (anlamlı kelimeler, tam kelime) ── */
     $btitle = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($btitle === '') $btitle = $book;
-    $tt = array_values(array_filter(explode(' ', $norm($btitle)), fn($w) => mb_strlen($w) >= 4
-        && !in_array($w, ['into','from','with','their','ideas','origin','some','being','other','being'], true)));
-    if ($tt) {
-        $hit = 0; foreach ($tt as $w) if (strpos($full, $w) !== false) $hit++;
-        // Başlığın anlamlı kelimelerinin ÇOĞU (≥%60) metinde geçiyorsa kabul.
-        if ($hit >= max(1, (int) ceil(count($tt) * 0.6))) return true;
+    $stop = ['into','from','with','their','ideas','some','being','other','book','pages','page','sound','works','essays','selected','collected','complete','volume','edition','letters','notes','life','works'];
+    $tt = array_values(array_filter(explode(' ', trim($norm($btitle))), fn($w) => mb_strlen($w) >= 4 && !in_array($w, $stop, true)));
+    $haveTitle = !empty($tt);
+    $need = $haveTitle ? max(1, (int) ceil(count($tt) * 0.6)) : 0;
+    $titleHeadHit = false; $titleFullHit = false;
+    if ($haveTitle) {
+        $hh = 0; $fh = 0;
+        foreach ($tt as $w) { if ($wh($head, $w)) $hh++; if ($wh($full, $w)) $fh++; }
+        $titleHeadHit = $hh >= $need;
+        $titleFullHit = $fh >= $need;
     }
 
-    // Ne yazar ne de başlık teyidi var:
-    // - İkisi de biliniyor ama hiçbiri geçmiyorsa → REDDET (yanlış kaynak).
-    // - Hiçbiri bilinmiyorsa → engelleme (true).
-    if ($author === '' && $btitle === '') return true;
-    return false;
+    /* ── KARAR (sıkı: tek sıradan kelime YETMEZ) ──
+       Yanlış kaynak felaketini (ör. "Sound Pages/John Cage" → 1890 reklam metni)
+       önlemek için yazar ve başlık BİRLİKTE teyit edilmeli. */
+    if ($haveAuthor && $haveTitle) {
+        if ($authorHeadHit && $titleHeadHit) return true;          // ikisi de künyede → kesin
+        if ($authorStrong && $titleFullHit)  return true;          // yazar güçlü + başlık çoğunlukla geçiyor
+        return false;
+    }
+    if ($haveAuthor) return $authorStrong;                          // yalnız yazar: künyede ya da ≥2 kez
+    if ($haveTitle)  return $titleHeadHit || ($titleFullHit && count($tt) >= 2);
+    return true;                                                    // ikisi de bilinmiyor → engelleme
 }
 
 /* ── Sıralı edinim: Gutenberg → Standard Ebooks → Internet Archive ──────────

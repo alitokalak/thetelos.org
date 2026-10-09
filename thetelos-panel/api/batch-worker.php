@@ -2210,14 +2210,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             if (strtolower($t['name']) === strtolower($author)) { $tid = $t['id']; $existing_desc = $t['description'] ?? ''; break; }
         }
         if (!$tid || !$existing_desc) {
-            $bio_prompt = "Write a concise 2-3 sentence biography of \"{$author}\" for a philosophy/literature website. Focus on main works and intellectual contributions. English, encyclopedic.";
+            $bio_prompt = "Write a concise 2-3 sentence biography of \"{$author}\" for a philosophy/literature website. Focus on main works and intellectual contributions. English, factual and encyclopedic. Plain prose only — NO markdown, asterisks, or formatting. Finish every sentence; do not cut off mid-sentence.";
             $bch = curl_init(DEEPSEEK_API_URL);
-            curl_setopt_array($bch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
+            curl_setopt_array($bch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>25,
                 CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-                CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+                CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>420,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
             ]);
             $bio_raw = curl_exec($bch); curl_close($bch);
             $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
+            $bio = trim(preg_replace('/[*`#]+/u','',(string)$bio));   // markdown işaretlerini temizle
             if (!$tid) {
                 [$nt] = bw_wp("$wp_api/authors", 'POST', ['name'=>$author,'description'=>$bio], $auth);
                 $tid = $nt['id'] ?? null;
