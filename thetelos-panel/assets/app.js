@@ -1151,24 +1151,31 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   // (güvenilmez) gövde korunmaz, yer tutucu konur.
   const noKeep = (rewrite === '1' && document.getElementById('bulk_no_keep')?.checked) ? '1' : '0';
   const claudeModel = document.getElementById('bulk_claude_model')?.value || 'sonnet';
-  const res = await postData(API('batch-create.php'), {
-    books:        JSON.stringify(batchBooks),
-    type,
-    length,
-    source_words: sourceWords,
-    post_status:  status,
-    max_tokens:   tokens,
-    api_provider: activeProvider,
-    claude_model: claudeModel,
-    parts:        parts,
-    workers:      workerCount,
-    rewrite,
-    no_keep:      noKeep,
-  });
-
-  if (!res.ok) {
+  let res;
+  try {
+    res = await postData(API('batch-create.php'), {
+      books:        JSON.stringify(batchBooks),
+      type,
+      length,
+      source_words: sourceWords,
+      post_status:  status,
+      max_tokens:   tokens,
+      api_provider: activeProvider,
+      claude_model: claudeModel,
+      parts:        parts,
+      workers:      workerCount,
+      rewrite,
+      no_keep:      noKeep,
+    });
+  } catch (e) {
     setLoading(btn, false);
-    notify('bulk-notif', res.error, 'err');
+    notify('bulk-notif', 'Batch oluşturulamadı — sunucu/bağlantı hatası: ' + (e && e.message ? e.message : e) + ' (batch-create.php yanıt vermedi; genelde PHP hatası ya da zaman aşımı).', 'err');
+    return;
+  }
+
+  if (!res || !res.ok) {
+    setLoading(btn, false);
+    notify('bulk-notif', (res && res.error) ? res.error : 'Batch oluşturulamadı — sunucudan geçersiz/boş yanıt.', 'err');
     return;
   }
 
