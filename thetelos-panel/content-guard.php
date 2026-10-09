@@ -36,7 +36,8 @@ h3.sec{font-size:14px;margin:26px 0 10px;color:var(--text)}
       <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
       <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
       <a href="content-audit.php"><span class="ico">🩺</span> İçerik Denetimi</a>
-      <a href="content-guard.php" class="active"><span class="ico">🛡️</span> İçerik Koruma</a>
+      <a href="content-guard.php" class="active"><span class="ico">ð¡ï¸</span> Ä°Ã§erik Koruma</a>
+      <a href="authors-bio.php"><span class="ico">👤</span> Yazar Bio</a>
       <a href="category-organize.php"><span class="ico">🗄️</span> Kategori Organize</a>
       <a href="recategorize.php"><span class="ico">🗂️</span> Kategori Düzelt</a>
       <a href="category-cleanup.php"><span class="ico">🧹</span> Kategori Temizle</a>
