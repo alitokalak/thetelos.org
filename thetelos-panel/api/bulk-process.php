@@ -133,13 +133,15 @@ if($author){
     $tid=null; $edesc='';
     foreach((isset($terms)?$terms:array()) as $t){if(strtolower($t['name'])===strtolower($author)){$tid=$t['id'];$edesc=isset($t['description'])?$t['description']:'';break;}}
     if(!$tid){
-        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>array(array('role'=>'user','content'=>"Write a 2-3 sentence biography of \"{$author}\". English, encyclopedic."))),20);
+        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>420,'messages'=>array(array('role'=>'user','content'=>"Write a concise 2-3 sentence biography of \"{$author}\". English, factual and encyclopedic. Plain prose only — NO markdown, asterisks, or formatting. Finish every sentence; do not cut off mid-sentence."))),20);
         $bio=isset(json_decode($bio_r,true)['choices'][0]['message']['content'])?json_decode($bio_r,true)['choices'][0]['message']['content']:'';
+        $bio=trim(preg_replace('/[*`#]+/u','',(string)$bio));
         list($nt)=bp_wr("$wp_api/authors",'POST',array('name'=>$author,'description'=>$bio),$auth);
         $tid=isset($nt['id'])?$nt['id']:null;
     } elseif(empty($edesc)){
-        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>array(array('role'=>'user','content'=>"Write a 2-3 sentence biography of \"{$author}\". English, encyclopedic."))),20);
+        list($bio_r)=bp_ac(array('model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>420,'messages'=>array(array('role'=>'user','content'=>"Write a concise 2-3 sentence biography of \"{$author}\". English, factual and encyclopedic. Plain prose only — NO markdown, asterisks, or formatting. Finish every sentence; do not cut off mid-sentence."))),20);
         $bio=isset(json_decode($bio_r,true)['choices'][0]['message']['content'])?json_decode($bio_r,true)['choices'][0]['message']['content']:'';
+        $bio=trim(preg_replace('/[*`#]+/u','',(string)$bio));
         if($bio)bp_wr("$wp_api/authors/$tid",'POST',array('description'=>$bio),$auth);
     }
     if($tid)bp_wr("$wp_api/$ep/$pid",'POST',array('authors'=>array($tid)),$auth);

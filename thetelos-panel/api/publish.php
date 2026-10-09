@@ -214,29 +214,31 @@ if($author){
     if(!$tid){
         // Yeni yazar — kısa biyografi üret
         $bio = '';
-        $bio_prompt = "Write a concise 2-3 sentence biography of the author \"{$author}\" for a philosophy and literature website. Focus on their main works, philosophical contributions, and historical context. Write in English. Be factual and encyclopedic.";
+        $bio_prompt = "Write a concise 2-3 sentence biography of the author \"{$author}\" for a philosophy and literature website. Focus on their main works, philosophical contributions, and historical context. Write in English, factual and encyclopedic. Plain prose only — NO markdown, asterisks, or formatting. Finish every sentence; do not cut off mid-sentence.";
         $bio_ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($bio_ch,[
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
             CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>420,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
         ]);
         $bio_raw = curl_exec($bio_ch); curl_close($bio_ch);
         $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
+        $bio = trim(preg_replace('/[*`#]+/u','',(string)$bio));   // markdown işaretlerini temizle
 
         [$nt]=wp_req("$wp_api/authors",'POST',['name'=>$author,'description'=>$bio],$auth);
         $tid=$nt['id']??null;
     } elseif($tid && !$existing_desc) {
         // Yazar var ama biyografisi yok — ekle
-        $bio_prompt = "Write a concise 2-3 sentence biography of the author \"{$author}\" for a philosophy and literature website. Focus on their main works, philosophical contributions, and historical context. Write in English. Be factual and encyclopedic.";
+        $bio_prompt = "Write a concise 2-3 sentence biography of the author \"{$author}\" for a philosophy and literature website. Focus on their main works, philosophical contributions, and historical context. Write in English, factual and encyclopedic. Plain prose only — NO markdown, asterisks, or formatting. Finish every sentence; do not cut off mid-sentence.";
         $bio_ch = curl_init(DEEPSEEK_API_URL);
         curl_setopt_array($bio_ch,[
             CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>20,
             CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
-            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>200,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
+            CURLOPT_POSTFIELDS=>json_encode(['model'=>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),'max_tokens'=>420,'messages'=>[['role'=>'user','content'=>$bio_prompt]]]),
         ]);
         $bio_raw = curl_exec($bio_ch); curl_close($bio_ch);
         $bio = json_decode($bio_raw,true)['choices'][0]['message']['content'] ?? '';
+        $bio = trim(preg_replace('/[*`#]+/u','',(string)$bio));   // markdown işaretlerini temizle
         if($bio) wp_req("$wp_api/authors/$tid",'POST',['description'=>$bio],$auth);
     }
 
