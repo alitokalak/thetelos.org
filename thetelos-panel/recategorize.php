@@ -27,26 +27,7 @@ label.auto{font-size:12px;color:var(--muted);display:flex;align-items:center;gap
 </head>
 <body>
 <div class="tls-shell">
-  <aside class="tls-sidebar">
-    <div class="tls-logo"><h1>Thetelos</h1><small>Content Panel</small></div>
-    <nav class="tls-nav">
-      <a href="panel.php"><span class="ico">✍</span> İçerik Üret</a>
-      <a href="seo.php"><span class="ico">🔍</span> İçerik SEO</a>
-      <a href="seo-site.php"><span class="ico">🌐</span> Site SEO</a>
-      <a href="content-audit.php"><span class="ico">🩺</span> İçerik Denetimi</a>
-      <a href="content-guard.php"><span class="ico">ð¡ï¸</span> Ä°Ã§erik Koruma</a>
-      <a href="authors-bio.php"><span class="ico">👤</span> Yazar Bio</a>
-      <a href="category-organize.php"><span class="ico">🗄️</span> Kategori Organize</a>
-      <a href="recategorize.php" class="active"><span class="ico">🗂️</span> Kategori Düzelt</a>
-      <a href="category-cleanup.php"><span class="ico">🧹</span> Kategori Temizle</a>
-      <a href="cover-backfill.php"><span class="ico">🖼</span> Kapak Bul</a>
-      <a href="amazon-match.php"><span class="ico">🛒</span> Amazon</a>
-      <a href="settings.php"><span class="ico">⚙</span> Ayarlar</a>
-      <a href="<?= rtrim(WP_URL,'/') ?>/wp-admin/" target="_blank"><span class="ico">🔗</span> WP Admin</a>
-      <a href="<?= rtrim(WP_URL,'/') ?>/" target="_blank"><span class="ico">↗</span> Siteyi Gör</a>
-    </nav>
-    <div class="tls-sidebar-footer"><a href="index.php?logout=1">Çıkış Yap</a></div>
-  </aside>
+  <?php require __DIR__ . "/_nav.php"; ?>
 
   <main class="tls-main">
     <div class="tls-header">

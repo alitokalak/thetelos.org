@@ -22,6 +22,11 @@ button,input,textarea,select{font-family:inherit;font-size:inherit}
 .tls-nav a{display:flex;align-items:center;gap:10px;padding:10px 20px;color:var(--muted);transition:.15s;border-left:3px solid transparent;font-size:13px}
 .tls-nav a:hover,.tls-nav a.active{color:var(--text);background:var(--surface2);border-left-color:var(--gold)}
 .tls-sidebar-footer{padding:16px 20px;border-top:1px solid var(--border)}
+/* Gruplu menü: bölüm başlıkları + sığması için kaydırma + daha sıkı satırlar */
+.tls-nav{padding:8px 0;overflow-y:auto}
+.tls-nav a{padding:7px 20px}
+.tls-nav-sec{padding:12px 20px 4px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);opacity:.55}
+.tls-nav-sec:first-child{padding-top:2px}
 
 /* Header */
 .tls-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:28px;gap:16px}
