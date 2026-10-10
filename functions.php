@@ -1239,29 +1239,18 @@ if ( !class_exists( 'WPSEO_Options' ) ) {
 //   - twitter:creator geçersizse → @Thetelosorg
 //   - article:author geçersizse → etiketi hiç basma
 // -----------------------------------------------------
+// İçeriği giren kullanıcının sosyal hesaplarını hiçbir yerde sergilemiyoruz;
+// Yoast'ın otomatik bastığı yazar-bazlı twitter:creator ve article:author
+// meta etiketleri tamamen gereksiz (çoğu zaman boş '#' değeri). Kaldırıyoruz.
+
+// 1) Yoast filtreleri — etiketleri kaynağında bastırır (en temizi).
+add_filter( 'wpseo_twitter_creator', '__return_false' );          // twitter:creator yok
+add_filter( 'wpseo_opengraph_author_facebook', '__return_false' ); // article:author yok
+
+// 2) Emniyet kemeri: filtre bir sebeple çalışmazsa, çıktıdan bu iki etiketi sil.
 function tls_fix_social_meta_html( $html ) {
-    // twitter:creator — içindeki @ ve harfler dışında '#'/boş ise düzelt.
-    $html = preg_replace_callback(
-        '#<meta\b[^>]*\bname=(["\'])twitter:creator\1[^>]*>#i',
-        function ( $m ) {
-            if ( preg_match('#\bcontent=(["\'])(.*?)\1#i', $m[0], $c) ) {
-                $v = trim( $c[2] );
-                if ( $v === '' || $v === '@' || strpos( $v, '#' ) !== false ) {
-                    return '<meta name="twitter:creator" content="@Thetelosorg" />';
-                }
-            }
-            return $m[0];
-        }, $html );
-    // article:author — değeri yalnız '#'/boşluk ise etiketi tamamen kaldır.
-    $html = preg_replace_callback(
-        '#<meta\b[^>]*\bproperty=(["\'])article:author\1[^>]*>\s*#i',
-        function ( $m ) {
-            if ( preg_match('#\bcontent=(["\'])(.*?)\1#i', $m[0], $c) ) {
-                $v = trim( $c[2] );
-                if ( $v === '' || preg_match('/^[#\s]+$/', $v) ) return '';   // geçersiz → kaldır
-            }
-            return $m[0];
-        }, $html );
+    $html = preg_replace( '#<meta\b[^>]*\bname=(["\'])twitter:creator\1[^>]*>\s*#i', '', $html );
+    $html = preg_replace( '#<meta\b[^>]*\bproperty=(["\'])article:author\1[^>]*>\s*#i', '', $html );
     return $html;
 }
 add_action( 'wp_head', function () { ob_start( 'tls_fix_social_meta_html' ); }, 0 );
