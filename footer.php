@@ -236,7 +236,7 @@ function tlsOpenQuoteShare(btn) {
     if (author) twText += ' \u2014 ' + author;
     twText += ' | thetelos.org';
     document.getElementById('tls-qsh-tw').href =
-        'https://twitter.com/intent/tweet?text=' + encodeURIComponent(twText) + '&url=' + encodeURIComponent(url);
+        'https://x.com/intent/tweet?text=' + encodeURIComponent(twText) + '&url=' + encodeURIComponent(url);
 
     /* WhatsApp */
     var waText = '\u201c' + qtext + '\u201d';

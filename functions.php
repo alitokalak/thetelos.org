@@ -1165,7 +1165,7 @@ if ( !function_exists( 'mediumish_share_post' ) ) {
         $shareURL = urlencode( get_permalink() );
         $shareTitle = str_replace( ' ', '%20', get_the_title() );
         $shareThumbnail = wp_get_attachment_image_src( get_post_thumbnail_id( $post->ID ), 'large' );
-        $twitterURL = 'https://twitter.com/intent/tweet?text=' . $shareTitle . '&amp;url=' . $shareURL;
+        $twitterURL = 'https://x.com/intent/tweet?text=' . $shareTitle . '&amp;url=' . $shareURL;
         $facebookURL = 'https://www.facebook.com/sharer/sharer.php?u=' . $shareURL;
         $linkedinURL = 'https://www.linkedin.com/shareArticle?mini=true&url=' . $shareURL . '&amp;title=' . $shareTitle;
         $disablesharetwitter = get_theme_mod( 'disable_share_twitter' );
