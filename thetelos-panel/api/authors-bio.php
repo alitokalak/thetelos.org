@@ -98,16 +98,28 @@ function ab_generate_bio($author, $term_id = 0) {
       . "titles you are not sure of. If you are not certain of a specific, leave it out. If "
       . "you can identify the person but know little for certain, write only the few facts "
       . "you are sure of (even one sentence) rather than padding with guesses.\n"
-      . "3. Write 2-4 complete sentences. Cover who they are, their field/era, and their main "
-      . "works or contributions. Finish every sentence — never cut off mid-sentence.\n"
-      . "4. Plain prose only. English. NO markdown, asterisks, hashes, or headings. Write "
+      . "3. BE CONSERVATIVE AND PRECISE — this is where subtle errors creep in:\n"
+      . "   a. Do NOT label the GENRE/FORM of a specific work (novel, memoir, treatise, essay, "
+      . "poem collection…) unless you are certain of it. When in doubt, just name the work "
+      . "without classifying it (e.g. 'his book X' not 'his novel X'). Misclassifying a work's "
+      . "genre is a factual error.\n"
+      . "   b. Do NOT attach the author to a philosophical/literary MOVEMENT or SCHOOL "
+      . "(existentialism, romanticism, stoicism…) unless it is textbook-standard and you are "
+      . "certain. Prefer neutral, verifiable description over interpretive labels.\n"
+      . "   c. Avoid flowery, sweeping, or interpretive claims ('fuses existential philosophy "
+      . "with…'). Stick to concrete, checkable facts: who they were, their era/nationality, "
+      . "their field, and their notable works BY NAME.\n"
+      . "4. Write 2-4 complete sentences. Finish every sentence — never cut off mid-sentence.\n"
+      . "5. Plain prose only. English. NO markdown, asterisks, hashes, or headings. Write "
       . "only the biography text — no preamble, no quotes around it, no meta commentary about "
       . "yourself or your knowledge.";
 
     $user =
         $books_ctx
-      . "Write a concise, factual biography (2-4 sentences, plain prose, English) of the author: "
-      . "\"{$author}\".\n\n"
+      . "Write a concise, factual, CONSERVATIVE biography (2-4 sentences, plain prose, English) "
+      . "of the author: \"{$author}\".\n\n"
+      . "Prefer safe, checkable facts over interpretation. Do not classify a work's genre or "
+      . "assign the author to a movement unless you are certain.\n\n"
       . "If you cannot confidently identify which real person this is, output exactly: UNKNOWN";
 
     $r = tls_claude($system, $user, [
@@ -129,7 +141,64 @@ function ab_generate_bio($author, $term_id = 0) {
     if (str_word_count($bio) < 6) {
         return ['ok' => false, 'unknown' => true, 'bio' => '', 'error' => 'çok kısa/boş çıktı'];
     }
+
+    // ── FACT-CHECK (ikinci geçiş): taslağı denetle ve gerekiyorsa düzelt. ──
+    // Senin elle yaptığın kontrolün aynısı: yanlış tarih/tür/atıf/abartı ayıklanır.
+    $verified = ab_verify_bio($author, $bio, $titles);
+    if ($verified !== null) $bio = $verified;
+    if (str_word_count($bio) < 6) {
+        return ['ok' => false, 'unknown' => true, 'bio' => '', 'error' => 'denetim sonrası boş'];
+    }
     return ['ok' => true, 'unknown' => false, 'bio' => $bio, 'error' => ''];
+}
+
+/* FACT-CHECK: üretilen bio'yu bağımsız bir geçişte denetle, hataları düzelt.
+   Yanlış tarih, yanlış eser TÜRÜ, yanlış akım/okul atfı ve abartılı/temelsiz
+   iddiaları ayıklar. Düzeltilmiş (ya da zaten doğruysa aynı) bio'yu döner.
+   Hata olursa (API vb.) null → çağıran orijinal taslağı kullanır. */
+function ab_verify_bio($author, $draft, $titles = []) {
+    $draft = trim((string) $draft);
+    if ($draft === '') return null;
+    $books_ctx = $titles
+        ? "Known works by this author (from our site): " . implode('; ', array_slice($titles, 0, 8)) . ".\n\n"
+        : "";
+
+    $system =
+        "You are a careful fact-checker for short author biographies. You are given a DRAFT "
+      . "biography. Verify every factual claim and return a corrected version.\n\n"
+      . "Check specifically for:\n"
+      . "- Wrong birth/death dates, nationalities, or names.\n"
+      . "- MISCLASSIFIED works: a work called a 'novel' that is actually a memoir/essay/"
+      . "treatise/poem, etc. If unsure of a work's genre, remove the genre label and just "
+      . "name the work.\n"
+      . "- Incorrect attribution to a philosophical/literary MOVEMENT or SCHOOL. Remove such a "
+      . "label unless it is textbook-standard and clearly correct.\n"
+      . "- OVERSTATED or interpretive claims not solidly grounded in fact. Replace with neutral, "
+      . "verifiable statements.\n"
+      . "- Any invented specific you cannot confirm → remove it.\n\n"
+      . "Keep it 2-4 complete sentences, plain prose, English, NO markdown. Output ONLY the final "
+      . "corrected biography text — nothing else. If the draft is already fully accurate, output "
+      . "it unchanged. If after removing everything unverifiable there is essentially nothing "
+      . "reliable left, or you cannot identify the person at all, output exactly UNKNOWN.";
+
+    $user =
+        $books_ctx
+      . "Author: \"{$author}\"\n\n"
+      . "DRAFT biography to verify and correct:\n\"\"\"\n{$draft}\n\"\"\"\n\n"
+      . "Return the corrected biography (or the draft unchanged if already accurate), or UNKNOWN.";
+
+    $r = tls_claude($system, $user, [
+        'model'      => tls_claude_quality_model(),
+        'max_tokens' => 500,
+        'timeout'    => 90,
+        'retries'    => 2,
+    ]);
+    if (empty($r['ok'])) return null;   // denetim yapılamadı → taslağı kullan
+    $out = trim((string) $r['text']);
+    if ($out === '') return null;
+    $probe = mb_strtoupper(preg_replace('/[^A-Za-z]/', '', mb_substr($out, 0, 20)));
+    if ($probe === 'UNKNOWN' || strpos($probe, 'UNKNOWN') === 0) return '';   // güvenilir bilgi kalmadı
+    return trim(preg_replace('/[*`#]+/u', '', $out));
 }
 
 /* GÜVENLİK AĞI: üstüne yazmadan önce mevcut bio'yu yedekle (term meta).
