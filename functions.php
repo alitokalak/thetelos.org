@@ -1232,6 +1232,16 @@ if ( !class_exists( 'WPSEO_Options' ) ) {
 }
 
 // -----------------------------------------------------
+// GOOGLE SİTE DOĞRULAMA (Google Workspace / Search Console)
+// DNS'e (Cloudflare) erişim olmadan domain sahipliğini kanıtlamak için
+// doğrulama kodunu <head>'e meta etiketi olarak basıyoruz. Google'da
+// "HTML etiketi" yöntemiyle onaylanır.
+// -----------------------------------------------------
+add_action( 'wp_head', function () {
+    echo '<meta name="google-site-verification" content="GyLdfsLRatjaLWj3T5PI3Y78NXYO338siQXeks8nQW4" />' . "\n";
+}, 1 );
+
+// -----------------------------------------------------
 // SOSYAL META TEMİZLİĞİ: Yoast, yazarın sosyal alanı "#" (boş/geçersiz
 // link) olduğu için <head>'e `twitter:creator=@#` ve `article:author=#`
 // gibi anlamsız değerler basıyordu. wp_head çıktısını son anda süzüp
