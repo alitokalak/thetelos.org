@@ -57,6 +57,8 @@ label.chk{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:
     <div class="bulk-row">
       <button class="btn btn-primary" id="btn-scan">🔎 Tara</button>
       <button class="btn" id="btn-stop" style="display:none">⏹ Durdur</button>
+      <button class="btn" id="btn-fixall" style="display:none">⚡ Tümünü Düzelt</button>
+      <button class="btn" id="btn-fixstop" style="display:none">⏹ Düzeltmeyi Durdur</button>
       <label class="chk"><input type="checkbox" id="only-issues" checked> Sadece sorunluları göster</label>
       <span id="ab-status"></span>
     </div>
@@ -68,6 +70,9 @@ label.chk{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:
       <span class="badge b-short">kısa</span> çok kısa ·
       <span class="badge b-ok">iyi</span>.
       <b>Yeniden Üret</b> ile taslak gelir (kaydetmez) — metni gözden geçir, gerekirse elle düzelt, <b>Kaydet</b>'e bas.
+      <br><b>⚡ Tümünü Düzelt</b>: listedeki sorunluları sırayla <b>Claude</b> ile yeniden yazar ve kaydeder.
+      Claude yazarı güvenle tanıyamazsa o satırı <b>atlar</b> (yanlış bio yazmaz, mevcut hali bırakır).
+      Önce <b>Tara</b>'ya bas.
     </p>
 
     <div id="result"><div style="text-align:center;padding:40px;color:var(--muted)">Tara'ya bas.</div></div>
@@ -78,6 +83,7 @@ label.chk{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:
 const API = p => 'api/' + p;
 const $ = id => document.getElementById(id);
 let tbody=null, scanning=false, stopFlag=false, offset=0, scanned=0, issues=0, fixed=0;
+let fixing=false, fixStop=false, skipped=0;
 
 function post(body){
   return fetch(API('authors-bio.php'), {method:'POST',credentials:'same-origin',
@@ -96,7 +102,7 @@ function ensureTable(){
 }
 function addRow(r){
   ensureTable();
-  const tr=document.createElement('tr'); tr.dataset.id=r.id;
+  const tr=document.createElement('tr'); tr.dataset.id=r.id; tr.dataset.status=r.status;
   tr.innerHTML=
     '<td class="ab-name"><a href="'+escH(r.link)+'" target="_blank" rel="noopener">'+escH(r.name)+' ↗</a>'+
       '<small>'+r.count+' kitap</small></td>'+
@@ -129,8 +135,66 @@ function save(tr){
     btn.disabled=false; btn.textContent='💾 Kaydet';
     if(!d||!d.ok){ $('ab-status').textContent=d&&d.error?('Hata: '+d.error):'Kaydetme hatası.'; return; }
     tr.querySelector('.ab-st').innerHTML=badge(d.status)+' <span style="font-size:10px;color:#00ab6b">✓ kaydedildi</span>';
-    fixed++; $('st-fixed').textContent=fixed.toLocaleString();
+    if(d.status==='ok'){ tr.dataset.done='1'; }
+    fixed++; $('st-fixed').textContent=fixed.toLocaleString(); refreshFixAllBtn();
   }).catch(()=>{btn.disabled=false; btn.textContent='💾 Kaydet'; $('ab-status').textContent='Bağlantı hatası.';});
+}
+
+/* Düzeltilecek satırlar: tabloda, henüz işlenmemiş (done değil) VE durumu 'iyi'
+   olmayanlar. "Tümünü Düzelt" yalnız bunları işler. */
+function fixableRows(){
+  if(!tbody) return [];
+  return Array.from(tbody.querySelectorAll('tr')).filter(tr=>{
+    if(tr.dataset.done==='1') return false;
+    const b=tr.querySelector('.ab-st .badge');
+    return b && !b.classList.contains('b-ok');
+  });
+}
+function refreshFixAllBtn(){
+  const n=fixableRows().length;
+  const btn=$('btn-fixall');
+  if(fixing){ btn.style.display='none'; return; }
+  if(n>0){ btn.style.display=''; btn.textContent='⚡ Tümünü Düzelt ('+n+')'; }
+  else   { btn.style.display='none'; }
+}
+
+async function fixAll(){
+  if(fixing||scanning) return;
+  let rows=fixableRows();
+  if(rows.length===0){ $('ab-status').textContent='Düzeltilecek sorunlu satır yok. Önce Tara.'; return; }
+  if(!confirm(rows.length+' yazarın bio\'su Claude ile yeniden yazılıp kaydedilecek. Başlansın mı?')) return;
+  fixing=true; fixStop=false; skipped=0;
+  $('btn-fixall').style.display='none'; $('btn-fixstop').style.display='';
+  $('btn-scan').disabled=true;
+  let i=0;
+  for(const tr of rows){
+    if(fixStop) break;
+    i++;
+    const name=(tr.querySelector('.ab-name a')||{}).textContent||'';
+    $('ab-status').textContent='Düzeltiliyor '+i+'/'+rows.length+': '+name.replace(' ↗','');
+    const stCell=tr.querySelector('.ab-st');
+    stCell.innerHTML=badge(tr.dataset.status||'short')+' <span style="font-size:10px;color:var(--tls-gold)">yazılıyor…</span>';
+    try{
+      const d=await post('action=fix&id='+tr.dataset.id);
+      if(d&&d.ok){
+        tr.querySelector('.ab-bio').value=d.bio;
+        stCell.innerHTML=badge(d.status)+' <span style="font-size:10px;color:#00ab6b">✓ kaydedildi</span>';
+        tr.dataset.done='1'; fixed++; $('st-fixed').textContent=fixed.toLocaleString();
+      } else if(d&&d.skipped){
+        stCell.innerHTML=badge('short')+' <span style="font-size:10px;color:#d69e00">⏭ atlandı (tanınamadı)</span>';
+        tr.dataset.done='1'; skipped++;
+      } else {
+        stCell.innerHTML=badge('missing')+' <span style="font-size:10px;color:#cc1818">✕ '+escH((d&&d.error)||'hata')+'</span>';
+        // done işaretlemiyoruz → tekrar denenebilir
+      }
+    }catch(e){
+      stCell.innerHTML=badge('missing')+' <span style="font-size:10px;color:#cc1818">✕ bağlantı</span>';
+    }
+  }
+  fixing=false; $('btn-fixstop').style.display='none'; $('btn-scan').disabled=false;
+  $('ab-status').textContent=(fixStop?'⏸ Durduruldu. ':'✓ Bitti. ')+
+    fixed+' düzeltildi'+(skipped?', '+skipped+' atlandı (yazar tanınamadı)':'')+'.';
+  refreshFixAllBtn();
 }
 
 function scanOnce(){
@@ -144,8 +208,9 @@ function scanOnce(){
     scanned+=d.scanned; $('st-scanned').textContent=scanned.toLocaleString();
     d.rows.forEach(r=>{ addRow(r); if(r.status!=='ok'){issues++;} });
     $('st-issues').textContent=issues.toLocaleString();
+    refreshFixAllBtn();
     offset=d.next_offset;
-    if(d.done){ $('ab-status').textContent='✓ Tüm yazarlar tarandı. Sorunlu: '+issues; $('btn-stop').style.display='none'; return; }
+    if(d.done){ $('ab-status').textContent='✓ Tüm yazarlar tarandı. Sorunlu: '+issues; $('btn-stop').style.display='none'; refreshFixAllBtn(); return; }
     $('ab-status').textContent=scanned+' yazar tarandı · '+issues+' sorunlu…';
     if(stopFlag){ stopFlag=false; $('btn-stop').style.display='none'; $('ab-status').textContent='⏸ Durduruldu. '+scanned+' tarandı · '+issues+' sorunlu.'; return; }
     setTimeout(scanOnce, 250);
@@ -154,6 +219,8 @@ function scanOnce(){
 
 $('btn-scan').addEventListener('click',()=>{ stopFlag=false; scanOnce(); });
 $('btn-stop').addEventListener('click',()=>{ stopFlag=true; $('ab-status').textContent='Durduruluyor…'; });
+$('btn-fixall').addEventListener('click',fixAll);
+$('btn-fixstop').addEventListener('click',()=>{ fixStop=true; $('ab-status').textContent='Düzeltme durduruluyor (sıradaki satırda duracak)…'; });
 </script>
 </body>
 </html>

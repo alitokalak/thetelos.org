@@ -10,7 +10,13 @@
  *
  * POST action=scan  (offset,limit,only_issues) → sayfa sayfa yazar + durum
  * POST action=regen (id)        → yeni bio metni üret (KAYDETMEZ, önizleme)
+ * POST action=fix   (id)        → Claude ile üret + KAYDET (toplu düzeltme için)
  * POST action=save  (id,bio)    → bio'yu terim açıklamasına yaz
+ *
+ * BİYOGRAFİYİ CLAUDE YAZAR (yanlış yazar karışmasını önlemek için):
+ *   - Yazarın KENDİ kitapları modele bağlam olarak verilir → doğru kişi tespiti.
+ *   - Claude kişiyi GÜVENLE tanıyamazsa tek kelime UNKNOWN döner → o yazar
+ *     ATLANIR (yanlış/uydurma bio yazmaktansa mevcut hali korunur).
  */
 session_start();
 require_once dirname(__DIR__) . '/config.php';
@@ -19,11 +25,12 @@ session_write_close();
 header('Content-Type: application/json');
 header('Cache-Control: no-cache, no-store, must-revalidate');
 header('X-LiteSpeed-Cache-Control: no-cache');
-@set_time_limit(120);
+@set_time_limit(180);
 
 ob_start();
 require_once '/home/thetelos/public_html/wp-load.php';
 ob_end_clean();
+require_once __DIR__ . '/_anthropic.php';
 
 /* Bio durumu: missing / markdown / truncated / short / ok */
 function ab_status($bio) {
@@ -36,28 +43,93 @@ function ab_status($bio) {
     return 'ok';
 }
 
-/* DeepSeek ile 2-3 cümle, düz metin, tam bio üret (publish.php ile aynı kural). */
-function ab_generate_bio($author) {
-    if (!defined('DEEPSEEK_API_URL') || !defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) return '';
-    $model  = (defined('DEEPSEEK_MODEL') && !in_array(DEEPSEEK_MODEL, ['deepseek-chat', 'deepseek-reasoner'], true))
-            ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
-    $prompt = "Write a concise 2-3 sentence biography of the author \"{$author}\" for a philosophy "
-            . "and literature website. Focus on their main works, philosophical contributions, and "
-            . "historical context. Write in English, factual and encyclopedic. Plain prose only — NO "
-            . "markdown, asterisks, or formatting. Finish every sentence; do not cut off mid-sentence.";
-    $ch = curl_init(DEEPSEEK_API_URL);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 40,
-        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
-        CURLOPT_POSTFIELDS => json_encode([
-            'model' => $model, 'max_tokens' => 420, 'temperature' => 0.3,
-            'messages' => [['role' => 'user', 'content' => $prompt]],
-        ]),
+/* Yazarın KENDİ kitaplarından birkaç başlık topla — modele "bu yazar kim"
+   bağlamı için. Doğru kişiyi ayırt etmenin en güçlü ipucu budur. */
+function ab_author_titles($term_id, $max = 8) {
+    $q = new WP_Query([
+        'post_type'      => 'post',
+        'post_status'    => 'publish',
+        'posts_per_page' => $max,
+        'orderby'        => 'date',
+        'order'          => 'DESC',
+        'no_found_rows'  => true,
+        'fields'         => 'ids',
+        'tax_query'      => [[
+            'taxonomy' => 'authors',
+            'field'    => 'term_id',
+            'terms'    => (int) $term_id,
+        ]],
     ]);
-    $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE); curl_close($ch);
-    if ($code !== 200 || !$r) return '';
-    $bio = json_decode($r, true)['choices'][0]['message']['content'] ?? '';
-    return trim(preg_replace('/[*`#]+/u', '', (string) $bio));
+    $titles = [];
+    foreach ($q->posts as $pid) {
+        $t = trim(get_the_title($pid));
+        if ($t !== '') $titles[] = $t;
+    }
+    wp_reset_postdata();
+    return $titles;
+}
+
+/* Claude ile kısa, OLGUSAL, DOĞRU KİŞİYE ait bio üret.
+   @return ['ok'=>bool,'bio'=>string,'unknown'=>bool,'error'=>string]
+   unknown=true → Claude kişiyi güvenle tanıyamadı; ÜSTÜNE YAZMA, atla. */
+function ab_generate_bio($author, $term_id = 0) {
+    if (!tls_anthropic_ready()) {
+        return ['ok' => false, 'unknown' => false, 'bio' => '', 'error' => 'ANTHROPIC_KEY config.php’de yok'];
+    }
+    $author = trim((string) $author);
+    if ($author === '') return ['ok' => false, 'unknown' => false, 'bio' => '', 'error' => 'yazar adı boş'];
+
+    // Yazarın kendi kitapları → doğru kişiyi tespit için bağlam.
+    $titles = $term_id ? ab_author_titles($term_id) : [];
+    $books_ctx = $titles
+        ? "On our site, books credited to this author include:\n- " . implode("\n- ", array_slice($titles, 0, 8)) . "\n\n"
+          . "Use these titles to make sure you identify the CORRECT person who wrote them. "
+        : "";
+
+    $system =
+        "You write short, factual, encyclopedic author biographies for a philosophy and "
+      . "literature website. Everything you write must be TRUE and about the EXACT person "
+      . "named — the real author of the listed works.\n\n"
+      . "HARD RULES:\n"
+      . "1. Identify the RIGHT person. If several people share this name, or you cannot "
+      . "confidently tell which real person this is, output EXACTLY the single word UNKNOWN "
+      . "and nothing else. Never guess, never blend two different people.\n"
+      . "2. Never invent facts. Do not make up birth/death dates, nationalities, works, or "
+      . "titles you are not sure of. If you are not certain of a specific, leave it out. If "
+      . "you can identify the person but know little for certain, write only the few facts "
+      . "you are sure of (even one sentence) rather than padding with guesses.\n"
+      . "3. Write 2-4 complete sentences. Cover who they are, their field/era, and their main "
+      . "works or contributions. Finish every sentence — never cut off mid-sentence.\n"
+      . "4. Plain prose only. English. NO markdown, asterisks, hashes, or headings. Write "
+      . "only the biography text — no preamble, no quotes around it, no meta commentary about "
+      . "yourself or your knowledge.";
+
+    $user =
+        $books_ctx
+      . "Write a concise, factual biography (2-4 sentences, plain prose, English) of the author: "
+      . "\"{$author}\".\n\n"
+      . "If you cannot confidently identify which real person this is, output exactly: UNKNOWN";
+
+    $r = tls_claude($system, $user, [
+        'model'      => tls_claude_quality_model(),   // doğruluk için kaliteli model
+        'max_tokens' => 500,
+        'timeout'    => 90,
+        'retries'    => 3,
+    ]);
+    if (empty($r['ok'])) {
+        return ['ok' => false, 'unknown' => false, 'bio' => '', 'error' => $r['error'] ?? 'claude hata'];
+    }
+    $bio = trim((string) $r['text']);
+    // UNKNOWN kaçışı: tek başına ya da en başta → tanıyamadı.
+    $probe = mb_strtoupper(preg_replace('/[^A-Za-z]/', '', mb_substr($bio, 0, 20)));
+    if ($probe === 'UNKNOWN' || strpos($probe, 'UNKNOWN') === 0) {
+        return ['ok' => false, 'unknown' => true, 'bio' => '', 'error' => 'Claude bu yazarı güvenle tanıyamadı'];
+    }
+    $bio = trim(preg_replace('/[*`#]+/u', '', $bio));           // güvenlik: markdown temizle
+    if (str_word_count($bio) < 6) {
+        return ['ok' => false, 'unknown' => true, 'bio' => '', 'error' => 'çok kısa/boş çıktı'];
+    }
+    return ['ok' => true, 'unknown' => false, 'bio' => $bio, 'error' => ''];
 }
 
 $action = $_POST['action'] ?? '';
@@ -109,9 +181,35 @@ if ($action === 'regen') {
     $id = (int) ($_POST['id'] ?? 0);
     $t  = $id ? get_term($id, 'authors') : null;
     if (!$t || is_wp_error($t)) { echo json_encode(['ok' => false, 'error' => 'yazar bulunamadı']); exit; }
-    $bio = ab_generate_bio($t->name);
-    if ($bio === '') { echo json_encode(['ok' => false, 'error' => 'bio üretilemedi (DeepSeek)']); exit; }
-    echo json_encode(['ok' => true, 'bio' => $bio, 'status' => ab_status($bio)], JSON_UNESCAPED_UNICODE);
+    $g = ab_generate_bio($t->name, $id);
+    if (empty($g['ok'])) {
+        echo json_encode(['ok' => false, 'unknown' => !empty($g['unknown']),
+                          'error' => $g['error'] ?: 'bio üretilemedi']);
+        exit;
+    }
+    echo json_encode(['ok' => true, 'bio' => $g['bio'], 'status' => ab_status($g['bio'])], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+/* ── Düzelt: Claude ile üret + KAYDET (toplu düzeltme için tek çağrı) ──
+   Claude yazarı tanıyamazsa (unknown) KAYDETMEZ; mevcut bio korunur, atlanır. */
+if ($action === 'fix') {
+    $id = (int) ($_POST['id'] ?? 0);
+    $t  = $id ? get_term($id, 'authors') : null;
+    if (!$t || is_wp_error($t)) { echo json_encode(['ok' => false, 'error' => 'yazar bulunamadı']); exit; }
+    $g = ab_generate_bio($t->name, $id);
+    if (empty($g['ok'])) {
+        // unknown → "atlandı" (hata değil, bilinçli); diğerleri gerçek hata.
+        echo json_encode([
+            'ok'      => false,
+            'skipped' => !empty($g['unknown']),
+            'error'   => $g['error'] ?: 'bio üretilemedi',
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $u = wp_update_term($id, 'authors', ['description' => $g['bio']]);
+    if (is_wp_error($u)) { echo json_encode(['ok' => false, 'error' => $u->get_error_message()]); exit; }
+    echo json_encode(['ok' => true, 'bio' => $g['bio'], 'status' => ab_status($g['bio'])], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
