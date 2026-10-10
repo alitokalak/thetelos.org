@@ -132,6 +132,24 @@ function ab_generate_bio($author, $term_id = 0) {
     return ['ok' => true, 'unknown' => false, 'bio' => $bio, 'error' => ''];
 }
 
+/* GÜVENLİK AĞI: üstüne yazmadan önce mevcut bio'yu yedekle (term meta).
+   Böylece her değişiklik 'restore' ile geri alınabilir. Boşsa yedeklemez. */
+function ab_backup_bio($id, $old) {
+    $old = trim((string) $old);
+    if ($old === '') return;
+    update_term_meta($id, '_tls_bio_backup', $old);
+    update_term_meta($id, '_tls_bio_backup_at', current_time('mysql'));
+}
+
+/* Sadece markdown işaretlerini temizle (AI YOK) — kelimelere dokunmadan
+   yıldız, backtick ve kare karakterlerini at, boşlukları toparla. */
+function ab_strip_markdown($s) {
+    $s = preg_replace('/[*`#]+/u', ' ', (string) $s);
+    $s = preg_replace('/[ \t]{2,}/', ' ', $s);
+    $s = preg_replace('/\n{3,}/', "\n\n", $s);
+    return trim($s);
+}
+
 $action = $_POST['action'] ?? '';
 
 /* ── Tara: yazarları sayfa sayfa getir + durum işaretle ── */
@@ -191,25 +209,61 @@ if ($action === 'regen') {
     exit;
 }
 
-/* ── Düzelt: Claude ile üret + KAYDET (toplu düzeltme için tek çağrı) ──
+/* ── Düzelt: en güvenli yolu seç + KAYDET (toplu düzeltme için tek çağrı) ──
+   1) Bio sadece MARKDOWN'lıysa → işaretleri temizle, metni AYNEN bırak (AI YOK).
+      Doğru içeriği riske atmaz, para harcamaz. Temizleyince tamsa biter.
+   2) Eksik/yarıda kesik/kısa (ya da temizleyince hâlâ bozuk) → Claude yeniden yazar.
+   Her iki halde de ÜSTÜNE YAZMADAN ÖNCE eski bio yedeklenir (geri alınabilir).
    Claude yazarı tanıyamazsa (unknown) KAYDETMEZ; mevcut bio korunur, atlanır. */
 if ($action === 'fix') {
     $id = (int) ($_POST['id'] ?? 0);
     $t  = $id ? get_term($id, 'authors') : null;
     if (!$t || is_wp_error($t)) { echo json_encode(['ok' => false, 'error' => 'yazar bulunamadı']); exit; }
+
+    $old = (string) $t->description;
+
+    // 1) SADECE markdown sorunu mu? → AI'sız temizle (en güvenli, içerik korunur).
+    if (ab_status($old) === 'markdown') {
+        $clean = ab_strip_markdown($old);
+        if (ab_status($clean) === 'ok') {
+            ab_backup_bio($id, $old);
+            $u = wp_update_term($id, 'authors', ['description' => sanitize_textarea_field($clean)]);
+            if (is_wp_error($u)) { echo json_encode(['ok' => false, 'error' => $u->get_error_message()]); exit; }
+            echo json_encode(['ok' => true, 'bio' => $clean, 'status' => ab_status($clean),
+                              'method' => 'cleaned', 'had_old' => trim($old) !== ''], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        // temizlenince hâlâ bozuk (yarıda kesik/çok kısa) → aşağıda Claude yazsın.
+    }
+
+    // 2) Claude ile yeniden yaz.
     $g = ab_generate_bio($t->name, $id);
     if (empty($g['ok'])) {
-        // unknown → "atlandı" (hata değil, bilinçli); diğerleri gerçek hata.
         echo json_encode([
             'ok'      => false,
-            'skipped' => !empty($g['unknown']),
+            'skipped' => !empty($g['unknown']),   // unknown → bilinçli atlama (hata değil)
             'error'   => $g['error'] ?: 'bio üretilemedi',
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
+    ab_backup_bio($id, $old);
     $u = wp_update_term($id, 'authors', ['description' => $g['bio']]);
     if (is_wp_error($u)) { echo json_encode(['ok' => false, 'error' => $u->get_error_message()]); exit; }
-    echo json_encode(['ok' => true, 'bio' => $g['bio'], 'status' => ab_status($g['bio'])], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'bio' => $g['bio'], 'status' => ab_status($g['bio']),
+                      'method' => 'ai', 'had_old' => trim($old) !== ''], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+/* ── Geri Al: en son üstüne yazmadan önceki bio'yu yedekten geri yükle ── */
+if ($action === 'restore') {
+    $id = (int) ($_POST['id'] ?? 0);
+    $t  = $id ? get_term($id, 'authors') : null;
+    if (!$t || is_wp_error($t)) { echo json_encode(['ok' => false, 'error' => 'yazar bulunamadı']); exit; }
+    $bak = get_term_meta($id, '_tls_bio_backup', true);
+    if (!is_string($bak) || trim($bak) === '') { echo json_encode(['ok' => false, 'error' => 'yedek yok']); exit; }
+    $u = wp_update_term($id, 'authors', ['description' => $bak]);
+    if (is_wp_error($u)) { echo json_encode(['ok' => false, 'error' => $u->get_error_message()]); exit; }
+    echo json_encode(['ok' => true, 'bio' => $bak, 'status' => ab_status($bak)], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -221,9 +275,11 @@ if ($action === 'save') {
     $bio = sanitize_textarea_field($bio);
     $t   = $id ? get_term($id, 'authors') : null;
     if (!$t || is_wp_error($t)) { echo json_encode(['ok' => false, 'error' => 'yazar bulunamadı']); exit; }
+    $had_old = trim((string) $t->description) !== '';
+    ab_backup_bio($id, $t->description);   // elle kaydetmede de eskiyi yedekle
     $u = wp_update_term($id, 'authors', ['description' => $bio]);
     if (is_wp_error($u)) { echo json_encode(['ok' => false, 'error' => $u->get_error_message()]); exit; }
-    echo json_encode(['ok' => true, 'bio' => $bio, 'status' => ab_status($bio)], JSON_UNESCAPED_UNICODE);
+    echo json_encode(['ok' => true, 'bio' => $bio, 'status' => ab_status($bio), 'had_old' => $had_old], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

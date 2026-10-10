@@ -70,8 +70,9 @@ label.chk{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:
       <span class="badge b-short">kısa</span> çok kısa ·
       <span class="badge b-ok">iyi</span>.
       <b>Yeniden Üret</b> ile taslak gelir (kaydetmez) — metni gözden geçir, gerekirse elle düzelt, <b>Kaydet</b>'e bas.
-      <br><b>⚡ Tümünü Düzelt</b>: listedeki sorunluları sırayla <b>Claude</b> ile yeniden yazar ve kaydeder.
-      Claude yazarı güvenle tanıyamazsa o satırı <b>atlar</b> (yanlış bio yazmaz, mevcut hali bırakır).
+      <br><b>⚡ Tümünü Düzelt</b>: yalnız <code>*</code>/<code>#</code> sorunu olanları <b>AI'sız temizler</b>
+      (metin aynen kalır); eksik/kesik olanları <b>Claude</b> ile yeniden yazar. Claude yazarı güvenle
+      tanıyamazsa o satırı <b>atlar</b> (yanlış bio yazmaz). Her değişiklik <b>↩ Geri Al</b> ile geri alınabilir.
       Önce <b>Tara</b>'ya bas.
     </p>
 
@@ -111,9 +112,11 @@ function addRow(r){
     '<td><div class="ab-act">'+
       '<button class="btn btn-sm ab-regen">✨ Yeniden Üret</button>'+
       '<button class="btn btn-sm btn-primary ab-save">💾 Kaydet</button>'+
+      '<button class="btn btn-sm ab-restore" style="display:none">↩ Geri Al</button>'+
     '</div></td>';
   tr.querySelector('.ab-regen').addEventListener('click',()=>regen(tr));
   tr.querySelector('.ab-save').addEventListener('click',()=>save(tr));
+  tr.querySelector('.ab-restore').addEventListener('click',()=>restore(tr));
   tbody.appendChild(tr);
 }
 
@@ -136,8 +139,24 @@ function save(tr){
     if(!d||!d.ok){ $('ab-status').textContent=d&&d.error?('Hata: '+d.error):'Kaydetme hatası.'; return; }
     tr.querySelector('.ab-st').innerHTML=badge(d.status)+' <span style="font-size:10px;color:#00ab6b">✓ kaydedildi</span>';
     if(d.status==='ok'){ tr.dataset.done='1'; }
+    if(d.had_old){ tr.querySelector('.ab-restore').style.display=''; }
     fixed++; $('st-fixed').textContent=fixed.toLocaleString(); refreshFixAllBtn();
   }).catch(()=>{btn.disabled=false; btn.textContent='💾 Kaydet'; $('ab-status').textContent='Bağlantı hatası.';});
+}
+
+function restore(tr){
+  const btn=tr.querySelector('.ab-restore');
+  if(!confirm('Bu yazarın bio\'su bir önceki haline (üstüne yazmadan önceki) geri döndürülecek. Emin misin?')) return;
+  btn.disabled=true; btn.textContent='Geri alınıyor…';
+  post('action=restore&id='+tr.dataset.id).then(d=>{
+    btn.disabled=false; btn.textContent='↩ Geri Al';
+    if(!d||!d.ok){ $('ab-status').textContent=d&&d.error?('Hata: '+d.error):'Geri alma hatası.'; return; }
+    tr.querySelector('.ab-bio').value=d.bio;
+    tr.dataset.status=d.status; delete tr.dataset.done;
+    tr.querySelector('.ab-st').innerHTML=badge(d.status)+' <span style="font-size:10px;color:var(--muted)">↩ geri alındı</span>';
+    btn.style.display='none';
+    refreshFixAllBtn();
+  }).catch(()=>{btn.disabled=false; btn.textContent='↩ Geri Al'; $('ab-status').textContent='Bağlantı hatası.';});
 }
 
 /* Düzeltilecek satırlar: tabloda, henüz işlenmemiş (done değil) VE durumu 'iyi'
@@ -162,38 +181,48 @@ async function fixAll(){
   if(fixing||scanning) return;
   let rows=fixableRows();
   if(rows.length===0){ $('ab-status').textContent='Düzeltilecek sorunlu satır yok. Önce Tara.'; return; }
-  if(!confirm(rows.length+' yazarın bio\'su Claude ile yeniden yazılıp kaydedilecek. Başlansın mı?')) return;
+  if(!confirm(rows.length+' sorunlu bio düzeltilecek.\n\n• Sadece yıldız/işaret sorunu olanlar AI\'SIZ temizlenir (içerik aynen kalır).\n• Eksik/kesik olanlar Claude ile yeniden yazılır.\n• Her değişiklik GERİ ALINABİLİR (↩ Geri Al).\n• Claude yazarı tanıyamazsa o satır atlanır.\n\nBaşlansın mı?')) return;
   fixing=true; fixStop=false; skipped=0;
+  let cleaned=0, rewritten=0, failed=0;
   $('btn-fixall').style.display='none'; $('btn-fixstop').style.display='';
   $('btn-scan').disabled=true;
   let i=0;
   for(const tr of rows){
     if(fixStop) break;
     i++;
-    const name=(tr.querySelector('.ab-name a')||{}).textContent||'';
-    $('ab-status').textContent='Düzeltiliyor '+i+'/'+rows.length+': '+name.replace(' ↗','');
+    const name=((tr.querySelector('.ab-name a')||{}).textContent||'').replace(' ↗','');
+    $('ab-status').textContent='Düzeltiliyor '+i+'/'+rows.length+': '+name+
+      ' · temizlendi '+cleaned+' · yazıldı '+rewritten+(skipped?' · atlandı '+skipped:'');
     const stCell=tr.querySelector('.ab-st');
-    stCell.innerHTML=badge(tr.dataset.status||'short')+' <span style="font-size:10px;color:var(--tls-gold)">yazılıyor…</span>';
+    stCell.innerHTML=badge(tr.dataset.status||'short')+' <span style="font-size:10px;color:var(--tls-gold)">işleniyor…</span>';
     try{
       const d=await post('action=fix&id='+tr.dataset.id);
       if(d&&d.ok){
         tr.querySelector('.ab-bio').value=d.bio;
-        stCell.innerHTML=badge(d.status)+' <span style="font-size:10px;color:#00ab6b">✓ kaydedildi</span>';
-        tr.dataset.done='1'; fixed++; $('st-fixed').textContent=fixed.toLocaleString();
+        const isClean=(d.method==='cleaned');
+        if(isClean){cleaned++;} else {rewritten++;}
+        const lbl=isClean?'✓ temizlendi (AI yok)':'✓ yeniden yazıldı';
+        stCell.innerHTML=badge(d.status)+' <span style="font-size:10px;color:#00ab6b">'+lbl+'</span>';
+        tr.dataset.done='1';
+        if(d.had_old){ tr.querySelector('.ab-restore').style.display=''; }
+        fixed++; $('st-fixed').textContent=fixed.toLocaleString();
       } else if(d&&d.skipped){
         stCell.innerHTML=badge('short')+' <span style="font-size:10px;color:#d69e00">⏭ atlandı (tanınamadı)</span>';
         tr.dataset.done='1'; skipped++;
       } else {
         stCell.innerHTML=badge('missing')+' <span style="font-size:10px;color:#cc1818">✕ '+escH((d&&d.error)||'hata')+'</span>';
-        // done işaretlemiyoruz → tekrar denenebilir
+        failed++;   // done işaretlemiyoruz → tekrar denenebilir
       }
     }catch(e){
       stCell.innerHTML=badge('missing')+' <span style="font-size:10px;color:#cc1818">✕ bağlantı</span>';
+      failed++;
     }
   }
   fixing=false; $('btn-fixstop').style.display='none'; $('btn-scan').disabled=false;
   $('ab-status').textContent=(fixStop?'⏸ Durduruldu. ':'✓ Bitti. ')+
-    fixed+' düzeltildi'+(skipped?', '+skipped+' atlandı (yazar tanınamadı)':'')+'.';
+    cleaned+' temizlendi · '+rewritten+' yeniden yazıldı'+
+    (skipped?' · '+skipped+' atlandı (tanınamadı)':'')+
+    (failed?' · '+failed+' hata (tekrar denenebilir)':'')+'.';
   refreshFixAllBtn();
 }
 
