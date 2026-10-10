@@ -1230,6 +1230,43 @@ function mediumish_custom_add_meta_description_tag() {
 if ( !class_exists( 'WPSEO_Options' ) ) {
     add_action( 'wp_head', 'mediumish_custom_add_meta_description_tag', 1 );
 }
+
+// -----------------------------------------------------
+// SOSYAL META TEMİZLİĞİ: Yoast, yazarın sosyal alanı "#" (boş/geçersiz
+// link) olduğu için <head>'e `twitter:creator=@#` ve `article:author=#`
+// gibi anlamsız değerler basıyordu. wp_head çıktısını son anda süzüp
+// bu geçersiz değerleri düzeltiyoruz (Yoast sürümünden bağımsız, sağlam):
+//   - twitter:creator geçersizse → @Thetelosorg
+//   - article:author geçersizse → etiketi hiç basma
+// -----------------------------------------------------
+function tls_fix_social_meta_html( $html ) {
+    // twitter:creator — içindeki @ ve harfler dışında '#'/boş ise düzelt.
+    $html = preg_replace_callback(
+        '#<meta\b[^>]*\bname=(["\'])twitter:creator\1[^>]*>#i',
+        function ( $m ) {
+            if ( preg_match('#\bcontent=(["\'])(.*?)\1#i', $m[0], $c) ) {
+                $v = trim( $c[2] );
+                if ( $v === '' || $v === '@' || strpos( $v, '#' ) !== false ) {
+                    return '<meta name="twitter:creator" content="@Thetelosorg" />';
+                }
+            }
+            return $m[0];
+        }, $html );
+    // article:author — değeri yalnız '#'/boşluk ise etiketi tamamen kaldır.
+    $html = preg_replace_callback(
+        '#<meta\b[^>]*\bproperty=(["\'])article:author\1[^>]*>\s*#i',
+        function ( $m ) {
+            if ( preg_match('#\bcontent=(["\'])(.*?)\1#i', $m[0], $c) ) {
+                $v = trim( $c[2] );
+                if ( $v === '' || preg_match('/^[#\s]+$/', $v) ) return '';   // geçersiz → kaldır
+            }
+            return $m[0];
+        }, $html );
+    return $html;
+}
+add_action( 'wp_head', function () { ob_start( 'tls_fix_social_meta_html' ); }, 0 );
+add_action( 'wp_head', function () { if ( ob_get_level() > 0 ) @ob_end_flush(); }, 999 );
+
 // -----------------------------------------------------
 // Comment Form
 // -----------------------------------------------------
@@ -2250,7 +2287,7 @@ function thetelos_admin_bar_analysis_button( $wp_admin_bar ) {
 }
 
 
-function thetelos_post_reading_time($post_id=null){if(!$post_id)$post_id=get_the_ID();$post=get_post($post_id);$content=strip_tags($post->post_content);$words=str_word_count($content);$minutes=floor($words/295);$seconds=floor($words%295/(295/60));return $minutes>=1?$minutes.' min read':$seconds.' sec read';}
+function thetelos_post_reading_time($post_id=null){if(!$post_id)$post_id=get_the_ID();$post=get_post($post_id);$content=strip_tags($post->post_content);$words=str_word_count($content);/* 200 kelime/dk: panel ve Yoast meta ile AYNI formül (eskiden 295'ti, meta ile uyuşmuyordu) */$minutes=floor($words/200);$seconds=floor($words%200/(200/60));return $minutes>=1?$minutes.' min read':$seconds.' sec read';}
 
 function thetelos_analysis_reading_time($analysis_post){$content=strip_tags($analysis_post->post_content);$words=str_word_count($content);$minutes=floor($words/295);$seconds=floor($words%295/(295/60));return $minutes>=1?$minutes.' min read':$seconds.' sec read';}
 
