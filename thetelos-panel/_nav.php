@@ -38,6 +38,7 @@ $tls_groups = [
     ['key' => 'denetim', 'ico' => '🩺', 'label' => 'Denetim', 'items' => [
         ['content-audit.php', 'İçerik Denetimi', null],
         ['content-guard.php', 'İçerik Koruma', null],
+        ['drafts-sweep.php', 'Taslakları Süpür', null],
     ]],
     ['key' => 'kategori', 'ico' => '🗂️', 'label' => 'Kategoriler', 'items' => [
         ['category-organize.php', 'Organize', null],
