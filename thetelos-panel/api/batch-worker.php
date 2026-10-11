@@ -487,6 +487,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
             $c = bw_clean_content($rw['md']);
             if (!empty(tv_settings()['claude_accuracy'])) {
                 $acc = tls_claude_accuracy($book, $author, $c, ['trust_source' => true, 'on_beat' => $hb]);
+                if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'block') { $why = 'web içeriği farklı kişi/eser (yanlış) → yer tutucu'; return ''; }
                 if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') $c = $acc['text'];
             }
             return $c;
@@ -1765,8 +1766,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
 
     /* ── CLAUDE BİLGİ-DENETİMİ (özet/analiz) ──────────────────────────────
        Kaynağa-sadakat hakeminden sonra, eseri bilen Claude ince hataları
-       (tür/tarih/akım-atfı/karıştırma/abartı) düzeltir. Rewrite'ı ASLA bloklamaz
-       (trust_source=true) — yalnız düzeltir; mevcut içerik yer tutucuya düşmez. */
+       (tür/tarih/akım-atfı/karıştırma/abartı) düzeltir. İçerik tamamen FARKLI
+       kişi/eser hakkındaysa (wrongsubject → action 'block') yayınlanmaz:
+       rewrite'ta yer tutucu (yayında), create'te atla. Aksi halde yalnız düzeltir. */
     if (!empty(tv_settings()['claude_accuracy']) && trim((string) $content) !== '') {
         require_once __DIR__ . '/_anthropic.php';
         if (tls_anthropic_ready()) {
@@ -1776,6 +1778,22 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
             ]);
             bw_touch_hb($batch_file, $idx);
+            if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'block') {
+                if ($rewrite && $update_pid) {
+                    $ph = bw_placeholder_html($book, $author);
+                    [$rp] = bw_wp("$wp_api/$ep/$update_pid", 'POST', ['content' => $ph, 'status' => 'publish'], $auth, 60);
+                    bw_flag_problem($book, $author, $pre_cover, $pre_year, 'wrong_subject', ($acc['error'] ?: 'farklı kişi/eser (yanlış kaynak)'), $update_pid, 'rewrite');
+                    bw_update_book($batch_file, $idx, [
+                        'status' => 'done', 'post_id' => $update_pid, 'post_url' => $rp['link'] ?? '',
+                        'edit_url' => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . $update_pid . '&action=edit',
+                        'error' => 'yanlış kişi/eser → yer tutucu (yayında)', 'placeholder' => 1, 'method' => 'yer-tutucu',
+                    ]);
+                    return;
+                }
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'wrong_subject', ($acc['error'] ?: 'farklı kişi/eser (yanlış kaynak)'), 0, 'create');
+                bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yanlış kişi/eser (yanlış kaynak) → atlandı']);
+                return;
+            }
             if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') {
                 $content = $acc['text'];
             }

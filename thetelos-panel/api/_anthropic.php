@@ -815,10 +815,17 @@ function tls_claude_accuracy($book, $author, $text, $opts = []) {
          : "- If you do NOT confidently know this exact work (cannot distinguish it from a similarly-named work, "
            . "or would have to invent most of it), do NOT try to patch it — output exactly: BLOCK\n")
       . "- NEVER add meta commentary about yourself, your knowledge, or your checking.\n\n"
+      . "WRONG-SUBJECT (most serious — overrides everything, even a provided source): If the text, as a whole, is "
+      . "actually ABOUT A DIFFERENT WORK or A DIFFERENT PERSON than {$who} — e.g. it describes another book, or it "
+      . "is a biography of a different person who merely shares part of the name (a different 'William Gilbert', a "
+      . "namesake), or it summarizes a source that is about someone/something else — then it must NOT be corrected "
+      . "and must NOT be published. In that case output EXACTLY the single word WRONGSUBJECT and nothing else. This "
+      . "applies even if a source extract was provided: a faithful summary of the WRONG source is still wrong.\n\n"
       . "OUTPUT FORMAT — a status token on the FIRST line, then the content:\n"
-      . "- No changes needed → first line exactly `OK`, then the original text unchanged.\n"
-      . "- You corrected errors → first line exactly `FIXED`, then the FULL corrected text (same language, same "
-      . "Markdown/HTML formatting as the input).\n"
+      . "- The text is genuinely about {$who} and needs no change → first line exactly `OK`, then the original text unchanged.\n"
+      . "- The text is about {$who} but has fixable errors → first line exactly `FIXED`, then the FULL corrected text "
+      . "(same language, same Markdown/HTML formatting as the input).\n"
+      . "- The text is about a DIFFERENT work/person than {$who} → output exactly `WRONGSUBJECT` and nothing else.\n"
       . ($trust ? "" : "- You cannot verify this is the correct work at all → output exactly `BLOCK` and nothing else.\n")
       . "Output ONLY the status line followed by the content. No preamble, no explanations.";
 
@@ -844,7 +851,8 @@ function tls_claude_accuracy($book, $author, $text, $opts = []) {
 
     $parse = function ($out) {
         $out = ltrim((string) $out);
-        // İlk satır/token: OK / FIXED / BLOCK
+        // WRONGSUBJECT: içerik tamamen yanlış kişi/eser hakkında → kaynak olsa da yayınlama.
+        if (preg_match('/^\s*WRONG[\s_-]?SUBJECT\b/i', $out) && mb_strlen(trim($out)) < 60) return ['action' => 'wrongsubject', 'text' => ''];
         if (preg_match('/^\s*BLOCK\b/i', $out) && mb_strlen(trim($out)) < 40) return ['action' => 'block', 'text' => ''];
         if (preg_match('/^\s*OK\b/i', $out))    { $body = preg_replace('/^\s*OK\b[^\n]*\n?/i', '', $out, 1);    return ['action' => 'ok',    'text' => trim($body)]; }
         if (preg_match('/^\s*FIXED\b/i', $out)) { $body = preg_replace('/^\s*FIXED\b[^\n]*\n?/i', '', $out, 1); return ['action' => 'fixed', 'text' => trim($body)]; }
@@ -859,6 +867,20 @@ function tls_claude_accuracy($book, $author, $text, $opts = []) {
         return ['ok' => false, 'action' => 'error', 'text' => $text, 'error' => $r['error'] ?? 'claude hata'];
     }
     $p = $parse($r['text']);
+
+    // WRONGSUBJECT → yanlış yayınlamamak kritik, ama yanlış-pozitifle doğru içeriği
+    // atmayalım: Opus'a bir kez TEYİT ettir. Opus da "wrongsubject" derse engelle;
+    // "ok/fixed" derse Opus'un kararına uy.
+    if ($p['action'] === 'wrongsubject') {
+        $best = tls_claude_best_model();
+        if ($best && $best !== $model) {
+            $r2 = $run($best);
+            if (!empty($r2['ok'])) {
+                $p2 = $parse($r2['text']);
+                if ($p2['action'] !== 'wrongsubject') $p = $p2;   // Opus katılmadı → onun kararı
+            }
+        }
+    }
 
     // BLOCK + kaynaksız → Opus'a bir kez yükselt (niş eseri bilebilir), sonra karar.
     if ($p['action'] === 'block' && !$trust) {
@@ -881,8 +903,12 @@ function tls_claude_accuracy($book, $author, $text, $opts = []) {
                 return ['ok' => true, 'action' => 'ok', 'text' => $text, 'error' => 'düzeltme şüpheli-kısa, orijinal korundu'];
             }
             return ['ok' => true, 'action' => 'fixed', 'text' => $p['text'], 'error' => ''];
+        case 'wrongsubject':
+            // KAYNAK OLSA BİLE engelle — yanlış kişi/eser içeriği asla yayınlanmaz.
+            return ['ok' => true, 'action' => 'block', 'wrongsubject' => true, 'text' => '',
+                    'error' => 'içerik farklı kişi/eser hakkında (yanlış kaynak) → yayınlanmadı'];
         case 'block':
-            // trust_source ise engelleme; orijinali koru.
+            // trust_source ise (sıradan "tanıyamadım") engelleme; orijinali koru.
             if ($trust) return ['ok' => true, 'action' => 'ok', 'text' => $text, 'error' => 'doğrulanamadı ama kaynak güvenli → korundu'];
             return ['ok' => true, 'action' => 'block', 'text' => '', 'error' => 'Claude eseri güvenle doğrulayamadı'];
         default: // unknown token → riske atma, orijinali koru

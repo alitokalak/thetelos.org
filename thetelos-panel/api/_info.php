@@ -674,10 +674,16 @@ function tls_info_generate($book, $author, $opts = []) {
                 'dossier'      => $dos['text'],
                 'on_beat'      => $on_beat,
             ]);
+            if ($on_beat) $on_beat();
+            // WRONGSUBJECT (farklı kişi/eser / yanlış kaynak): kaynak olsa bile YAYINLAMA.
+            if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'block') {
+                return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
+                        'sources' => $dos['sources'], 'dossier' => $dos['text'],
+                        'referee' => ['verdict' => 'skip'], 'error' => $acc['error'] ?: 'yanlış kişi/eser → yayınlanmadı'];
+            }
             if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') {
                 $md = $acc['text'];
             }
-            if ($on_beat) $on_beat();
         }
     }
 
