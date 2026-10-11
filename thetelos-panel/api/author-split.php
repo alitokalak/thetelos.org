@@ -192,35 +192,42 @@ if ($action === 'apply') {
     $backup = [];   // post_id => [eski term_id,...]  (geri alma için)
     $created = [];   // yeni terim özetleri
     $moved = 0;
+    $debug = ['recv_groups' => count($groups), 'keep_idx' => $keep_idx, 'base' => $base, 'tax' => AS_TAX, 'groups' => []];
 
     foreach ($groups as $i => $g) {
         $lbl = trim((string) ($g['label'] ?? ''));
         $ids = array_values(array_filter(array_map('intval', (array) ($g['ids'] ?? []))));
-        if ($lbl === '' || !$ids) continue;
-        if ($i === $keep_idx) continue;                     // eski terimde kalacak grup
-        if (strcasecmp($lbl, 'Uncertain') === 0 || strcasecmp($lbl, 'Belirsiz') === 0) continue;  // belirsizi taşıma
+        $dg  = ['i' => $i, 'label' => $lbl, 'ids' => count($ids)];
+        if ($lbl === '' || !$ids) { $dg['skip'] = 'bos-label-veya-id'; $debug['groups'][] = $dg; continue; }
+        if ($i === $keep_idx) { $dg['skip'] = 'keep'; $debug['groups'][] = $dg; continue; }
+        if (strcasecmp($lbl, 'Uncertain') === 0 || strcasecmp($lbl, 'Belirsiz') === 0) { $dg['skip'] = 'uncertain'; $debug['groups'][] = $dg; continue; }
 
         // Hedef terim: varsa bul, yoksa oluştur.
         $existing = get_term_by('name', $lbl, AS_TAX);
         if ($existing && !is_wp_error($existing)) {
-            $new_tid = (int) $existing->term_id;
+            $new_tid = (int) $existing->term_id; $dg['term'] = 'bulundu';
         } else {
             $res = wp_insert_term($lbl, AS_TAX);
-            if (is_wp_error($res)) continue;
-            $new_tid = (int) $res['term_id'];
+            if (is_wp_error($res)) { $dg['err'] = 'insert_term: ' . $res->get_error_message(); $debug['groups'][] = $dg; continue; }
+            $new_tid = (int) $res['term_id']; $dg['term'] = 'olusturuldu';
         }
-        if ($new_tid === (int) $id) continue;               // aynı terime taşıma anlamsız
+        $dg['term_id'] = $new_tid;
+        if ($new_tid === (int) $id) { $dg['skip'] = 'ayni-terim'; $debug['groups'][] = $dg; continue; }
 
+        $gmoved = 0; $gerr = '';
         foreach ($ids as $pid) {
             $cur = wp_get_object_terms($pid, AS_TAX, ['fields' => 'ids']);
-            if (is_wp_error($cur)) continue;
+            if (is_wp_error($cur)) { $gerr = 'get_obj_terms: ' . $cur->get_error_message(); continue; }
             $backup[$pid] = array_map('intval', (array) $cur);
             // Bu yazar terimini çıkar, yeni terimi ekle (diğer yazarlara dokunma).
             $want = array_values(array_diff(array_map('intval', (array) $cur), [(int) $id]));
             $want[] = $new_tid;
-            wp_set_object_terms($pid, array_values(array_unique($want)), AS_TAX, false);
-            $moved++;
+            $sr = wp_set_object_terms($pid, array_values(array_unique($want)), AS_TAX, false);
+            if (is_wp_error($sr)) { $gerr = 'set_obj_terms: ' . $sr->get_error_message(); continue; }
+            $moved++; $gmoved++;
         }
+        $dg['moved'] = $gmoved; if ($gerr) $dg['err'] = $gerr;
+        $debug['groups'][] = $dg;
         $created[] = ['label' => $lbl, 'term_id' => $new_tid, 'count' => count($ids)];
     }
 
@@ -235,6 +242,7 @@ if ($action === 'apply') {
         'created' => $created,
         'kept'    => $base,
         'can_restore' => !empty($backup),
+        'debug'   => $debug,
     ], JSON_UNESCAPED_UNICODE);
     exit;
 }

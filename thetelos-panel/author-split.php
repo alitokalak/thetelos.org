@@ -141,18 +141,22 @@ function apply(){
   const divs=[...document.querySelectorAll('.grp')];
   const groups=divs.map(div=>{
     const lblEl=div.querySelector('.grp-label');
-    return { label: div.__unc ? 'Uncertain' : (lblEl?lblEl.value.trim():''), ids: div.__ids, keep: !!div.__keep };
+    return { label: div.__unc ? 'Uncertain' : (lblEl?lblEl.value.trim():''), ids: Array.isArray(div.__ids)?div.__ids:[], keep: !!div.__keep };
   });
-  const moveCount=groups.filter(g=>!g.keep && g.label.toLowerCase()!=='uncertain').reduce((a,g)=>a+g.ids.length,0);
+  const moveCount=groups.filter(g=>!g.keep && g.label.toLowerCase()!=='uncertain').reduce((a,g)=>a+(g.ids?g.ids.length:0),0);
   if(moveCount===0){ $('as-status').textContent='Taşınacak kitap yok (tek kişi gibi görünüyor).'; return; }
   if(!confirm(moveCount+' kitap, tespit edilen gerçek yazarlarına taşınacak. Yeni yazar terimleri oluşturulacak.\nGeri alınabilir. Devam edilsin mi?')) return;
   $('btn-apply').disabled=true; $('as-status').textContent='Uygulanıyor…';
   const fd=new URLSearchParams(); fd.set('action','apply'); fd.set('term_id',curTerm); fd.set('groups',JSON.stringify(groups));
   post(fd.toString()).then(d=>{
     $('btn-apply').disabled=false;
-    if(!d||!d.ok){ $('as-status').textContent='Hata: '+(d&&d.error||'uygulama başarısız'); return; }
+    if(!d||!d.ok){ $('as-status').textContent='Hata: '+(d&&d.error||'uygulama başarısız'); console.log('apply resp',d); return; }
     let msg='✓ Bitti. '+d.moved+' kitap taşındı. Yeni yazarlar: '+(d.created||[]).map(c=>c.label+' ('+c.count+')').join(', ');
     $('as-status').textContent=msg;
+    if(d.moved===0 && d.debug){
+      console.log('apply debug',d.debug);
+      $('as-status').innerHTML=msg+'<br><span style="color:#cc1818;font-size:11px">0 taşındı — teşhis: '+escH(JSON.stringify(d.debug))+'</span>';
+    }
     if(d.can_restore) $('btn-restore').style.display='';
   }).catch(()=>{ $('btn-apply').disabled=false; $('as-status').textContent='Bağlantı hatası.'; });
 }
