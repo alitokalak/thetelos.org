@@ -29,6 +29,7 @@ $tls_groups = [
         ['sources.php', 'Kaynak Arşivi', null],
         ['social.php', 'Sosyal', null],
         ['authors-bio.php', 'Yazar Bio', null],
+        ['author-split.php', 'Yazar Ayrıştır', null],
     ]],
     ['key' => 'seo', 'ico' => '🔍', 'label' => 'SEO', 'items' => [
         ['seo.php', 'İçerik SEO', null],
