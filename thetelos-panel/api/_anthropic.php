@@ -676,4 +676,142 @@ function tls_claude_batch_one($system, $user, $opts = []) {
             'stop_reason' => (string) ($one['stop_reason'] ?? ''), 'usage' => $one['usage'] ?? [], 'http' => 200];
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * BİLGİ-DENETİMİ + DÜZELTME (tls_claude_accuracy)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * NE: Üretilmiş bir özeti, Claude'un KENDİ eser bilgisiyle ELEŞTİREL modda
+ * denetler ve hataları DÜZELTİR. Kullanıcının elle "bu doğru mu?" diye Claude
+ * chat'e sorup yakaladığı ince hataları otomatikleştirir.
+ *
+ * NEDEN AYRI: Üretim modu (akıcı yazma) ile denetim modu (her iddiayı sorgulama)
+ * farklı; model yazarken "makul görünen" tür/tarih/akım özgüllerini sorgulamadan
+ * yerleştirir. Mevcut hakem (tv_factcheck / _referee) yalnız KAYNAĞA bakar ya da
+ * yalnız BÜYÜK uydurmaları (yanlış karakter/olay/eser) işaretler; tür/akım/tarih/
+ * abartı gibi İNCE hataları kasıtlı olarak atlar. Bu fonksiyon tam o boşluğu
+ * kapatır: eserin KENDİSİNİ bilerek bu ince hataları yakalayıp düzeltir.
+ *
+ * KAYNAK GÜVENİ: trust_source=true (kaynak-temelli/Bilgi Metni yolu) → Claude
+ * eseri şahsen tanımasa bile metni ENGELLEMEZ (kaynak otorite); yalnız emin
+ * olduğu hataları düzeltir. trust_source=false (saf Claude hafızası, kaynak yok)
+ * → eseri güvenle doğrulayamazsa 'block' döner (çağıran yer tutucuya düşürür).
+ *
+ * @return array ['ok'=>bool,'action'=>'ok'|'fixed'|'block'|'error','text'=>string,'error'=>string]
+ */
+function tls_claude_accuracy($book, $author, $text, $opts = []) {
+    if (!tls_anthropic_ready()) return ['ok' => false, 'action' => 'error', 'text' => (string) $text, 'error' => 'ANTHROPIC_KEY yok'];
+    $text = (string) $text;
+    if (trim($text) === '' || str_word_count(strip_tags($text)) < 40) {
+        return ['ok' => true, 'action' => 'ok', 'text' => $text, 'error' => ''];   // denetlenecek kadar metin yok
+    }
+    $book    = trim((string) $book);
+    $author  = trim((string) $author);
+    $trust   = !empty($opts['trust_source']);
+    $dossier = trim((string) ($opts['dossier'] ?? ''));
+    if ($dossier !== '') $dossier = mb_substr($dossier, 0, 10000);
+
+    $who = $author !== '' ? "\"{$book}\" by {$author}" : "\"{$book}\"";
+
+    $system =
+        "You are a meticulous literary fact-checker reviewing a summary/overview of a SPECIFIC book "
+      . "BEFORE it is published. Work in CRITICAL mode: interrogate each concrete claim against your own "
+      . "reliable knowledge of THIS EXACT work. Your job is to FIX factual errors, not to rewrite style.\n\n"
+      . "HUNT ESPECIALLY these error types (the ones casual review misses):\n"
+      . "1. MISCLASSIFIED FORM/GENRE — calling a work a novel/memoir/treatise/essay/poem/play/collection "
+      . "incorrectly. If you are not certain of the form, REMOVE the label rather than guess (write 'his book X', "
+      . "not 'his novel X').\n"
+      . "2. WRONG DATES — publication/writing dates, the author's life dates, the era.\n"
+      . "3. WRONG ATTRIBUTION — tying the author or work to a philosophical/literary MOVEMENT or SCHOOL "
+      . "(existentialism, romanticism, stoicism…), or crediting an influence/idea, that is not clearly correct. "
+      . "Remove unless it is textbook-standard and certain.\n"
+      . "4. CONFLATION — plot, characters, themes, dates or facts that actually belong to a DIFFERENT work, "
+      . "most dangerously another, more famous work by the SAME author.\n"
+      . "5. OVERSTATED / UNSUPPORTED sweeping claims stated as fact.\n"
+      . "6. INVENTED specifics (character names, quotations, chapter titles, statistics) you cannot confirm.\n\n"
+      . "CORRECTION RULES:\n"
+      . "- Fix by MINIMAL edits: correct the wrong fact, or delete the unverifiable claim. Keep everything that "
+      . "is accurate; preserve the text's length, structure, headings and Markdown/HTML as much as possible. Do "
+      . "NOT rewrite good prose or change the writing style.\n"
+      . "- Use your OWN knowledge of this exact work as the primary authority. A SOURCE EXTRACT may be given as "
+      . "supporting evidence; use it too, but your own knowledge of the work is also valid.\n"
+      . ($trust
+         ? "- A reliable source was used to write this text. Even if YOU do not personally know this exact work, "
+           . "do NOT discard it — only correct specific things you are confident are wrong, otherwise leave it.\n"
+         : "- If you do NOT confidently know this exact work (cannot distinguish it from a similarly-named work, "
+           . "or would have to invent most of it), do NOT try to patch it — output exactly: BLOCK\n")
+      . "- NEVER add meta commentary about yourself, your knowledge, or your checking.\n\n"
+      . "OUTPUT FORMAT — a status token on the FIRST line, then the content:\n"
+      . "- No changes needed → first line exactly `OK`, then the original text unchanged.\n"
+      . "- You corrected errors → first line exactly `FIXED`, then the FULL corrected text (same language, same "
+      . "Markdown/HTML formatting as the input).\n"
+      . ($trust ? "" : "- You cannot verify this is the correct work at all → output exactly `BLOCK` and nothing else.\n")
+      . "Output ONLY the status line followed by the content. No preamble, no explanations.";
+
+    $user =
+        "BOOK: {$who}\n\n"
+      . ($dossier !== '' ? "=== SOURCE EXTRACT (supporting evidence, may be partial) ===\n{$dossier}\n=== END SOURCE EXTRACT ===\n\n" : "")
+      . "=== TEXT TO CHECK AND CORRECT ===\n{$text}\n=== END TEXT ===";
+
+    // Çıktı tam düzeltilmiş metni içerebilir → bol token (girdi uzunluğuna göre).
+    $mtok = min(16000, max(2000, (int) round(mb_strlen($text) / 2) + 1200));
+
+    $run = function ($model) use ($system, $user, $mtok, $opts) {
+        return tls_claude($system, $user, [
+            'model'      => $model,
+            'max_tokens' => $mtok,
+            'timeout'    => (int) ($opts['timeout'] ?? 180),
+            'retries'    => 2,
+            'on_beat'    => $opts['on_beat'] ?? null,
+            'batch'      => !empty($opts['batch']),
+            'batch_wait' => $opts['batch_wait'] ?? null,
+        ]);
+    };
+
+    $parse = function ($out) {
+        $out = ltrim((string) $out);
+        // İlk satır/token: OK / FIXED / BLOCK
+        if (preg_match('/^\s*BLOCK\b/i', $out) && mb_strlen(trim($out)) < 40) return ['action' => 'block', 'text' => ''];
+        if (preg_match('/^\s*OK\b/i', $out))    { $body = preg_replace('/^\s*OK\b[^\n]*\n?/i', '', $out, 1);    return ['action' => 'ok',    'text' => trim($body)]; }
+        if (preg_match('/^\s*FIXED\b/i', $out)) { $body = preg_replace('/^\s*FIXED\b[^\n]*\n?/i', '', $out, 1); return ['action' => 'fixed', 'text' => trim($body)]; }
+        // Token gelmediyse: metni olduğu gibi kabul et (düzeltilmiş sayma, riske atma).
+        return ['action' => 'unknown', 'text' => trim($out)];
+    };
+
+    $model = $opts['model'] ?? tls_claude_quality_model();
+    $r = $run($model);
+    if (empty($r['ok'])) {
+        // Denetim yapılamadı → metni OLDUĞU GİBİ bırak (daha kötü yapma). Çağıran log'lar.
+        return ['ok' => false, 'action' => 'error', 'text' => $text, 'error' => $r['error'] ?? 'claude hata'];
+    }
+    $p = $parse($r['text']);
+
+    // BLOCK + kaynaksız → Opus'a bir kez yükselt (niş eseri bilebilir), sonra karar.
+    if ($p['action'] === 'block' && !$trust) {
+        $best = tls_claude_best_model();
+        if ($best && $best !== $model) {
+            $r2 = $run($best);
+            if (!empty($r2['ok'])) {
+                $p2 = $parse($r2['text']);
+                if ($p2['action'] !== 'block') $p = $p2;
+            }
+        }
+    }
+
+    switch ($p['action']) {
+        case 'ok':
+            return ['ok' => true, 'action' => 'ok', 'text' => $text, 'error' => ''];   // orijinali koru
+        case 'fixed':
+            // Düzeltme çok kısa/boş ise güvenme, orijinali bırak.
+            if (str_word_count(strip_tags($p['text'])) < max(30, (int) (str_word_count(strip_tags($text)) * 0.4))) {
+                return ['ok' => true, 'action' => 'ok', 'text' => $text, 'error' => 'düzeltme şüpheli-kısa, orijinal korundu'];
+            }
+            return ['ok' => true, 'action' => 'fixed', 'text' => $p['text'], 'error' => ''];
+        case 'block':
+            // trust_source ise engelleme; orijinali koru.
+            if ($trust) return ['ok' => true, 'action' => 'ok', 'text' => $text, 'error' => 'doğrulanamadı ama kaynak güvenli → korundu'];
+            return ['ok' => true, 'action' => 'block', 'text' => '', 'error' => 'Claude eseri güvenle doğrulayamadı'];
+        default: // unknown token → riske atma, orijinali koru
+            return ['ok' => true, 'action' => 'ok', 'text' => $text, 'error' => 'denetim token yok, orijinal korundu'];
+    }
+}
+
 } // TLS_ANTHROPIC_LOADED

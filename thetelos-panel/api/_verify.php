@@ -82,6 +82,12 @@ function tv_settings() {
         // Bilgi Metni (DeepSeek, uydurma yok) → kısa dürüst not → hiçbiri olmazsa Claude.
         // accuracy_first AÇIK: hafızadan uydurma özet yok; Claude yalnız son çare.
         'accuracy_first' => !isset($j['accuracy_first']) || (bool) $j['accuracy_first'],
+        // CLAUDE BİLGİ-DENETİMİ: VARSAYILAN AÇIK. Üretilen her özet, yayına gitmeden
+        // önce Claude'un KENDİ eser bilgisiyle ELEŞTİREL denetlenir ve ince hatalar
+        // (yanlış tür/tarih/akım-atfı/karıştırma/abartı) düzeltilir. Kaynak varsa
+        // engellemez (yalnız düzeltir); kaynak yoksa doğrulanamayan içerik yer
+        // tutucuya düşer. Kapatmak: settings.json'da claude_accuracy=false.
+        'claude_accuracy' => !isset($j['claude_accuracy']) || (bool) $j['claude_accuracy'],
     ];
     return $s;
 }

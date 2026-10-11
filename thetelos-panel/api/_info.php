@@ -634,6 +634,26 @@ function tls_info_generate($book, $author, $opts = []) {
         }
     }
 
+    /* ── CLAUDE BİLGİ-DENETİMİ + DÜZELTME ──────────────────────────────────
+       Kaynağa-sadakat hakeminden SONRA, eserin KENDİSİNİ bilen Claude metni
+       eleştirel denetler: yanlış tür/tarih/akım-atfı/karıştırma/abartı gibi
+       ince hataları düzeltir. Kaynak-temelli yol olduğu için trust_source=true →
+       Claude eseri tanımasa bile ENGELLEMEZ, yalnız emin olduğu hataları düzeltir. */
+    if (!empty(tv_settings()['claude_accuracy']) && ($opts['claude_accuracy'] ?? true)) {
+        require_once __DIR__ . '/_anthropic.php';
+        if (tls_anthropic_ready()) {
+            $acc = tls_claude_accuracy($book, $author, $md, [
+                'trust_source' => true,
+                'dossier'      => $dos['text'],
+                'on_beat'      => $on_beat,
+            ]);
+            if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') {
+                $md = $acc['text'];
+            }
+            if ($on_beat) $on_beat();
+        }
+    }
+
     [$html, $words] = $to_html($md);
     $srcs = $dos['sources'];
     if ($gen_prov !== $provider) $srcs[] = $gen_prov . ' yedek (yazım)';

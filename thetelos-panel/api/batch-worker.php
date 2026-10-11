@@ -445,6 +445,22 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
     $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
 
+    /* Claude bilgi-denetimi: saf hafıza içeriğinde KAYNAK YOK → trust_source=false.
+       Claude eseri güvenle doğrulayamaz/yanlış bulursa content'i BLOK'lar ('' döner →
+       çağıran yer tutucuya düşer). Düzeltirse düzeltilmiş hali döner. Denetim kapalıysa
+       ya da API yoksa içerik olduğu gibi geçer (daha kötü yapma). */
+    $acc_fix = function ($md) use ($book, $author, $hb, &$why) {
+        $md = (string) $md;
+        if (trim($md) === '') return $md;
+        if (empty(tv_settings()['claude_accuracy'])) return $md;
+        $acc = tls_claude_accuracy($book, $author, $md, ['trust_source' => false, 'on_beat' => $hb]);
+        $hb();
+        if (empty($acc['ok'])) return $md;                       // denetim yapılamadı → koru
+        if (($acc['action'] ?? '') === 'block') { $why = 'Claude bilgi-denetimi: eser güvenle doğrulanamadı → yer tutucu'; return ''; }
+        if (($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') return $acc['text'];
+        return $md;
+    };
+
     // İDEAL UZUNLUK: Claude içerikleri fazla kısa çıkıyordu. Kaynaksız yazıda
     // hedefi makul bir banda çek — eseri iyi biliyorsa DOLU bir ansiklopedi
     // girdisi (~alt-sınır 0.7×hedef) yazsın, ama TAVANI da abartma. Batch'in
@@ -475,7 +491,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         // bekliyordu. Artık seçime saygı: hız isteyen düz Anthropic seçer.
         'batch'        => $use_batch,
     ]);
-    if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return bw_clean_content($r['md']); }
+    if (!empty($r['ok']) && trim((string) ($r['md'] ?? '')) !== '') { $why = ''; return $acc_fix(bw_clean_content($r['md'])); }
 
     // Sonnet "UNKNOWN" derse eseri gerçekten kimse bilmiyor demek DEĞİL — Opus
     // gibi daha güçlü bir model niş eserleri bilebiliyor. Bu yüzden UNKNOWN'da
@@ -490,7 +506,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
                 'model' => $best, 'target_words' => $ideal, 'timeout' => 300, 'on_beat' => $hb, 'batch' => $use_batch,
             ]);
             if (!empty($r2['ok']) && empty($r2['unknown']) && trim((string) ($r2['md'] ?? '')) !== '') {
-                $why = ''; return bw_clean_content($r2['md']);
+                $why = ''; return $acc_fix(bw_clean_content($r2['md']));
             }
         }
         // Sonnet + Opus da eseri tanıyamadı → BOŞ yer tutucu yerine DÜRÜST yazar/
@@ -1716,6 +1732,25 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             bw_flag_problem($book, $author, $pre_cover, $pre_year, 'referee', 'hakem uydurma buldu: ' . $rf_probs, 0, 'create');
             bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'hakem uydurma buldu: ' . $rf_probs]);
             return;
+        }
+    }
+
+    /* ── CLAUDE BİLGİ-DENETİMİ (özet/analiz) ──────────────────────────────
+       Kaynağa-sadakat hakeminden sonra, eseri bilen Claude ince hataları
+       (tür/tarih/akım-atfı/karıştırma/abartı) düzeltir. Rewrite'ı ASLA bloklamaz
+       (trust_source=true) — yalnız düzeltir; mevcut içerik yer tutucuya düşmez. */
+    if (!empty(tv_settings()['claude_accuracy']) && trim((string) $content) !== '') {
+        require_once __DIR__ . '/_anthropic.php';
+        if (tls_anthropic_ready()) {
+            bw_touch_hb($batch_file, $idx);
+            $acc = tls_claude_accuracy($book, $author, $content, [
+                'trust_source' => true, 'dossier' => $ref_dossier,
+                'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
+            ]);
+            bw_touch_hb($batch_file, $idx);
+            if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') {
+                $content = $acc['text'];
+            }
         }
     }
     }   // ── /walkthrough (type !== 'info') ──
