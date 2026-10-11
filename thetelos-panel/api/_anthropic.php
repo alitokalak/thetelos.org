@@ -406,6 +406,76 @@ function tls_claude_overview($book, $author, $opts = []) {
     return ['ok' => true, 'unknown' => false, 'md' => $md, 'usage' => $r['usage'] ?? []];
 }
 
+/**
+ * WEB ARAMALI GROUNDED ÖZET — Claude, web_search aracıyla CANLI kaynak tarar,
+ * ondan yazar. "Chat'te doğru ama API'de saçma" farkının sebebi buydu: chat web
+ * araması yapıyordu, API çağrıları yapmıyordu. Bu fonksiyon o farkı kapatır.
+ *
+ * Aynı-isimli yazar/eser karışmasını da çözer (ör. olta yazarı "William Gilbert,
+ * gent." ≠ fizikçi De Magnete'li William Gilbert) — arama sonuçlarıyla ayırt eder.
+ * Eseri aramaya rağmen bulamazsa UNKNOWN → çağıran yer tutucuya düşer (uydurma yok).
+ *
+ * @return array ['ok'=>bool,'unknown'=>bool,'md'=>string,'error'=>string,'usage'=>array]
+ */
+function tls_claude_web_overview($book, $author, $opts = []) {
+    if (!tls_anthropic_ready()) return ['ok' => false, 'unknown' => false, 'error' => 'ANTHROPIC_KEY yok'];
+    $book = trim((string) $book); $author = trim((string) $author);
+    if ($book === '') return ['ok' => false, 'unknown' => true, 'error' => 'kitap adı boş'];
+    $who = $author !== '' ? "\"{$book}\" by {$author}" : "\"{$book}\"";
+
+    $cap = (int) ($opts['target_words'] ?? 0); if ($cap < 200) $cap = 1200; if ($cap > 8000) $cap = 8000;
+    $cap_lo = max(120, (int) round($cap * 0.6));
+
+    $system =
+        "You are writing a factual, encyclopedic informational article about a SPECIFIC book for a books "
+      . "website (thetelos.org). You HAVE a web_search tool — USE IT FIRST: search for reliable information "
+      . "about THIS exact book (by title and author) before writing. Search as many times as needed "
+      . "(publisher pages, library catalogs, Wikipedia, archives, scholarly/encyclopedic sources).\n\n"
+      . "RIGHT WORK & RIGHT PERSON (critical): Many authors share a name and many titles are reused. Use the "
+      . "search results to confirm you have the CORRECT work and the CORRECT author, and to DISAMBIGUATE "
+      . "same-name people (e.g. a 17th-century angling writer 'William Gilbert, gent.' is NOT the physicist "
+      . "William Gilbert of 'De Magnete'). Never blend two different people or two different works.\n\n"
+      . "WRITE ONLY WHAT THE EVIDENCE SUPPORTS. Base the article on what your searches actually found plus "
+      . "knowledge you are certain of. Never invent quotations, characters, plot events, chapter titles, exact "
+      . "dates, or statistics. If, even after genuinely searching, you cannot confidently identify this exact "
+      . "work, output EXACTLY the single word UNKNOWN and nothing else.\n\n"
+      . "STYLE (strict): dignified, confident encyclopedic prose in the third person. NEVER apologize, NEVER "
+      . "mention searching, sources, 'the available material', your own limits, or being an AI. The forbidden "
+      . "apologetic style includes sentences like 'the sources do not contain…', 'no verified information is "
+      . "available', 'this article is necessarily brief', 'cannot be verified against standard sources'. If you "
+      . "don't know a specific, simply omit it silently — never comment on what is missing.\n\n"
+      . "LENGTH: aim for about {$cap_lo}–{$cap} words when the work is well documented; write a shorter article "
+      . "(never apologetic) when evidence is thinner. Use Markdown with 2–5 '##' section headings. Write ENTIRELY "
+      . "IN ENGLISH. Output ONLY the article (or exactly UNKNOWN) — no preamble.";
+
+    $user = "Research on the web and write the informational article about the book {$who}. "
+          . "First search to identify the exact work and author, then write. If you truly cannot identify this "
+          . "exact work even after searching, output exactly: UNKNOWN";
+
+    $mtok = (int) ($opts['max_tokens'] ?? min(16000, max(1500, (int) round($cap * 1.9))));
+    $r = tls_claude($system, $user, [
+        'model'      => $opts['model'] ?? tls_claude_quality_model(),   // Sonnet 5.5
+        'max_tokens' => $mtok,
+        'timeout'    => (int) ($opts['timeout'] ?? 300),
+        'retries'    => 2,
+        'on_beat'    => $opts['on_beat'] ?? null,
+        'tools'      => [['type' => (defined('ANTHROPIC_WEBSEARCH_TOOL') ? ANTHROPIC_WEBSEARCH_TOOL : 'web_search_20250305'),
+                          'name' => 'web_search',
+                          'max_uses' => (int) ($opts['max_searches'] ?? 6)]],
+        'max_turns'  => (int) ($opts['max_turns'] ?? 8),
+        // Web araması tur-döngüsü ister → batch API DEĞİL (senkron).
+        'batch'      => false,
+    ]);
+    if (empty($r['ok'])) return ['ok' => false, 'unknown' => false, 'error' => $r['error'] ?? 'claude web hata', 'http' => $r['http'] ?? 0];
+
+    $md = trim((string) $r['text']);
+    $probe = mb_strtoupper(preg_replace('/[^A-Za-z]/', '', mb_substr($md, 0, 40)));
+    if (strpos($probe, 'UNKNOWN') === 0) return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
+    $md = tls_strip_ai_meta($md);
+    if (str_word_count(strip_tags($md)) < 70) return ['ok' => false, 'unknown' => true, 'usage' => $r['usage'] ?? []];
+    return ['ok' => true, 'unknown' => false, 'md' => $md, 'usage' => $r['usage'] ?? []];
+}
+
 /** AI meta/itiraf kalıp regex'i (İng. + biraz TR). Metin ve HTML ayıklayıcıları
    ortak kullanır — tek yerde tanımlı olsun. Birinci-şahıs "bilgim/sınırım"
    itirafları + "as an AI / language model" gibi ifadeler. */

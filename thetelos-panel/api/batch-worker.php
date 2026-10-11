@@ -472,6 +472,31 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     // UNKNOWN kalır — yani bu yalnız TAVANI açar, uydurmayı değil.
     $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
 
+    /* ── ÖNCE WEB ARAMASI (grounded) ─────────────────────────────────────
+       Yerel kaynak yetmedi; HAFIZADAN yazmadan ÖNCE Claude'u web_search
+       aracıyla çağır → canlı kaynaktan doğru içerik (chat'teki doğru sonucun
+       sebebi buydu). Aynı-isimli yazar/eser karışmasını da arama çözer. Bulursa
+       accuracy denetiminden (web-grounded → trust_source=true) geçirip döndür.
+       Bulamazsa (UNKNOWN) ve accuracy-first açıksa hafızadan ungrounded YAZMA →
+       doğrudan yer tutucuya düş. */
+    if (!empty(tv_settings()['claude_websearch'])) {
+        $rw = tls_claude_web_overview($book, $author, ['target_words' => $ideal, 'timeout' => 300, 'on_beat' => $hb]);
+        $hb();
+        if (!empty($rw['ok']) && trim((string) ($rw['md'] ?? '')) !== '') {
+            $why = '';
+            $c = bw_clean_content($rw['md']);
+            if (!empty(tv_settings()['claude_accuracy'])) {
+                $acc = tls_claude_accuracy($book, $author, $c, ['trust_source' => true, 'on_beat' => $hb]);
+                if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') $c = $acc['text'];
+            }
+            return $c;
+        }
+        if (!empty(tv_settings()['accuracy_first'])) {
+            $why = 'web araması dahil kaynak bulunamadı (accuracy-first: hafızadan yazma kapalı)';
+            return '';
+        }
+    }
+
     // MALİYET: Eskiden Opus + ADAPTIF DÜŞÜNME kullanılıyordu. Düşünme, GÖRÜNMEZ
     // ama FATURAYA yansıyan büyük "reasoning" token'ı yakıyor → çıktı kısa olsa
     // bile pahalı (kullanıcının "kısa ama 26$" şikâyetinin sebebi buydu). Üstelik
@@ -698,7 +723,10 @@ function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $
     // DOĞRULUK ÖNCE: hafızadan uzun özet YOK. AMA model CANLI WEB ARAMALI (:online)
     // ise yazım ezberden değil, canlı kaynak taramasına dayanır → buna izin ver
     // (grounded). Web aramalı değilse boş dön → kaynak-temelli Bilgi Metni'ne düşülür.
-    if (!empty(tv_settings()['accuracy_first']) && !tls_or_is_online()) { $why = 'doğruluk-önce: web aramasız hafıza özeti kapalı → kaynak-temelli yola düş'; return ''; }
+    // Claude WEB ARAMASI açıksa (grounded) accuracy-first erken-çıkışı yapma —
+    // Claude son-çaresine ulaşsın, orada canlı kaynaktan yazsın.
+    $cws_on = tls_anthropic_ready() && !empty(tv_settings()['claude_websearch']);
+    if (!empty(tv_settings()['accuracy_first']) && !tls_or_is_online() && !$cws_on) { $why = 'doğruluk-önce: web aramasız hafıza özeti kapalı → kaynak-temelli yola düş'; return ''; }
     // 1) Ana ucuz motor (OpenRouter/Qwen) KENDİ bilgisinden — açıksa ve kullanıcı
     //    Claude seçmediyse. Model eseri kesin biliyorsa yazar; bilmiyorsa UNKNOWN → ''.
     if ($api_provider !== 'anthropic' && tls_or_active()) {

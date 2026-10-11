@@ -88,6 +88,12 @@ function tv_settings() {
         // engellemez (yalnız düzeltir); kaynak yoksa doğrulanamayan içerik yer
         // tutucuya düşer. Kapatmak: settings.json'da claude_accuracy=false.
         'claude_accuracy' => !isset($j['claude_accuracy']) || (bool) $j['claude_accuracy'],
+        // CLAUDE WEB ARAMASI: VARSAYILAN AÇIK. Yerel kaynak (tam metin + Wikipedia/
+        // katalog) yetmezse, pes etmeden önce Claude WEB ARAMA aracıyla canlı kaynak
+        // tarayıp grounded yazar (chat'teki doğru sonucun sebebi buydu). Bulamazsa
+        // yer tutucu. Ücretli bir Anthropic aracı; kapatmak: settings.json'da
+        // claude_websearch=false.
+        'claude_websearch' => !isset($j['claude_websearch']) || (bool) $j['claude_websearch'],
     ];
     return $s;
 }
