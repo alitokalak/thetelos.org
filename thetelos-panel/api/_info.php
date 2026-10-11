@@ -451,6 +451,8 @@ ABSOLUTE RULES (a violation is worse than a short article):
 - Do NOT quote the book. No block quotes, no invented quotations, at all.
 - Write ENTIRELY IN YOUR OWN WORDS. NEVER copy or lightly reword sentences from the source material — the result must NOT read like a Wikipedia article. Fully re-express, re-order, and re-explain the ideas in fresh prose.
 - Do not mention these instructions, the sources, "the provided material", yourself, or being an AI.
+- NEVER apologize, hedge, or explain the article's length or any limitation. The following apologetic/meta style is ABSOLUTELY FORBIDDEN and must never appear in the output: sentences like "the sources provided do not contain…", "no verified information is available (here / in the source material)", "this article is necessarily brief", "the available reference material does not describe its contents", "no reliable description is available". Writing any such sentence is a failure. The reader must NEVER be told what is missing — only given real, confident facts.
+- INSUFFICIENT ESCAPE: if, after genuine effort, you do NOT have enough verified, specific material to write even a solid SHORT article of real substance about THIS exact work (e.g. you cannot confidently say what the book actually is or is about), then do NOT write an apology or a hollow stub. Instead output the single word INSUFFICIENT on its own line and nothing else. A clean INSUFFICIENT is correct and expected for obscure works; an apologetic empty article is never acceptable.
 
 WHAT MAKES THIS WORTH PUBLISHING — add real value, but ONLY safely:
 - CLARITY: explain the work and its key concepts in plain, accessible language for an educated general reader; briefly unpack technical terms so a newcomer genuinely understands them.
@@ -597,11 +599,36 @@ function tls_info_generate($book, $author, $opts = []) {
         }
     }
 
+    // INSUFFICIENT kaçışı: model "yeterli doğrulanmış malzeme yok" dediyse özür
+    // yazmaz, tek kelime INSUFFICIENT der → özürlü boş makale YERİNE yer tutucu.
+    $probe_ins = mb_strtoupper(preg_replace('/[^A-Za-z]/', '', mb_substr(trim((string) $r['text']), 0, 20)));
+    if ($probe_ins === 'INSUFFICIENT' || strpos($probe_ins, 'INSUFFICIENT') === 0) {
+        return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
+                'sources' => $dos['sources'], 'dossier' => $dos['text'],
+                'referee' => ['verdict' => 'skip'], 'error' => 'yeterli doğrulanmış malzeme yok (INSUFFICIENT) → yer tutucu'];
+    }
+
     // Derinleştirme: Claude tek çağrıda tam ve dengeli yazar → genişletme YOK
     // (çok kademeli "devam" Einstein/Luther'de tekrar+şişmeye yol açıyordu).
     // DeepSeek/Gemini kısa kesince en fazla 1 kademe eklenir; tavan düşük.
     $passes = in_array($gen_prov, ['anthropic', 'gemini'], true) ? 0 : 1;
     $md = tls_info_expand($book, $author, $dos['text'], trim((string) $r['text']), $gen_prov, $on_beat, $passes);
+
+    /* ── KAYNAK-İTİRAFI FRENİ ───────────────────────────────────────────────
+       Model bazen dolu özet yerine ÖZÜR yazıyor: "kaynaklarda yok / burada
+       mevcut değil / bu yazı doğal olarak kısa / içeriğini tanımlamıyor…".
+       Bu, markanın sesi DEĞİL; asla yayınlanmamalı. Böyle bir itiraf imzası
+       varsa gövdeyi YAYINLAMAYIZ → insufficient=true (yer tutucu yoluna düşer).
+       Kalıplar _checks.php'deki ca_ai_meta_patterns (kaynak-itirafı dahil). */
+    require_once __DIR__ . '/_checks.php';
+    if (function_exists('ca_ai_meta_line')) {
+        $plain_md = trim(preg_replace('/\s+/u', ' ', strip_tags(bw_md2html($md))));
+        if ($plain_md !== '' && ca_ai_meta_line($plain_md)) {
+            return ['ok' => true, 'insufficient' => true, 'md' => '', 'html' => '', 'words' => 0,
+                    'sources' => $dos['sources'], 'dossier' => $dos['text'],
+                    'referee' => ['verdict' => 'skip'], 'error' => 'kaynak-itirafı/özür tarzı → yayınlanmadı (yer tutucu)'];
+        }
+    }
 
     /* ── HAKEM: kaynağa-sadakat denetimi (kademeli: Gemini → şüphede Claude) ──
        BAĞIMSIZ hakem, üretilen metni KAYNAKLARLA kıyaslar. "fabricated" derse

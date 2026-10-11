@@ -423,7 +423,13 @@ function tls_ai_meta_pattern() {
          . 'as an ai|as a language model|language model|my (training|knowledge) (data|cutoff)|'
          . 'i (would|should) not (invent|fabricate|guess|speculate)|'
          . 'bilgim(in)? (yok|sınırlı|dahilinde)|kesin (olarak )?bil(e|mi)|emin değilim|'
-         . 'yapay zeka olarak|bir yapay zeka'
+         . 'yapay zeka olarak|bir yapay zeka|'
+         // KAYNAK-İTİRAFI (üçüncü şahıs özür tarzı): asla yayına çıkmamalı.
+         . 'the (sources?|source material|reference material|available (sources?|materials?|information)) (provided |given |here )?(do(es)? not|don\'?t|cannot|can\'?t|fail to|lack)|'
+         . 'no (verified |reliable |detailed |specific |further |additional )?(information|description|details?|account) (about|of|on|regarding)[^.]{0,80}?(is|are|was|were) (available|provided|given|present|found)|'
+         . '(is|are|was|were) (not )?available (here|in (the |our )?(sources?|source material|reference material|text))|'
+         . 'this (article|summary|entry|piece|overview) is (therefore |thus |necessarily )?(kept |intentionally )?(brief|short|limited)|'
+         . 'does not (describe|contain|provide|include|mention) (its|the|any) (contents?|structure|argument|plot|details?)'
          . ')\b/i';
 }
 

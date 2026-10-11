@@ -396,6 +396,16 @@ function ca_ai_meta_patterns() {
         '/\byapay zeka olarak\b/iu',
         '/\bbilgim(?:in)? (?:yok|sınırlı|dahilinde)\b/iu',
         '/\bemin değilim\b/iu',
+        // KAYNAK-İTİRAFI (üçüncü şahıs): "kaynaklarda yok / burada mevcut değil /
+        // bu yazı doğal olarak kısa" gibi özür/itiraf tarzı — markanın sesine
+        // yakışmaz, ASLA yayınlanmamalı. Bunlar hep boş/özürlü içeriğin imzasıdır.
+        '/\bthe (?:sources?|source material|reference material|available (?:sources?|materials?|information|references?)) (?:provided |given |here )?(?:do(?:es)? not|don\'?t|cannot|can\'?t|fail to|lack)\b/i',
+        '/\bno (?:verified |reliable |detailed |specific |further |additional |confirmed )?(?:information|description|details?|account|record) (?:about|of|on|regarding|concerning)[^.]{0,90}?(?:is|are|was|were) (?:available|provided|given|present|found|recorded)\b/i',
+        '/\b(?:is|are|was|were) (?:not )?(?:currently )?available (?:here|in (?:the |our )?(?:sources?|source material|reference material|available material|text|record))\b/i',
+        '/\bthis (?:article|summary|entry|piece|overview|text) is (?:therefore |thus |consequently |necessarily )?(?:kept |intentionally |deliberately )?(?:brief|short|limited)\b/i',
+        '/\bdoes not (?:describe|contain|provide|include|mention|detail|offer) (?:its|the|any) (?:contents?|structure|argument|plot|story|details?|specifics?)\b/i',
+        '/\b(?:could|can) not be (?:verified|confirmed|established|found) (?:from|in) (?:the |our |available )?(?:sources?|material)\b/i',
+        '/\bkaynak(?:lar)?(?:da|ta)? (?:yeterli |doğrulanmış )?(?:bilgi|açıklama|ayrıntı)[^.]{0,40}?(?:yok|bulunam|mevcut değil)\b/iu',
     ];
 }
 
