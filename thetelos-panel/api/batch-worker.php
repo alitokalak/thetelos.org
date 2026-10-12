@@ -2256,7 +2256,16 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             bw_touch_hb($batch_file, $idx);   // doğrulama sürerken worker ölü sanılmasın
             $g = tv_gate($book, $author, $body_html, ['min_words' => ($type === 'info' ? 120 : 300)]);
             $gate_report = $g['report'];
-            if (!$g['pass']) $post_status = 'draft';
+            // İLKE: ASLA TASLAK. Kusurlu/şüpheli içeriği yayınlamak yerine temiz yer
+            // tutucu yayınlanır (status 'publish' kalır). Kitap "sorunlu" işaretlenir ki
+            // sonra düzeltilebilsin; ama ziyaretçi asla taslak/kusurlu sayfa görmez.
+            if (!$g['pass']) {
+                $body_html = bw_placeholder_html($book, $author);
+                if (is_array($gate_report)) $gate_report['action'] = 'yer-tutucu (taslak yerine)';
+                bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gate_placeholder',
+                    'kapı geçemedi → yer tutucu yayınlandı: ' . implode(' | ', array_slice($g['reasons'] ?? [], 0, 2)),
+                    $update_pid, $rewrite ? 'rewrite' : 'create');
+            }
         }
     }
 

@@ -178,7 +178,14 @@ if ($post_status === 'publish') {
         $g = tv_gate($book, $author, $body_html, ['min_words' => 300]);
         $gate_report = $g['report'];
         if (!$g['pass']) {
-            $post_status = 'draft';   // yayınlama — taslakta beklet
+            // İLKE: ASLA TASLAK. Kusurlu içeriği yayınlamak yerine temiz yer tutucu
+            // yayınlanır (status 'publish' kalır). Ziyaretçi taslak/kusurlu görmez.
+            $pb_b = htmlspecialchars(trim((string) $book),   ENT_QUOTES, 'UTF-8');
+            $pb_a = htmlspecialchars(trim((string) $author), ENT_QUOTES, 'UTF-8');
+            $body_html = "<p>A detailed overview of <strong>{$pb_b}</strong>"
+                       . ($pb_a !== '' ? " by {$pb_a}" : "")
+                       . " is being prepared and will be published here soon.</p>";
+            if (is_array($gate_report)) $gate_report['action'] = 'yer-tutucu (taslak yerine)';
         }
     }
 }
