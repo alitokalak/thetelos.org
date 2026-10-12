@@ -109,6 +109,13 @@ function addRow(r){
   tr.querySelector('.ds-pub').addEventListener('click',()=>pubRow(tr,false));
   tr.querySelector('.ds-del').addEventListener('click',()=>delRow(tr,true));
   tbody.appendChild(tr);
+  // Daha önce DENETLENMİŞSE (meta'da kayıtlı) → badge'i geri getir, sayacı say.
+  if(r.verdict && ['good','fix','wrong','unsure'].includes(r.verdict)){
+    setVerdict(tr,r.verdict,r.vnote||'');
+    if(r.verdict==='good')cGood++; else if(r.verdict==='fix')cFix++; else if(r.verdict==='wrong')cWrong++;
+    $('st-good').textContent=cGood; $('st-fix').textContent=cFix; $('st-wrong').textContent=cWrong;
+    $('btn-pub-good').style.display=''; $('btn-del-wrong').style.display='';
+  }
 }
 function setVerdict(tr,v,note){
   tr.dataset.verdict=v;

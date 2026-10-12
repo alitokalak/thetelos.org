@@ -81,13 +81,15 @@ if ($action === 'scan') {
         [$book, $author] = ds_book_author($pid);
         $words = str_word_count(wp_strip_all_tags((string) get_post_field('post_content', $pid)));
         $rows[] = [
-            'id'     => (int) $pid,
-            'title'  => (string) get_the_title($pid),
-            'author' => $author,
-            'words'  => (int) $words,
-            'reason' => $reasons[(int) $pid] ?? '',
-            'link'   => get_permalink($pid),
-            'edit'   => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . (int) $pid . '&action=edit',
+            'id'      => (int) $pid,
+            'title'   => (string) get_the_title($pid),
+            'author'  => $author,
+            'words'   => (int) $words,
+            'reason'  => $reasons[(int) $pid] ?? '',
+            'verdict' => (string) get_post_meta($pid, '_tls_sweep_verdict', true),   // kayıtlı denetim (varsa)
+            'vnote'   => (string) get_post_meta($pid, '_tls_sweep_note', true),
+            'link'    => get_permalink($pid),
+            'edit'    => rtrim(WP_URL, '/') . '/wp-admin/post.php?post=' . (int) $pid . '&action=edit',
         ];
     }
     echo json_encode([
@@ -100,33 +102,35 @@ if ($action === 'scan') {
     exit;
 }
 
-/* ── Denetle (Claude) ── */
+/* ── Denetle (Claude) ──
+   Verdict + not KALICI olarak post meta'ya yazılır → sayfa yenilense/oturum
+   dolsa bile denetim KAYBOLMAZ, tekrar para harcanmaz. */
 if ($action === 'check') {
     $id = (int) ($_POST['id'] ?? 0);
     $p  = $id ? get_post($id) : null;
     if (!$p) { echo json_encode(['ok' => false, 'error' => 'post bulunamadı']); exit; }
+    $save = function ($verdict, $note) use ($id) {
+        update_post_meta($id, '_tls_sweep_verdict', $verdict);
+        update_post_meta($id, '_tls_sweep_note', mb_substr((string) $note, 0, 200));
+        echo json_encode(['ok' => true, 'verdict' => $verdict, 'note' => $note], JSON_UNESCAPED_UNICODE); exit;
+    };
     [$book, $author] = ds_book_author($id);
     $html = (string) $p->post_content;
-    if (str_word_count(wp_strip_all_tags($html)) < 40) {
-        echo json_encode(['ok' => true, 'verdict' => 'unsure', 'note' => 'çok kısa/boş → elle bak']); exit;
-    }
+    if (str_word_count(wp_strip_all_tags($html)) < 40) { $save('unsure', 'çok kısa/boş → elle bak'); }
     // Kaynaksız bilgi-denetimi: eseri/ kişiyi Claude bilir mi, doğru mu?
     $acc = tls_claude_accuracy($book, $author, $html, ['trust_source' => false]);
     if (empty($acc['ok'])) { echo json_encode(['ok' => false, 'error' => $acc['error'] ?? 'denetim hatası']); exit; }
     $act = $acc['action'] ?? '';
     if ($act === 'block') {
-        // wrongsubject ya da doğrulanamadı.
-        $verdict = !empty($acc['wrongsubject']) ? 'wrong' : 'unsure';
-        echo json_encode(['ok' => true, 'verdict' => $verdict, 'note' => $acc['error'] ?? '']); exit;
+        $save(!empty($acc['wrongsubject']) ? 'wrong' : 'unsure', $acc['error'] ?? '');
     }
     if ($act === 'fixed' && trim((string) $acc['text']) !== '') {
-        // Düzeltilmiş hali geçici sakla → "Düzelt & Yayınla" uygulasın.
-        update_post_meta($id, '_tls_sweep_fixed', $acc['text']);
-        echo json_encode(['ok' => true, 'verdict' => 'fix', 'note' => 'Claude küçük hataları düzeltti']); exit;
+        update_post_meta($id, '_tls_sweep_fixed', $acc['text']);   // düzeltilmiş hali sakla
+        $save('fix', 'Claude küçük hataları düzeltti');
     }
     // ok / unknown → yayınlanabilir.
     delete_post_meta($id, '_tls_sweep_fixed');
-    echo json_encode(['ok' => true, 'verdict' => 'good', 'note' => '']); exit;
+    $save('good', '');
 }
 
 /* ── Yayınla (ops. düzeltmeyi uygula) ── */
@@ -144,6 +148,7 @@ if ($action === 'publish') {
         }
     }
     delete_post_meta($id, '_tls_sweep_fixed');
+    delete_post_meta($id, '_tls_sweep_verdict'); delete_post_meta($id, '_tls_sweep_note');
     $u = wp_update_post(['ID' => $id, 'post_status' => 'publish'], true);
     if (is_wp_error($u)) { echo json_encode(['ok' => false, 'error' => $u->get_error_message()]); exit; }
     echo json_encode(['ok' => true, 'link' => get_permalink($id)]); exit;
@@ -153,6 +158,8 @@ if ($action === 'publish') {
 if ($action === 'delete') {
     $id = (int) ($_POST['id'] ?? 0);
     if (!$id || !get_post($id)) { echo json_encode(['ok' => false, 'error' => 'post bulunamadı']); exit; }
+    delete_post_meta($id, '_tls_sweep_fixed');
+    delete_post_meta($id, '_tls_sweep_verdict'); delete_post_meta($id, '_tls_sweep_note');
     $r = wp_trash_post($id);   // kalıcı silme değil → çöpten geri alınabilir
     if (!$r) { echo json_encode(['ok' => false, 'error' => 'silinemedi']); exit; }
     echo json_encode(['ok' => true]); exit;
