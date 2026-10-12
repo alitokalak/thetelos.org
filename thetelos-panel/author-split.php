@@ -147,7 +147,11 @@ function apply(){
   if(moveCount===0){ $('as-status').textContent='Taşınacak kitap yok (tek kişi gibi görünüyor).'; return; }
   if(!confirm(moveCount+' kitap, tespit edilen gerçek yazarlarına taşınacak. Yeni yazar terimleri oluşturulacak.\nGeri alınabilir. Devam edilsin mi?')) return;
   $('btn-apply').disabled=true; $('as-status').textContent='Uygulanıyor…';
-  const fd=new URLSearchParams(); fd.set('action','apply'); fd.set('term_id',curTerm); fd.set('groups',JSON.stringify(groups));
+  // JSON'u base64 ile gönder: ham JSON gönderince sunucu güvenlik duvarı
+  // (LiteSpeed/ModSecurity) alanı "enjeksiyon" sanıp boşaltabiliyordu.
+  const gjson=JSON.stringify(groups);
+  const gb64=btoa(unescape(encodeURIComponent(gjson)));
+  const fd=new URLSearchParams(); fd.set('action','apply'); fd.set('term_id',curTerm); fd.set('groups_b64',gb64);
   post(fd.toString()).then(d=>{
     $('btn-apply').disabled=false;
     if(!d||!d.ok){ $('as-status').textContent='Hata: '+(d&&d.error||'uygulama başarısız'); console.log('apply resp',d); return; }

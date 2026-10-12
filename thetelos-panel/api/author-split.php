@@ -174,7 +174,16 @@ if ($action === 'apply') {
     $id = (int) ($_POST['term_id'] ?? 0);
     $t  = $id ? get_term($id, AS_TAX) : null;
     if (!$t || is_wp_error($t)) { echo json_encode(['ok' => false, 'error' => 'yazar bulunamadı']); exit; }
-    $groups = json_decode((string) ($_POST['groups'] ?? ''), true);
+    // Grup verisi base64 ile gelir (JSON ham gönderilince sunucu güvenlik
+    // duvarı/WAF "enjeksiyon" sanıp alanı boşaltabiliyor). Önce b64, yoksa ham.
+    $groups_raw = '';
+    if (!empty($_POST['groups_b64'])) {
+        $groups_raw = (string) base64_decode((string) $_POST['groups_b64'], true);
+    }
+    if ($groups_raw === '' || $groups_raw === false) {
+        $groups_raw = (string) ($_POST['groups'] ?? '');
+    }
+    $groups = json_decode($groups_raw, true);
     if (!is_array($groups) || !$groups) { echo json_encode(['ok' => false, 'error' => 'grup verisi yok']); exit; }
 
     $base = $t->name;
