@@ -497,6 +497,11 @@ if ($api_provider === 'anthropic') {
 
     if ($stream_buf !== '') { sse('chunk', ['text' => $stream_buf]); $stream_buf = ''; }
 
+    @file_put_contents(dirname(__DIR__) . '/jobs/gen-debug.log',
+        date('H:i:s') . " CLAUDE part={$part}/{$parts} model={$cmodel} maxtok={$max_tokens}"
+        . " stop=" . ($stop_reason ?: '-') . " out_tok={$output_tokens} len=" . strlen($full_content)
+        . " http={$a_code} err=" . substr((string) $a_err, 0, 80) . "\n", FILE_APPEND);
+
     if (!$full_content) {
         // Hata gövdesi SSE değil düz JSON olabilir ($a_raw'da): sebebi göster.
         $emsg = '';

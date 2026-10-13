@@ -208,24 +208,42 @@ if($type!=='analysis' && $cat_ids) $pb['categories']=$cat_ids;
      2) aynı KİTAP başlıklı herhangi bir yazı ("Kitap - *") → yanlış yazarlı
         eski kaydı da yakalar (asıl amaç buydu). İlk eşleşen güncellenir. */
 $update_id = 0;
+$ow_dbg = '';
 if ($rewrite) {
+    // Yayınlanmış + taslak/beklemede hepsini tara. status filtresi yetki
+    // sorununda hata dönebildiği için önce o, olmazsa sade (yayınlanmış) arama.
     [$found] = wp_req("$wp_api/$ep?search=" . urlencode($book)
-        . "&per_page=30&status=publish,draft,pending,private&_fields=id,title", 'GET', [], $auth);
-    if (is_array($found) && $found) {
+        . "&per_page=50&status=publish,draft,pending,private,future&_fields=id,title,status", 'GET', [], $auth);
+    if (!is_array($found) || isset($found['code'])) {
+        [$found] = wp_req("$wp_api/$ep?search=" . urlencode($book) . "&per_page=50&_fields=id,title,status", 'GET', [], $auth);
+    }
+    $titles_seen = [];
+    if (is_array($found) && $found && !isset($found['code'])) {
         $want_full = mb_strtolower(trim($post_title));
         $want_book = mb_strtolower(trim($book));
         $prefix_id = 0;
         foreach ($found as $f) {
-            $ft = mb_strtolower(trim(html_entity_decode((string)($f['title']['rendered'] ?? ''), ENT_QUOTES, 'UTF-8')));
+            if (!is_array($f) || empty($f['id'])) continue;
+            $raw_t = (string)($f['title']['rendered'] ?? ($f['title'] ?? ''));
+            $ft = mb_strtolower(trim(html_entity_decode($raw_t, ENT_QUOTES, 'UTF-8')));
+            $titles_seen[] = $ft;
             if ($ft === $want_full) { $update_id = (int)$f['id']; break; }           // 1) tam eşleşme
+            // 2) aynı KİTAP başlığı (yazar farklı/eksik olsa da): tam kitap adı,
+            //    "kitap - ..." ya da "kitap – ..." ön eki.
             if (!$prefix_id && ($ft === $want_book
                 || strpos($ft, $want_book . ' -') === 0
-                || strpos($ft, $want_book . ' –') === 0)) {
-                $prefix_id = (int)$f['id'];                                           // 2) aynı kitap
+                || strpos($ft, $want_book . ' –') === 0
+                || strpos($ft, $want_book . ' —') === 0)) {
+                $prefix_id = (int)$f['id'];
             }
         }
         if (!$update_id && $prefix_id) $update_id = $prefix_id;
     }
+    $ow_dbg = 'found=' . (is_array($found) ? count($found) : '0')
+            . ' upd=' . $update_id . ' want=[' . mb_strtolower(trim($post_title)) . ']'
+            . ' seen=[' . implode(' | ', array_slice($titles_seen, 0, 6)) . ']';
+    @file_put_contents(dirname(__DIR__) . '/jobs/gen-debug.log',
+        date('H:i:s') . " PUBLISH rewrite=1 ep={$ep} " . $ow_dbg . "\n", FILE_APPEND);
 }
 
 if ($update_id) {
