@@ -470,36 +470,68 @@ if ($api_provider === 'anthropic') {
         return strlen($chunk);
     };
 
-    $ch = curl_init('https://api.anthropic.com/v1/messages');
-    curl_setopt_array($ch, [
-        CURLOPT_POST             => true,
-        CURLOPT_TIMEOUT          => 280,
-        CURLOPT_CONNECTTIMEOUT   => 20,
-        CURLOPT_NOPROGRESS       => false,
-        CURLOPT_XFERINFOFUNCTION => $beat,
-        CURLOPT_HTTPHEADER       => [
-            'content-type: application/json',
-            'x-api-key: ' . $akey,
-            'anthropic-version: 2023-06-01',
-        ],
-        CURLOPT_POSTFIELDS       => json_encode([
+    /* DÜŞÜNME (thinking) KAPALI + BOL max_tokens.
+       KÖK SEBEP: Sonnet 5.5'te düşünme VARSAYILAN AÇIK. Model önce binlerce
+       token "düşünüyor" → o da max_tokens bütçesinden yeniyor → metne yer
+       kalmayınca yazı CÜMLE ORTASINDA kesiliyordu (kapı "kesilmiş" deyip yer
+       tutucuya düşürüyordu) VE düşünme tokenları boşa para gidiyordu. Özet
+       üretiminde düşünmeye ihtiyaç yok: kapatıyoruz (modeline göre doğru
+       parametre) + max_tokens'ı akışta güvenli biçimde yükseltiyoruz. */
+    $amax = max(16000, min(32000, (int) ceil($target_words * 3) + 8000));
+    $ml   = strtolower($cmodel);
+    if (strpos($ml, 'sonnet-5-5') !== false || strpos($ml, 'sonnet-5.5') !== false) {
+        $think = ['type' => 'between_tools'];        // Sonnet 5.5: düşünmeyi böyle kapatılır
+    } elseif (strpos($ml, 'sonnet') !== false) {
+        $think = ['type' => 'disabled'];             // Sonnet 5 ve öncesi
+    } else {
+        $think = null;                               // Haiku/Opus: zaten varsayılan kapalı
+    }
+
+    $a_run = function ($with_think) use ($akey, $cmodel, $amax, $prompt, $beat, $a_write, $think) {
+        $payload = [
             'model'      => $cmodel,
-            'max_tokens' => $max_tokens,
+            'max_tokens' => $amax,
             'stream'     => true,
             'messages'   => [['role' => 'user', 'content' => $prompt]],
-        ], JSON_UNESCAPED_UNICODE),
-        CURLOPT_WRITEFUNCTION    => $a_write,
-    ]);
-    curl_exec($ch);
-    $a_err  = curl_error($ch);
-    $a_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-    curl_close($ch);
+        ];
+        if ($with_think && $think !== null) $payload['thinking'] = $think;
+        $ch = curl_init('https://api.anthropic.com/v1/messages');
+        curl_setopt_array($ch, [
+            CURLOPT_POST             => true,
+            CURLOPT_TIMEOUT          => 280,
+            CURLOPT_CONNECTTIMEOUT   => 20,
+            CURLOPT_NOPROGRESS       => false,
+            CURLOPT_XFERINFOFUNCTION => $beat,
+            CURLOPT_HTTPHEADER       => [
+                'content-type: application/json',
+                'x-api-key: ' . $akey,
+                'anthropic-version: 2023-06-01',
+            ],
+            CURLOPT_POSTFIELDS    => json_encode($payload, JSON_UNESCAPED_UNICODE),
+            CURLOPT_WRITEFUNCTION => $a_write,
+        ]);
+        curl_exec($ch);
+        $err  = curl_error($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        curl_close($ch);
+        return [$err, $code];
+    };
+
+    [$a_err, $a_code] = $a_run(true);
+    // Model 'thinking' parametresini reddederse (400) düşünmesiz tek tekrar.
+    if (!$full_content && $a_code === 400 && $think !== null) {
+        $a_raw = ''; $stop_reason = ''; $output_tokens = 0;
+        @file_put_contents(dirname(__DIR__) . '/jobs/gen-debug.log',
+            date('H:i:s') . " CLAUDE thinking-param reddedildi (400) → düşünmesiz tekrar\n", FILE_APPEND);
+        [$a_err, $a_code] = $a_run(false);
+    }
 
     if ($stream_buf !== '') { sse('chunk', ['text' => $stream_buf]); $stream_buf = ''; }
 
     @file_put_contents(dirname(__DIR__) . '/jobs/gen-debug.log',
-        date('H:i:s') . " CLAUDE part={$part}/{$parts} model={$cmodel} maxtok={$max_tokens}"
-        . " stop=" . ($stop_reason ?: '-') . " out_tok={$output_tokens} len=" . strlen($full_content)
+        date('H:i:s') . " CLAUDE part={$part}/{$parts} model={$cmodel} maxtok={$amax}"
+        . " think=" . ($think ? $think['type'] : 'off') . " stop=" . ($stop_reason ?: '-')
+        . " out_tok={$output_tokens} len=" . strlen($full_content)
         . " http={$a_code} err=" . substr((string) $a_err, 0, 80) . "\n", FILE_APPEND);
 
     if (!$full_content) {

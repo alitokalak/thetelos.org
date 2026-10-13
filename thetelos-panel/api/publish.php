@@ -159,6 +159,24 @@ $clean_content = preg_replace('/(### [^\n]+\n+)(### )/m', '$2', $clean_content);
 $clean_content = preg_replace('/\n{4,}/', "\n\n\n", $clean_content);
 $clean_content = trim($clean_content);
 
+/* ── SON YARIM CÜMLEYİ KIRP ───────────────────────────────────────────────
+   İçerik token/akış sınırında birkaç kelimelik yarım kuyrukla bitebiliyor
+   ("…and its metaphysical depth has been lost. The Ap"). Kapı bunu haklı
+   olarak "cümle ortasında kesilmiş" sayıp DOLU, para verilmiş içeriği yer
+   tutucuya çeviriyordu. Kaynak-temelli yolda zaten yapılan şeyi burada da
+   yapıyoruz: son TAM cümleye geri kır → içerik kaybı birkaç kelime, kapı
+   geçer, emek çöpe gitmez. */
+if (!function_exists('pub_trim_incomplete')) {
+    function pub_trim_incomplete($md) {
+        $s = rtrim((string) $md, " \t\r\n*_");
+        if ($s === '') return $s;
+        if (preg_match('/[.!?…"”’)\]]\s*$/u', $s)) return $s;   // zaten düzgün bitiyor
+        if (preg_match('/^(.*[.!?…"”’)\]])[^.!?…]*$/su', $s, $m) && trim($m[1]) !== '') return rtrim($m[1]);
+        return $s;
+    }
+}
+$clean_content = pub_trim_incomplete($clean_content);
+
 $body_html = md2html($clean_content);
 
 /* ── YAYIN KAPISI ─────────────────────────────────────────────────────────

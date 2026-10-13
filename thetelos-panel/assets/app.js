@@ -633,7 +633,11 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   // bitiyordu → kapı onu yakalayıp yer tutucuya düşürüyordu. Parçalara bölünce
   // her istek rahatça tamamlanır, kesilme olmaz. Gemini bloklu kaldığı için
   // tek parça (kendi içinde uzun yanıt verir).
-  const multipart = isDeepSeek || isClaude;
+  // Claude'da artık düşünme kapalı + bol max_tokens → tek çağrı uzun hedefi de
+  // kesilmeden yazar. Parçalı üretim YOK (her parçada bağlam tekrar gönderilip
+  // maliyeti artırırdı). Parçalı yalnız DeepSeek'te (tek istekte ~1800 kelimede
+  // kendini toparlama sorunu olduğu için).
+  const multipart = isDeepSeek;
   const provLabel = isDeepSeek ? 'DeepSeek' : (activeProvider === 'gemini' ? 'Gemini' : 'Claude');
   // Parça sayısı hedef kelimeye göre yükseltilir: model tek istekte ~1800
   // kelimeden sonra kendini toparlayıp bitiriyor, dolayısıyla "8000 kelime /
