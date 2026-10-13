@@ -68,6 +68,28 @@ function tls_claude_best_model() {
         ? (string) ANTHROPIC_BEST_MODEL : 'claude-opus-4-8';
 }
 
+/** DÜŞÜNMEYİ (thinking) VARSAYILAN KAPAT.
+   NEDEN: Sonnet 5.5 gibi güncel modellerde "thinking" VARSAYILAN AÇIK gelir.
+   Model asıl metinden önce binlerce token "düşünür" → max_tokens bütçesini
+   yiyip metni CÜMLE ORTASINDA keser, üstelik o tokenlar boşa PARA gider ve işi
+   dakikalarca uzatır. Üretim/özet/denetim işlerinde buna gerek yok. Çağıran
+   açıkça thinking vermediyse modele göre doğru kapatma parametresini seçeriz;
+   model reddederse (400) çağrı yerleri parametreyi düşürüp tekrar dener.
+   @param string $model  çözülmüş model adı
+   @param mixed  $explicit  opts['thinking'] (verildiyse ona dokunma)
+   @return array|null  payload'a eklenecek thinking (ya da null = ekleme) */
+function tls_claude_thinking_default($model, $explicit = null) {
+    if (is_array($explicit)) return $explicit;      // açıkça verilmiş → aynen
+    $ml = strtolower((string) $model);
+    if (strpos($ml, 'sonnet-5-5') !== false || strpos($ml, 'sonnet-5.5') !== false) {
+        return ['type' => 'between_tools'];          // Sonnet 5.5: düşünme böyle kapatılır
+    }
+    if (strpos($ml, 'sonnet') !== false) {
+        return ['type' => 'disabled'];               // Sonnet 5 ve öncesi
+    }
+    return null;                                     // Haiku/Opus: zaten kapalı
+}
+
 /**
  * Claude'a bir istek. Tek kullanıcı mesajı + isteğe bağlı system.
  *
@@ -118,6 +140,7 @@ function tls_claude($system, $user, $opts = []) {
         $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
         $lastErr = ''; $lastCode = 0;
         $stripped_temp = false;   // temperature 400'ünü bir kez temizle
+        $stripped_think = false;  // thinking 400'ünü bir kez temizle
         for ($try = 1; $try <= $retries; $try++) {
             $ch = curl_init('https://api.anthropic.com/v1/messages');
             $copts = [
@@ -163,6 +186,15 @@ function tls_claude($system, $user, $opts = []) {
                 $stripped_temp = true;
                 continue;   // bu denemeyi harcamadan yeniden gönder
             }
+            // Model 'thinking' parametresini kabul etmezse (400) düşürüp tekrar dene.
+            if ($code === 400 && !$stripped_think && isset($payload['thinking'])
+                && (stripos($emsg, 'thinking') !== false || stripos($emsg, 'between_tools') !== false
+                    || stripos($emsg, 'effort') !== false)) {
+                unset($payload['thinking']);
+                $body = json_encode($payload, JSON_UNESCAPED_UNICODE);
+                $stripped_think = true;
+                continue;
+            }
             // 429 / 529 / 5xx → geçici; 4xx → kalıcı.
             if ($code === 429 || $code === 529 || $code >= 500) {
                 if ($try < $retries) { sleep(min(40, 5 * $try * ($code === 529 ? 2 : 1))); continue; }
@@ -187,7 +219,8 @@ function tls_claude($system, $user, $opts = []) {
         // bu parametreyi reddediyor → "HTTP 400 temperature is deprecated for this
         // model" → tüm çağrılar patlıyordu. Varsayılan kullanılır (determinizm için
         // şart değil). Düşünme yalnız açıkça verilirse eklenir.
-        if ($thinking) $payload['thinking'] = $thinking;
+        $eff_think = tls_claude_thinking_default($model, $thinking);
+        if ($eff_think) $payload['thinking'] = $eff_think;
         if ($tools) $payload['tools'] = $tools;
         if (trim((string) $system) !== '') {
             // PROMPT CACHE (opsiyonel): sistem promptu çağrılar arası AYNIysa
@@ -566,9 +599,13 @@ function tls_strip_ai_meta_html($html) {
 function tls_claude_batch_params($system, $user, $opts = []) {
     $maxtok = (int) ($opts['max_tokens'] ?? (defined('ANTHROPIC_MAX_TOKENS') ? ANTHROPIC_MAX_TOKENS : 4096));
     $maxtok = max(256, min(16000, $maxtok));
-    $thinking = (isset($opts['thinking']) && is_array($opts['thinking'])) ? $opts['thinking'] : null;
+    $bmodel   = tls_anthropic_model($opts['model'] ?? '');
+    $explicit = (isset($opts['thinking']) && is_array($opts['thinking'])) ? $opts['thinking'] : null;
+    // DÜŞÜNMEYİ VARSAYILAN KAPAT (batch yolu da): Sonnet 5.5'te thinking açık
+    // gelip token/para/zaman yiyor ve metni kesiyordu. Senkron yolla aynı kural.
+    $thinking = tls_claude_thinking_default($bmodel, $explicit);
     $params = [
-        'model'      => tls_anthropic_model($opts['model'] ?? ''),
+        'model'      => $bmodel,
         'max_tokens' => $maxtok,
         'messages'   => [['role' => 'user', 'content' => (string) $user]],
     ];
