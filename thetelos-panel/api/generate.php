@@ -427,36 +427,93 @@ if ($api_provider === 'gemini') {
    $beat nabzı Cloudflare'in 100 sn'de kesmesini önler (Gemini ile aynı). */
 if ($api_provider === 'anthropic') {
     require_once __DIR__ . '/_anthropic.php';
-    if (!tls_anthropic_ready()) {
+    $akey = tls_anthropic_key();
+    if ($akey === '') {
         sse('error', ['error' => 'Anthropic anahtarı ayarlı değil (ANTHROPIC_KEY).']);
         exit;
     }
     // Model: panelden seçilen Claude modeli (Haiku/Sonnet); yoksa kaliteli varsayılan.
     $cmodel = (stripos($api_model, 'claude') === 0) ? $api_model : tls_claude_quality_model();
-    $cr = tls_claude('', $prompt, [
-        'model'       => $cmodel,
-        'max_tokens'  => $max_tokens,
-        'temperature' => 0.4,
-        'timeout'     => 280,
-        'retries'     => 2,
-        'on_beat'     => $beat,
+
+    /* AKIŞLI (streaming) üretim — tls_claude bloklu olduğundan burada doğrudan
+       Anthropic SSE kullanıyoruz. NEDEN: bloklu çağrıda tüm metin bitene kadar
+       tarayıcıya içerik gitmiyor; uzun yazılarda frontend 120 sn'de akışı "boş"
+       sayıp kesiyordu ("Yanıt boş geldi"). Akışta ilk kelimeyle birlikte içerik
+       akar, hem ekran dolar hem gözcü isteği canlı sayar. Format DeepSeek'ten
+       farklı: content_block_delta.delta.text (metin), message_delta (stop+usage). */
+    $a_raw = '';
+    $a_write = function ($ch, $chunk) use (&$full_content, &$stream_buf, &$input_tokens, &$output_tokens, &$stop_reason, &$last_ping, &$first_token, &$a_raw) {
+        $a_raw .= $chunk;
+        if (time() - $last_ping >= 10) { echo ": ping\n\n"; flush(); $last_ping = time(); }
+        while (($pos = strpos($a_raw, "\n")) !== false) {
+            $line  = trim(substr($a_raw, 0, $pos));
+            $a_raw = substr($a_raw, $pos + 1);
+            if ($line === '' || strpos($line, 'data: ') !== 0) continue;
+            $ev = json_decode(substr($line, 6), true);
+            if (!is_array($ev)) continue;
+            $t = $ev['type'] ?? '';
+            if ($t === 'content_block_delta') {
+                $txt = $ev['delta']['text'] ?? '';
+                if ($txt !== '') {
+                    if (!$first_token) $first_token = time();
+                    $full_content .= $txt;
+                    $stream_buf   .= $txt;
+                    if (strlen($stream_buf) >= 200) { sse('chunk', ['text' => $stream_buf]); $stream_buf = ''; }
+                }
+            } elseif ($t === 'message_start') {
+                $input_tokens = (int) ($ev['message']['usage']['input_tokens'] ?? $input_tokens);
+            } elseif ($t === 'message_delta') {
+                if (!empty($ev['delta']['stop_reason'])) $stop_reason = (string) $ev['delta']['stop_reason'];
+                $output_tokens = (int) ($ev['usage']['output_tokens'] ?? $output_tokens);
+            }
+        }
+        return strlen($chunk);
+    };
+
+    $ch = curl_init('https://api.anthropic.com/v1/messages');
+    curl_setopt_array($ch, [
+        CURLOPT_POST             => true,
+        CURLOPT_TIMEOUT          => 280,
+        CURLOPT_CONNECTTIMEOUT   => 20,
+        CURLOPT_NOPROGRESS       => false,
+        CURLOPT_XFERINFOFUNCTION => $beat,
+        CURLOPT_HTTPHEADER       => [
+            'content-type: application/json',
+            'x-api-key: ' . $akey,
+            'anthropic-version: 2023-06-01',
+        ],
+        CURLOPT_POSTFIELDS       => json_encode([
+            'model'      => $cmodel,
+            'max_tokens' => $max_tokens,
+            'stream'     => true,
+            'messages'   => [['role' => 'user', 'content' => $prompt]],
+        ], JSON_UNESCAPED_UNICODE),
+        CURLOPT_WRITEFUNCTION    => $a_write,
     ]);
-    if (empty($cr['ok']) || trim((string) $cr['text']) === '') {
-        sse('error', ['error' => 'Claude: ' . ($cr['error'] ?? 'boş yanıt')]);
+    curl_exec($ch);
+    $a_err  = curl_error($ch);
+    $a_code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+
+    if ($stream_buf !== '') { sse('chunk', ['text' => $stream_buf]); $stream_buf = ''; }
+
+    if (!$full_content) {
+        // Hata gövdesi SSE değil düz JSON olabilir ($a_raw'da): sebebi göster.
+        $emsg = '';
+        $je = json_decode(trim($a_raw), true);
+        if (is_array($je)) $emsg = $je['error']['message'] ?? '';
+        if ($emsg === '' && $a_err) $emsg = $a_err;
+        if ($emsg === '') $emsg = 'Claude boş yanıt döndürdü (HTTP ' . $a_code . ')';
+        sse('error', ['error' => 'Claude: ' . mb_substr($emsg, 0, 200)]);
         exit;
     }
-    $full_content  = trim((string) $cr['text']);
-    sse('chunk', ['text' => $full_content]);
-    $u             = $cr['usage'] ?? [];
-    $input_tokens  = (int) ($u['input_tokens']  ?? 0);
-    $output_tokens = (int) ($u['output_tokens'] ?? 0);
-    $stop_reason   = (string) ($cr['stop_reason'] ?? '');
+
     $refused = (bool) preg_match('/^\s*[*_>#\-]*\s*cannot verify\b/i', ltrim(strip_tags($full_content)));
     sse('done', [
         'word_count'    => str_word_count(strip_tags($full_content)),
         'input_tokens'  => $input_tokens,
         'output_tokens' => $output_tokens,
-        'stop_reason'   => $stop_reason,
+        'stop_reason'   => $stop_reason ?: 'end_turn',
         'refused'       => $refused,
     ]);
     exit;
