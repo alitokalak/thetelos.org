@@ -417,6 +417,51 @@ if ($api_provider === 'gemini') {
     exit;
 }
 
+/* ── CLAUDE (Anthropic) ile TEKLİ ÜRETİM ─────────────────────────────────
+   ÖNEMLİ: generate.php eskiden yalnız Gemini'yi ayırıp geri kalan HER ŞEYİ
+   (Claude dahil) aşağıdaki DeepSeek yoluna düşürüyordu. Sonuç: üstten
+   "Anthropic / Anthropic Batch" seçilse bile KAYNAKSIZ özette gövdeyi yine
+   DeepSeek yazıyor, ekranda "DeepSeek düşünüyor…" çıkıyordu. Artık Claude
+   seçilince GÖVDE gerçekten Claude ile yazılır. Batch API async (akış yok)
+   olduğundan tekli/canlı modda normal senkron Claude çağrısı kullanılır;
+   $beat nabzı Cloudflare'in 100 sn'de kesmesini önler (Gemini ile aynı). */
+if ($api_provider === 'anthropic') {
+    require_once __DIR__ . '/_anthropic.php';
+    if (!tls_anthropic_ready()) {
+        sse('error', ['error' => 'Anthropic anahtarı ayarlı değil (ANTHROPIC_KEY).']);
+        exit;
+    }
+    // Model: panelden seçilen Claude modeli (Haiku/Sonnet); yoksa kaliteli varsayılan.
+    $cmodel = (stripos($api_model, 'claude') === 0) ? $api_model : tls_claude_quality_model();
+    $cr = tls_claude('', $prompt, [
+        'model'       => $cmodel,
+        'max_tokens'  => $max_tokens,
+        'temperature' => 0.4,
+        'timeout'     => 280,
+        'retries'     => 2,
+        'on_beat'     => $beat,
+    ]);
+    if (empty($cr['ok']) || trim((string) $cr['text']) === '') {
+        sse('error', ['error' => 'Claude: ' . ($cr['error'] ?? 'boş yanıt')]);
+        exit;
+    }
+    $full_content  = trim((string) $cr['text']);
+    sse('chunk', ['text' => $full_content]);
+    $u             = $cr['usage'] ?? [];
+    $input_tokens  = (int) ($u['input_tokens']  ?? 0);
+    $output_tokens = (int) ($u['output_tokens'] ?? 0);
+    $stop_reason   = (string) ($cr['stop_reason'] ?? '');
+    $refused = (bool) preg_match('/^\s*[*_>#\-]*\s*cannot verify\b/i', ltrim(strip_tags($full_content)));
+    sse('done', [
+        'word_count'    => str_word_count(strip_tags($full_content)),
+        'input_tokens'  => $input_tokens,
+        'output_tokens' => $output_tokens,
+        'stop_reason'   => $stop_reason,
+        'refused'       => $refused,
+    ]);
+    exit;
+}
+
 /* Ucuz motor: OpenRouter (Qwen vb.) panelden açıksa ana metni ONA yazdır
    (sunucu DeepSeek'e doğrudan bağlanamıyor); aksi halde doğrudan DeepSeek. */
 require_once dirname(__DIR__) . '/or-config.php';
