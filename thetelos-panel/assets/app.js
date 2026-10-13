@@ -627,16 +627,24 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   state = { content:'', categories:[], selectedCover:'', quotes:[] };
 
   const isDeepSeek = activeProvider === 'deepseek';
+  const isClaude   = (activeProvider === 'anthropic' || activeProvider === 'anthropic_batch');
+  // ÇOK PARÇALI ÜRETİM artık Claude için de açık. NEDEN: tek istekte uzun
+  // hedef (ör. 6500 kelime) yarıda kesilip "…Nietz" gibi cümle ortasında
+  // bitiyordu → kapı onu yakalayıp yer tutucuya düşürüyordu. Parçalara bölünce
+  // her istek rahatça tamamlanır, kesilme olmaz. Gemini bloklu kaldığı için
+  // tek parça (kendi içinde uzun yanıt verir).
+  const multipart = isDeepSeek || isClaude;
+  const provLabel = isDeepSeek ? 'DeepSeek' : (activeProvider === 'gemini' ? 'Gemini' : 'Claude');
   // Parça sayısı hedef kelimeye göre yükseltilir: model tek istekte ~1800
   // kelimeden sonra kendini toparlayıp bitiriyor, dolayısıyla "8000 kelime /
   // 2 parça" seçilirse yazı hedefin yarısı uzunlukta çıkar. Seçilen değer taban.
-  const parts = isDeepSeek ? _effectiveParts(tokens) : 1;
+  const parts = multipart ? _effectiveParts(tokens) : 1;
   const preview = document.getElementById('preview-content');
 
   document.getElementById('single-result').style.display = '';
   document.getElementById('gen-stats').innerHTML = '';
   preview.innerHTML =
-    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${isDeepSeek ? `DeepSeek içerik üretiyor (Part 1/${parts})` : (activeProvider === 'gemini' ? 'Gemini içerik üretiyor' : 'Claude içerik üretiyor')}...</span></div>`;
+    `<div class="loading-row"><span class="loader"></span> <span id="stream-status">${parts > 1 ? `${provLabel} içerik üretiyor (Part 1/${parts})` : `${provLabel} içerik üretiyor`}...</span></div>`;
   document.getElementById('cover-card').style.display = 'none';
 
   const baseParams = {
@@ -654,8 +662,8 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
     let finalContent = '';
     let finalStats = {};
 
-    if (isDeepSeek && parts > 1) {
-      // ── Çok parçalı üretim ──────────────────────────────
+    if (multipart && parts > 1) {
+      // ── Çok parçalı üretim (DeepSeek + Claude) ──────────
       // İKİ KURAL:
       // 1) Geçici hata üretimi bitirmez — parça 3 kez denenir. Toplu üretim
       //    çalışırken API sık sık 429/zaman aşımı döndürüyor; tek bir aksaklık
@@ -670,7 +678,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
 
         for (let attempt = 1; attempt <= 3; attempt++) {
           const s = st();
-          if (s) s.textContent = `DeepSeek içerik üretiyor (Part ${k}/${parts})` +
+          if (s) s.textContent = `${provLabel} içerik üretiyor (Part ${k}/${parts})` +
                                  (attempt > 1 ? ` — yeniden deneme ${attempt}/3` : '') + '...';
           try {
             const r = await runGenerateStream(
@@ -769,9 +777,9 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
     preview.innerHTML = md2html(finalContent);
     setLoading(btn, false);
 
-    const eksik      = (isDeepSeek && parts > 1 && doneParts < parts);
+    const eksik      = (multipart && parts > 1 && doneParts < parts);
     const totalWords = finalStats.word_count || finalContent.split(/\s+/).filter(Boolean).length;
-    const partsBadge = (isDeepSeek && parts > 1)
+    const partsBadge = (multipart && parts > 1)
       ? `<div class="stat"><div class="stat-label">Parça</div><div class="stat-value"><span class="badge ${eksik ? 'badge-red' : 'badge-green'}">${doneParts}/${parts} ${eksik ? 'alındı' : 'tamamlandı'}</span></div></div>`
       : (finalStats.stop_reason
         ? `<div class="stat"><div class="stat-label">Durum</div><div class="stat-value" style="font-size:13px"><span class="badge ${finalStats.stop_reason==='end_turn'?'badge-green':finalStats.stop_reason==='max_tokens'?'badge-red':'badge-gold'}">${finalStats.stop_reason}</span></div></div>`
@@ -922,6 +930,7 @@ document.getElementById('btn-publish')?.addEventListener('click', async () => {
   const res = await postData(API('publish.php'), {
     book_title: book, author_name: author, content: state.content, type,
     post_status: status,
+    rewrite: (document.getElementById('single_rewrite')?.checked ? '1' : '0'),
     excerpt:          document.getElementById('field_excerpt')?.value  || '',
     meta_description: document.getElementById('field_meta_desc')?.value || '',
     categories:  JSON.stringify(cats),
@@ -939,14 +948,18 @@ document.getElementById('btn-publish')?.addEventListener('click', async () => {
   const gated  = res.gated === true;
   const isPub  = res.status === 'publish';
   let head, headColor;
-  if (gated)      { head = '⚠ Yayınlanmadı — taslakta bekletildi'; headColor = '#e6963c'; }
-  else if (isPub) { head = '✓ Yayınlandı';                          headColor = 'var(--green)'; }
-  else            { head = '✓ Taslak kaydedildi';                   headColor = 'var(--muted)'; }
+  // İLKE: kapı artık TASLAĞA ATMAZ — kusurlu içerik yerine temiz YER TUTUCU
+  // yayınlar (status 'publish' kalır). O yüzden "gated" = taslak değil, yer
+  // tutucu yayınlandı demektir. Etiket bunu dürüstçe gösterir.
+  const ow = res.overwritten === true ? ' (mevcut yazı güncellendi)' : '';
+  if (gated && isPub) { head = '⚠ Yer tutucu yayınlandı (içerik kapıdan geçemedi)' + ow; headColor = '#e6963c'; }
+  else if (isPub)     { head = '✓ Yayınlandı' + ow;                                       headColor = 'var(--green)'; }
+  else                { head = '✓ Taslak kaydedildi';                                     headColor = 'var(--muted)'; }
 
   const gateReasons = gated && (res.gate || []).length
     ? `<div style="margin-top:10px;font-size:13px;color:#e6963c;line-height:1.5">
          <b>Sebep:</b><ul style="margin:6px 0 0;padding-left:18px">${res.gate.map(r => '<li>' + r + '</li>').join('')}</ul>
-         <div style="color:var(--muted);margin-top:6px">İçerik kaybolmadı; WP'de taslak olarak duruyor. Düzeltip elle yayınlayabilir ya da yeniden üretebilirsiniz.</div>
+         <div style="color:var(--muted);margin-top:6px">Kusurlu metin yayına çıkmadı; yerine "hazırlanıyor" yer tutucusu kondu. Yeniden üretince düzgün içerik üzerine yazılır.</div>
        </div>`
     : '';
 
@@ -955,7 +968,7 @@ document.getElementById('btn-publish')?.addEventListener('click', async () => {
       <div style="color:${headColor};font-size:16px;font-weight:600;margin-bottom:12px">${head}</div>
       <div style="font-size:13px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap">
         <span>Post <strong style="color:var(--text)">#${res.post_id}</strong></span>
-        <span>Durum: <span class="badge ${isPub && !gated ? 'badge-green' : 'badge-gold'}">${isPub && !gated ? 'yayında' : 'taslak'}</span></span>
+        <span>Durum: <span class="badge ${isPub && !gated ? 'badge-green' : (isPub ? 'badge-gold' : 'badge-gray')}">${isPub ? (gated ? 'yayında (yer tutucu)' : 'yayında') : 'taslak'}</span></span>
         <span>Kapak: <span class="badge ${res.cover_set?'badge-green':'badge-gray'}">${res.cover_set?'✓ Eklendi':'—'}</span></span>
         <span>Kategoriler: <span class="badge badge-gold">${(res.categories||[]).length} adet</span></span>
       </div>

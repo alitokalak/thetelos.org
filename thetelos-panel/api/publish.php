@@ -14,6 +14,7 @@ $meta_desc   = trim($_POST['meta_description'] ?? '');
 $categories  = json_decode($_POST['categories'] ?? '[]', true) ?: [];
 $quotes      = json_decode($_POST['quotes']    ?? '[]', true) ?: [];
 $cover_url   = trim($_POST['cover_url']        ?? '');
+$rewrite     = (($_POST['rewrite'] ?? '') === '1');   // "üzerine yaz": mevcut postu güncelle
 
 if (!$book || !$content) {
     echo json_encode(['ok'=>false,'error'=>'Kitap adı ve içerik zorunludur.']);
@@ -198,12 +199,46 @@ $pb = [
 ];
 if($type!=='analysis' && $cat_ids) $pb['categories']=$cat_ids;
 
-[$post,$pc]=wp_req("$wp_api/$ep",'POST',$pb,$auth);
+/* ── ÜZERİNE YAZ ──────────────────────────────────────────────────────────
+   "Kitap sitede zaten varsa mevcut yazıyı yeniden yaz" işaretliyse YENİ post
+   AÇMA — mevcut postu bulup GÜNCELLE. Eskiden publish.php her zaman yeni post
+   açıyordu: sonuç, "üzerine yaz" dense bile eski (çoğu kez yanlış yazarlı)
+   sayfa yayında kalıp yanına kopyası eklenmesiydi. Eşleşme:
+     1) tam başlık "Kitap - Yazar"  → kesin aynı yazı
+     2) aynı KİTAP başlıklı herhangi bir yazı ("Kitap - *") → yanlış yazarlı
+        eski kaydı da yakalar (asıl amaç buydu). İlk eşleşen güncellenir. */
+$update_id = 0;
+if ($rewrite) {
+    [$found] = wp_req("$wp_api/$ep?search=" . urlencode($book)
+        . "&per_page=30&status=publish,draft,pending,private&_fields=id,title", 'GET', [], $auth);
+    if (is_array($found) && $found) {
+        $want_full = mb_strtolower(trim($post_title));
+        $want_book = mb_strtolower(trim($book));
+        $prefix_id = 0;
+        foreach ($found as $f) {
+            $ft = mb_strtolower(trim(html_entity_decode((string)($f['title']['rendered'] ?? ''), ENT_QUOTES, 'UTF-8')));
+            if ($ft === $want_full) { $update_id = (int)$f['id']; break; }           // 1) tam eşleşme
+            if (!$prefix_id && ($ft === $want_book
+                || strpos($ft, $want_book . ' -') === 0
+                || strpos($ft, $want_book . ' –') === 0)) {
+                $prefix_id = (int)$f['id'];                                           // 2) aynı kitap
+            }
+        }
+        if (!$update_id && $prefix_id) $update_id = $prefix_id;
+    }
+}
+
+if ($update_id) {
+    [$post,$pc] = wp_req("$wp_api/$ep/$update_id", 'POST', $pb, $auth);
+} else {
+    [$post,$pc] = wp_req("$wp_api/$ep", 'POST', $pb, $auth);
+}
 if($pc<200||$pc>=300){
     echo json_encode(['ok'=>false,'error'=>$post['message']??"WP HTTP $pc"]);
     exit;
 }
 $pid=$post['id'];
+$was_overwrite = ($update_id > 0);
 
 // ── Author taxonomy ───────────────────────────────────────
 if($author){
@@ -342,4 +377,5 @@ echo json_encode([
     // Kapı bloklayınca sessizce taslak yapmak, "yayınladım" sanmaya yol açardı.
     'gated'     =>($gate_report && !empty($gate_report['reasons'])),
     'gate'      =>$gate_report ? $gate_report['reasons'] : [],
+    'overwritten'=>$was_overwrite,   // mevcut yazı güncellendi mi, yoksa yeni mi açıldı
 ]);
