@@ -2427,9 +2427,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         'post_url'  => $post['link'] ?? '',
         'edit_url'  => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . $pid . '&action=edit',
         'cover_set' => $cover_set,
+        'ep'        => $ep,                                       // posts | analysis (manuel kapak için)
         'method'    => $gen_method,
         'source'    => $gen_source,
         'words'     => str_word_count(strip_tags($body_html)),   // yazılan özetin kelime sayısı
+        // Üretilen excerpt + meta description: panelde gösterilir (ayrıca WP'ye de yazıldı).
+        'excerpt'         => $meta['excerpt'] ?? '',
+        'meta_description'=> $meta['meta_description'] ?? '',
 
         // Kapı blokladıysa bu kitap YAYINDA DEĞİL. Sessizce "done" yazmak
         // "yayınlandı" sanmaya yol açardı; sebep kuyrukta görünür.

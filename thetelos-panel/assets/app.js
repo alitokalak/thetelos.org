@@ -575,15 +575,38 @@ async function runSingleSource(book, author) {
           : (b.method === 'claude-bilgi')
           ? '<div style="font-size:12px;color:#e0a800;margin-bottom:8px">Bu eserin ne indirilebilir tam metni ne de Wikipedia kaydı bulunabildi. Son çare olarak Claude yalnızca GÜVENİLİR bildiği bilgiyle bir tanıtım metni yazdı (bilmediği yerde uydurmadı). Yine de gözden geçirmen önerilir.</div>'
           : '';
+        // Üretilen excerpt + meta (WP'ye de yazıldı) — kullanıcı WP'ye gitmeden görsün.
+        const esc = s => String(s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+        const metaBox = (b.excerpt || b.meta_description)
+          ? '<div style="margin:10px 0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,255,255,.02);font-size:12px;line-height:1.6">'
+            + (b.excerpt          ? '<div style="margin-bottom:4px"><b style="color:var(--muted)">Excerpt:</b> ' + esc(b.excerpt) + '</div>' : '')
+            + (b.meta_description ? '<div><b style="color:var(--muted)">Meta açıklama:</b> ' + esc(b.meta_description) + '</div>' : '')
+            + '<div style="color:var(--muted);margin-top:6px;font-size:11px">Bunlar otomatik üretildi ve yazıya kaydedildi. Değiştirmek istersen “Düzenle”den güncelleyebilirsin.</div>'
+            + '</div>'
+          : '';
+        // Manuel kapak yükleme — bu akış doğrudan yayınladığı için kapağı sonradan ekleriz.
+        const coverBox = b.post_id
+          ? '<div id="src-cover-box" data-pid="' + b.post_id + '" data-ep="' + (b.ep || 'posts') + '" style="margin:12px 0;padding:12px;border:1px dashed var(--border);border-radius:8px">'
+            + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">📷 Kitap kapağı ekle (JPG/PNG/WebP)</div>'
+            + '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'
+            + '<label for="src-cover-file" class="btn btn-ghost btn-sm" style="cursor:pointer">⬆ Kapak seç ve yükle</label>'
+            + '<input type="file" id="src-cover-file" accept="image/jpeg,image/png,image/webp" style="display:none">'
+            + '<img id="src-cover-prev" alt="" style="display:none;height:60px;border-radius:4px;border:1px solid var(--border)">'
+            + '<span id="src-cover-status" style="font-size:12px;color:var(--muted)"></span>'
+            + '</div></div>'
+          : '';
         preview.innerHTML =
           '<div style="padding:16px;border:1px solid rgba(90,170,90,.4);border-radius:10px;background:rgba(90,170,90,.07)">'
           + '<div style="color:#7fb37f;font-weight:600;margin-bottom:6px">' + head + '</div>'
           + (b.words ? '<div style="font-size:12px;color:var(--muted);margin-bottom:6px">' + b.words.toLocaleString('tr') + ' kelime · ~' + mins + ' dk okuma' + (b.source ? ' · kaynak: ' + b.source : '') + '</div>' : '')
           + note
           + (b.error ? '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + b.error + '</div>' : '')
+          + metaBox
+          + coverBox
           + '<a href="' + b.post_url + '" target="_blank" style="color:var(--gold)">Yazıyı gör →</a>'
           + (b.edit_url ? ' &nbsp;·&nbsp; <a href="' + b.edit_url + '" target="_blank" style="color:var(--muted)">Düzenle</a>' : '')
           + '</div>';
+        wireSrcCoverUpload();
         notify('gen-notif', isSrc ? '✓ Kaynak-temelli yayınlandı.' : '✓ Yayınlandı (bilgi metni).', 'ok');
       } else {
         preview.innerHTML =
@@ -592,6 +615,43 @@ async function runSingleSource(book, author) {
       }
     }
   }, 3000);
+}
+
+/* Kaynak-temelli yayın sonrası MANUEL KAPAK yükleme: seçilen görsel dataURL
+   olarak okunur, cover-set.php'ye post_id ile gönderilir → WP öne çıkan görsel. */
+function wireSrcCoverUpload() {
+  const box = document.getElementById('src-cover-box');
+  const inp = document.getElementById('src-cover-file');
+  if (!box || !inp) return;
+  const pid = box.dataset.pid, ep = box.dataset.ep || 'posts';
+  const st  = document.getElementById('src-cover-status');
+  const pv  = document.getElementById('src-cover-prev');
+  inp.addEventListener('change', function () {
+    const f = this.files && this.files[0];
+    if (!f) return;
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { if (st) st.textContent = 'Sadece JPG/PNG/WEBP.'; return; }
+    if (f.size > 8 * 1024 * 1024) { if (st) st.textContent = 'Görsel çok büyük (8MB üstü).'; return; }
+    const r = new FileReader();
+    r.onload = async function () {
+      const dataUrl = String(r.result || '');
+      if (pv) { pv.src = dataUrl; pv.style.display = ''; }
+      if (st) { st.style.color = 'var(--muted)'; st.textContent = 'Yükleniyor…'; }
+      try {
+        const res = await postData(API('cover-set.php'), {
+          post_id: pid, ep, cover_data: dataUrl, cover_name: f.name || 'cover.jpg',
+        });
+        if (res && res.ok) {
+          if (res.thumb && pv) pv.src = res.thumb;
+          if (st) { st.style.color = 'var(--green)'; st.textContent = '✓ Kapak eklendi.'; }
+        } else {
+          if (st) { st.style.color = 'var(--red)'; st.textContent = '✗ ' + ((res && res.error) || 'yüklenemedi'); }
+        }
+      } catch (e) {
+        if (st) { st.style.color = 'var(--red)'; st.textContent = '✗ ' + (e.message || 'hata'); }
+      }
+    };
+    r.readAsDataURL(f);
+  });
 }
 
 function updateSingleTypeUI() {
