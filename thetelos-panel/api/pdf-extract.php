@@ -92,7 +92,13 @@ if ($action === 'work') {
         $job['status']='error'; $job['error']='OCR için OpenRouter (Ayarlar) ya da Anthropic anahtarı gerekli.'; pex_job_write($JOBDIR, $id, $job); @unlink($pdf); echo json_encode(['ok'=>false]); exit;
     }
     if (strlen($bytes) > 30*1024*1024) { $job['status']='error'; $job['error']='PDF çok büyük (~32MB üstü) — bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
-    if ($pages > 100)                  { $job['status']='error'; $job['error']='PDF '.$pages.' sayfa — tek istekte ~100 sayfa okunur; bölün.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
+    // SAYFA SINIRI (modele göre): Anthropic PDF okuma sınırı 1M-bağlamlı modellerde
+    // 600 sayfa, 200K-bağlamlı (Haiku vb.) modellerde 100 sayfa. Eski kod hepsinde
+    // 100 diyordu → Sonnet 5.5 (1M) kullanılsa bile 170 sayfalık kitap reddediliyordu.
+    // OpenRouter yolunda temkinli kal (100). Claude yolunda modele bak.
+    $ocr_model_200k = (bool) preg_match('/haiku|claude-3|claude-2/i', (string) $model);
+    $page_cap = $use_or ? 120 : ($ocr_model_200k ? 100 : 550);
+    if ($pages > $page_cap)            { $job['status']='error'; $job['error']='PDF '.$pages.' sayfa — en çok '.$page_cap.' sayfa okunabiliyor; bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
 
     // OpenRouter OCR modeli: MALİYET İÇİN UCUZ model kullan (digest'i OCR metninden
     // yazmak amiral gemisi gerektirmez). Tüm kitap input olarak gittiği için pahalı

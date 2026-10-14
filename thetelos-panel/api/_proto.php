@@ -596,6 +596,15 @@ function proto_fetch_source_url($url, $beat = null) {
     if ($url === '') return ['text' => '', 'source' => ''];
     if (is_callable($beat)) $beat();
 
+    // GOOGLE DRIVE paylaşım linki → doğrudan-indirme linkine çevir.
+    // drive.google.com/file/d/ID/view  ·  /open?id=ID  ·  uc?id=ID
+    //   → https://drive.google.com/uc?export=download&id=ID
+    // NOT: Drive büyük dosyalarda virüs-tarama ara sayfası döndürür (indirilemez);
+    // güvenilir yol dosyayı DOĞRUDAN panelden yüklemektir.
+    if (preg_match('~drive\.google\.com/(?:file/d/|open\?id=|uc\?[^#]*id=)([-\w]{10,})~i', $url, $dm)) {
+        $url = 'https://drive.google.com/uc?export=download&id=' . $dm[1];
+    }
+
     // KORUMALI ÖNİZLEMELER: tam metin sayfada YOK (erişim-korumalı görüntü) →
     // okumaya çalışmak viewer kabuğunu "metin" sanıp çöp üretir. Dürüstçe reddet.
     $host = strtolower((string) parse_url($url, PHP_URL_HOST));
