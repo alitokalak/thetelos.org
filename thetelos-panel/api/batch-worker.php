@@ -1142,19 +1142,23 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             }
         }
         if (!$update_pid) {
-            // TEŞHİS: hangi slug denendi, aramada kaç sonuç döndü, HTTP durumu.
+            // Kitap sitede YOK (yeni kitap — ör. PDF'ten yeni okunmuş). "Yeniden yaz"
+            // işaretli olsa bile HATA VERME: üzerine yazılacak mevcut yazı yoksa
+            // amaç yeni yazı OLUŞTURMAKTIR. (Eskiden "bulunamadı" hatası verip hiç
+            // içerik üretmeden dönüyordu — kullanıcı tek kitap PDF yazdırırken bu
+            // takılıyordu.) rewrite'ı kapat → akış normal OLUŞTURMA yoluna düşer.
             $c0 = $slug_cands[0] ?? '';
             $diag = 'slug[' . mb_substr($c0, 0, 60) . '] http=' . json_encode($dbg_slug_http)
                   . ' · arama=' . json_encode($dbg_search_n, JSON_UNESCAPED_UNICODE);
-            bw_flag_problem($book, $author, $pre_cover, $pre_year, 'not_found', 'bulunamadı · ' . $diag);
-            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'yeniden yaz: bulunamadı · ' . $diag]);
-            return;
+            @file_put_contents(dirname(__DIR__) . '/jobs/gen-debug.log',
+                date('H:i:s') . " BW rewrite→create (mevcut yok) · {$diag}\n", FILE_APPEND);
+            $rewrite = false;   // mevcut yazı yok → YENİ yazı oluştur
         }
         // Bulunan tipe göre prompt tipini düzelt: mevcut yazı özetse özet, analizse analiz.
         // AMA 'info' ve 'source' tiplerini KORU — bunlar prompts.json kullanmaz, kendi
         // motorlarıyla üretir (info → _info.php, source → proto_generate). Aksi halde
         // rewrite'ta 'source' 'summary'ye dönüşüp "Prompt boş" hatası veriyordu.
-        if ($type !== 'info' && $type !== 'source') $type = ($ep === 'analysis') ? 'analysis' : 'summary';
+        if ($update_pid && $type !== 'info' && $type !== 'source') $type = ($ep === 'analysis') ? 'analysis' : 'summary';
     }
 
     /* ── ÜRETİMDEN ÖNCE ÇİFT (DUPLICATE) KONTROLÜ ──────────────────────────
