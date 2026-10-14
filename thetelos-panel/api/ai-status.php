@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/config.php';
 if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit('yetki yok'); }
 header('Content-Type: application/json; charset=utf-8');
 require_once __DIR__ . '/_anthropic.php';
+require_once __DIR__ . '/_gemini.php';
 
 // Hangi Anthropic anahtar sabiti tanımlı? (değer gösterilmez)
 $anthropic_key_const = '';
@@ -18,6 +19,14 @@ foreach (['ANTHROPIC_KEY', 'ANTHROPIC_API_KEY', 'CLAUDE_KEY', 'CLAUDE_API_KEY'] 
     if (defined($c) && constant($c)) { $anthropic_key_const = $c; break; }
 }
 $anthropic_ready = function_exists('tls_anthropic_ready') ? tls_anthropic_ready() : false;
+
+// GEMINI — PDF/döküman okuma motoru. Hangi anahtar sabiti tanımlı?
+$gemini_key_const = '';
+foreach (['GEMINI_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_GEMINI_KEY'] as $c) {
+    if (defined($c) && constant($c)) { $gemini_key_const = $c; break; }
+}
+$gemini_ready = function_exists('tls_gemini_ready') ? tls_gemini_ready() : false;
+$gemini_model = function_exists('tls_gemini_model') ? tls_gemini_model() : '?';
 
 $deepseek_ready = defined('DEEPSEEK_KEY') && DEEPSEEK_KEY && defined('DEEPSEEK_API_URL') && DEEPSEEK_API_URL;
 $gbooks_ready   = defined('GOOGLE_BOOKS_KEY') && GOOGLE_BOOKS_KEY;
@@ -46,8 +55,29 @@ if (($_GET['probe'] ?? '') === '1' && $anthropic_ready && function_exists('tls_c
     }
 }
 
+// GEMINI canlı test (?probe=1): anahtar tanımlı olsa bile gerçekten çalışıyor mu?
+$gemini_probe = '(çalıştırmak için sonuna ?probe=1 ekle)';
+if (($_GET['probe'] ?? '') === '1' && $gemini_ready && function_exists('tls_gemini')) {
+    $gr = tls_gemini('You are a test. Reply with exactly: OK', 'ping', ['model' => $gemini_model, 'max_tokens' => 8, 'timeout' => 40]);
+    $gemini_probe = [
+        'model' => $gemini_model,
+        'ok'    => !empty($gr['ok']),
+        'text'  => !empty($gr['ok']) ? mb_substr(trim((string) ($gr['text'] ?? '')), 0, 40) : '',
+        'error' => !empty($gr['ok']) ? '' : mb_substr((string) ($gr['error'] ?? '?'), 0, 300),
+    ];
+}
+
 echo json_encode([
     'ok' => true,
+    'gemini' => [
+        'ready'        => (bool) $gemini_ready,
+        'key_constant' => $gemini_key_const ?: '(tanımlı değil)',
+        'model'        => $gemini_model,
+        'live_test'    => $gemini_probe,
+        'note'         => $gemini_ready
+            ? 'Gemini anahtarı TANIMLI → PDF/döküman okuma Gemini ile ÜCRETSİZ çalışır. ?probe=1 ile canlı doğrula.'
+            : 'Gemini anahtarı config.php\'de YOK → taranmış PDF okunamaz. config.php\'ye GEMINI_KEY ekle (aistudio.google.com\'dan ücretsiz).',
+    ],
     'anthropic' => [
         'ready'        => (bool) $anthropic_ready,
         'key_constant' => $anthropic_key_const ?: '(tanımlı değil)',
