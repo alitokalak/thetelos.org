@@ -593,8 +593,18 @@ function bw_catalog_facts($book, $author) {
 
 function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why = '') {
     require_once dirname(__DIR__) . '/or-config.php';
-    require_once __DIR__ . '/_proto.php';   // proto_openrouter() burada tanımlı
-    if (!tls_or_active()) { $why = 'OpenRouter kapalı'; return ''; }
+    require_once __DIR__ . '/_proto.php';   // proto_openrouter() / proto_ds() burada
+    // MOTOR SEÇİMİ: OpenRouter (Qwen) aktifse onu; değilse DOĞRUDAN DeepSeek kullan.
+    // Böylece "model KENDİ bilgisinden yazar; bilmiyorsa UNKNOWN" adımı DeepSeek ile
+    // de çalışır → DeepSeek'in bildiği kitapları UCUZA yazar, Claude parasını korur.
+    // Her iki motorda da aynı korumalar: doğrulanmış katalog künyesi (grounding),
+    // UNKNOWN öz-reddi, biyografi-taşması engeli, uydurma yasağı.
+    $use_or = tls_or_active();
+    $eng    = $use_or ? 'Qwen' : 'DeepSeek';
+    if (!$use_or && !proto_deepseek_reachable()) { $why = 'DeepSeek erişilemez'; return ''; }
+    $gen = function ($p, $mx, &$dg) use ($use_or, $beat) {
+        return $use_or ? proto_openrouter($p, $mx, $dg) : proto_ds($p, $mx, $beat, 280, $dg, 'deepseek');
+    };
     $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
     $who   = trim((string) $book) . (trim((string) $author) !== '' ? ' by ' . trim((string) $author) : '');
 
@@ -671,11 +681,11 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
         . "Work: " . trim((string) $book) . "\nAuthor (may be wrong): " . trim((string) $author) . "\n\n"
         . "Write the overview of the BOOK {$who} now, or reply UNKNOWN if you are not sure what the book itself contains.";
     $diag = '';
-    $txt = proto_openrouter($prompt, min(8000, (int) round($ideal * 2.2)), $diag);
+    $txt = $gen($prompt, min(8000, (int) round($ideal * 2.2)), $diag);
     if (is_callable($beat)) $beat();
     $txt = trim((string) $txt);
-    if ($txt === '')                       { $why = 'OpenRouter boş: ' . $diag; return ''; }
-    if (strncmp($txt, 'UNKNOWN', 7) === 0) { $why = 'Qwen bu eseri kesin bilmiyor (UNKNOWN)'; return ''; }
+    if ($txt === '')                       { $why = $eng . ' boş: ' . $diag; return ''; }
+    if (strncmp($txt, 'UNKNOWN', 7) === 0) { $why = $eng . ' bu eseri kesin bilmiyor (UNKNOWN)'; return ''; }
 
     // UZUNLUK: model kısa kestiyse (hedefin yarısından az) BİR kez devam ettir —
     // yalnız eseri bildiği için (UNKNOWN değil) uydurma riski düşük. Yeni bilgi
@@ -688,7 +698,7 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
             . "is already written. If you have nothing further you genuinely know, output nothing. Output ONLY the "
             . "continuation Markdown." . $ground . "\n\n=== TEXT SO FAR ===\n" . mb_substr($txt, -3000);
         $d2 = '';
-        $more = trim((string) proto_openrouter($cont_prompt, min(8000, (int) round($ideal * 1.6)), $d2));
+        $more = trim((string) $gen($cont_prompt, min(8000, (int) round($ideal * 1.6)), $d2));
         if (is_callable($beat)) $beat();
         if ($more !== '' && strncmp($more, 'UNKNOWN', 7) !== 0) $txt .= "\n\n" . $more;
     }
@@ -727,19 +737,32 @@ function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $
     // Claude WEB ARAMASI açıksa (grounded) accuracy-first erken-çıkışı yapma —
     // Claude son-çaresine ulaşsın, orada canlı kaynaktan yazsın.
     $cws_on = tls_anthropic_ready() && !empty(tv_settings()['claude_websearch']);
-    if (!empty(tv_settings()['accuracy_first']) && !tls_or_is_online() && !$cws_on) { $why = 'doğruluk-önce: web aramasız hafıza özeti kapalı → kaynak-temelli yola düş'; return ''; }
-    // 1) Ana ucuz motor (OpenRouter/Qwen) KENDİ bilgisinden — açıksa ve kullanıcı
-    //    Claude seçmediyse. Model eseri kesin biliyorsa yazar; bilmiyorsa UNKNOWN → ''.
-    if ($api_provider !== 'anthropic' && tls_or_active()) {
-        $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
+    $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
+
+    // 1) UCUZ MOTOR KENDİ bilgisinden yazar — OpenRouter/Qwen aktifse o, DEĞİLSE
+    //    DOĞRUDAN DeepSeek. Kullanıcı Claude seçmediyse. Model eseri KESİN biliyorsa
+    //    yazar (katalog-grounded, biyografi-taşması engelli); bilmiyorsa UNKNOWN → ''.
+    //    Bu adım Claude'dan ÖNCE: DeepSeek'in bildiği kitapları UCUZA yazar, Claude
+    //    yalnız DeepSeek de bilmediğinde devreye girer → maliyet düşer.
+    if ($api_provider !== 'anthropic') {
         $t = bw_or_overview($book, $author, $target_words, $hb, $why);
         if ($t !== '') return $t;
-        // Qwen bilmiyor → TEKLİ üretimde Claude'a DEVRETME (kullanıcı kuralı).
+        // model UNKNOWN/boş → TEKLİ üretimde Claude'a DEVRETME (kullanıcı kuralı).
         if ($is_single) { $why = $why ?: 'tekli: model bilmiyor, Claude devri kapalı'; return ''; }
-        // Toplu: son çare Claude (nadir — yalnız Qwen UNKNOWN dönünce).
+        // Toplu: aşağıda Bilgi Metni / son çare Claude'a düşülür.
     }
-    // TEKLİ + kullanıcı Claude seçmemiş → Claude'a hiç gitme.
+
+    // 2) DOĞRULUK ÖNCE: web aramasız EK ezber özeti yok. Grounded Claude (web arama)
+    //    açıksa erken çıkma — Claude son çaresine ulaşsın.
+    if (!empty(tv_settings()['accuracy_first']) && !tls_or_is_online() && !$cws_on) {
+        $why = $why ?: 'doğruluk-önce: web aramasız hafıza özeti kapalı → kaynak-temelli yola düş';
+        return '';
+    }
+
+    // 3) TEKLİ + kullanıcı Claude seçmemiş → Claude'a hiç gitme.
     if ($is_single && $api_provider !== 'anthropic') { $why = $why ?: 'tekli: Claude devri kapalı'; return ''; }
+
+    // 4) Son çare: Claude.
     return tls_anthropic_ready()
         ? bw_claude_last_resort($book, $author, $batch_file, $idx, $why, $target_words, $use_batch)
         : (($why = $why ?: 'Claude anahtarı yok') ? '' : '');
