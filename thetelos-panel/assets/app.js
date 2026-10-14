@@ -317,7 +317,7 @@ checkActiveJobs();
 _schedulePoll();
 
 
-let state = { content:'', categories:[], selectedCover:'', quotes:[] };
+let state = { content:'', categories:[], selectedCover:'', coverData:'', coverName:'', quotes:[] };
 let pollTimer = null;
 
 /* ── API Provider Toggle ─────────────────────────── */
@@ -624,7 +624,7 @@ document.getElementById('btn-generate')?.addEventListener('click', async () => {
   document.getElementById('publish-result').innerHTML = '';
   document.getElementById('gen-notif').classList.remove('show');
   document.getElementById('job-status-wrap').style.display = 'none';
-  state = { content:'', categories:[], selectedCover:'', quotes:[] };
+  state = { content:'', categories:[], selectedCover:'', coverData:'', coverName:'', quotes:[] };
 
   const isDeepSeek = activeProvider === 'deepseek';
   const isClaude   = (activeProvider === 'anthropic' || activeProvider === 'anthropic_batch');
@@ -851,7 +851,9 @@ function renderResult(data) {
         <span class="badge ${data.stop_reason==='end_turn'?'badge-green':data.stop_reason==='max_tokens'?'badge-red':'badge-gold'}">${data.stop_reason||'—'}</span>
       </div></div>
     </div>${cacheInfo}`;
-  if (data.covers && data.covers.length) { document.getElementById('cover-card').style.display=''; renderCovers(data.covers); }
+  // Kapak kartını HER ZAMAN göster (otomatik kapak bulunamasa da kullanıcı kendi
+  // kapağını yükleyebilsin). renderCovers boş listeyi zaten güzel karşılıyor.
+  document.getElementById('cover-card').style.display=''; renderCovers(data.covers || []);
   if (data.categories && data.categories.length) renderCatTags(data.categories);
   const excEl  = document.getElementById('field_excerpt');
   const metaEl = document.getElementById('field_meta_desc');
@@ -870,7 +872,7 @@ async function fetchMeta(book, author, type, content) {
     });
     if (!res.ok) return;
     if (res.categories && res.categories.length) { state.categories = res.categories; renderCatTags(res.categories); }
-    if (res.covers && res.covers.length) { document.getElementById('cover-card').style.display=''; renderCovers(res.covers); }
+    document.getElementById('cover-card').style.display=''; renderCovers(res.covers || []);
     if (res.quotes) state.quotes = res.quotes;
     const excEl  = document.getElementById('field_excerpt');
     const metaEl = document.getElementById('field_meta_desc');
@@ -900,7 +902,34 @@ function selectCover(el, url) {
   document.querySelectorAll('.cover-item').forEach(c => c.classList.remove('selected'));
   el.classList.add('selected');
   state.selectedCover = url;
+  // Otomatik kapak seçilince manuel yüklemeyi iptal et.
+  state.coverData = ''; state.coverName = '';
+  const pv = document.getElementById('cover-upload-preview'); if (pv) pv.style.display = 'none';
+  const st = document.getElementById('cover-upload-status'); if (st) st.textContent = '';
 }
+
+/* ── MANUEL KAPAK YÜKLEME ──────────────────────────────────────────────
+   Kullanıcı kendi kapak görselini seçer → dataURL olarak okunur, yayınlarken
+   publish.php'ye base64 gönderilir, WP medyaya yüklenip öne çıkan görsel yapılır. */
+document.getElementById('cover-upload')?.addEventListener('change', function () {
+  const f = this.files && this.files[0];
+  const st = document.getElementById('cover-upload-status');
+  const pv = document.getElementById('cover-upload-preview');
+  if (!f) return;
+  if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { if (st) st.textContent = 'Sadece JPG/PNG/WEBP.'; return; }
+  if (f.size > 8 * 1024 * 1024) { if (st) st.textContent = 'Görsel çok büyük (8MB üstü).'; return; }
+  const r = new FileReader();
+  r.onload = function () {
+    const dataUrl = String(r.result || '');
+    state.coverData = dataUrl;                 // "data:image/png;base64,...."
+    state.coverName = f.name || 'cover.jpg';
+    state.selectedCover = '';                  // manuel seçim otomatiği ezer
+    document.querySelectorAll('.cover-item').forEach(c => c.classList.remove('selected'));
+    if (pv) { pv.src = dataUrl; pv.style.display = ''; }
+    if (st) st.textContent = '✓ ' + state.coverName + ' — yayınlayınca kapak olarak eklenecek.';
+  };
+  r.readAsDataURL(f);
+});
 
 function renderCatTags(cats) {
   const el = document.getElementById('cat-tags');
@@ -939,6 +968,8 @@ document.getElementById('btn-publish')?.addEventListener('click', async () => {
     meta_description: document.getElementById('field_meta_desc')?.value || '',
     categories:  JSON.stringify(cats),
     cover_url:   state.selectedCover || '',
+    cover_data:  state.coverData || '',
+    cover_name:  state.coverName || '',
     quotes:      JSON.stringify(state.quotes || []),
   });
   setLoading(btn, false);
@@ -993,7 +1024,7 @@ document.getElementById('btn-reset')?.addEventListener('click', () => {
   document.getElementById('author_name').value = '';
   document.getElementById('gen-notif').classList.remove('show');
   if (pollTimer) clearInterval(pollTimer);
-  state = { content:'', categories:[], selectedCover:'', quotes:[] };
+  state = { content:'', categories:[], selectedCover:'', coverData:'', coverName:'', quotes:[] };
 });
 
 /* ── Char counter ─────────────────────────────────── */

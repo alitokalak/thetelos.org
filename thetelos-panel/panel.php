@@ -310,8 +310,14 @@ if (!isset($_GET['mode'])) {
       <div id="single-result" style="display:none">
         <div id="gen-stats" class="card" style="padding:16px 24px"></div>
         <div class="card" id="cover-card">
-          <div class="card-title">Kitap Kapağı <span style="color:var(--muted);font-weight:400;font-size:11px">— doğru olanı seçin</span></div>
+          <div class="card-title">Kitap Kapağı <span style="color:var(--muted);font-weight:400;font-size:11px">— doğru olanı seçin ya da kendin yükle</span></div>
           <div class="cover-grid" id="cover-grid"></div>
+          <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <label for="cover-upload" class="btn btn-ghost btn-sm" style="cursor:pointer">⬆ Kendi kapağını yükle (JPG/PNG)</label>
+            <input type="file" id="cover-upload" accept="image/jpeg,image/png,image/webp" style="display:none">
+            <img id="cover-upload-preview" alt="" style="display:none;height:60px;border-radius:4px;border:1px solid var(--border)">
+            <span id="cover-upload-status" style="font-size:12px;color:var(--muted)"></span>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">Otomatik Tespit Edilenler <span style="color:var(--muted);font-weight:400;font-size:11px">— düzenleyebilirsiniz</span></div>

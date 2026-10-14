@@ -14,6 +14,8 @@ $meta_desc   = trim($_POST['meta_description'] ?? '');
 $categories  = json_decode($_POST['categories'] ?? '[]', true) ?: [];
 $quotes      = json_decode($_POST['quotes']    ?? '[]', true) ?: [];
 $cover_url   = trim($_POST['cover_url']        ?? '');
+$cover_data  = (string) ($_POST['cover_data']  ?? '');   // manuel yüklenen kapak: "data:image/..;base64,.."
+$cover_name  = trim($_POST['cover_name']       ?? '');
 $rewrite     = (($_POST['rewrite'] ?? '') === '1');   // "üzerine yaz": mevcut postu güncelle
 
 if (!$book || !$content) {
@@ -364,7 +366,31 @@ if(!empty($quotes)){
 
 // ── Kitap kapağı ──────────────────────────────────────────
 $cover_set=false;
-if($cover_url){
+
+// MANUEL YÜKLENEN KAPAK (öncelikli): kullanıcı kendi görselini verdiyse onu kullan.
+// "data:image/png;base64,...." → çöz, WP medyaya yükle, öne çıkan görsel yap.
+if(!$cover_set && $cover_data !== '' && preg_match('~^data:image/(jpeg|jpg|png|webp);base64,~i',$cover_data,$dm)){
+    $raw_img = base64_decode(substr($cover_data, strpos($cover_data, ',')+1), true);
+    if($raw_img !== false && strlen($raw_img) > 500){
+        $ext = strtolower($dm[1]) === 'jpeg' ? 'jpg' : strtolower($dm[1]);
+        $mime = 'image/' . ($ext === 'jpg' ? 'jpeg' : $ext);
+        $base = $cover_name !== '' ? pathinfo($cover_name, PATHINFO_FILENAME) : $book;
+        $fn  = (preg_replace('/[^a-z0-9]+/','-',strtolower($base)) ?: 'cover') . '.' . $ext;
+        $cm=curl_init("$wp_api/media");
+        curl_setopt_array($cm,[
+            CURLOPT_RETURNTRANSFER=>true,CURLOPT_POST=>true,CURLOPT_TIMEOUT=>40,
+            CURLOPT_HTTPHEADER=>['Authorization: '.$auth,
+                "Content-Disposition: attachment; filename=\"$fn\"",
+                'Content-Type: '.$mime],
+            CURLOPT_POSTFIELDS=>$raw_img,
+        ]);
+        $mr=curl_exec($cm);curl_close($cm);
+        $mid=json_decode($mr,true)['id']??null;
+        if($mid){ wp_req("$wp_api/$ep/$pid",'POST',['featured_media'=>$mid],$auth); $cover_set=true; }
+    }
+}
+
+if(!$cover_set && $cover_url){
     $allowed=['books.google.com','covers.openlibrary.org',
               'lh3.googleusercontent.com','lh4.googleusercontent.com','lh5.googleusercontent.com',
               'lh6.googleusercontent.com','encrypted-tbn0.gstatic.com'];
