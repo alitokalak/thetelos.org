@@ -87,24 +87,29 @@ if ($action === 'work') {
     // OpenRouter seçmişken Claude token'ı YAKMA. Aksi halde eski Claude yolu.
     require_once dirname(__DIR__) . '/or-config.php';
     require_once __DIR__ . '/_anthropic.php';
-    $use_or = function_exists('tls_or_active') && tls_or_active();
-    if (!$use_or && !tls_anthropic_ready()) {
-        $job['status']='error'; $job['error']='OCR için OpenRouter (Ayarlar) ya da Anthropic anahtarı gerekli.'; pex_job_write($JOBDIR, $id, $job); @unlink($pdf); echo json_encode(['ok'=>false]); exit;
+    require_once __DIR__ . '/_gemini.php';
+    // MOTOR ÖNCELİĞİ: GEMINI > OpenRouter > Claude. Gemini taranmış PDF'leri
+    // NATIVE + yüksek doğrulukla okur, ücretsiz/çok ucuz katmanı var → Claude
+    // bakiyesi boş olsa bile PDF okunur. Yoksa Qwen, o da yoksa Claude.
+    $gem_ready = function_exists('tls_gemini_ready') && tls_gemini_ready();
+    $or_ready  = function_exists('tls_or_active') && tls_or_active();
+    $cl_ready  = tls_anthropic_ready();
+    $engine = $gem_ready ? 'gemini' : ($or_ready ? 'or' : ($cl_ready ? 'claude' : ''));
+    if ($engine === '') {
+        $job['status']='error'; $job['error']='OCR için Gemini, OpenRouter ya da Anthropic anahtarından biri gerekli (Ayarlar).'; pex_job_write($JOBDIR, $id, $job); @unlink($pdf); echo json_encode(['ok'=>false]); exit;
     }
-    if (strlen($bytes) > 30*1024*1024) { $job['status']='error'; $job['error']='PDF çok büyük (~32MB üstü) — bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
-    // SAYFA SINIRI (modele göre): Anthropic PDF okuma sınırı 1M-bağlamlı modellerde
-    // 600 sayfa, 200K-bağlamlı (Haiku vb.) modellerde 100 sayfa. Eski kod hepsinde
-    // 100 diyordu → Sonnet 5.5 (1M) kullanılsa bile 170 sayfalık kitap reddediliyordu.
-    // OpenRouter yolunda temkinli kal (100). Claude yolunda modele bak.
-    $ocr_model_200k = (bool) preg_match('/haiku|claude-3|claude-2/i', (string) $model);
-    $page_cap = $use_or ? 120 : ($ocr_model_200k ? 100 : 550);
-    if ($pages > $page_cap)            { $job['status']='error'; $job['error']='PDF '.$pages.' sayfa — en çok '.$page_cap.' sayfa okunabiliyor; bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
 
-    // OpenRouter OCR modeli: MALİYET İÇİN UCUZ model kullan (digest'i OCR metninden
-    // yazmak amiral gemisi gerektirmez). Tüm kitap input olarak gittiği için pahalı
-    // modelde maliyet patlıyordu. Varsayılan ucuz: qwen3.8-27b (config ile değişir).
-    $or_model = $use_or ? (defined('OPENROUTER_OCR_MODEL') ? OPENROUTER_OCR_MODEL : 'qwen/qwen3.8-27b') : '';
-    $model = defined('ANTHROPIC_OCR_MODEL') ? ANTHROPIC_OCR_MODEL : (function_exists('tls_claude_quality_model') ? tls_claude_quality_model() : 'claude-sonnet-5');
+    // OCR modelleri (önce tanımla — sayfa sınırı $model'e bakar).
+    $gem_model = function_exists('tls_gemini_model') ? tls_gemini_model() : 'gemini-2.5-flash';
+    $or_model  = ($engine === 'or') ? (defined('OPENROUTER_OCR_MODEL') ? OPENROUTER_OCR_MODEL : 'qwen/qwen3.8-27b') : '';
+    $model     = defined('ANTHROPIC_OCR_MODEL') ? ANTHROPIC_OCR_MODEL : (function_exists('tls_claude_quality_model') ? tls_claude_quality_model() : 'claude-sonnet-5');
+
+    if (strlen($bytes) > 30*1024*1024) { $job['status']='error'; $job['error']='PDF çok büyük (~32MB üstü) — bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
+    // SAYFA SINIRI (motora göre): Gemini native çok-sayfa okur (~900); OpenRouter
+    // 120; Claude 1M-model 550 / 200K-model (Haiku) 100.
+    $ocr_model_200k = (bool) preg_match('/haiku|claude-3|claude-2/i', (string) $model);
+    $page_cap = $engine === 'gemini' ? 900 : ($engine === 'or' ? 120 : ($ocr_model_200k ? 100 : 550));
+    if ($pages > $page_cap)            { $job['status']='error'; $job['error']='PDF '.$pages.' sayfa — en çok '.$page_cap.' sayfa okunabiliyor; bölün ya da .txt verin.'; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
     $b64   = base64_encode($bytes);
     // DÖNÜŞTÜRÜCÜ DİGEST — telif korumalı kitabı KELİMESİ KELİMESİNE kopyalamak
     // (reproduction) Claude tarafından reddediliyor; zaten thetelos'un işi de
@@ -121,7 +126,7 @@ if ($action === 'work') {
     // OpenRouter'da TEK TUR: her tur PDF'i yeniden OCR'a yolluyordu (cache yok) →
     // 4 tur = 4× OCR + 4× tam-kitap input = maliyet patlaması ($5 tek işlemde).
     // Claude'da prompt-cache var, çok tur ucuz; orada 4 kalır.
-    $MAX_ROUNDS = $use_or ? 1 : 4;
+    $MAX_ROUNDS = $engine === 'claude' ? 4 : ($engine === 'gemini' ? 2 : 1);
     $deadline   = time() + 600;   // ~10 dk toplam; sonra worker'ı serbest bırak
     for ($round = ((int)($job['round'] ?? 0)) + 1; $round <= $MAX_ROUNDS; $round++) {
         if (time() > $deadline) { $truncated = true; break; }
@@ -134,17 +139,21 @@ if ($action === 'work') {
                     . "Continue the digest from that point, covering the remaining parts of the book to the end. "
                     . "Do NOT repeat what you already wrote. Output only the continuation.";
         }
-        $or_key = $use_or ? (string) tls_or_key() : '';
-        $r = $use_or
-            ? pex_openrouter_ocr($or_key, $or_model, $sys, $b64, $prompt, 16000)
-            : pex_claude_ocr(tls_anthropic_key(), $model, $sys, $b64, $prompt, 16000);
+        $or_key = ($engine === 'or') ? (string) tls_or_key() : '';
+        if ($engine === 'gemini')      $r = pex_gemini_ocr(tls_gemini_key(), $gem_model, $sys, $b64, $prompt, 32000);
+        elseif ($engine === 'or')      $r = pex_openrouter_ocr($or_key, $or_model, $sys, $b64, $prompt, 16000);
+        else                           $r = pex_claude_ocr(tls_anthropic_key(), $model, $sys, $b64, $prompt, 16000);
         if (!$r['ok']) {
-            $ocf = function_exists('tls_or_conf') ? tls_or_conf() : [];
-            $sec = defined('TLS_OR_SECRET') ? TLS_OR_SECRET : '';
-            $diag = $use_or ? (' [anahtar ' . strlen($or_key) . ' hane · kaynak ' . ($ocf['source'] ?? '?')
-                . ' · gizli-dosya ' . ($sec !== '' && is_file($sec) ? 'var' : 'yok') . '/' . ($sec !== '' && is_readable($sec) ? 'okunur' : 'okunmaz')
-                . ' · model ' . $or_model . ']') : '';
-            if ($acc === '') { $job['status']='error'; $job['error']=($use_or?'OpenRouter':'Claude').' digest hatası: '.$r['error'].$diag; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
+            $diag = '';
+            if ($engine === 'or') {
+                $ocf = function_exists('tls_or_conf') ? tls_or_conf() : [];
+                $sec = defined('TLS_OR_SECRET') ? TLS_OR_SECRET : '';
+                $diag = ' [anahtar ' . strlen($or_key) . ' hane · kaynak ' . ($ocf['source'] ?? '?')
+                    . ' · gizli-dosya ' . ($sec !== '' && is_file($sec) ? 'var' : 'yok') . '/' . ($sec !== '' && is_readable($sec) ? 'okunur' : 'okunmaz')
+                    . ' · model ' . $or_model . ']';
+            }
+            $eng_name = $engine === 'gemini' ? 'Gemini' : ($engine === 'or' ? 'OpenRouter' : 'Claude');
+            if ($acc === '') { $job['status']='error'; $job['error']=$eng_name.' digest hatası: '.$r['error'].$diag; pex_job_write($JOBDIR,$id,$job); @unlink($pdf); echo json_encode(['ok'=>false]); exit; }
             $truncated = true; break;   // eldekiyle bitir
         }
         $chunk = $r['text'];
@@ -160,7 +169,7 @@ if ($action === 'work') {
 
     $acc = pex_tidy($acc);
     if ($acc === '') { $job['status']='error'; $job['error']='Digest boş döndü.'; }
-    else { $job = ['status'=>'done','method'=>($use_or?'openrouter-digest':'claude-digest'),'text'=>$acc,'chars'=>mb_strlen($acc),'pages'=>$pages,'truncated'=>$truncated,'round'=>$job['round'] ?? 0,'ts'=>time()]; }
+    else { $job = ['status'=>'done','method'=>($engine.'-digest'),'text'=>$acc,'chars'=>mb_strlen($acc),'pages'=>$pages,'truncated'=>$truncated,'round'=>$job['round'] ?? 0,'ts'=>time()]; }
     pex_job_write($JOBDIR, $id, $job);
     @unlink($pdf);
     echo json_encode(['ok'=>true,'status'=>$job['status']]);
@@ -357,6 +366,50 @@ function pex_claude_ocr($key, $model, $system, $b64, $prompt, $maxtok) {
         if ($code===429 || $code>=500) { if ($try<3){ sleep(5*$try); continue; } }
         $m = $j['error']['message'] ?? ('HTTP '.$code);
         return ['ok'=>false,'error'=>$m];
+    }
+    return ['ok'=>false,'error'=>'bilinmeyen hata'];
+}
+
+/* Gemini ile PDF digest — PDF'i inline_data (base64) olarak gönderir; Gemini
+   TARANMIŞ sayfaları native OCR eder (yüksek doğruluk, çok sayfa, ücretsiz/çok
+   ucuz). pex_claude_ocr ile AYNI dönüş: ['ok','text','error','stop']. */
+function pex_gemini_ocr($key, $model, $system, $b64, $prompt, $maxtok) {
+    $key = (string) $key;
+    if ($key === '') return ['ok'=>false,'error'=>'GEMINI_KEY yok'];
+    $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent?key=' . rawurlencode($key);
+    $payload = [
+        'systemInstruction' => ['parts' => [['text' => (string) $system]]],
+        'contents' => [[
+            'role'  => 'user',
+            'parts' => [
+                ['inline_data' => ['mime_type' => 'application/pdf', 'data' => $b64]],
+                ['text' => (string) $prompt],
+            ],
+        ]],
+        'generationConfig' => ['maxOutputTokens' => (int) $maxtok, 'temperature' => 0.3],
+    ];
+    for ($try = 1; $try <= 3; $try++) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 20, CURLOPT_TIMEOUT => 280,
+            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
+            CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE),
+        ]);
+        $raw = curl_exec($ch); $err = curl_error($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+        if ($err) { if ($try < 3) { sleep(3 * $try); continue; } return ['ok'=>false,'error'=>'bağlantı: '.$err]; }
+        $j = json_decode((string) $raw, true);
+        if ($code >= 200 && $code < 300 && is_array($j)) {
+            $text = '';
+            foreach (($j['candidates'][0]['content']['parts'] ?? []) as $p) if (isset($p['text'])) $text .= $p['text'];
+            $fin = (string) ($j['candidates'][0]['finishReason'] ?? '');
+            if (trim($text) === '') return ['ok'=>false,'error'=>'Gemini boş yanıt'.($fin?' ('.$fin.')':'').' — olası güvenlik filtresi ya da okunamadı'];
+            // Gemini 'MAX_TOKENS' ile biterse devam turu gerekir → stop=max_tokens eşle.
+            return ['ok'=>true,'text'=>trim($text),'stop'=>($fin === 'MAX_TOKENS' ? 'max_tokens' : 'end_turn')];
+        }
+        if ($code === 429 || $code >= 500) { if ($try < 3) { sleep(5 * $try); continue; } }
+        $m = $j['error']['message'] ?? ('HTTP '.$code);
+        return ['ok'=>false,'error'=>mb_substr((string) $m, 0, 200)];
     }
     return ['ok'=>false,'error'=>'bilinmeyen hata'];
 }
