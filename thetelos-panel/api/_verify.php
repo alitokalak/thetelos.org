@@ -82,18 +82,18 @@ function tv_settings() {
         // Bilgi Metni (DeepSeek, uydurma yok) → kısa dürüst not → hiçbiri olmazsa Claude.
         // accuracy_first AÇIK: hafızadan uydurma özet yok; Claude yalnız son çare.
         'accuracy_first' => !isset($j['accuracy_first']) || (bool) $j['accuracy_first'],
-        // CLAUDE BİLGİ-DENETİMİ: VARSAYILAN AÇIK. Üretilen her özet, yayına gitmeden
-        // önce Claude'un KENDİ eser bilgisiyle ELEŞTİREL denetlenir ve ince hatalar
-        // (yanlış tür/tarih/akım-atfı/karıştırma/abartı) düzeltilir. Kaynak varsa
-        // engellemez (yalnız düzeltir); kaynak yoksa doğrulanamayan içerik yer
-        // tutucuya düşer. Kapatmak: settings.json'da claude_accuracy=false.
-        'claude_accuracy' => !isset($j['claude_accuracy']) || (bool) $j['claude_accuracy'],
-        // CLAUDE WEB ARAMASI: VARSAYILAN AÇIK. Yerel kaynak (tam metin + Wikipedia/
-        // katalog) yetmezse, pes etmeden önce Claude WEB ARAMA aracıyla canlı kaynak
-        // tarayıp grounded yazar (chat'teki doğru sonucun sebebi buydu). Bulamazsa
-        // yer tutucu. Ücretli bir Anthropic aracı; kapatmak: settings.json'da
-        // claude_websearch=false.
-        'claude_websearch' => !isset($j['claude_websearch']) || (bool) $j['claude_websearch'],
+        // CLAUDE BİLGİ-DENETİMİ: VARSAYILAN KAPALI (maliyet). Açıkken üretilen HER
+        // özet (DeepSeek yazsa bile) yayına gitmeden Claude'a denetletiliyordu →
+        // toplu üretimde yüzlerce Claude çağrısı = pahalı. Kullanıcı kararı: Claude
+        // yalnız üstten Anthropic seçilince çalışsın. İstenirse settings.json'da
+        // claude_accuracy=true ile tekil/önemli işlerde açılır.
+        'claude_accuracy' => isset($j['claude_accuracy']) && (bool) $j['claude_accuracy'],
+        // CLAUDE WEB ARAMASI (son çare): VARSAYILAN KAPALI (maliyet). Açıkken yerel
+        // kaynak bulunamayan HER kitapta Claude + web araması çalışıp para yakıyordu
+        // (696 obskür kitapta asıl maliyet buydu). Kapalıyken: kaynak yoksa Wikipedia
+        // Bilgi Metni, o da yoksa yer tutucu — Claude hiç çağrılmaz. İstenirse
+        // settings.json'da claude_websearch=true ile açılır.
+        'claude_websearch' => isset($j['claude_websearch']) && (bool) $j['claude_websearch'],
     ];
     return $s;
 }
