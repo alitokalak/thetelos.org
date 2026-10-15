@@ -396,7 +396,33 @@ function tls_status_counts( $post_id ) {
     foreach ( (array) $rows as $r ) {
         if ( isset( $out[ $r->meta_value ] ) ) $out[ $r->meta_value ] = (int) $r->n;
     }
+
+    // Geçmiş tıklamalar (Analytics'ten alınan toplamlar, inc/status-seed.json:
+    // { "kitap-slug": toplam }). Toplam butonlara sabit oranla bölünür:
+    // %60 Want to Read, %15 Currently Reading, kalanı Read.
+    $seed = tls_status_seed();
+    $slug = mb_strtolower( rawurldecode( (string) get_post_field( 'post_name', $post_id ) ), 'UTF-8' );
+    if ( $slug !== '' && ! empty( $seed[ $slug ] ) ) {
+        $t       = (int) $seed[ $slug ];
+        $want    = (int) round( $t * 0.60 );
+        $reading = (int) round( $t * 0.15 );
+        $out['want']    += $want;
+        $out['reading'] += $reading;
+        $out['read']    += max( 0, $t - $want - $reading );
+    }
     return $out;
+}
+
+function tls_status_seed() {
+    static $seed = null;
+    if ( $seed !== null ) return $seed;
+    $seed = [];
+    $file = get_template_directory() . '/inc/status-seed.json';
+    if ( is_readable( $file ) ) {
+        $data = json_decode( (string) file_get_contents( $file ), true );
+        if ( is_array( $data ) ) $seed = $data;
+    }
+    return $seed;
 }
 
 function tls_handle_user_state() {

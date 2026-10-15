@@ -62,6 +62,7 @@ jobs:
             **/node_modules/**
             **/.github/**
             **/thetelos-panel/**
+            **/tools/**
             **/error_log
             **/*.log
             **/thetelos-panel/config.php
