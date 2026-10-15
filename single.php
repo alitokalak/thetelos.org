@@ -131,6 +131,12 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     background:rgba(46,125,82,.13);color:#2e7d52}
                 .tls-status-count:empty{display:none}
                 .tls-status-btn.active .tls-status-count{background:rgba(255,255,255,.25);color:#fff}
+                /* Mobil: buton tam genişlik, yer bol → ikon+metin ortada, rozet sağda sabit.
+                   Simetrik iç boşluk sayesinde ortalı metin rozete değmez. */
+                @media (max-width:768px){
+                    .tls-single-sidebar .tls-read-status .tls-status-btn{position:relative;justify-content:center;padding-left:64px;padding-right:64px}
+                    .tls-single-sidebar .tls-status-count{position:absolute;right:12px;top:50%;transform:translateY(-50%);margin-left:0}
+                }
                 </style>
 
             </aside>
