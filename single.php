@@ -105,18 +105,32 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                             data-status="want" type="button">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
                         Want to Read
+                        <span class="tls-status-count" data-count-for="want" aria-hidden="true"></span>
                     </button>
                     <button class="tls-status-btn<?php echo $user_status === 'reading' ? ' active' : ''; ?>"
                             data-status="reading" type="button">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg>
                         Currently Reading
+                        <span class="tls-status-count" data-count-for="reading" aria-hidden="true"></span>
                     </button>
                     <button class="tls-status-btn<?php echo $user_status === 'read' ? ' active' : ''; ?>"
                             data-status="read" type="button">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                         Read
+                        <span class="tls-status-count" data-count-for="read" aria-hidden="true"></span>
                     </button>
                 </div>
+                <style>
+                /* Okuma-durumu sayaçları — butonun sağ kenarında küçük rozet.
+                   Inline: LiteSpeed CSS cache'i tazelenmeden de doğru görünsün. */
+                .tls-read-status .tls-status-btn{position:relative}
+                .tls-single-sidebar .tls-read-status .tls-status-btn{padding-left:40px;padding-right:40px}
+                .tls-status-count{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+                    font-size:11px;font-weight:600;line-height:1;padding:4px 7px;border-radius:999px;
+                    background:var(--tls-surface,#f5f2ea);color:var(--tls-muted,#888);font-variant-numeric:tabular-nums}
+                .tls-status-count:empty{display:none}
+                .tls-status-btn.active .tls-status-count{background:rgba(255,255,255,.22);color:#fff}
+                </style>
 
             </aside>
 

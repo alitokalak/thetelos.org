@@ -381,6 +381,24 @@ add_action( 'wp_enqueue_scripts', function() {
 add_action( 'wp_ajax_tls_get_user_state',        'tls_handle_user_state' );
 add_action( 'wp_ajax_nopriv_tls_get_user_state', 'tls_handle_user_state' );
 
+/* Kitap başına okuma-durumu sayaçları: kaç üye "Want to Read" / "Currently
+   Reading" / "Read" işaretlemiş. Kaynak user meta (_tls_reading_status_{pid});
+   geçmiş tüm tıklamalar dahil, yeni işaretlemeler de anında sayılır. */
+function tls_status_counts( $post_id ) {
+    global $wpdb;
+    $out = [ 'want' => 0, 'reading' => 0, 'read' => 0 ];
+    if ( ! $post_id ) return $out;
+    $rows = $wpdb->get_results( $wpdb->prepare(
+        "SELECT meta_value, COUNT(*) AS n FROM {$wpdb->usermeta}
+         WHERE meta_key = %s GROUP BY meta_value",
+        '_tls_reading_status_' . (int) $post_id
+    ) );
+    foreach ( (array) $rows as $r ) {
+        if ( isset( $out[ $r->meta_value ] ) ) $out[ $r->meta_value ] = (int) $r->n;
+    }
+    return $out;
+}
+
 function tls_handle_user_state() {
     $logged_in = is_user_logged_in();
     $post_id   = (int)( $_POST['post_id'] ?? 0 );
@@ -409,6 +427,7 @@ function tls_handle_user_state() {
         'user'      => $user_data,
         'status'    => $status,
         'saved'     => $saved,
+        'counts'    => tls_status_counts( $post_id ),
         'nonces'    => [
             'status' => wp_create_nonce( 'tls_status_nonce' ),
             'auth'   => wp_create_nonce( 'tls_auth_nonce' ),

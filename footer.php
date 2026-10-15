@@ -1062,6 +1062,7 @@ $ajax_url     = admin_url('admin-ajax.php');
                 nonces   : res.data.nonces || {}
             };
             authNonce = gState.nonces.auth || authNonce;
+            initStatusCounts(res.data.counts, res.data.status);
 
             updateHeader();
             updateStatusButtons();
@@ -1075,6 +1076,37 @@ $ajax_url     = admin_url('admin-ajax.php');
             initStatusButtons();
         });
     }
+
+    /* ══════════════════════════════════════════
+       OKUMA-DURUMU SAYAÇLARI
+       Sunucudan gelen sayı, bu kullanıcının kendi (sunucudaki) işaretini
+       de içerir. Kullanıcı butonu değiştirdikçe yalnız kendi katkısını
+       çıkarıp yenisini ekleriz → sayfa yenilemeden doğru sayı.
+    ══════════════════════════════════════════ */
+    var gCounts = null, gCountsOwn = '';
+    function fmtCount(n){
+        if (n < 1000) return String(n);
+        if (n < 10000) return (Math.floor(n / 100) / 10).toString().replace(/\.0$/, '') + 'K';
+        if (n < 1000000) return Math.floor(n / 1000) + 'K';
+        return (Math.floor(n / 100000) / 10).toString().replace(/\.0$/, '') + 'M';
+    }
+    function renderStatusCounts(){
+        var wrap = document.querySelector('.tls-read-status[data-post-id]');
+        if (!wrap || !gCounts) return;
+        var act = wrap.querySelector('.tls-status-btn.active');
+        var cur = act ? act.dataset.status : '';
+        wrap.querySelectorAll('.tls-status-count[data-count-for]').forEach(function(el){
+            var k = el.getAttribute('data-count-for');
+            var n = (gCounts[k] || 0) - (gCountsOwn === k ? 1 : 0) + (cur === k ? 1 : 0);
+            el.textContent = n > 0 ? fmtCount(n) : '';
+        });
+    }
+    function initStatusCounts(counts, ownStatus){
+        if (!counts) return;
+        gCounts = counts; gCountsOwn = ownStatus || '';
+        renderStatusCounts();
+    }
+    document.addEventListener('tls:statusChanged', renderStatusCounts);
 
     /* ══════════════════════════════════════════
        HEADER GÜNCELLEMESİ
