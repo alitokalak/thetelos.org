@@ -1,0 +1,19 @@
+name: Source test
+
+# Kaynak motoru (_proto.php) değiştiğinde yasal tam-metin kaynaklarını GERÇEK
+# servislere karşı dener (Open Library→IA, Gallica). Hiçbir şey yayınlamaz.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths:
+      - thetelos-panel/api/_proto.php
+      - tools/source-test-cli.php
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: php -v && php tools/source-test-cli.php

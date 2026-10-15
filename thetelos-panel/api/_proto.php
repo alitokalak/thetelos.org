@@ -211,47 +211,56 @@ function proto_archive($book, $author, $beat = null) {
                 if ($surname !== '' && trim($cr) !== '' && mb_stripos($cr, $surname) === false) {
                     $debug['tried'][] = ['id' => $id, 'note' => 'yazar tutmadı (creator=' . mb_substr($cr, 0, 40) . ') → reddedildi']; continue;
                 }
-                $meta = tls_fetch_json('https://archive.org/metadata/' . rawurlencode($id), 'thetelos.org/1.0', 15, 2);
-                $txt = '';
-                foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; }
-                if ($txt === '') foreach (($meta['files'] ?? []) as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
-                if ($txt === '') {
-                    // OCR TXT yok → PDF metin katmanını dene (SAF PHP, ÜCRETSİZ). Yalnız
-                    // "Text PDF" (metin katmanlı) denenir; "Image Container PDF" (salt
-                    // görsel) atlanır — batch'te Claude/OCR maliyeti YOK. Boyut tavanı 40MB.
-                    $pdf = ''; $psz = 0;
-                    foreach (($meta['files'] ?? []) as $f) {
-                        $nm = (string) ($f['name'] ?? ''); $fmt = (string) ($f['format'] ?? '');
-                        if (!preg_match('/\.pdf$/i', $nm)) continue;
-                        if (stripos($fmt, 'image') !== false) continue;      // salt görsel PDF'i atla
-                        if (stripos($fmt, 'text') === false && $fmt !== 'PDF' && $fmt !== 'Additional Text PDF') continue;
-                        $sz = (int) ($f['size'] ?? 0);
-                        if ($pdf === '' || ($sz && $sz < $psz)) { $pdf = $nm; $psz = $sz ?: $psz; }
-                    }
-                    if ($pdf !== '' && $psz > 0 && $psz < 40 * 1024 * 1024) {
-                        if (is_callable($beat)) $beat();
-                        $pu = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($pdf);
-                        $pb = proto_fetch_text($pu, 2);
-                        if (strncmp((string) $pb, '%PDF', 4) === 0) {
-                            $pt = proto_pdf_textlayer($pb);
-                            if (mb_strlen($pt) > 5000 && proto_pdf_is_real_text($pt)) {
-                                $debug['tried'][] = ['id' => $id, 'file' => $pdf, 'note' => 'PDF metin katmanı OK'];
-                                return ['found' => true, 'url' => $pu, 'title' => ($tt ?: $book), 'source' => 'Internet Archive (PDF)', 'text' => $pt, 'raw_len' => mb_strlen($pt), 'debug' => $debug];
-                            }
-                        }
-                    }
-                    $debug['tried'][] = ['id' => $id, 'note' => 'txt yok' . ($pdf ? ' · PDF metin katmanı yetersiz' : '')]; continue;
-                }
-                if (is_callable($beat)) $beat();
-                $u = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt);
-                $inf = null; $t = proto_fetch_text($u, 2, $inf);
-                $debug['tried'][] = ['id' => $id, 'file' => $txt, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0];
-                if (mb_strlen($t) > 5000) return ['found' => true, 'url' => $u, 'title' => ($tt ?: $book), 'source' => 'Internet Archive', 'text' => $t, 'raw_len' => mb_strlen($t), 'debug' => $debug];
+                $r = proto_archive_item($id, ($tt ?: $book), $beat, $debug);
+                if ($r) { $r['debug'] = $debug; return $r; }
             }
             if ($docs) break;   // bu başlık sorgusu sonuç verdi → yazarsız tekrara gerek yok
         }
     }
     return ['found' => false, 'debug' => $debug];
+}
+
+/* Tek bir Internet Archive kaydının tam metnini indir: önce OCR TXT (_djvu.txt),
+   yoksa metin katmanlı PDF. Bulunamazsa null. proto_archive ve Open Library
+   (public scan) yolu ortak kullanır. */
+function proto_archive_item($id, $title, $beat, &$debug) {
+    $meta = tls_fetch_json('https://archive.org/metadata/' . rawurlencode($id), 'thetelos.org/1.0', 15, 2);
+    $txt = '';
+    foreach (($meta['files'] ?? []) as $f) if (($f['format'] ?? '') === 'DjVuTXT' || preg_match('/_djvu\.txt$/i', (string) ($f['name'] ?? ''))) { $txt = $f['name']; break; }
+    if ($txt === '') foreach (($meta['files'] ?? []) as $f) { $nm = (string) ($f['name'] ?? ''); if (preg_match('/\.txt$/i', $nm) && stripos($nm, 'meta') === false && stripos($nm, 'readme') === false) { $txt = $nm; break; } }
+    if ($txt === '') {
+        // OCR TXT yok → PDF metin katmanını dene (SAF PHP, ÜCRETSİZ). Yalnız
+        // "Text PDF" (metin katmanlı) denenir; "Image Container PDF" (salt
+        // görsel) atlanır — batch'te Claude/OCR maliyeti YOK. Boyut tavanı 40MB.
+        $pdf = ''; $psz = 0;
+        foreach (($meta['files'] ?? []) as $f) {
+            $nm = (string) ($f['name'] ?? ''); $fmt = (string) ($f['format'] ?? '');
+            if (!preg_match('/\.pdf$/i', $nm)) continue;
+            if (stripos($fmt, 'image') !== false) continue;      // salt görsel PDF'i atla
+            if (stripos($fmt, 'text') === false && $fmt !== 'PDF' && $fmt !== 'Additional Text PDF') continue;
+            $sz = (int) ($f['size'] ?? 0);
+            if ($pdf === '' || ($sz && $sz < $psz)) { $pdf = $nm; $psz = $sz ?: $psz; }
+        }
+        if ($pdf !== '' && $psz > 0 && $psz < 40 * 1024 * 1024) {
+            if (is_callable($beat)) $beat();
+            $pu = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($pdf);
+            $pb = proto_fetch_text($pu, 2);
+            if (strncmp((string) $pb, '%PDF', 4) === 0) {
+                $pt = proto_pdf_textlayer($pb);
+                if (mb_strlen($pt) > 5000 && proto_pdf_is_real_text($pt)) {
+                    $debug['tried'][] = ['id' => $id, 'file' => $pdf, 'note' => 'PDF metin katmanı OK'];
+                    return ['found' => true, 'url' => $pu, 'title' => $title, 'source' => 'Internet Archive (PDF)', 'text' => $pt, 'raw_len' => mb_strlen($pt)];
+                }
+            }
+        }
+        $debug['tried'][] = ['id' => $id, 'note' => 'txt yok' . ($pdf ? ' · PDF metin katmanı yetersiz' : '')]; return null;
+    }
+    if (is_callable($beat)) $beat();
+    $u = 'https://archive.org/download/' . rawurlencode($id) . '/' . rawurlencode($txt);
+    $inf = null; $t = proto_fetch_text($u, 2, $inf);
+    $debug['tried'][] = ['id' => $id, 'file' => $txt, 'code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0];
+    if (mb_strlen($t) > 5000) return ['found' => true, 'url' => $u, 'title' => $title, 'source' => 'Internet Archive', 'text' => $t, 'raw_len' => mb_strlen($t)];
+    return null;
 }
 
 /* ── Wikisource tam metin (tek sayfalık kamu-malı eserler) ──────────────────
@@ -428,6 +437,96 @@ function proto_standardebooks($book, $author, $beat = null) {
     return ['found' => false, 'debug' => $debug];
 }
 
+/* ── Ortak: başlık eşleşmesi (≥%50 anlamlı kelime örtüşmesi) ─────────────── */
+function proto_title_tokens($s) {
+    $s = mb_strtolower((string) $s, 'UTF-8');
+    $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
+    $s = preg_replace('/[^a-z0-9 ]+/', ' ', $s);
+    return array_values(array_unique(array_filter(explode(' ', $s), fn($w) => mb_strlen($w) >= 4)));
+}
+function proto_title_matches($book, $candidate) {
+    $eng = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($eng === '') $eng = $book;
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
+    $ct = proto_title_tokens($candidate);
+    foreach ([proto_title_tokens($eng), proto_title_tokens($orig)] as $bt) {
+        if ($bt && count(array_intersect($bt, $ct)) >= max(1, (int) ceil(count($bt) * 0.5))) return true;
+    }
+    return false;
+}
+
+/* ── Open Library → Internet Archive (yalnız HERKESE AÇIK taramalar) ─────────
+   Open Library kataloğu baskıları birleştirir ve her eserin hangi IA taramasının
+   SERBEST (ebook_access=public, kamu malı) olduğunu söyler. IA'nın kendi
+   aramasının kaçırdığı taramaları böyle buluruz. Ödünç-verme (borrowable /
+   printdisabled) kayıtları ASLA kullanılmaz — yalnız public. */
+function proto_openlibrary_ia($book, $author, $beat = null) {
+    if (is_callable($beat)) $beat();
+    $debug = ['tried' => []];
+    $eng = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($eng === '') $eng = $book;
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
+    $surname = '';
+    if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = mb_strtolower(end($ap), 'UTF-8'); }
+    $seen = [];
+    foreach (array_values(array_unique(array_filter([$orig, $eng]))) as $qt) {
+        $url = 'https://openlibrary.org/search.json?limit=8&fields=key,title,author_name,ebook_access,ia'
+             . '&title=' . rawurlencode($qt) . ($author !== '' ? '&author=' . rawurlencode($author) : '');
+        $j = tls_fetch_json($url, 'thetelos.org/1.0 (contact: info@thetelos.org)', 20, 2);
+        foreach (($j['docs'] ?? []) as $d) {
+            if (($d['ebook_access'] ?? '') !== 'public') continue;
+            $tt = (string) ($d['title'] ?? '');
+            if (!proto_title_matches($book, $tt)) { $debug['tried'][] = ['ol' => $d['key'] ?? '', 'note' => 'başlık tutmadı']; continue; }
+            $an = implode(' ', (array) ($d['author_name'] ?? []));
+            if ($surname !== '' && $an !== '' && mb_stripos($an, $surname) === false) { $debug['tried'][] = ['ol' => $d['key'] ?? '', 'note' => 'yazar tutmadı']; continue; }
+            foreach (array_slice((array) ($d['ia'] ?? []), 0, 4) as $id) {
+                $id = (string) $id; if ($id === '' || isset($seen[$id])) continue;
+                $seen[$id] = 1;
+                if (is_callable($beat)) $beat();
+                $r = proto_archive_item($id, $tt, $beat, $debug);
+                if ($r) { $r['source'] = 'Internet Archive (Open Library)' . (strpos($r['source'], 'PDF') !== false ? ' PDF' : ''); $r['debug'] = $debug; return $r; }
+            }
+        }
+    }
+    return ['found' => false, 'debug' => $debug];
+}
+
+/* ── Gallica (Fransa Ulusal Kütüphanesi) — kamu malı taramaların OCR metni ──
+   Fransızca (ve Latince) orijinaller için. Yalnız kitabın parantezli ORİJİNAL
+   başlığı varsa denenir (İngilizce yazılmış eserde Gallica'ya gerek yok).
+   SRU kataloğu → ark kimliği → ".texteBrut" (OCR düz metin). Başlık ve yazar
+   katalog kaydında doğrulanır; metin ayrıca proto_author_in_text'ten geçer. */
+function proto_gallica($book, $author, $beat = null) {
+    $debug = ['tried' => []];
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
+    if ($orig === '') return ['found' => false, 'debug' => ['note' => 'orijinal başlık yok → atlandı']];
+    if (is_callable($beat)) $beat();
+    $surname = '';
+    if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = (string) end($ap); }
+    $q = 'dc.title all "' . str_replace('"', '', $orig) . '" and dc.type all "monographie"';
+    if ($surname !== '') $q .= ' and dc.creator all "' . str_replace('"', '', $surname) . '"';
+    $xml = proto_fetch_text('https://gallica.bnf.fr/SRU?operation=searchRetrieve&version=1.2&maximumRecords=8&query=' . rawurlencode($q), 2);
+    if ($xml === '' || !preg_match_all('~<srw:recordData>(.*?)</srw:recordData>~s', $xml, $recs)) return ['found' => false, 'debug' => $debug];
+    foreach ($recs[1] as $rec) {
+        $title = preg_match('~<dc:title>([^<]+)</dc:title>~', $rec, $m) ? html_entity_decode($m[1], ENT_QUOTES | ENT_XML1, 'UTF-8') : '';
+        $creators = preg_match_all('~<dc:creator>([^<]+)</dc:creator>~', $rec, $m) ? implode(' ', $m[1]) : '';
+        if (!preg_match('~https?://gallica\.bnf\.fr/ark:/12148/([a-z0-9]+)~i', $rec, $m)) continue;
+        $ark = $m[1];
+        if (!proto_title_matches($book, $title)) { $debug['tried'][] = ['ark' => $ark, 'note' => 'başlık tutmadı']; continue; }
+        if ($surname !== '' && $creators !== '' && mb_stripos($creators, $surname) === false) { $debug['tried'][] = ['ark' => $ark, 'note' => 'yazar tutmadı']; continue; }
+        if (is_callable($beat)) $beat();
+        $page = 'https://gallica.bnf.fr/ark:/12148/' . $ark;
+        $inf = null; $html = proto_fetch_text($page . '.texteBrut', 2, $inf);
+        $html = preg_replace('#<(script|style|head)[^>]*>.*?</\1>#is', ' ', (string) $html);
+        $html = preg_replace('#<br\s*/?>|</p>#i', "\n", $html);
+        $txt = trim(preg_replace('/\n{3,}/', "\n\n", preg_replace('/[ \t]+/', ' ', html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'))));
+        $len = mb_strlen($txt);
+        $debug['tried'][] = ['ark' => $ark, 'code' => $inf['code'] ?? 0, 'chars' => $len];
+        if ($len >= 5000 && substr_count($txt, '. ') >= 20) {
+            return ['found' => true, 'url' => $page, 'title' => $title, 'source' => 'Gallica (BnF)', 'text' => $txt, 'raw_len' => $len, 'debug' => $debug];
+        }
+    }
+    return ['found' => false, 'debug' => $debug];
+}
+
 /* ── İNDİRİLEN METİN DOĞRU KİTAP MI? (yazar VEYA başlık teyidi) ─────────────
    Özet YALNIZ gerçek kitabın metninden yazılır. İndirilen metin gerçekten
    istenen eser mi? İki bağımsız işaret:
@@ -491,7 +590,8 @@ function proto_author_in_text($author, $text, $book = '') {
     return true;                                                    // ikisi de bilinmiyor → engelleme
 }
 
-/* ── Sıralı edinim: Gutenberg → Standard Ebooks → Internet Archive ──────────
+/* ── Sıralı edinim: Gutenberg → Standard Ebooks → Wikisource → Internet Archive
+   → Open Library (IA serbest taramalar) → Gallica ──────────────────────────────
    HER kaynak, kabul edilmeden önce proto_author_in_text ile TEYİT edilir:
    indirilen metin istenen yazarın adını taşımıyorsa reddedilir (yanlış kitap
    riskini kapatır — kullanıcının "TAM OLARAK KİTABIN KENDİSİNİ BULMALI" şartı).
@@ -511,6 +611,10 @@ function proto_acquire($book, $author, $beat = null) {
         'standardebooks' => fn() => proto_standardebooks($book, $author, $beat),
         'wikisource'     => fn() => proto_wikisource($book, $author, $beat),
         'archive'        => fn() => proto_archive($book, $author, $beat),
+        // Yeni yasal kaynaklar: IA aramasının kaçırdığı serbest taramalar
+        // (Open Library kataloğu üzerinden) ve Fransızca/Latince orijinaller (Gallica).
+        'openlibrary_ia' => fn() => proto_openlibrary_ia($book, $author, $beat),
+        'gallica'        => fn() => proto_gallica($book, $author, $beat),
     ];
     foreach ($sources as $name => $fetch) {
         $r = $fetch();
@@ -693,7 +797,11 @@ function proto_clean_ocr($t) {
     $t = preg_replace('/[ \t]+/', ' ', $t);
     return trim(preg_replace('/\n{3,}/', "\n\n", $t));
 }
-function proto_clean($src, $text) { return $src === 'Internet Archive' ? proto_clean_ocr($text) : proto_clean_gutenberg($text); }
+function proto_clean($src, $text) {
+    // OCR kaynakları (IA taramaları, Gallica) sayfa numarası/boşluk temizliği ister.
+    return (strncmp((string) $src, 'Internet Archive', 16) === 0 && strpos((string) $src, 'PDF') === false) || strncmp((string) $src, 'Gallica', 7) === 0
+        ? proto_clean_ocr($text) : proto_clean_gutenberg($text);
+}
 
 function proto_detect_chapters($t) {
     $heads = [];
