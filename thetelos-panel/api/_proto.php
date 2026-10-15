@@ -503,8 +503,10 @@ function proto_gallica($book, $author, $beat = null) {
     if ($author !== '') { $ap = preg_split('/\s+/', trim($author)); $surname = (string) end($ap); }
     $q = 'dc.title all "' . str_replace('"', '', $orig) . '" and dc.type all "monographie"';
     if ($surname !== '') $q .= ' and dc.creator all "' . str_replace('"', '', $surname) . '"';
-    $xml = proto_fetch_text('https://gallica.bnf.fr/SRU?operation=searchRetrieve&version=1.2&maximumRecords=8&query=' . rawurlencode($q), 2);
-    if ($xml === '' || !preg_match_all('~<srw:recordData>(.*?)</srw:recordData>~s', $xml, $recs)) return ['found' => false, 'debug' => $debug];
+    $inf = null;
+    $xml = proto_fetch_text('https://gallica.bnf.fr/SRU?operation=searchRetrieve&version=1.2&maximumRecords=8&query=' . rawurlencode($q), 2, $inf);
+    $debug['sru'] = ['code' => $inf['code'] ?? 0, 'bytes' => $inf['bytes'] ?? 0, 'err' => $inf['err'] ?? ''];
+    if ($xml === '' || !preg_match_all('~<srw:recordData>(.*?)</srw:recordData>~s', $xml, $recs)) { $debug['sru']['head'] = mb_substr((string) $xml, 0, 300); return ['found' => false, 'debug' => $debug]; }
     foreach ($recs[1] as $rec) {
         $title = preg_match('~<dc:title>([^<]+)</dc:title>~', $rec, $m) ? html_entity_decode($m[1], ENT_QUOTES | ENT_XML1, 'UTF-8') : '';
         $creators = preg_match_all('~<dc:creator>([^<]+)</dc:creator>~', $rec, $m) ? implode(' ', $m[1]) : '';
