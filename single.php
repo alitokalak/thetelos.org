@@ -128,11 +128,8 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 .tls-single-sidebar .tls-read-status .tls-status-btn{justify-content:flex-start;gap:8px;padding-left:18px;padding-right:10px}
                 .tls-status-count{margin-left:auto;flex:none;font-size:12px;font-weight:700;line-height:1;
                     padding:5px 10px;border-radius:999px;font-variant-numeric:tabular-nums;letter-spacing:.01em;
-                    background:rgba(0,0,0,.06);color:var(--tls-bg-dark,#222)}
+                    background:rgba(46,125,82,.13);color:#2e7d52}
                 .tls-status-count:empty{display:none}
-                .tls-status-btn[data-status="want"] .tls-status-count{background:rgba(184,76,110,.13);color:#b84c6e}
-                .tls-status-btn[data-status="reading"] .tls-status-count{background:rgba(184,146,60,.16);color:#9a7424}
-                .tls-status-btn[data-status="read"] .tls-status-count{background:rgba(46,125,82,.13);color:#2e7d52}
                 .tls-status-btn.active .tls-status-count{background:rgba(255,255,255,.25);color:#fff}
                 </style>
 
