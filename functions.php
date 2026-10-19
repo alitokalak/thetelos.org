@@ -376,6 +376,7 @@ require_once get_template_directory() . '/inc/post-views.php';
 require_once get_template_directory() . '/inc/most-read.php';
 require_once get_template_directory() . '/inc/internal-linking.php';
 require_once get_template_directory() . '/inc/book-schema.php';
+require_once get_template_directory() . '/inc/smtp-mail.php';
 
 /* Reading List CPT — fallback (dosya yüklenemezse) */
 add_action('init', function() {
