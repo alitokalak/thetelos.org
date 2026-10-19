@@ -68,6 +68,12 @@ function tls_smtp_phpmailer( $phpmailer ) {
         $phpmailer->SMTPSecure = $s['secure'];
         $phpmailer->SMTPAutoTLS = ( $s['secure'] !== '' );
         $phpmailer->Timeout    = 20;
+        // Aynı sunucudaki posta servisine "localhost" ile bağlanılırsa sertifika
+        // localhost adına değil sunucu adına düzenlenmiştir → doğrulama tutmaz.
+        // Bağlantı makineden dışarı çıkmadığı için yalnız bu durumda doğrulama esnetilir.
+        if ( in_array( strtolower( $s['host'] ), [ 'localhost', '127.0.0.1' ], true ) ) {
+            $phpmailer->SMTPOptions = [ 'ssl' => [ 'verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true ] ];
+        }
     }
     if ( is_email( $s['from'] ) ) {
         $phpmailer->setFrom( $s['from'], $s['from_name'], false );
