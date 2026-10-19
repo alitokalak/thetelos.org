@@ -28,6 +28,7 @@ function tls_smtp_settings() {
         'from'      => trim( (string) ( $o['from'] ?? '' ) ),
         'from_name' => trim( (string) ( $o['from_name'] ?? '' ) ),
         'reply_to'  => trim( (string) ( $o['reply_to'] ?? 'support@thetelos.org' ) ),
+        'dkim_key'  => (string) ( $o['dkim_key'] ?? '' ),
     ];
     // wp-config.php sabitleri paneli ezer (şifreyi veritabanında tutmamak isteyene).
     foreach ( [ 'host' => 'TLS_SMTP_HOST', 'port' => 'TLS_SMTP_PORT', 'secure' => 'TLS_SMTP_SECURE',
@@ -78,6 +79,15 @@ function tls_smtp_phpmailer( $phpmailer ) {
     if ( is_email( $s['from'] ) ) {
         $phpmailer->setFrom( $s['from'], $s['from_name'], false );
         $phpmailer->Sender = $s['from'];   // Return-Path = gönderen → SPF hizalaması
+    }
+    // DKIM imzası: sunucu (Exim) localhost üzerinden gelen postayı imzalamıyor →
+    // imzayı burada, cPanel'in DNS'te yayımladığı "default" anahtarıyla atıyoruz.
+    if ( $s['dkim_key'] !== '' && is_email( $s['from'] ) && strpos( $s['dkim_key'], 'PRIVATE KEY' ) !== false ) {
+        $phpmailer->DKIM_domain         = substr( strrchr( $s['from'], '@' ), 1 );
+        $phpmailer->DKIM_selector       = 'default';
+        $phpmailer->DKIM_private_string = $s['dkim_key'];
+        $phpmailer->DKIM_identity       = $s['from'];
+        $phpmailer->DKIM_passphrase     = '';
     }
     // noreply@ adresine gelen yanıtlar kaybolmasın: kendi Reply-To'su olmayan
     // e-postalarda (şifre sıfırlama vb.) yanıtlar destek adresine gider.
@@ -146,6 +156,8 @@ add_action( 'admin_post_tls_smtp_save', function () {
         'from'      => sanitize_email( wp_unslash( $_POST['from'] ?? '' ) ),
         'from_name' => sanitize_text_field( wp_unslash( $_POST['from_name'] ?? '' ) ),
         'reply_to'  => sanitize_email( wp_unslash( $_POST['reply_to'] ?? '' ) ),
+        // Anahtar alanı boş bırakılırsa mevcut anahtar korunur.
+        'dkim_key'  => ( trim( (string) ( $_POST['dkim_key'] ?? '' ) ) !== '' ) ? trim( str_replace( "\r", '', (string) wp_unslash( $_POST['dkim_key'] ) ) ) : (string) ( $old['dkim_key'] ?? '' ),
         // Şifre alanı boş bırakılırsa mevcut şifre korunur.
         'pass'      => ( (string) ( $_POST['pass'] ?? '' ) !== '' ) ? (string) wp_unslash( $_POST['pass'] ) : (string) ( $old['pass'] ?? '' ),
     ];
@@ -202,6 +214,9 @@ function tls_smtp_admin_page() {
                     <p class="description">thetelos.org alan adına ait olmalı.</p></td></tr>
                 <tr><th>Yanıt adresi (Reply-To)</th><td><input name="reply_to" class="regular-text" value="<?php echo esc_attr( $o['reply_to'] ?? 'support@thetelos.org' ); ?>" placeholder="support@thetelos.org">
                     <p class="description">Kullanıcı e-postayı yanıtlarsa bu adrese gider.</p></td></tr>
+                <tr><th>DKIM özel anahtarı</th><td>
+                    <textarea name="dkim_key" rows="4" class="large-text code" placeholder="<?php echo ! empty( $o['dkim_key'] ) ? 'Kayıtlı (değiştirmek için yapıştırın)' : '-----BEGIN RSA PRIVATE KEY----- …'; ?>"></textarea>
+                    <p class="description">cPanel → Email Deliverability → DKIM → "View The Private Key" metninin tamamı.</p></td></tr>
                 <tr><th>Gönderen adı</th><td><input name="from_name" class="regular-text" value="<?php echo esc_attr( $o['from_name'] ?? '' ); ?>" placeholder="The Telos"></td></tr>
             </table>
             <?php submit_button( 'Kaydet' ); ?>
