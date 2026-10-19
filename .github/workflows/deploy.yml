@@ -22,6 +22,12 @@ on:
 # Çözüm: her hedef iki kez denenir ve hedefler birbirinden bağımsızdır.
 # Geçici bir ağ hatası artık bir sürümü sessizce yutmuyor.
 
+# Deploy'lar SIRAYLA çalışsın: iki push art arda gelince eski commit'in
+# deploy'u yeniden sonra bitip yeni dosyaların üstüne ESKİ sürümü yazıyordu.
+concurrency:
+  group: ftp-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
