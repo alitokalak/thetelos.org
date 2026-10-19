@@ -27,6 +27,7 @@ function tls_smtp_settings() {
         'pass'      => (string) ( $o['pass'] ?? '' ),
         'from'      => trim( (string) ( $o['from'] ?? '' ) ),
         'from_name' => trim( (string) ( $o['from_name'] ?? '' ) ),
+        'reply_to'  => trim( (string) ( $o['reply_to'] ?? 'support@thetelos.org' ) ),
     ];
     // wp-config.php sabitleri paneli ezer (şifreyi veritabanında tutmamak isteyene).
     foreach ( [ 'host' => 'TLS_SMTP_HOST', 'port' => 'TLS_SMTP_PORT', 'secure' => 'TLS_SMTP_SECURE',
@@ -71,6 +72,12 @@ function tls_smtp_phpmailer( $phpmailer ) {
     if ( is_email( $s['from'] ) ) {
         $phpmailer->setFrom( $s['from'], $s['from_name'], false );
         $phpmailer->Sender = $s['from'];   // Return-Path = gönderen → SPF hizalaması
+    }
+    // noreply@ adresine gelen yanıtlar kaybolmasın: kendi Reply-To'su olmayan
+    // e-postalarda (şifre sıfırlama vb.) yanıtlar destek adresine gider.
+    // İletişim formu bildirimi kendi Reply-To'sunu (ziyaretçi) korur.
+    if ( is_email( $s['reply_to'] ) && ! $phpmailer->getReplyToAddresses() ) {
+        $phpmailer->addReplyTo( $s['reply_to'] );
     }
 
     // HTML + düz metin birlikte.
@@ -132,6 +139,7 @@ add_action( 'admin_post_tls_smtp_save', function () {
         'user'      => sanitize_email( wp_unslash( $_POST['user'] ?? '' ) ),
         'from'      => sanitize_email( wp_unslash( $_POST['from'] ?? '' ) ),
         'from_name' => sanitize_text_field( wp_unslash( $_POST['from_name'] ?? '' ) ),
+        'reply_to'  => sanitize_email( wp_unslash( $_POST['reply_to'] ?? '' ) ),
         // Şifre alanı boş bırakılırsa mevcut şifre korunur.
         'pass'      => ( (string) ( $_POST['pass'] ?? '' ) !== '' ) ? (string) wp_unslash( $_POST['pass'] ) : (string) ( $old['pass'] ?? '' ),
     ];
@@ -173,7 +181,7 @@ function tls_smtp_admin_page() {
             <input type="hidden" name="action" value="tls_smtp_save">
             <?php wp_nonce_field( 'tls_smtp_save' ); ?>
             <table class="form-table">
-                <tr><th>SMTP sunucusu</th><td><input name="host" class="regular-text" value="<?php echo esc_attr( $o['host'] ?? '' ); ?>" placeholder="mail.thetelos.org"></td></tr>
+                <tr><th>SMTP sunucusu</th><td><input name="host" class="regular-text" value="<?php echo esc_attr( $o['host'] ?? 'mail.thetelos.org' ); ?>" placeholder="mail.thetelos.org"></td></tr>
                 <tr><th>Port / Şifreleme</th><td>
                     <input name="port" type="number" style="width:90px" value="<?php echo esc_attr( $o['port'] ?? 465 ); ?>">
                     <select name="secure">
@@ -181,11 +189,13 @@ function tls_smtp_admin_page() {
                         <option value="<?php echo esc_attr( $v ); ?>" <?php selected( $o['secure'] ?? 'ssl', $v ); ?>><?php echo esc_html( $l ); ?></option>
                         <?php endforeach; ?>
                     </select></td></tr>
-                <tr><th>Kullanıcı adı (e-posta)</th><td><input name="user" class="regular-text" value="<?php echo esc_attr( $o['user'] ?? '' ); ?>" placeholder="bilgi@thetelos.org"></td></tr>
+                <tr><th>Kullanıcı adı (e-posta)</th><td><input name="user" class="regular-text" value="<?php echo esc_attr( $o['user'] ?? 'noreply@thetelos.org' ); ?>" placeholder="noreply@thetelos.org"></td></tr>
                 <tr><th>Şifre</th><td><input name="pass" type="password" class="regular-text" autocomplete="new-password" placeholder="<?php echo ! empty( $o['pass'] ) ? '•••••••• (değiştirmek için yazın)' : ''; ?>">
                     <?php if ( defined( 'TLS_SMTP_PASS' ) ) : ?><p class="description">Şifre wp-config.php'deki TLS_SMTP_PASS'tan alınıyor.</p><?php endif; ?></td></tr>
                 <tr><th>Gönderen adresi</th><td><input name="from" class="regular-text" value="<?php echo esc_attr( $o['from'] ?? '' ); ?>" placeholder="boşsa kullanıcı adı">
                     <p class="description">thetelos.org alan adına ait olmalı.</p></td></tr>
+                <tr><th>Yanıt adresi (Reply-To)</th><td><input name="reply_to" class="regular-text" value="<?php echo esc_attr( $o['reply_to'] ?? 'support@thetelos.org' ); ?>" placeholder="support@thetelos.org">
+                    <p class="description">Kullanıcı e-postayı yanıtlarsa bu adrese gider.</p></td></tr>
                 <tr><th>Gönderen adı</th><td><input name="from_name" class="regular-text" value="<?php echo esc_attr( $o['from_name'] ?? '' ); ?>" placeholder="The Telos"></td></tr>
             </table>
             <?php submit_button( 'Kaydet' ); ?>
