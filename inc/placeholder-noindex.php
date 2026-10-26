@@ -47,5 +47,13 @@ function tls_placeholder_ids() {
 add_filter( 'wpseo_exclude_from_sitemap_by_post_ids', function ( $excluded ) {
     return array_values( array_unique( array_merge( (array) $excluded, tls_placeholder_ids() ) ) );
 } );
-/* İçerik değişince liste tazelensin */
-add_action( 'save_post_post', function () { delete_transient( 'tls_placeholder_ids' ); } );
+/* İçerik değişince listeyi TEK yazı için güncelle (tüm tabloyu yeniden
+   taramak toplu yayında sunucuyu yorar). Liste yoksa dokunma; 6 saatlik
+   tam tarama zaten yapılacak. */
+add_action( 'save_post_post', function ( $post_id ) {
+    $ids = get_transient( 'tls_placeholder_ids' );
+    if ( ! is_array( $ids ) ) return;
+    $ids = array_values( array_diff( $ids, [ (int) $post_id ] ) );
+    if ( get_post_status( $post_id ) === 'publish' && tls_is_placeholder_post( $post_id ) ) $ids[] = (int) $post_id;
+    set_transient( 'tls_placeholder_ids', $ids, 6 * HOUR_IN_SECONDS );
+} );
