@@ -26,6 +26,7 @@ $tls_groups = [
         ['panel.php', 'Kuyruk', 'queue'],
         ['panel.php', 'Liste Temizle', 'cleaner'],
         ['placeholders.php', 'Yer Tutucular', null],
+        ['misattribution.php', 'Yanlış Atıf', null],
         ['sources.php', 'Kaynak Arşivi', null],
         ['social.php', 'Sosyal', null],
         ['authors-bio.php', 'Yazar Bio', null],
