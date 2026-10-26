@@ -1047,6 +1047,14 @@ $ajax_url     = admin_url('admin-ajax.php');
        Cache'den etkilenmez
     ══════════════════════════════════════════ */
     function initAll() {
+        /* Arama botları (Bingbot vb.) sayfayı JS'iyle birlikte çalıştırıyor; her
+           sayfada önbelleklenemeyen bu AJAX sunucuyu CPU limitine dayatıyordu.
+           Botlar giriş yapmaz → isteği hiç gönderme. */
+        if (/bot|crawl|spider|slurp|bingpreview|headless|lighthouse|preview|facebookexternalhit|embedly|scrap/i.test(navigator.userAgent||'') || navigator.webdriver) {
+            gState.loggedIn = false;
+            initStatusButtons();
+            return;
+        }
         var fd = new FormData();
         fd.append('action', 'tls_get_user_state');
         if (postId) fd.append('post_id', postId);
@@ -1062,6 +1070,10 @@ $ajax_url     = admin_url('admin-ajax.php');
                 nonces   : res.data.nonces || {}
             };
             authNonce = gState.nonces.auth || authNonce;
+            /* Aynı veriyi isteyen diğer betikler (özet "Read later" butonu) ikinci
+               bir AJAX atmasın: sonucu paylaş. */
+            window.tlsUserState = res.data;
+            document.dispatchEvent(new CustomEvent('tls:userState', { detail: res.data }));
             initStatusCounts(res.data.counts, res.data.status);
 
             updateHeader();

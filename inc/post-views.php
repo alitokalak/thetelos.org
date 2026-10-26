@@ -46,6 +46,7 @@ add_action( 'wp_footer', function () {
     ?>
     <script>
     (function () {
+        if (/bot|crawl|spider|slurp|bingpreview|headless|lighthouse|preview|facebookexternalhit|embedly|scrap/i.test(navigator.userAgent||'') || navigator.webdriver) return;   // botlar okunma sayılmaz, sunucuyu da yormasın
         var id = <?php echo (int) $pid; ?>, key = 'tls_v_' + id;
         try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, '1'); } catch (e) {}
         var send = function () {

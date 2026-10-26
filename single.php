@@ -342,13 +342,16 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                   function nc(){ return freshNonce||(window.tlsAuth&&tlsAuth.statusNonce)||''; }
                   /* SAYFA CACHE'İ: buton durumunu sunucudan (cache'siz) çek → yenilemede
                      kaydedilmiş görünsün. Aynı çağrıdan taze nonce'u da al. */
+                  /* Durumu footer'ın zaten yaptığı tek tls_get_user_state çağrısından al
+                     (eskiden burada ikinci, aynı AJAX atılıyordu → sayfa başına 2 PHP isteği). */
                   (function loadState(){
-                    var fd=new FormData(); fd.append('action','tls_get_user_state'); fd.append('post_id',pid);
-                    fetch(ep(),{method:'POST',body:fd,credentials:'same-origin'}).then(function(r){return r.json();}).then(function(res){
-                      if(!res||!res.success) return;
-                      if(res.data.nonces&&res.data.nonces.status) freshNonce=res.data.nonces.status;
-                      var on=!!res.data.saved; btn.classList.toggle('saved',on); btn.setAttribute('aria-pressed',on?'true':'false');
-                    }).catch(function(){});
+                    function apply(d){
+                      if(!d) return;
+                      if(d.nonces&&d.nonces.status) freshNonce=d.nonces.status;
+                      var on=!!d.saved; btn.classList.toggle('saved',on); btn.setAttribute('aria-pressed',on?'true':'false');
+                    }
+                    if(window.tlsUserState) apply(window.tlsUserState);
+                    document.addEventListener('tls:userState',function(e){ apply(e.detail); });
                   })();
                   btn.addEventListener('click',function(){
                     var saved=btn.classList.contains('saved'); var next=saved?0:1;   // özet kaydı — kitap durumundan bağımsız
