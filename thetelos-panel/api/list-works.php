@@ -317,9 +317,11 @@ for ($round = 1; $round <= 2; $round++) {
 if (!$items) { echo json_encode(['ok'=>false,'error'=>$first_err ?: 'Liste alınamadı.']); exit; }
 
 $works = [];
+require_once __DIR__ . '/_title-guard.php';
 foreach ($items as $it) {
     $title = trim($it['title'] ?? '');
     if ($title === '') continue;
+    if (tls_title_has_attribution_note($title)) continue;   // "— misattribution" vb. notlu başlık
     $original = trim($it['original'] ?? '');
     $works[] = [
         'title'    => $title,

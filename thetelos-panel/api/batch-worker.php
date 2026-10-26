@@ -938,6 +938,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'blocked_adult (yetişkin içerik — üretilmedi)']);
         return;
     }
+    // Başlıkta model notu var ("… — misattribution", "(by X)") → bu yazarın eseri
+    // değil ya da kuşkulu; yanlış atıflı sayfa açma.
+    require_once __DIR__ . '/_title-guard.php';
+    if (tls_title_has_attribution_note($book)) {
+        bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'blocked_misattribution (başlıkta yanlış-atıf notu — üretilmedi)']);
+        return;
+    }
     $pre_cover    = trim($batch['books'][$idx]['cover_url'] ?? '');
     $pre_year     = trim((string)($batch['books'][$idx]['pub_year'] ?? '')); // listeden gelen yayın yılı
     // Dış aramalar (Google Books / OpenLibrary / dedup) için başlığın

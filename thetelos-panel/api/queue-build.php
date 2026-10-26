@@ -7,6 +7,7 @@
  */
 session_start();
 require_once dirname(__DIR__) . '/config.php';
+require_once __DIR__ . '/_title-guard.php';
 // Yetki: panel session'ı, ya da cron'un kullandığı dahili token / CLI.
 $qb_itok     = hash('sha256', WP_APP_PASS . '|tls-batch-worker');
 $qb_internal = isset($_POST['_itok']) && hash_equals($qb_itok, (string)$_POST['_itok']);
@@ -67,7 +68,7 @@ function qb_firebase($author){
     if($code!==200||!$r||$r==='null') return [];
     $d=json_decode($r,true); if(!is_array($d)) return [];
     $out=[];
-    foreach($d as $t){ $t=trim($t); if($t) $out[]=['title'=>$t,'cover'=>'','year'=>'']; }
+    foreach($d as $t){ $t=trim($t); if($t && !tls_title_has_attribution_note($t)) $out[]=['title'=>$t,'cover'=>'','year'=>'']; }
     return $out;
 }
 
@@ -269,6 +270,7 @@ function qb_openlibrary($author){
         $year = '';
         if(!empty($entry['first_publish_date'])){preg_match('/\d{4}/',$entry['first_publish_date'],$m);$year=$m[0]??'';}
 
+        if (tls_title_has_attribution_note($t)) continue;
         $out[] = ['title'=>$t,'original'=>'','cover'=>$cover,'year'=>$year];
     }
     return $out;
@@ -287,7 +289,7 @@ function qb_llm($author){
     $arr=($s!==false&&$e>$s)?json_decode(substr($txt,$s,$e-$s+1),true):[];
     if(!is_array($arr)) return [];
     $out=[];
-    foreach($arr as $it){ $t=trim($it['title']??''); if($t) $out[]=['title'=>$t,'cover'=>'','year'=>(string)($it['year']??'')]; }
+    foreach($arr as $it){ $t=trim($it['title']??''); if($t && !tls_title_has_attribution_note($t)) $out[]=['title'=>$t,'cover'=>'','year'=>(string)($it['year']??'')]; }
     return $out;
 }
 
