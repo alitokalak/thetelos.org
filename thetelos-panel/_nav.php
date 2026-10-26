@@ -92,17 +92,15 @@ $WP = defined('WP_URL') ? rtrim(WP_URL, '/') : '';
 <script>
 (function(){
   if (window.__tlsNavInit) return; window.__tlsNavInit = 1;
-  var KEY='tlsNavOpen', open={};
-  try { open = JSON.parse(localStorage.getItem(KEY)||'{}') || {}; } catch(e){}
-  document.querySelectorAll('.tls-grp').forEach(function(g){
-    var k=g.getAttribute('data-key');
-    // Aktif grup her zaman açık; değilse hatırlanan tercihe göre
-    if (!g.classList.contains('has-active') && open[k]) g.classList.add('open');
+  // Yalnız bulunduğun sayfanın grubu açık gelir; bir grubu açınca diğerleri kapanır.
+  try { localStorage.removeItem('tlsNavOpen'); } catch(e){}
+  var groups = document.querySelectorAll('.tls-grp');
+  groups.forEach(function(g){
     var h=g.querySelector('.tls-grp-h');
     if(h) h.addEventListener('click', function(){
-      g.classList.toggle('open');
-      open[k]=g.classList.contains('open');
-      try { localStorage.setItem(KEY, JSON.stringify(open)); } catch(e){}
+      var willOpen = !g.classList.contains('open');
+      groups.forEach(function(o){ if (o !== g) o.classList.remove('open'); });
+      g.classList.toggle('open', willOpen);
     });
   });
 })();
