@@ -166,9 +166,12 @@ if ($mode === 'authors_exist') {
     };
     $names = []; $page = 1;
     while ($page <= 20) {
-        $terms = $wp_get("$wp_api/authors?per_page=100&page=$page&_fields=name&hide_empty=true");
+        $terms = $wp_get("$wp_api/authors?per_page=100&page=$page&_fields=name,count&hide_empty=true");
         if (!is_array($terms) || empty($terms)) break;
-        foreach ($terms as $t) { if (!empty($t['name'])) $names[] = strtolower($t['name']); }
+        // "Sitede var" = en az 3 kitabı olan yazar. 1-2 kitaplı yazarlar (ör. Yanlış
+        // Atıf aracının yeni açtığı yazar) henüz işlenmemiştir → toplu batch atlamasın.
+        // Mevcut kitapların tekrar yazılmasını 'exists' modu ayrıca engelliyor.
+        foreach ($terms as $t) { if (!empty($t['name']) && (int) ($t['count'] ?? 0) >= 3) $names[] = strtolower($t['name']); }
         if (count($terms) < 100) break;
         $page++;
     }
