@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-collection-of-hymns-for-the-use-of-the-people-called-methodists-john-wesley'=>8,
+'a-priest-forever-john-paul-ii'=>12,
+'a-theory-of-semiotics-umberto-eco'=>15,
+'an-introduction-to-psychology-wilhelm-wundt'=>14,
+'biology-and-the-history-of-the-future-john-cage'=>3,
+'compendium-of-theology-compendium-theologiae-thomas-aquinas'=>17,
+'die-seelische-energie-henri-bergson'=>10,
+'epitome-of-de-caelo-jawami-al-sama-wa-l-alam-averroes-ibn-rushd'=>8,
+'fatal-strategies-les-strategies-fatales-jean-baudrillard'=>30,
+'freedom-to-be-free-die-freiheit-frei-zu-sein-hannah-arendt'=>31,
+'from-the-kingdom-of-memory-elie-wiesel'=>8,
+'lettres-de-m-bayle-pierre-bayle'=>3,
+'miss-sara-sampson-gotthold-ephraim-lessing'=>11,
+'my-philosophy-albert-einstein'=>19,
+'nirvana-нирвана-konstantin-tsiolkovsky'=>20,
+'nobel-prize-library-halldor-laxness'=>4,
+'philosophy-psychology-and-social-practice-john-dewey'=>7,
+'religious-significance-of-atheism-alasdair-macintyre'=>5,
+'rhymes-rime-giacomo-leopardi'=>7,
+'the-birth-of-tragedy-friedrich-nietzsche'=>72,
+'the-book-of-life-jiddu-krishnamurti'=>29,
+'the-philosophy-of-mythology-philosophie-der-mythologie-friedrich-schelling'=>40,
+'the-stranger-georg-simmel'=>9,
+'winds-of-doctrine-george-santayana'=>12,
+];

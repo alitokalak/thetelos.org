@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'against-the-current-isaiah-berlin'=>24,
+'amurgul-gandurilor-emil-cioran'=>26,
+'can-such-things-be-ambrose'=>8,
+'commentarius-in-novum-testamentum-excepta-apocalypsi-john-wycliffe'=>7,
+'esoteric-observations-of-karmic-connections-esoterische-betrachtungen-karmischer-zusammenhange-rudolf-steiner'=>8,
+'essays-on-the-theory-of-numbers-richard-dedekind'=>19,
+'fallacies-of-protection-frederic-bastiat'=>3,
+'history-chronicle-and-false-histories-storia-cronaca-e-false-storie-benedetto-croce'=>18,
+'kant-and-goethe-kant-und-goethe-georg-simmel'=>3,
+'london-londres-andre-maurois'=>4,
+'philipp-melanchthons-book-of-letters-ph-melanchthonis-epistolarum-liber-philipp-melanchthon'=>4,
+'philosophy-of-hinduism-b-r-ambedkar'=>10,
+'salt-water-sweetened-or-a-true-account-of-the-great-advantages-of-this-new-invention-both-by-sea-and-by-land-robert-boyle'=>4,
+'selected-works-karl-marx'=>3,
+'techniques-of-differential-topology-in-relativity-roger-penrose'=>32,
+'the-aerial-noctiluca-robert-boyle'=>7,
+'the-book-of-spiritual-duties-kitab-al-wazifa-al-ghazali'=>12,
+'the-complete-works-of-friedrich-nietzsche-friedrich-nietzsche'=>24,
+'the-death-of-the-modern-der-tod-der-moderne-jean-baudrillard'=>28,
+'the-economy-die-wirtschaft-oswald-spengler'=>8,
+'the-mouse-and-the-mountain-el-raton-y-la-montana-antonio-gramsci'=>7,
+'the-testament-of-a-poet-elie-wiesel'=>4,
+'the-works-of-monsieur-de-la-bruyere-jean-de-la-bruyere'=>7,
+'warning-on-account-of-morals-aviso-por-causa-da-moral-fernando-pessoa'=>4,
+];

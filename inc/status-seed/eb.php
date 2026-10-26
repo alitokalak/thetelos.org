@@ -1,0 +1,26 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-virgin-heart-aldous-huxley'=>17,
+'all-impressments-unlawful-and-inadmissible-james-madison'=>4,
+'broken‑wings‑الأجنحة‑المتكسرة‑kahlil‑gibran'=>9,
+'commentary-on-forty-hadith-شرح-چهل-حديث-ruhollah-khomeini'=>4,
+'commentary-on-the-bhagavad-gita-bhagavadgita-bhaṣya-adi-shankara'=>10,
+'explanation-of-xunzis-chapter-against-the-twelve-masters-荀子非十二子篇釋-sima-qian'=>23,
+'gollivud-ayn-rand'=>10,
+'hegel-alasdair-macintyre'=>7,
+'introduction-to-mathematical-philosophy-bertrand-russell'=>7,
+'literature-and-national-life-letteratura-e-vita-nazionale-antonio-gramsci'=>7,
+'on-women-susan-sontag'=>31,
+'platos-doctrine-of-truth-platons-lehre-von-der-wahrheit-martin-heidegger'=>66,
+'power-and-terror-noam-chomsky'=>4,
+'speech-before-the-jury-рѣчъ-передъ-судомъ-присяжныхъ-leon-trotsky'=>12,
+'the-child-the-clinic-and-the-court-jane-addams'=>7,
+'the-doctrine-of-virtue-immanuel-kant'=>18,
+'the-hegelian-dialectic-and-the-history-of-historiography-la-dialettica-hegeliana-e-la-storia-della-storiografia-benedetto-croce'=>8,
+'the-italian-revolution-la-rivoluzione-italiana-antonio-gramsci'=>16,
+'the-nightwatches-nachtwachen-friedrich-schelling'=>14,
+'the-operation-of-the-illinois-child-labor-law-jane-addams'=>8,
+'the-sign-and-the-scribble-el-signo-y-el-garabato-octavio-paz'=>4,
+'timbuktu-tombouctou-leopold-sedar-senghor'=>8,
+];

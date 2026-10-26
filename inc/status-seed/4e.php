@@ -1,0 +1,26 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'at-the-dawn-of-the-revolution-на-заре-революции-leon-trotsky'=>4,
+'chaucer-g-k-chesterton'=>4,
+'commentary-on-porphyrys-isagoge-boethius'=>85,
+'discourse-on-the-method-discours-de-la-methode-rene-descartes'=>13,
+'education-in-new-india-kabir'=>4,
+'essay-on-the-manners-and-spirit-of-nations-essai-sur-les-moeurs-et-lesprit-des-nations-voltaire'=>36,
+'hermeneutik-asthetik-praktische-philosophie-hans-georg-gadamer'=>30,
+'m-porci-catonis-de-agri-cultura-liber-marcus-terentius-varro'=>3,
+'nathalie-granger-marguerite-duras'=>7,
+'our-women-swami-vivekananda'=>5,
+'physiological-theory-of-music-founded-on-the-study-of-auditory-sensations-hermann-von-helmholtz'=>26,
+'pre-school-childcare-in-england-1939-2010-angela-davis'=>7,
+'psychoanalysis-and-transversality-psychanalyse-et-transversalite-gilles-deleuze'=>4,
+'soledad-y-destino-emil-cioran'=>13,
+'the-concept-of-a-riemann-surface-hermann-weyl'=>15,
+'the-fruit-of-fire-die-frucht-des-feuers-elias-canetti'=>4,
+'the-moment-oieblikket-soren-kierkegaard'=>13,
+'the-philosophy-of-fashion-georg-simmel'=>12,
+'the-subjection-of-women-john-stuart-mill'=>28,
+'theory-of-valuation-john-dewey'=>44,
+'was-ist-materie-hermann-weyl'=>4,
+'what-is-philosophy-que-es-filosofia-jose-ortega-y-gasset'=>25,
+];

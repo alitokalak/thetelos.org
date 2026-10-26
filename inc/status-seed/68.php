@@ -1,0 +1,25 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'advances-in-chemical-physics-ilya-prigogine'=>14,
+'atomstodin-halldor-laxness'=>4,
+'book-of-letters-al-farabi'=>17,
+'el-sistema-industrial-claude-henri-de-rouvroy-comte-de-saint-simon'=>27,
+'endless-nightmare-dreams-des-reves-dangoisse-sans-fin-louis-althusser'=>3,
+'etica-tommaso-campanella'=>12,
+'folk-psychology-volkerpsychologie-wilhelm-wundt'=>24,
+'on-charity-quaestio-disputata-de-caritate-thomas-aquinas'=>22,
+'on-woman-o-zene-tomas-garrigue-masaryk'=>4,
+'past-and-present-thomas-carlyle'=>7,
+'planned-chaos-ludwig-von-mises'=>5,
+'principles-of-moral-philosophy-principes-de-la-philosophie-morale-denis-diderot'=>7,
+'reason-of-state-propaganda-and-the-thirty-years-war-thomas-hobbes'=>12,
+'selections-from-the-upanishads-and-the-tao-te-king-laozi-lao-tzu'=>17,
+'the-birth-of-tragedy'=>48,
+'the-harvard-classics-john-stuart-mill'=>20,
+'the-history-of-sexuality-vol-3-the-care-of-the-self-histoire-de-la-sexualite-iii-le-souci-de-soi-michel-foucault'=>8,
+'the-rod-of-moses-zarb-i-kalim-muhammad-iqbal'=>4,
+'three-tracts-written-by-the-honourable-robert-boyle-robert-boyle'=>7,
+'verleihung-von-ehrendoktorwurden-an-prof-dr-pierre-etienne-bezier-dr-h-c-max-frisch-prof-dr-carl-friedrich-freiherr-von-weizsacker-anlasslich-der-750-jahr-feier-der-stadt-berlin-am-29-juni-19'=>3,
+'walking-henry-david-thoreau'=>24,
+];

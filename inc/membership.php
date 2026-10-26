@@ -397,13 +397,13 @@ function tls_status_counts( $post_id ) {
         if ( isset( $out[ $r->meta_value ] ) ) $out[ $r->meta_value ] = (int) $r->n;
     }
 
-    // Geçmiş tıklamalar (Analytics'ten alınan toplamlar, inc/status-seed.php:
+    // Geçmiş tıklamalar (Analytics'ten alınan toplamlar, inc/status-seed/ parçaları:
     // { "kitap-slug": toplam }). Toplam butonlara sabit oranla bölünür:
     // %60 Want to Read, %15 Currently Reading, kalanı Read.
-    $seed = tls_status_seed();
     $slug = mb_strtolower( rawurldecode( (string) get_post_field( 'post_name', $post_id ) ), 'UTF-8' );
-    if ( $slug !== '' && ! empty( $seed[ $slug ] ) ) {
-        $t       = (int) $seed[ $slug ] * TLS_STATUS_SEED_MULT;
+    $raw  = $slug !== '' ? tls_status_seed( $slug ) : 0;
+    if ( $raw > 0 ) {
+        $t       = $raw * TLS_STATUS_SEED_MULT;
         $want    = (int) round( $t * 0.60 );
         $reading = (int) round( $t * 0.15 );
         $out['want']    += $want;
@@ -416,16 +416,13 @@ function tls_status_counts( $post_id ) {
 // Analytics toplamları bu katsayıyla çarpılarak eklenir (site sahibinin kararı).
 if ( ! defined( 'TLS_STATUS_SEED_MULT' ) ) define( 'TLS_STATUS_SEED_MULT', 10 );
 
-function tls_status_seed() {
-    static $seed = null;
-    if ( $seed !== null ) return $seed;
-    $seed = [];
-    $file = get_template_directory() . '/inc/status-seed.php';
-    if ( is_readable( $file ) ) {
-        $data = include $file;
-        if ( is_array( $data ) ) $seed = $data;
-    }
-    return $seed;
+/* Bir kitabın ham Analytics tıklaması. Veri inc/status-seed/{md5(slug)[0:2]}.php
+   parçalarında; yalnız ilgili ~2 KB'lık parça yüklenir (CPU tasarrufu). */
+function tls_status_seed( $slug ) {
+    $file = get_template_directory() . '/inc/status-seed/' . substr( md5( $slug ), 0, 2 ) . '.php';
+    if ( ! is_readable( $file ) ) return 0;
+    $data = include $file;
+    return ( is_array( $data ) && isset( $data[ $slug ] ) ) ? (int) $data[ $slug ] : 0;
 }
 
 function tls_handle_user_state() {

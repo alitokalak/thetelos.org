@@ -1,0 +1,25 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'against-interpretation-susan-sontag'=>29,
+'calculus-of-probabilities-calcul-des-probabilites-henri-poincare'=>8,
+'elements-of-painting-elementi-di-pittura-leon-battista-alberti'=>9,
+'exposition-of-the-faith-vyklad-viry-jan-hus'=>10,
+'italy-austria-and-the-pope-giuseppe-mazzini'=>4,
+'justine-or-the-misfortunes-of-virtue-justine-ou-les-malheurs-de-la-vertu-marquis-de-sade'=>42,
+'magistri-eckardi-opera-latina-meister-eckhart'=>3,
+'marcel-duchamp-man-ray-marcel-duchamp'=>18,
+'memoirs-lebenserinnerungen-rudolf-christoph-eucken'=>12,
+'on-avoiding-superstitions-that-conflict-with-sincere-confession-of-faith-de-vitandis-svperstitionibvs-qvae-cvm-sincera-fidei-confessione-pvgnant-philipp-melanchthon'=>4,
+'on-being-peri-tou-ontos-protagoras'=>10,
+'on-the-proverbs-of-the-alexandrians-περὶ-τῶν-παρ-ἀλεξανδρεῦσι-πα'=>11,
+'paradox-on-the-actor-denis-diderot'=>11,
+'property-and-plunder-propriete-et-spoliation-frederic-bastiat'=>3,
+'shakespeare-and-the-law-martha-nussbaum'=>7,
+'the-crushing-of-the-russian-revolution-emma-goldman'=>7,
+'the-future-of-human-nature-die-zukunft-der-menschlichen-natur-jurgen-habermas'=>17,
+'the-inheritors-les-heritiers-pierre-bourdieu'=>44,
+'the-new-course-leon-trotsky'=>11,
+'val-darno-john-ruskin'=>7,
+'winnington-letters-john-ruskin'=>10,
+];

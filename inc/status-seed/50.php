@@ -1,0 +1,27 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'4d-buckminster-fuller'=>8,
+'a-dialogue-between-the-ghost-of-general-montgomery-and-an-american-delegate-thomas-paine'=>20,
+'book-of-songs-کتاب-ترانههای-ابوالفتح-غیاثالد'=>7,
+'die-vier-zweige-des-mabinogi-martin-buber'=>13,
+'discourse-on-comets-discorso-delle-comete-galileo-galilei'=>4,
+'essai-sur-le-libre-arbitre-arthur-schopenhauer'=>19,
+'ethics-without-ontology-hilary-putnam'=>14,
+'from-schellings-life-in-letters-vol-2-aus-schellings-leben-in-briefen-zweiter-band-friedrich-schelling'=>20,
+'girls-at-war-and-other-stories-chinua-achebe'=>10,
+'la-parole-de-la-predication-dietrich-bonhoeffer'=>4,
+'leonce-and-lena-leonce-und-lena-georg-buchner'=>3,
+'letters-to-various-correspondents-vol-3-epistolae-ad-diversos-gottfried-wilhelm-leibniz'=>37,
+'lockes-essay-concerning-human-understanding-john-locke'=>7,
+'muslim-politics-1906-47-kabir'=>7,
+'on-infinite-linear-point-manifolds-uber-unendliche-lineare-punktmannigfaltigkeiten-georg-cantor'=>15,
+'right-conduct-sadacara-adi-shankara'=>9,
+'sermon-on-faith-eyn-sermon-vn-hauptstuck-vnnsern-glaube-betreffent-martin-luther'=>4,
+'spinoza-opera-baruch-spinoza'=>7,
+'the-parasite-or-the-art-of-making-ones-fortune-der-parasit-oder-die-kunst-sein-gluck-zu-machen-friedrich-schiller'=>24,
+'the-stanzas-of-dzyan-helena-blavatsky'=>11,
+'universal-arithmetick-arithmetica-universalis-isaac-newton'=>12,
+'vieje-y-nueva-politica-jose-ortega-y-gasset'=>23,
+'war-lords-sima-qian'=>28,
+];

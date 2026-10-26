@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'better-homes-for-lower-incomes-buckminster-fuller'=>7,
+'builders-of-the-universe-albert-einstein'=>8,
+'dreams-henri-bergson'=>14,
+'freedom-and-truth-freiheit-und-wahrheit-georg-buchner'=>3,
+'hope-does-not-disappoint-spes-non-confundit-spes-non-confundit-pope-francis'=>4,
+'laughter-an-essay-on-the-meaning-of-the-comic-le-rire-essai-sur-la-signification-du-comique-henri-bergson'=>24,
+'law-is-a-bottomless-pit-or-the-history-of-john-bull-jonathan-swift'=>7,
+'on-the-offices-of-the-church-de-officiis-ecclesiasticis-isidore-of-seville'=>8,
+'point-counter-point-aldous-huxley'=>4,
+'prathama-kathamrita-sankalana-প্রথম-কথামৃত-সংগ্রহ-ramakrishn'=>7,
+'principles-of-socialist-society-nachala-sot︠s︡ialisticheskago-obshchestva-tomas-garrigue-masaryk'=>7,
+'publication-des-manuscrits-de-charles-fourier-charles-fourier'=>7,
+'roman-elegies-romische-elegien-johann-wolfgang-von-goethe'=>7,
+'saint-irenee-irenaeus'=>4,
+'self-enquiry-ramana-maharshi'=>12,
+'shemesh-sheḥorah-julia-kristeva'=>4,
+'symbolism-its-meaning-and-effect-alfred-north-whitehead'=>23,
+'the-art-of-insulting-el-arte-de-insultar-segunda-edicion-arthur-schopenhauer'=>7,
+'the-courage-of-truth-le-courage-de-la-verite-michel-foucault'=>38,
+'the-fire-next-time-william-james'=>4,
+'the-garland-of-yoga-stars-yogataravali-adi-shankara'=>7,
+'the-prussian-election-campaign-and-its-lessons-der-preussische-wahlrechtskampf-und-seine-lehren-rosa-luxemburg'=>14,
+'two-or-three-graces-aldous-huxley'=>11,
+'universal-arithmetic-arithmetica-universalis-sive-de-compositione-et-resolutione-arithmetica-liber-edmond-halley'=>13,
+];

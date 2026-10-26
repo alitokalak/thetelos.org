@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'alternating-current-corriente-alterna-octavio-paz'=>4,
+'averroes-and-averroism-averroes-et-laverroisme-ernest-renan'=>39,
+'el-nombrar-y-la-necesidad-saul-kripke'=>7,
+'epitome-of-topics-jami-al-jadal-averroes-ibn-rushd'=>4,
+'for-the-history-of-the-thought-of-f-de-sanctis-per-la-storia-del-pensiero-di-f-de-sanctis-benedetto-croce'=>14,
+'goethes-foreshadowings-of-coming-scientific-ideas-goethes-vorahnungen-kommender-naturwissenschaftlicher-ideen-hermann-von-helmholtz'=>7,
+'homo-faber-max-frisch'=>3,
+'kritik-der-urteilskraft-immanuel-kant'=>21,
+'little-book-on-life-after-death-buchlein-vom-leben-nach-dem-tode-wilhelm-wundt'=>11,
+'on-fascism-sul-fascismo-antonio-gramsci'=>7,
+'on-the-hidden-god-de-deo-abscondito-nicholas-of-cusa'=>22,
+'on-the-power-of-god-quaestiones-disputatae-de-potentia-dei-thomas-aquinas'=>32,
+'second-letter-of-heloise-to-abelard-peter-abelard'=>13,
+'secretum-petrarch'=>15,
+'self-education-in-the-elementary-school-lautoeducazione-nelle-scuole-elementari-maria-montessori'=>17,
+'the-diary-of-robert-hooke-robert-hooke'=>31,
+'the-dispute-over-the-truth-of-existence-spor-o-prawde-istnienia-edith-stein'=>3,
+'the-epitome-of-jurisprudence-al-wajiz-fi-furu-al-madhhab-al-ghazali'=>7,
+'the-golden-age-a-poetical-epistle-erasmus'=>4,
+'the-method-of-the-worshippers-minhaj-al-abidin-al-ghazali'=>8,
+'the-negro-w-e-b-du-bois'=>3,
+'the-question-of-being-zur-seinsfrage-martin-heidegger'=>68,
+'the-steps-of-humility-and-pride-de-gradibus-humilitatis-et-superbiae-bernard-of-clairvaux'=>70,
+'what-is-philosophy-was-ist-das-die-philosophie-martin-heidegger'=>23,
+];

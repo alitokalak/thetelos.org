@@ -1,0 +1,25 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-perfect-vacuum-doskonala-proznia-stanislaw-lem'=>27,
+'a-treatise-on-universal-algebra-alfred-north-whitehead'=>4,
+'an-english-arabic-dictionary-of-the-colloquial-arabic-of-egypt-socrates'=>4,
+'djamila-boupacha-djamila-boupacha-simone-de-beauvoir'=>28,
+'history-of-philosophy-eastern-and-western-volume-2-sarvepalli-radhakrishnan'=>7,
+'how-we-think-john-dewey'=>46,
+'memories-of-my-life-francis-galton'=>3,
+'new-testament-luther-translation-das-newe-testament-deutzsch-martin-luther'=>7,
+'nightmare-tales-helena-blavatsky'=>10,
+'oeuvres-completes-de-m-helvetius-oeuvres-completes-dhelvetius-claude-adrien-helvetius'=>7,
+'on-the-dictatorship-of-the-peoples-democracy-论人民民主专政-mao-zedong'=>31,
+'philosophical-and-mathematical-correspondence-wissenschaftlicher-briefwechsel-gottlob-frege'=>13,
+'psychoanalysis-and-politics-psychoanalyse-und-politik-herbert-marcuse'=>8,
+'studies-on-the-structure-of-consciousness-studien-zur-struktur-des-bewusstseins-edmund-husserl'=>22,
+'the-art-of-recitation-and-declamation-die-kunst-der-rezitation-und-deklamation-rudolf-steiner'=>30,
+'the-construction-of-reality-in-the-child-la-construction-du-reel-chez-lenfant-jean-piaget'=>4,
+'the-lesson-of-this-century-karl-popper'=>7,
+'the-perfection-of-yoga-a-c-bhaktivedanta-swami-prabhupada'=>8,
+'the-rationale-of-punishment-jeremy-bentham'=>85,
+'the-religion-of-china-confucianism-and-taoism-max-weber'=>75,
+'the-story-of-the-grand-portage-solon'=>17,
+];

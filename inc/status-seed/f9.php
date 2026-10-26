@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'an-essay-on-humanity-to-animals-thomas-young'=>15,
+'analytical-institutions-instituzioni-analitiche-ad-uso-della-gioventu-italiana-maria-gaetana-agnesi'=>3,
+'commentary-on-the-book-of-jeremiah-expositio-super-jeremiam-thomas-aquinas'=>15,
+'duchamp-du-signe-writings-duchamp-du-signe-ecrits-marcel-duchamp'=>16,
+'le-langage-cet-inconnu-julia-kristeva'=>16,
+'lectures-and-collections-robert-hooke'=>8,
+'lenin-and-philosophy-book-work-level-louis-althusser'=>12,
+'military-aspects-of-the-u-s-soviet-competition-in-the-third-world-francis-fukuyama'=>11,
+'omnia-d-platonis-opera-marsilio-ficino'=>3,
+'on-divination-de-divinatione-liber-tertius-de-somno-et-vigilia-albertus-magnus'=>13,
+'on-the-praise-of-the-solitary-life-basil-of-caesarea'=>13,
+'pages-choisies-charles-fourier'=>7,
+'remarks-on-the-practicability-of-mr-robert-owens-plan-to-improve-the-condition-of-the-lower-classes-robert-owen'=>21,
+'the-age-of-expectation-vek-ozhidanii︠a︡-peter-kropotkin'=>6,
+'the-crescent-moon-শিশু-rabindranath-tagore'=>52,
+'the-disenchantment-of-the-world-le-desenchantement-du-monde-pierre-bourdieu'=>27,
+'the-heart-of-man-erich-fromm'=>24,
+'the-social-significance-of-the-modern-drama-emma-goldman'=>8,
+'the-trouble-with-capitalism-george-soros'=>9,
+'thoughts-on-linguistic-states-b-r-ambedkar'=>11,
+'to-the-youth-of-italy-ai-giovani-ditalia-giuseppe-mazzini'=>19,
+'treatise-on-dynamics-traite-de-dynamique-jean-le-rond-dalembert'=>26,
+'works-of-love-kjerlighedens-gjerninger-soren-kierkegaard'=>4,
+'you-who-live-safe-voi-che-vivete-sicuri-primo-levi'=>4,
+];

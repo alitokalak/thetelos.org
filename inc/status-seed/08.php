@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-new-determination-of-molecular-dimensions-eine-neue-bestimmung-der-molekuldimensionen-albert-einstein'=>14,
+'black-beetles-in-amber-ambrose'=>8,
+'bread-and-freedom-khli︠e︡b-i-voli︠a︡-peter-kropotkin'=>18,
+'classified-word-book-new-testament-greek-alfred-marshall'=>3,
+'egotism-in-german-philosophy-george-santayana'=>17,
+'euthyphro-plato'=>59,
+'going-to-meet-the-man-william-james'=>13,
+'helen-ἑλένη-euripides'=>6,
+'iphigenia-in-tauris-iphigenie-auf-tauris-johann-wolfgang-von-goethe'=>9,
+'libros-de-lucio-anneo-seneca-en-que-tracta-seneca'=>13,
+'on-laws-περὶ-νόμων-theophrastus'=>20,
+'political-thought-jeremy-bentham'=>33,
+'psychoanalysis-and-historical-materialism-erich-fromm'=>28,
+'reconstruction-in-philosophy-john-dewey'=>11,
+'remark-on-trigonometric-series-bemerkung-uber-trigonometrische-reihen-georg-cantor'=>15,
+'sketchbook-1946-1949-tagebuch-1946-1949-max-frisch'=>3,
+'st-irenaeus-irenaeus'=>7,
+'the-art-of-travel-or-shifts-and-contrivances-available-in-wild-countries-francis-galton'=>3,
+'the-characters-of-jean-de-la-bruyere-jean-de-la-bruyere'=>3,
+'the-montessori-method-il-metodo-della-pedagogia-scientifica-applicato-alleducazione-infantile-nelle-case-dei-bambini-maria-montessori'=>7,
+'the-orphan-of-china-lorphelin-de-la-chine-voltaire'=>15,
+'travels-diaries-chronicles-opinions-and-notes-viajes-diarios-cronicas-juicios-y-notas-jose-marti'=>4,
+'two-texts-on-negritude-deux-textes-sur-la-negritude-leopold-sedar-senghor'=>47,
+'untimely-meditations-friedrich-nietzsche'=>54,
+];

@@ -1,0 +1,27 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'al-salam-wa-ukhuwat-al-shuʻub-martin-buber'=>4,
+'desi͡atʹ-stupenei-martin-buber'=>4,
+'dynamic-and-statistical-lawfulness-dynamische-und-statistische-gesetzmassigkeit-max-planck'=>40,
+'eight-year-report-on-lambarene-hospital-albert-schweitzer'=>23,
+'en-las-cimas-de-la-desesperacion-emil-cioran'=>14,
+'energy-and-its-transformations-die-energie-und-ihre-wandlungen-wilhelm-ostwald'=>17,
+'letter-to-herodotus-epicurus'=>12,
+'notes-on-all-the-books-of-scripture-joseph-priestley'=>7,
+'opus-majus-roger-bacon'=>17,
+'st-marks-rest-john-ruskin'=>6,
+'studies-in-occultism-a-series-of-reprints-from-the-writings-of-h-p-blavatsky-helena-blavatsky'=>9,
+'suite-des-caracteres-de-theophraste-et-des-moeurs-de-ce-siecle-jean-de-la-bruyere'=>13,
+'sul-materialismo-aleatorio-louis-althusser'=>6,
+'the-alchemy-of-finance-george-soros'=>62,
+'the-bird-philosophy-loiseau-philosophie-gilles-deleuze'=>11,
+'the-book-of-wisdom-كتاب-الحكمة-kitab-al-hikma-fragmanlar-avicenna'=>23,
+'the-child-and-the-curriculum-john-dewey'=>21,
+'the-great-french-revolution-1789-1793-velikai︠a︡-frant︠s︡uzskai︠a︡-revoli︠u︡t︠s︡ii︠a︡-peter-kropotk'=>7,
+'the-psychology-of-peoples-lois-psychologiques-de-levolution-des-peuples-gustave-le-bon'=>3,
+'the-spirit-of-capitalism-and-other-essays-lo-spirito-del-capitalismo-e-altri-saggi-max-scheler'=>3,
+'the-threefold-way-de-triplici-via-bonaventure'=>70,
+'tobacco-shop-tabacaria-fernando-pessoa'=>32,
+'writings-edith-stein'=>3,
+];

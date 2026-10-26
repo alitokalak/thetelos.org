@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'armenian-atrocities-arnold-j-toynbee'=>4,
+'biography-a-game-biografie-max-frisch'=>3,
+'blue-eyes-black-hair-les-yeux-bleus-cheveux-noirs-marguerite-duras'=>17,
+'commentary-on-aristotles-de-anima-avicenna'=>14,
+'difference-and-repetition-difference-et-repetition-gilles-deleuze'=>95,
+'giving-an-account-of-oneself-judith-butler'=>19,
+'hexapla-ἑξαπλᾶ-origen'=>56,
+'impressions-of-france-impressions-de-france-andre-maurois'=>4,
+'logica-nova-ramon-llull'=>3,
+'magic-tricks-harry-houdini'=>40,
+'ode-to-the-most-gracious-most-sovereign-great-emperor-peter-feodorovich-autocrat-of-all-russia-oda-vsepresvi︠e︡tli︠e︡ishemu-derzhavni︠e︡ishemu-velikomu'=>7,
+'philosophie-der-mathematik-und-naturwissenschaft-hermann-weyl'=>3,
+'planetary-hypotheses-ὑποθέσεις-τῶν-πλανωμένων-ptolemy'=>14,
+'selected-works-saint-augustine'=>4,
+'sermons-for-the-year-sermones-de-tempore-bernard-of-clairvaux'=>7,
+'social-system-or-natural-principles-of-morality-and-politics-systeme-social-ou-principes-naturels-de-la-morale-et-de-la-politique-baron-dholbach'=>8,
+'speeches-and-essays-reden-und-aufsatze-oswald-spengler'=>8,
+'synthese-und-reaktionen-von-bistrimethylsilyl-1-pyrazolinen-thomas-kuhn'=>23,
+'the-derrida-reader-jacques-derrida'=>26,
+'the-italian-girl-iris-murdoch'=>11,
+'the-round-violin-bow-der-runde-violinbogen-albert-schweitzer'=>8,
+'the-truce-la-tregua-primo-levi'=>8,
+'thermodynamique-chimique-conformement-aux-methodes-de-gibbs-et-de-donder-ilya-prigogine'=>14,
+'two-hundred-unpublished-letters-of-giuseppe-mazzini-duecento-lettere-inedite-di-giuseppe-mazzini-giuseppe-mazzini'=>7,
+];

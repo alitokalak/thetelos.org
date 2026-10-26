@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'21-lessons-for-the-21st-century-yuval-noah-harari'=>7,
+'analyse-du-mecanisme-de-lagiotage-et-de-la-methode-mixte-en-etude-de-lattraction-charles-fourier'=>5,
+'antigones-claim-judith-butler'=>49,
+'apologia-for-harmonices-mundi-ioannis-kepleri-pro-svo-opere-harmonices-mvndi-apologia-johannes-kepler'=>19,
+'education-and-culture-education-et-culture-leopold-sedar-senghor'=>13,
+'eudemian-ethics-aristotle'=>32,
+'five-books-of-s-irenaeus-against-heresies-irenaeus'=>8,
+'glas-glas-jacques-derrida'=>60,
+'glossary-of-objectivist-definitions-ayn-rand'=>8,
+'lart-davoir-toujours-raison-arthur-schopenhauer'=>4,
+'manorama-katha-মনোরমা-কথা-ramakrishna'=>37,
+'matla-al-anvar-matla-al-anvar-amir-khusrau'=>4,
+'miscellaneous-poems-and-translations-alexander-pope'=>4,
+'naming-and-necessity-saul-kripke'=>24,
+'on-the-destruction-of-the-jesuits-in-france-sur-la-destruction-des-jesuites-en-france-jean-le-rond-dalembert'=>4,
+'on-the-theory-of-light-propagation-in-dispersive-media-zur-theorie-der-lichtfortpflanzung-in-dispergierenden-medien-albert-einstein'=>10,
+'the-beauty-of-friendship-kahlil-gibran'=>4,
+'the-color-primer-die-farbenfibel-wilhelm-ostwald'=>16,
+'the-concept-of-man-sarvepalli-radhakrishnan'=>17,
+'the-crisis-in-the-social-democracy-rosa-luxemburg'=>4,
+'the-eighteenth-brumaire-of-louis-bonaparte-der-18-brumaire-des-louis-bonaparte-karl-marx'=>34,
+'the-silence-of-colonel-bramble-les-silences-du-colonel-bramble-andre-maurois'=>3,
+'to-the-star-voyagers-1930-звездоплавателям-1930-г-konstantin-tsiolkovsky'=>4,
+'wilhelm-von-humboldts-aesthetic-attempts-wilhelm-von-humboldts-asthetische-versuche-wilhelm-von-humboldt'=>10,
+];

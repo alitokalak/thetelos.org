@@ -1,0 +1,26 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'additions-and-corrections-to-the-first-and-second-editions-of-dr-adam-smiths-inquiry-into-the-nature-and-causes-of-the-wealth-of-nations-adam-smith'=>21,
+'critical-and-miscellaneous-essays-thomas-carlyle'=>7,
+'de-lorganisation-sociale-claude-henri-de-rouvroy-comte-de-saint-simon'=>11,
+'epistemological-problems-of-economics-ludwig-von-mises'=>15,
+'four-dialogues-timon-philopseudes-true-histories-the-cock-lucian-of-samosata'=>11,
+'from-the-unpublished-correspondence-of-angelo-camillo-de-meis-dal-carteggio-inedito-di-angelo-camillo-de-meis-benedetto-croce'=>11,
+'legends-and-oriental-tales-legenden-und-morgensandische-sagen-johann-gottfried-herder'=>7,
+'my-life-and-thought-aus-meinem-leben-und-denken-albert-schweitzer'=>10,
+'on-induction-in-rotating-spheres-ueber-die-induction-in-rotirenden-kugeln-heinrich-hertz.pdf'=>7,
+'on-the-relationship-between-individual-and-society-today-zum-verhaltnis-von-individuum-und-gesellschaft-heute-theodor-w-adorno'=>13,
+'philippics-philippicae-cicero'=>7,
+'philosophical-investigations-into-the-essence-of-human-freedom-philosophische-untersuchungen-uber-das-wesen-der-menschlichen-freiheit-friedrich-schelling'=>10,
+'scientific-experiences-of-a-european-scholar-in-america-theodor-w-adorno'=>27,
+'selected-correspondence-germaine-de-stael'=>11,
+'simone-weil-an-anthology-simone-weil'=>24,
+'sunzi-collated-and-annotated-sun-tzu'=>7,
+'the-exemplar-from-legal-theory-al-mustasfa-min-ilm-al-usul-al-ghazali'=>30,
+'the-fundamental-concepts-of-metaphysics-die-grundbegriffe-der-metaphysik-martin-heidegger'=>23,
+'the-interlinear-greek-english-new-testament-alfred-marshall'=>3,
+'the-prayer-gauge-debate-francis-galton'=>3,
+'truffle-truffe-denis-diderot'=>4,
+'year-of-war-and-peace-godina-rata-i-mira-alija-izetbegovic'=>9,
+];

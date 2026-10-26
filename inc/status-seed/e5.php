@@ -1,0 +1,27 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'all-letters-veskere-listy-jan-hus'=>4,
+'anti-duhring-herrn-eugen-duhrings-umwalzung-der-wissenschaft-friedrich-engels'=>38,
+'charles-dickens-julian'=>4,
+'des-rabbi-israel-ben-elieser-martin-buber'=>6,
+'dream-and-existence-le-reve-et-lexistence-michel-foucault'=>30,
+'hereditary-genius-francis-galton'=>3,
+'identity-francis-fukuyama'=>38,
+'in-praise-of-the-september-mario-vargas-llosa'=>10,
+'is-art-lighthearted-wird-die-moderne-kunst-gemanagt-theodor-w-adorno'=>7,
+'let-man-prevail-erich-fromm'=>19,
+'letters-written-during-a-short-residence-in-sweden-norway-and-denmark-mary-wollstonecraft'=>4,
+'nocturnes-leopold-sedar-senghor'=>21,
+'on-the-perfection-of-the-spiritual-life-de-perfectione-vitae-spiritualis-thomas-aquinas'=>13,
+'russian-thinkers-isaiah-berlin'=>19,
+'selected-poems-leopold-sedar-senghor'=>44,
+'teachings-of-queen-kunti-a-c-bhaktivedanta-swami-prabhupada'=>4,
+'the-bride-of-messina-die-braut-von-messina-friedrich-schiller'=>18,
+'the-concept-of-causality-in-physics-der-kausalbegriff-in-der-physik-max-planck'=>12,
+'the-sorrows-of-young-werther-die-leiden-des-jungen-werthers-johann-wolfgang-von-goethe'=>52,
+'the-soviet-union-and-the-fourth-international-leon-trotsky'=>34,
+'three-founders-of-philosophizing-plato-augustine-kant-drei-grunder-des-philosophierens-plato-augustin-kant-karl-jaspers'=>4,
+'why-hasnt-everything-already-disappeared-pourquoi-tout-na-t-il-pas-deja-disparu-jean-baudrillard'=>118,
+'yfirskygdir-stadir-halldor-laxness'=>7,
+];

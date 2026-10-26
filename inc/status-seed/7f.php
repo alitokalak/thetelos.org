@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'collected-papers-of-charles-sanders-peirce-charles-sanders-peirce'=>7,
+'communist-party-of-italy-1921-1926-partito-comunista-ditalia-1921-1926-antonio-gramsci'=>14,
+'culture-ralph-waldo-emerson'=>4,
+'dissertations-and-discussions-john-stuart-mill'=>7,
+'frontiers-of-justice-martha-nussbaum'=>18,
+'gems-from-the-east-helena-blavatsky'=>7,
+'how-children-form-mathematical-concepts-jean-piaget'=>44,
+'middle-commentary-on-aristotles-metaphysics-talkhis-ma-bad-al-tabia-averroes-ibn-rushd'=>24,
+'mythologies-roland-barthes'=>46,
+'observations-on-the-increase-of-infidelity-joseph-priestley'=>7,
+'on-liberty-john-stuart-mill'=>14,
+'on-merits-and-remission-of-sin-augustine-of-hippo'=>4,
+'on-morphology-zur-morphologie-johann-wolfgang-von-goethe'=>28,
+'reason-in-history-georg-wilhelm-friedrich-hegel'=>45,
+'return-powrot-stanislaw-lem'=>10,
+'socialism-le-socialisme-emile-durkheim'=>16,
+'the-book-of-wisdom-in-gods-creations-kitab-al-hikma-fi-mahluqatillah-al-ghazali'=>28,
+'the-cretan-women-κρῆσσαι-euripides'=>26,
+'the-educational-situation-john-dewey'=>22,
+'the-human-place-in-the-cosmos-die-stellung-des-menschen-im-kosmos-max-scheler'=>3,
+'the-return-of-the-gods-and-other-writings-by-antonio-mora-o-regreso-dos-deuses-e-outros-escritos-de-antonio-mora-fernando-pessoa'=>21,
+'tracts-consisting-of-observations-about-the-saltness-of-the-sea-robert-boyle'=>14,
+'trips-compliance-national-patent-regimes-and-innovation-mani'=>3,
+'voz-do-silencio-helena-blavatsky'=>43,
+];

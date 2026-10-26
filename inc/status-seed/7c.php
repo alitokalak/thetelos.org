@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'articles-on-pushkin-статьи-о-пушкине-vissarion-belinsky'=>39,
+'autobiography-of-a-yogi-paramahansa-yogananda'=>11,
+'d-h-lawrence-pilgrim-of-the-apocalypse-horace'=>6,
+'het-visconcert-halldor-laxness'=>18,
+'history-of-the-thirty-years-war-geschichte-des-dreissigjahrigen-kriegs-friedrich-schiller'=>4,
+'homilies-on-the-hexaemeron-ὁμιλίαι-εἰς-τὴν-ἑξαήμερον-basil-of-caesarea'=>12,
+'human-being-human-destiny-and-world-development-menschenwesen-menschenschicksal-und-weltentwicklung-rudolf-steiner'=>14,
+'intertextualite-julia-kristeva'=>17,
+'les-caracteres-de-la-bruyere-precedes-des-caracteres-de-theophraste-et-suivis-du-discours-a-lacademie-francaise-jean-de-la-bruyere'=>4,
+'letters-and-papers-from-prison-widerstand-und-ergebung-dietrich-bonhoeffer'=>31,
+'letters-to-f-g-welcker-briefe-an-f-g-welcker-wilhelm-von-humboldt'=>7,
+'moctezuma-oswald-spengler'=>13,
+'poems-that-make-you-happy-johann-gottfried-herder'=>9,
+'roman-farm-management-marcus-terentius-varro'=>10,
+'spirits-rebellious-الأرواح-المتمردة-kahlil-gibran'=>4,
+'the-accident-elie-wiesel'=>25,
+'the-doctrine-of-the-mean-中庸-zhu-xi'=>27,
+'the-educational-theory-of-immanuel-kant-immanuel-kant'=>57,
+'the-epistle-on-theriac-risalah-fil-tiryaq-averroes-ibn-rushd'=>10,
+'the-essential-tension-thomas-kuhn'=>21,
+'the-logic-of-scientific-discovery-logik-der-forschung-karl-popper'=>18,
+'the-philosophy-of-the-unattainable-die-philosophie-des-unvollendbar-emanuel-lasker'=>45,
+'werke-bibliothek-des-mittelalters-meister-eckhart'=>10,
+'works-opere-primo-levi'=>3,
+];

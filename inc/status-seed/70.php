@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-fairly-honourable-defeat-iris-murdoch'=>8,
+'adieux-a-farewell-to-sartre-la-ceremonie-des-adieux-simone-de-beauvoir'=>32,
+'aids-and-its-metaphors-susan-sontag'=>36,
+'avis-pressant-a-la-convention-olympe-de-gouges'=>4,
+'chaitanya-charitamrita-madhya-lila-volume-1-caitanya-caritamṛta-a-c-bhaktivedanta-swami-prabhupada'=>13,
+'discourse-pronounced-in-the-frenchaqu  academy-monday=-9-may антропо 1746-at-the-reception-of-mr-de-voltaire-discours الحكم-prononcez-dans ожидае  pháp-academie  -francoise-le-lundi-9-mai-mdccxlvi )  a-  la-reception-  de-m-de-voltaire'=>6,
+'el-federalista-alexander-hamilton'=>4,
+'mathematical-opuscules-or-memoirs-on-various-subjects-of-geometry-etc-opuscules-mathematiques-ou-memoires-sur-differens-sujets-de-geometrie-de-jean-le-rond-dalembert'=>8,
+'message-of-the-gita-for-students-a-c-bhaktivedanta-swami-prabhupada'=>4,
+'on-the-nature-of-free-will-vom-wesen-der-willensfreiheit-max-planck'=>9,
+'religion-within-the-limits-of-reason-alone-immanuel-kant'=>48,
+'shadow-songs-followed-by-black-hosts-chants-dombre-suivis-de-hosties-noires-leopold-sedar-senghor'=>13,
+'srimad-bhagavatam-first-canto-part-3-srimad-bhagavatam-a-c-bhaktivedanta-swami-prabhupada'=>3,
+'studies-in-occultism-helena-blavatsky'=>10,
+'the-essential-schopenhauer-arthur-schopenhauer'=>59,
+'the-fall-la-chute-albert-camus'=>22,
+'the-flower-chorus-for-30-january-1812-das-blumenchor-zum-30-januar-1812-johann-wolfgang-von-goethe'=>12,
+'the-fortunate-youth-john-locke'=>4,
+'the-theological-essence-of-religion-das-theologische-wesen-der-religion-ludwig-feuerbach'=>4,
+'the-theory-of-social-and-economic-organization-max-weber'=>23,
+'theogenius-leon-battista-alberti'=>16,
+'william-blakes-urizen-plate-designs-william-blake-2'=>15,
+'works-and-letters-werke-und-briefe-georg-buchner'=>3,
+'zoloe-and-her-two-acolytes-zoloe-et-ses-deux-acolytes-ou-quelques-decades-de-la-vie-de-trois-jolies-femmes-marquis-de-sade'=>21,
+];

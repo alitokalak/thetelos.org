@@ -1,0 +1,26 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'3-new-york-dadas-and-the-blindman-marcel-duchamp'=>11,
+'academica-leopold-sedar-senghor'=>9,
+'apologia-apuleius'=>10,
+'bharata-ki-antaratma-भारत-की-अन्तरात्मा-sarvepalli-radhakrishnan'=>11,
+'bruno-or-on-the-divine-and-natural-principle-of-things-bruno-oder-uber-das-gottliche-und-naturliche-prinzip-der-dinge-friedrich-wilhelm-joseph-schelling'=>14,
+'don-juan-or-the-love-of-geometry-don-juan-oder-die-liebe-zur-geometrie-max-frisch'=>9,
+'eloisa-to-abelard-alexander-pope'=>4,
+'essays-and-polemical-writings-aufsatze-und-streitschriften-georg-christoph-lichtenberg'=>4,
+'excursions-henry-david-thoreau'=>7,
+'himno-ayn-rand'=>4,
+'il-godimento-come-fattore-politico-slavoj-zizek'=>15,
+'kritik-der-praktischen-vernunft-immanuel-kant'=>8,
+'la-migration-dabraham-philo-of-alexandria'=>10,
+'on-anarchism-noam-chomsky'=>24,
+'perpetual-peace-and-other-essays-on-politics-history-and-morals-immanuel-kant'=>9,
+'saint-anselm-basic-writings-anselm-of-canterbury'=>14,
+'selected-pages-from-the-great-writers-pages-choisies-des-grands-ecrivains-jules-michelet'=>3,
+'the-comprehensive-book-on-jurisprudence-al-mabsut-fil-fiqh-al-ghazali'=>11,
+'the-reprieve-le-sursis-jean-paul-sartre'=>29,
+'the-romantic-manifesto-ayn-rand'=>23,
+'the-teaching-of-social-sciences-in-india-1947-67-kabir'=>7,
+'tuhfat-al-ahrar-tohgat-al-ahrar-amir-khusrau'=>18,
+];

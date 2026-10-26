@@ -1,0 +1,27 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-short-guide-to-eloquence-kratkoe-rukovodstvo-k-krasnori︠e︡chii︠u︡-mikhail-lomonosov'=>7,
+'adumbrated-postil-postilla-adumbrata-jan-hus'=>4,
+'agriculture-peter-kropotkin'=>19,
+'anxieties-and-questions-hermann-hesse'=>4,
+'considerations-sur-les-mesures-a-prendre-pour-terminer-la-revolution-presentees-au-roi-claude-henri-de-rouvroy-comte-de-saint-simon'=>4,
+'correspondence-and-memories-from-1793-to-1805-correspondance-et-souvenirs-de-1793-a-1805-andre-marie-ampere'=>4,
+'diamond-sutra-वज्रच्छेदिका-प्रज्ञाप'=>4,
+'einfuhrung-in-die-funktionentheorie-hermann-weyl'=>8,
+'essay-on-the-philosophy-of-sciences-or-analytical-exposition-of-a-natural-classification-of-all-human-knowledge-essai-sur-la-philosophie-des-sciences-ou-exposition-analytique-dune-classification'=>28,
+'indian-home-rule-हिंद-स्वराज-mahatma-gandhi'=>15,
+'letter-to-the-abbot-of-monte-cassino-epistola-ad-abbatem-montis-casini-thomas-aquinas'=>14,
+'man-the-reformer-ralph-waldo-emerson'=>7,
+'report-of-a-researcher-in-tropical-south-africa-francis-galton'=>3,
+'studies-in-logic-and-probability-george-boole'=>7,
+'the-120-days-of-sodom-les-120-journees-de-sodome-marquis-de-sade'=>14,
+'the-annotated-gilbert-and-sullivan-1-william-gilbert'=>3,
+'the-bridge-die-brucke-wilhelm-ostwald'=>10,
+'the-collapse-of-the-fact-value-dichotomy-and-other-essays-hilary-putnam'=>43,
+'the-foucault-reader-michel-foucault'=>11,
+'the-progression-of-jewels-in-eschatology-darj-al-jawahir-fi-tavil-al-akhira-al-ghazali'=>8,
+'the-review-esprit-and-us-la-revue-esprit-et-nous-leopold-sedar-senghor'=>10,
+'two-writings-on-arithmetic-zwei-schriften-zur-arithmetik-gottlob-frege'=>25,
+'world-orders-old-and-new-noam-chomsky'=>7,
+];

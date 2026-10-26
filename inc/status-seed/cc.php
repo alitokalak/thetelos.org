@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-history-of-england-histoire-dangleterre-andre-maurois'=>7,
+'acts-of-religion-jacques-derrida'=>22,
+'concerning-the-nature-of-good-de-natura-boni-contra-manichaeos-augustine-of-hippo'=>18,
+'de-profundis-volume-ii-william-gilbert'=>3,
+'description-of-an-ophthalmoscope-for-examining-the-retina-in-the-living-eye-beschreibung-eines-augen-spiegels-zur-untersuchung-der-netzhaut-im-lebenden-auge-hermann-von-helmholtz'=>11,
+'five-types-g-k-chesterton'=>4,
+'georg-buchner-und-seine-besten-buhnenwerke-georg-buchner'=>6,
+'illustration-of-an-italian-spanish-songbook-manuscript-of-the-17th-century-presented-to-the-pontanian-academy-on-4-november-1900-illustrazione-di-un-canzoniere-ms-italo-spagnuolo-del-secolo-xvii-pres'=>3,
+'kein-stress-ich-habe-einen-plan-erfolgreich-durch-den-alltag-mit-klaren-zielen-thomas-kuhn'=>17,
+'letters-epistulae-cicero'=>7,
+'memoirs-of-a-dutiful-daughter-memoires-dune-jeune-fille-rangee-simone-de-beauvoir'=>51,
+'mr-prokharchin-господин-прохарчин-fyodor-dostoyevsky'=>12,
+'myth-and-christianity-karl-jaspers'=>6,
+'political-justice-enquiry-concerning-political-justice-and-its-influence-on-morals-and-happiness-william-godwin'=>3,
+'reading-itinerary-roteiro-de-leitura-fernando-pessoa'=>15,
+'sod-ha-ḳelafim-jostein-gaarder'=>3,
+'the-black-art-harry-houdini'=>4,
+'the-botanic-garden-erasmus'=>10,
+'the-nietzsche-wagner-correspondence-friedrich-nietzsche'=>44,
+'the-notebooks-of-simone-weil-cahiers-simone-weil'=>20,
+'the-nymph-of-the-woods-of-versailles-la-nymphe-des-bois-de-versailles-sully-prudhomme'=>4,
+'the-quest-of-the-silver-fleece-w-e-b-du-bois'=>3,
+'the-secret-art-of-antonin-artaud-antonin-artaud-dessins-et-portraits-jacques-derrida'=>8,
+'three-books-on-the-defense-against-slander-drey-bucher-das-erst-buch-die-verantwortung-uber-etzlich-verunglimpfung-seiner-miszgunner-paracelsus'=>12,
+];

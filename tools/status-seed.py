@@ -8,7 +8,7 @@ geçerse (ör. /kitap/ ve /analysis/kitap/) sayılar toplanır.
 import csv, sys, urllib.parse, os
 
 src = sys.argv[1]
-out = os.path.join(os.path.dirname(__file__), '..', 'inc', 'status-seed.php')
+out = os.path.join(os.path.dirname(__file__), '..', 'inc', 'status-seed')
 seed = {}
 with open(src, newline='', encoding='utf-8-sig') as f:
     for row in csv.reader(f):
@@ -29,10 +29,17 @@ with open(src, newline='', encoding='utf-8-sig') as f:
         seed[slug] = seed.get(slug, 0) + int(num)
 def php_str(x):
     return "'" + x.replace('\\', '\\\\').replace("'", "\\'") + "'"
-with open(out, 'w', encoding='utf-8') as f:
-    f.write("<?php\n// Otomatik üretildi: tools/status-seed.py. Elle düzenleme.\n"
-            "// slug => Analytics'teki toplam buton tıklaması (ham, katsayısız).\nreturn [\n")
-    for k, v in sorted(seed.items()):
-        f.write(f"{php_str(k)}=>{v},\n")
-    f.write("];\n")
-print(f'{len(seed)} kitap yazıldı -> {os.path.normpath(out)}')
+# 256 küçük parçaya böl (md5(slug) ilk 2 hex): her istekte 500 KB'lık tek dosya
+# yerine ~2 KB'lık tek parça yüklenir.
+import hashlib, shutil
+shutil.rmtree(out, ignore_errors=True); os.makedirs(out)
+buckets = {}
+for k, v in seed.items():
+    buckets.setdefault(hashlib.md5(k.encode('utf-8')).hexdigest()[:2], {})[k] = v
+for b, items in buckets.items():
+    with open(os.path.join(out, b + '.php'), 'w', encoding='utf-8') as f:
+        f.write("<?php\n// Otomatik: tools/status-seed.py. slug => ham tıklama.\nreturn [\n")
+        for k, v in sorted(items.items()):
+            f.write(f"{php_str(k)}=>{v},\n")
+        f.write("];\n")
+print(f'{len(seed)} kitap, {len(buckets)} parça -> {os.path.normpath(out)}')

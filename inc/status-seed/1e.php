@@ -1,0 +1,28 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-word-child-iris-murdoch'=>10,
+'anthology-of-the-new-negro-and-malagasy-poetry-in-french-anthologie-de-la-nouvelle-poesie-negre-et-malgache-de-langue-francaise-leopold-sedar-senghor'=>20,
+'body-man-and-citizen-thomas-hobbes'=>7,
+'commentary-on-aristotles-on-generation-and-corruption-commentaria-in-de-generatione-et-corruptione-aristotelis-thomas-aquinas'=>24,
+'daybreak'=>6,
+'dialogues-of-alfred-north-whitehead-alfred-north-whitehead'=>7,
+'discourses-on-livy-discorsi-sopra-la-prima-deca-di-tito-livio-niccolo-machiavelli'=>23,
+'german-romance-translations-from-the-german-thomas-carlyle'=>7,
+'hermeneutics-between-history-and-philosophy-hans-georg-gadamer'=>28,
+'initiation-into-universal-philosophy-initia-philosophiae-universae-friedrich-schelling'=>14,
+'les-caracteres-de-la-bruyere-et-de-theophraste-jean-de-la-bruyere'=>3,
+'logik-immanuel-kant'=>19,
+'media-messages-language-marshall-mcluhan'=>26,
+'on-aggression-das-sogenannte-bose-konrad-lorenz'=>29,
+'on-asthma-maqala-fi-al-rabw-maimonides'=>13,
+'on-the-invariant-properties-of-special-binary-forms-ueber-die-invarianten-eigenschaften-spezieller-binarer-formen-david-hilbert'=>21,
+'question-of-gender-judith-butler'=>7,
+'scriptores-optici-charles-babbage'=>4,
+'sipure-ahavah-julia-kristeva'=>4,
+'the-american-crisis-thomas-paine'=>11,
+'the-harmony-of-forms-die-harmonie-der-formen-wilhelm-ostwald'=>17,
+'the-pain-la-douleur-marguerite-duras'=>20,
+'the-preface-to-leibniz-novissima-sinica-gottfried-wilhelm-leibniz'=>25,
+'theosophy-harry-houdini'=>12,
+];

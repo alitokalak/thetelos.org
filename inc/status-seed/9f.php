@@ -1,0 +1,27 @@
+<?php
+// Otomatik: tools/status-seed.py. slug => ham tıklama.
+return [
+'a-guest-at-the-spa-kurgast-hermann-hesse'=>38,
+'a-treatise-on-probability-john-maynard-keynes'=>18,
+'chitra-चित्रा-modern-poet-misattribution-nagarjuna'=>11,
+'color-chart-according-to-ostwald-farbentafel-nach-ostwald-wilhelm-ostwald'=>19,
+'contact-andre-maurois'=>10,
+'filosofi-fraan-proletar-klasstaandpunkt-louis-althusser'=>3,
+'gerpla-halldor-laxness'=>9,
+'its-us-here-now-somos-nosotros-los-que-estamos-aqui-ahora-jostein-gaarder'=>3,
+'la-revolte-intime-julia-kristeva'=>16,
+'minna-von-barnhelm-gotthold-ephraim-lessing'=>4,
+'mist-niebla-miguel-de-unamuno'=>21,
+'optical-lectures-lectiones-opticae-geometricae-isaac-newton'=>23,
+'principia-mathematica-to-56-alfred-north-whitehead'=>12,
+'reclamation-of-the-freedom-of-thought-from-the-princes-of-europe-zuruckforderung-der-denkfreiheit-von-den-fursten-europens-johann-gottlieb-fichte'=>4,
+'satyricon-petronius'=>20,
+'selected-and-annotated-letters-by-alessandro-avoli-lettere-scelte-e-annotate-da-alessandro-avoli-giacomo-leopardi'=>4,
+'stories-of-myself-cuentos-de-mi-mismo-miguel-de-unamuno'=>7,
+'sunzi-with-ten-commentaries-孫子十家註-sun-tzu'=>14,
+'the-closed-commercial-state-der-geschlossener-handelsstaat-johann-gottlieb-fichte'=>3,
+'the-collected-works-of-spinoza-baruch-spinoza'=>7,
+'the-poor-man-of-god-ο-φτωχούλης-του-θεού-nikos-kazantzakis'=>17,
+'the-virtues-of-sid-hamet-the-magicians-rod-jonathan-swift'=>4,
+'treatise-on-the-sanctification-of-the-new-moon-maqala-fi-qiddush-ha-ḥodesh-maimonides'=>16,
+];
