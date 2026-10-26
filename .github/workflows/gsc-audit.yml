@@ -1,0 +1,14 @@
+name: GSC audit
+# Search Console 'dizine eklenmedi' örneklemindeki sayfaların içerik uzunluğunu ölçer. Yayın yapmaz.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: [tools/gsc-audit.py, tools/gsc-crawled-not-indexed.txt]
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/gsc-audit.py tools/gsc-crawled-not-indexed.txt
