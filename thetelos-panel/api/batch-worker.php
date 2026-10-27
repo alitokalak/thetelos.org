@@ -951,6 +951,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'blocked_misattribution (başlıkta yanlış-atıf notu — üretilmedi)']);
         return;
     }
+    // İngilizce karşılığı olmayan yabancı başlık = büyük ihtimalle bir eserin ÇEVİRİ
+    // baskısı (orijinali sitede ayrıca var olabilir). Yeni sayfa açma. (Yeniden-yazımda
+    // mevcut yazıya dokunulur, engellenmez.)
+    if (empty($batch['rewrite']) && tls_title_untranslated_foreign($book)) {
+        bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'blocked_translation (başlık yabancı dilde ve İngilizce adı yok — muhtemelen çeviri baskısı; Liste Temizle ile İngilizce adına çözün)']);
+        return;
+    }
     $pre_cover    = trim($batch['books'][$idx]['cover_url'] ?? '');
     $pre_year     = trim((string)($batch['books'][$idx]['pub_year'] ?? '')); // listeden gelen yayın yılı
     // Dış aramalar (Google Books / OpenLibrary / dedup) için başlığın
