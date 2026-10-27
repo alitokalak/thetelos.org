@@ -111,6 +111,11 @@ $author_count = $term ? (int) $term->count  : 0;
         </p>
     <?php endif; ?>
 
+    <?php
+    // Özeti henüz yazılmamış eserler: yalnız ilk sayfada, kart ızgarasının altında.
+    if ( $paged === 1 && function_exists( 'tls_render_other_works' ) ) tls_render_other_works( $term );
+    ?>
+
 </div>
 
 </main>

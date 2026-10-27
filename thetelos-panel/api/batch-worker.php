@@ -284,6 +284,12 @@ function bw_flag_problem($book, $author, $cover, $year, $reason, $detail = '', $
         'mode'   => (string) $mode,            // rewrite | create
     ];
     @file_put_contents($file, json_encode($rec, JSON_UNESCAPED_UNICODE) . "\n", FILE_APPEND | LOCK_EX);
+    // Yeni kitap (create) yazılamadıysa: boş sayfa açılmaz; eser katalogda bu yazarla
+    // doğrulanıyorsa yazar sayfasındaki "Other Works" listesine eklenir.
+    if ($mode === 'create' && in_array($reason, ['unknown', 'referee', 'wrong_subject', 'refused', 'gate_placeholder'], true)) {
+        require_once __DIR__ . '/_other-works.php';
+        @tls_add_other_work($book, $author);
+    }
 }
 
 /* ── KAYNAK ARŞİVİ ───────────────────────────────────────────────────────
@@ -2297,8 +2303,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 $body_html = bw_placeholder_html($book, $author);
                 if (is_array($gate_report)) $gate_report['action'] = 'yer-tutucu (taslak yerine)';
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gate_placeholder',
-                    'kapı geçemedi → yer tutucu yayınlandı: ' . implode(' | ', array_slice($g['reasons'] ?? [], 0, 2)),
+                    'kapı geçemedi → ' . (($rewrite && $update_pid) ? 'yer tutucu yayınlandı' : 'sayfa açılmadı, yazarın eser listesine eklendi') . ': ' . implode(' | ', array_slice($g['reasons'] ?? [], 0, 2)),
                     $update_pid, $rewrite ? 'rewrite' : 'create');
+                if (!($rewrite && $update_pid)) {
+                    bw_update_book($batch_file, $idx, ['status' => 'error',
+                        'error' => 'kapı geçemedi → sayfa açılmadı (eser, yazar sayfasındaki listeye eklendi)']);
+                    return;
+                }
             }
         }
     }
