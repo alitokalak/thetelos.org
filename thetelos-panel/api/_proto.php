@@ -837,7 +837,13 @@ function proto_chunk_prompt($book, $author, $k, $n, $excerpt, $note_words = '150
 /* İNSAN SESİ — her yazım adımına eklenen ortak stil kuralı. DeepSeek'in
    robotik/yapay tonunu kırmak için somut yasaklı kalıplar + olumlu yönergeler. */
 function proto_voice_rules() {
-    return "HUMAN VOICE (critical): write like a well-read essayist, not an AI. Be concrete and specific, grounded in the notes; vary sentence length and rhythm; connect ideas with genuine transitions, never a checklist. Prefer active voice and plain, strong verbs. Do NOT begin consecutive sentences or paragraphs the same way, do NOT hedge, and do NOT close with a restating summary. AVOID these AI-tell clichés and filler entirely: 'delve'/'delves into', 'explore(s)', 'a testament to', 'tapestry', 'navigate(s)', 'in today's world', 'it is important to note', 'it is worth noting', 'moreover', 'furthermore', 'in conclusion', 'overall', 'ultimately', 'masterfully', 'rich exploration', 'nuanced', 'multifaceted'.";
+    return "HUMAN VOICE (critical): write like a well-read essayist, not an AI. Be concrete and specific, grounded in the notes; vary sentence length and rhythm; connect ideas with genuine transitions, never a checklist. Prefer active voice and plain, strong verbs. Do NOT begin consecutive sentences or paragraphs the same way, do NOT hedge, and do NOT close with a restating summary. AVOID these AI-tell clichés and filler entirely: 'delve'/'delves into', 'explore(s)', 'a testament to', 'tapestry', 'navigate(s)', 'in today's world', 'it is important to note', 'it is worth noting', 'moreover', 'furthermore', 'in conclusion', 'overall', 'ultimately', 'masterfully', 'rich exploration', 'nuanced', 'multifaceted', 'profound', 'timeless', 'thought-provoking', 'seminal', 'landmark work', 'stands as', 'serves as a reminder', 'sheds light on', 'grapples with', 'invites the reader', 'a must-read', 'enduring relevance', 'resonates', 'at its core', 'in essence', 'not only … but also', 'paints a vivid picture', 'journey', 'unpack', 'intricate', 'underscores', 'highlights the importance'. Never open with 'In [title], [author]…' and never end with a moral or a summary paragraph.";
+}
+/* DOĞAL BAŞLIKLAR — kitabın kendi konularından gelsin; numaralı/kalıp başlık yok.
+   Binlerce özetin aynı iskeleti (Core Argument / Inside the Book / Key Ideas…)
+   taşıması hem okura yapay geliyor hem de 'kalıptan üretilmiş' izlenimi veriyor. */
+function proto_heading_rules() {
+    return "HEADINGS — NATURAL AND BOOK-SPECIFIC: every ## and ### heading must name what THAT part is actually about in THIS book (e.g. '## Why Bentham Measures Pleasure', '### The Trial in the Square', '## Raskolnikov's Theory of the Extraordinary Man'). NEVER use numbered or generic structural labels such as 'Chapter 1', 'Part II', 'Book Three', 'Section 4', 'Introduction', 'Conclusion', 'Overview', 'Summary', 'Key Ideas', 'Core Argument', 'Main Themes', 'Inside the Book', 'Why It Matters'. The book's real chapter names may be mentioned inside the prose when useful, but headings must describe content. Use few headings — only where the topic genuinely shifts.";
 }
 
 function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summary', $chapters = []) {
@@ -845,8 +851,7 @@ function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summa
     if (!empty($chapters)) {
         $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text) ===\n"
             . implode("\n", array_slice($chapters, 0, 60)) . "\n=== END STRUCTURE ===\n"
-            . "Use these REAL divisions instead of inventing generic 'Part 1 / Part 2' labels. "
-            . "Mention each chapter heading AT MOST ONCE, as a ### subheading inside the walk-through section. NEVER output the same chapter heading twice.\n";
+            . "Use this structure only to understand the book's real order; do NOT turn chapter numbers into headings.\n";
     }
     return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH. The source text and notes may be in Spanish, French, Latin, or any other language; TRANSLATE their content into fluent English. Every heading and every sentence MUST be in English. NEVER write any part of the output in the book's original language.\n\n"
         . "You are writing a faithful, source-based book summary for a books website, in the voice of a thoughtful human essayist. Below are ORDERED notes taken directly from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ", part by part.\n"
@@ -854,17 +859,14 @@ function proto_reduce_prompt($book, $author, $notes, $target = 'a thorough summa
         . "\nSTEP 1 — DECIDE THE FORM from the notes:\n"
         . "  • NARRATIVE — a novel, story collection, play, epic, memoir, or poetry: it tells a story or unfolds lived experience.\n"
         . "  • EXPOSITORY — philosophy, history, science, religion, essays, criticism, or how-to: it makes a case or explains a subject.\n"
-        . "Use the MATCHING section set below and IGNORE the other one. NEVER force argument-style headings ('Core Argument', 'Key Ideas') onto a novel, or story-style headings onto a treatise.\n\n"
+        . "Let the form decide what you discuss: a story's events and people, or an argument's steps and concepts. Never describe a novel as if it were a treatise, or a treatise as if it were a story.\n\n"
         . "OPENING (both forms): begin with a SHORT unlabeled overview — 2–4 sentences, NO heading — on what the book is, its form, and when/where it comes from. Do NOT title it 'About the Work'; do NOT restate the book title as a heading.\n\n"
-        . "IF NARRATIVE — use ONLY these ## sections, in order, omitting any you lack material for:\n"
-        . "## The Story   (the walk-through — cover the book beginning→end as ### subsections)\n## Characters\n## Themes\n## Why It Endures\n\n"
-        . "IF EXPOSITORY — use ONLY these ## sections, in order, omitting any you lack material for:\n"
-        . "## The Core Argument\n## Inside the Book   (the walk-through — chapter by chapter, as ### subsections)\n## Key Ideas\n## Themes\n## Why It Matters\n\n"
+        . "SHAPE (both forms, 3–6 ## sections in total): after the opening, a walk-through of the book from beginning to end (### subsections that follow the book's real flow), then the book's central ideas/characters and what they mean, then a short section on its significance or legacy. For NARRATIVE the walk-through tells the story and you discuss the characters; for EXPOSITORY it follows the line of argument and you discuss the main concepts. " . proto_heading_rules() . "\n\n"
         . "RULES:\n"
         . "0. VOICE — write like a human essayist introducing the book to a curious reader: natural, flowing, engaged English. NEVER read like a machine report and NEVER announce the format (no 'Here is a summary', 'In this section', 'This section covers', 'The following is…'). Write the substance directly, in real paragraphs; vary sentence length; let ideas connect instead of a mechanical checklist. Keep the number of headings SMALL — OMIT any section you cannot fill well rather than padding it. " . proto_voice_rules() . "\n"
         . "1. Base EVERY statement only on the notes (the real text). Do NOT invent or infer chapter titles, quotations, examples, dates, or names not in the notes.\n"
         . "1b. DATES — the source may be a LATER edition or a TRANSLATION; a date on its title/imprint page (e.g. a translator's date, 'fifty-eighth edition, 1911') is NOT when the work was originally written. NEVER present an edition/translation date as the work's original date. If unsure, describe the period generally (e.g. 'a nineteenth-century work') or omit it — do not guess.\n"
-        . "2. COVER THE WHOLE BOOK. The walk-through section (## The Story / ## Inside the Book) MUST run from the FIRST part through the LAST part in the notes — beginning to end. Budget length so EVERY part is represented; reaching the book's actual ending matters more than fully detailing the opening. If space is tight, shorten every part evenly rather than dropping the final parts.\n"
+        . "2. COVER THE WHOLE BOOK. The walk-through section (the walk-through) MUST run from the FIRST part through the LAST part in the notes — beginning to end. Budget length so EVERY part is represented; reaching the book's actual ending matters more than fully detailing the opening. If space is tight, shorten every part evenly rather than dropping the final parts.\n"
         . "3. SYNTHESIZE — do NOT retell or quote at length; compress events/ideas to their essence, conveying what happens or is argued and why it matters, not a paragraph-by-paragraph re-narration.\n"
         . "4. CHRONOLOGY: follow the ACTUAL order of the book (Part 1 → last part). Do not reorder.\n"
         . "5. NO CONFLATION: keep characters and events distinct; attribute each action to the correct person; never merge two into one. If unclear, stay general.\n"
@@ -890,7 +892,7 @@ function proto_sbs_prompt($book, $author, $notes, $g, $G, $seg_words = 0) {
         . "Below are ORDERED notes from the ACTUAL TEXT covering ONE consecutive segment of the book (segment {$g} of {$G}).\n"
         . "The notes are labelled [Part 1], [Part 2]… — these are OUR internal processing segments, NOT the book's real divisions. NEVER mention 'Part N' or reproduce those labels, and do NOT claim the book 'is divided into N parts'. Follow the book's OWN natural flow.\n"
         . $budget
-        . "Write a SYNTHESIZED narrative of THIS segment as a sequence of ### subsections that follow the story's real progression. SYNTHESIZE HARD — do NOT retell or quote; compress descriptive detail (physical descriptions, catalogues of objects/scenery) to its essence; a few sentences per beat, conveying what happens and what it means for the protagonist's development. Use ONLY these notes; invent nothing. Title each ### by what actually happens — a real chapter name if the notes give one, otherwise a short descriptive phrase (e.g. '### Assisi and Annunziata Nardini').\n"
+        . "Write a SYNTHESIZED narrative of THIS segment as a sequence of ### subsections that follow the story's real progression. SYNTHESIZE HARD — do NOT retell or quote; compress descriptive detail (physical descriptions, catalogues of objects/scenery) to its essence; a few sentences per beat, conveying what happens and what it means for the protagonist's development. Use ONLY these notes; invent nothing. Title each ### by what actually happens or is argued there — a short descriptive phrase (e.g. '### Assisi and Annunziata Nardini', '### The Case Against Hereditary Power'). NEVER title a ### 'Chapter N', 'Part N', 'Book N' or 'Section N', even if the notes name chapters that way.\n"
         . "VOICE — write like a human essayist telling a reader how the book unfolds: natural, flowing English. NEVER announce the format or narrate what you are doing (no 'Here is…', 'In this part…', 'This section covers…'); just tell what happens. Under each ### write real connected paragraphs, not clinical bullet-like lines. " . proto_voice_rules() . "\n"
         . "COMPLETENESS OVER DETAIL: you MUST cover EVERY event in these notes THROUGH THE VERY LAST ONE. Do NOT run long on the early beats and get cut off before the end of this segment — if space is tight, shorten every beat evenly so you still reach the final event in these notes.\n"
         . ($g >= $G ? "THIS IS THE FINAL SEGMENT: you MUST narrate the book's actual ENDING — its last events and how the story truly concludes (do not stop before the real final scene).\n" : "")
@@ -908,13 +910,10 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
     return "OUTPUT LANGUAGE — WRITE ENTIRELY IN ENGLISH, even if the notes are in another language; translate their content. Never write headings or prose in the book's original language.\n\n"
         . "You are writing the FRAMING sections of a faithful, source-based book summary for a books website, in the voice of a thoughtful human essayist. Below are ORDERED notes from the ACTUAL TEXT of \"{$book}\"" . ($author ? " by {$author}" : '') . ".\n"
         . $chap_block
-        . "\nSTEP 1 — DECIDE THE FORM from the notes: NARRATIVE (novel, story collection, play, epic, memoir, poetry) or EXPOSITORY (philosophy, history, science, religion, essays, criticism, how-to). Use the MATCHING section set below and IGNORE the other. NEVER force argument-style headings onto a novel, or story-style headings onto a treatise.\n\n"
+        . "\nSTEP 1 — DECIDE THE FORM from the notes: NARRATIVE (novel, story collection, play, epic, memoir, poetry) or EXPOSITORY (philosophy, history, science, religion, essays, criticism, how-to). Let the form decide what you discuss: a story's events and people, or an argument's steps and concepts.\n\n"
         . "OPENING (both forms): begin with a SHORT unlabeled overview — 2–4 sentences, NO heading — on what the book is, its form, and when/where. Do NOT title it 'About the Work'; do NOT restate the book title as a heading.\n\n"
-        . "The detailed walk-through is produced SEPARATELY — do NOT write it here. Where it belongs, output its heading and then a line containing EXACTLY the token {{INSIDE}} and nothing else (no prose under it).\n\n"
-        . "IF NARRATIVE — use ONLY these ## sections, in this order, omitting any you lack material for:\n"
-        . "## The Story\n{{INSIDE}}\n## Characters\n## Themes\n## Why It Endures\n\n"
-        . "IF EXPOSITORY — use ONLY these ## sections, in this order, omitting any you lack material for:\n"
-        . "## The Core Argument\n## Inside the Book\n{{INSIDE}}\n## Key Ideas\n## Themes\n## Why It Matters\n\n"
+        . "The detailed walk-through is produced SEPARATELY — do NOT write it here. Where it belongs (right after the opening, or after one short section on the book's central claim/premise), output a ## heading that names what the book's progression is about (book-specific, e.g. '## How the Case Against Slavery Builds' or '## From Petersburg to Siberia') and then a line containing EXACTLY the token {{INSIDE}} and nothing else (no prose under it).\n\n"
+        . "SHAPE (both forms, 3–6 ## sections in total including the walk-through): the opening, optionally the book's central claim/premise, the walk-through marker, then the book's central ideas/characters and what they mean, then a short section on its significance or legacy. For NARRATIVE discuss the characters; for EXPOSITORY the main concepts. " . proto_heading_rules() . "\n\n"
         . "RULES:\n"
         . "0. VOICE — write like a human essayist introducing the book to a curious reader: natural, flowing, engaged English. NEVER read like a machine report and NEVER announce the format (no 'Here is…', 'In this section', 'This section covers…', 'The following is…'). Write the substance directly, in real paragraphs; vary sentence length. Keep headings SMALL — OMIT any section you cannot fill well rather than padding it. " . proto_voice_rules() . "\n"
         . "1. Base every statement only on the notes. Invent nothing (no quotes, dates, names, chapter titles not in the notes).\n"
@@ -922,7 +921,7 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
         . "2b. DATES / BIBLIOGRAPHY: do NOT state a precise first-publication year, edition number, or publisher taken from the source's own title/imprint page. The source is very often a LATER edition or a TRANSLATION — a translator's date or an imprint like 'fifty-eighth edition ... 1911' is NOT when the work was originally written. NEVER give a translation's or edition's date as the work's date. If unsure, describe the period generally (e.g. 'an early-twentieth-century novel') or omit the date — do not guess.\n"
         . "3. The notes are labelled [Part N] — those are OUR internal processing segments, NOT the book's divisions; NEVER say the book 'is divided into N parts' based on them. Describe the book's REAL arrangement in the opening or the relevant section, in prose.\n"
         . "4. ENDING: read the LAST notes carefully; any section that describes how the book closes MUST match the book's TRUE final events in the last notes. Do NOT mistake a mid-book episode for the ending.\n"
-        . "5. DISTINCT SECTIONS: keep sections genuinely different — for EXPOSITORY, 'The Core Argument' = what the work claims/shows, 'Key Ideas' = specific named ideas/concepts, 'Themes' = the deeper recurring meanings; for NARRATIVE, keep 'Characters' and 'Themes' distinct. If a section would just repeat another, OMIT it.\n"
+        . "5. DISTINCT SECTIONS: each section must say something the others do not (claim vs. specific concepts vs. deeper meaning vs. legacy). If a section would just repeat another, OMIT it.\n"
         . "6. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Third person, English. Start with the opening paragraph. END on a complete sentence.\n\n"
         . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
@@ -1022,7 +1021,7 @@ function proto_continue_prompt($book, $author, $md, $notes) {
         . "Below is the SUMMARY SO FAR, then the ORDERED NOTES taken from the book's ACTUAL TEXT.\n"
         . "Continue the summary with MORE depth and detail DERIVED ONLY FROM THE NOTES — go deeper into the section-by-section coverage, the main arguments, and the key concepts with specifics that are in the text but not yet written.\n"
         . "HARD RULES: Use ONLY the notes (the real text). Do NOT repeat or lightly rephrase anything already written. Do NOT invent quotations, chapter titles, examples, dates, or claims not in the notes. Do NOT write a concluding restatement.\n"
-        . "STRUCTURE: Do NOT reuse any ## section heading that already appears in the summary so far. Instead add depth under NEW, SPECIFIC ### subsection titles (e.g. '### Book IV — The Tripartite Soul', '### The Argument from Function', '### The Trial Scene') or as developed paragraphs. Output ONLY the NEW continuation.\n"
+        . "STRUCTURE: Do NOT reuse any ## section heading that already appears in the summary so far. Instead add depth under NEW, SPECIFIC ### subsection titles (e.g. '### The Tripartite Soul', '### The Argument from Function', '### The Trial Scene' — descriptive, never 'Chapter/Part/Book N') or as developed paragraphs. Output ONLY the NEW continuation.\n"
         . "If the notes contain nothing substantial left to add, output EXACTLY: DONE\n\n"
         . "=== SUMMARY SO FAR ===\n" . mb_substr($md, 0, 30000) . "\n\n=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
@@ -1040,6 +1039,32 @@ function proto_expand($md, $notes, $book, $author, $target_words, $prov, $beat, 
         $md = rtrim($md) . "\n\n" . $cont;
     }
     return $md;
+}
+
+/* ── EDİTÖR GEÇİŞİ (DeepSeek, ucuz): taslağı bir insan editör gibi düzeltir —
+   yapay kalıpları ve tekrarları atar, numaralı/kalıp başlıkları kitaba özel
+   başlıklarla değiştirir. Bilgi EKLEMEZ/ÇIKARMAZ. Güvenlik: çıktı belirgin
+   kısaysa (içerik kaybı) ya da başlık yapısı bozulduysa taslak AYNEN kalır. */
+function proto_polish_prompt($book, $author, $md) {
+    return "You are the editor of a books website. Below is a DRAFT summary of \"{$book}\"" . ($author ? " by {$author}" : '') . ". Edit it so it reads like it was written by a thoughtful human essayist.\n"
+        . "DO: remove repetition and filler; cut AI-sounding phrases and replace them with plain, specific wording; vary sentence openings and rhythm; make transitions natural; rename any numbered or generic heading (e.g. 'Chapter 3', 'Part II', 'Key Ideas', 'Themes', 'The Core Argument', 'Inside the Book', 'Why It Matters', 'Conclusion') to a short heading that says what that part is actually about in this book.\n"
+        . "DO NOT: add any fact, name, date, example or quotation that is not already in the draft; remove facts; shorten the text substantially (keep roughly the same length and every section's substance); change the order; add an introduction or a concluding summary; mention that you edited anything.\n"
+        . proto_voice_rules() . "\n" . proto_heading_rules() . "\n"
+        . "Keep Markdown (## / ### headings, paragraphs, blockquotes) exactly as Markdown. Output ONLY the edited summary.\n\n"
+        . "=== DRAFT ===\n" . $md . "\n=== END DRAFT ===";
+}
+function proto_polish($md, $book, $author, $prov, $beat, $stage = null) {
+    $w = str_word_count(strip_tags(bw_md2html($md)));
+    if ($w < 300 || $w > 5500) return $md;                 // çok kısa / çıktı sınırını aşar → atla
+    if (is_callable($stage)) $stage("editör geçişi: dil ve başlıklar düzeltiliyor…");
+    $d = '';
+    $out = trim((string) proto_ds(proto_polish_prompt($book, $author, $md), (int) min(8000, round($w * 1.9) + 600), $beat, 300, $d, $prov));
+    $out = preg_replace('/^\s*=+\s*(EDITED|END)[^\n]*\n/i', '', $out);
+    if ($out === '') return $md;
+    $w2 = str_word_count(strip_tags(bw_md2html($out)));
+    $h1 = preg_match_all('/^#{2,3}\s/m', $md); $h2 = preg_match_all('/^#{2,3}\s/m', $out);
+    if ($w2 < $w * 0.85 || ($h1 > 0 && $h2 === 0)) return $md;   // içerik/yapı kaybı → taslağı koru
+    return proto_trim_incomplete($out);
 }
 
 /* ── Çıktı token sınırına (8000) dayanıp cümle ortasında kesilirse, son TAM
@@ -1234,6 +1259,7 @@ function proto_generate($book, $author, $opts = []) {
         'trace' => $src['source'] . " {$bw}w, reduce BOŞ ({$dg2}) → Bilgi Metni'ne düşülecek"];
 
     $md = proto_trim_incomplete($md);   // token sınırında yarım kalan son cümleyi at → kapı geçsin
+    if (!$anthropic && ($opts['polish'] ?? true) !== false) $md = proto_polish($md, $book, $author, $prov, $beat, $stage);
 
     // GERÇEK ALINTI: metinden DOĞRULANMIŞ bir cümleyi pull-quote olarak ekle
     // (uydurma imkânsız — metinde birebir geçmiyorsa eklenmez). Kapalıysa atla.

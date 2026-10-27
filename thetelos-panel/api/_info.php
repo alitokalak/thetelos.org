@@ -462,17 +462,13 @@ WHAT MAKES THIS WORTH PUBLISHING — add real value, but ONLY safely:
 
 FOCUS ON THE BOOK, NOT THE AUTHOR. This article is about the WORK itself — its ideas, arguments, and content. Keep biography to an absolute minimum: at most one sentence of author context where it is genuinely needed to understand the book. Do NOT write a biography of {$A} — the website has a separate author page for that. Spend the article's length on the book's own substance.
 
-WRITE THESE SECTIONS as ### H3 headings, but OMIT any section you have no reliable material for (do not write empty or padded sections):
-### What the Work Is
-  Genre/form, when and where it first appeared, its language, and a crisp one- or two-sentence identity of the book. (At most one clause of author context if needed.)
-### What the Book Is About
-  The book's subject and its central idea, thesis, aim, or argument — the heart of the article.
-### Key Ideas and Themes
-  The major ideas, concepts, arguments, and themes the book itself develops, explained clearly for a general reader. This is where a well-sourced article should be FULLEST.
-### Structure and Approach
-  How the work is organised and its method or style — ONLY as the sources actually describe it. Never invent chapters, sections, or a structure.
-### Significance and Influence
-  Its importance, reception, and influence — only if the sources support it.
+COVER THESE ASPECTS, in roughly this order, as ### H3 sections — but OMIT any you have no reliable material for (do not write empty or padded sections):
+  • what the work is (genre/form, when and where it appeared, its language — at most one clause of author context);
+  • what the book is about — its subject and central idea, thesis, aim or argument (the heart of the article);
+  • the major ideas, concepts and themes the book develops, explained clearly (this is where a well-sourced article should be FULLEST);
+  • how it is organised and its method or style — ONLY as the sources describe it, never invented;
+  • its significance, reception and influence — only if the sources support it.
+HEADINGS MUST BE NATURAL AND SPECIFIC TO THIS BOOK: each ### heading names what that part actually says about THIS work (e.g. '### A Case Against Inherited Power', '### Why Spinoza Rejects Free Will'), NEVER a fixed template label such as 'What the Work Is', 'What the Book Is About', 'Key Ideas and Themes', 'Structure and Approach', 'Significance and Influence', 'Overview', 'Introduction' or 'Conclusion', and never numbered ('Chapter 1', 'Part II'). Use only as many headings as the material genuinely needs.
 
 FORMAT:
 - First line: # **{$book} — {$author}**
