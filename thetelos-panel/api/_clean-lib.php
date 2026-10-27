@@ -62,7 +62,7 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
        yazar tekrar para harcamaz, anında geçer. Liste değişirse anahtar değişir. */
     $cll_norm_titles = array_map('cll_norm', $titles);
     sort($cll_norm_titles);
-    $cll_key  = md5('cll1|' . mb_strtolower(trim((string) $author)) . '|' . implode("\n", $cll_norm_titles));
+    $cll_key  = md5('cll2|' . mb_strtolower(trim((string) $author)) . '|' . implode("\n", $cll_norm_titles));
     $cll_dir  = __DIR__ . '/cache/clean';
     $cll_file = $cll_dir . '/a_' . $cll_key . '.json';
     if (is_file($cll_file)) {
@@ -183,7 +183,8 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
         $en   = trim((string) ($g['en']   ?? ''));
         $orig = trim((string) ($g['orig'] ?? ''));
         if ($en === '' || !preg_match('/\p{Latin}/u', $en) || cll_looks_foreign($en)) {
-            // İngilizce ad çözülemedi → eseri KAYBETME: ilk üyenin ham başlığını kullan.
+            // İngilizce ad gelmedi → ham başlık geçici ad; aşağıdaki dil kuralı
+            // (wr_enforce_groups) çeviriyse İngilizce adını çözer ya da eler.
             $en = (string) $slice[$members[0]];
         }
         $display = ($orig !== '' && mb_strtolower($orig) !== mb_strtolower($en)) ? "$en ($orig)" : $en;
@@ -204,6 +205,16 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
         $groups[] = ['en' => (string) $titles[$ix], 'orig' => '', 'display' => (string) $titles[$ix], 'year' => '', 'members' => [$ix]];
     }
 
+    // KOD KURALLARI (AI'ya güvenmeden): yazarın yazdığı diller dışındaki başlık
+    // = çeviri → İngilizce adına çevrilir ya da elenir; aynı eserin tekrarları birleşir.
+    require_once __DIR__ . '/_work-rules.php';
+    $wrote_in = array_values(array_filter(array_map('strval', (array) ($parsed['wrote_in'] ?? []))));
+    if (!$wrote_in) $wrote_in = wr_author_langs($author);
+    if ($wrote_in) {
+        wr_prime_langs(array_merge(array_column($groups, 'en'), array_column($groups, 'orig')));
+        $groups = wr_enforce_groups($groups, $flagged, $wrote_in, $author);
+    }
+
     $flags = [];
     foreach ($flagged as $ix => $reason) $flags[] = ['n' => $ix, 'reason' => $reason];
 
@@ -211,7 +222,7 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
         'ok'            => true,
         'groups'        => $groups,
         'not_by_author' => $flags,
-        'wrote_in'      => array_values((array) ($parsed['wrote_in'] ?? [])),
+        'wrote_in'      => $wrote_in,
         'error'         => '',
     ];
     // Başarılı denetimi önbelleğe yaz (aynı yazar bir daha API'ye gitmez).

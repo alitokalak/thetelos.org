@@ -32,7 +32,7 @@ if ($author === '' || !is_array($works) || empty($works)) {
    gelir. Giriş listesi değişirse anahtar değişir → otomatik yeniden işlenir.
    Kural/motor geliştirilince CL_CACHE_VER artırılarak tüm önbellek tazelenir.
    POST nocache=1 → önbelleği atla (zorla yeniden temizle). */
-define('CL_CACHE_VER', '1');
+define('CL_CACHE_VER', '2');   // 2: dil kuralı + tekrar birleştirme kodla zorlanıyor
 $cl_titles = array_values(array_filter(array_map(
     function ($w) { return mb_strtolower(trim((string) ($w['title'] ?? ''))); }, $works)));
 sort($cl_titles);
@@ -413,9 +413,23 @@ function cl_resolve_en($title, $author, $engine, $cl_model = '') {
    1) Ana kısmı hâlâ Latin harfsiz kalan başlık = AI eseri İngilizce adıyla çözememiş
    2) Başlık == yazar adı ("Albert Einstein")
    3) Alıntı/özlü söz derlemeleri ("Quotes", "Words of Wisdom") */
+require_once __DIR__ . '/_work-rules.php';
 $guarded = [];
-$guard_seen = [];   // norm ana başlık → guarded index (yazar içi tekrar garantisi)
 $auth_norm = cl_norm($author);
+// Yazarın yazdığı diller: AI verdiyse o, yoksa (Wikidata/kural yolu) tek kısa çağrı.
+$cl_wrote = null;
+$cl_wrote_in = function () use (&$cl_wrote, $author) {
+    if ($cl_wrote === null) $cl_wrote = wr_author_langs($author);
+    return $cl_wrote;
+};
+if (isset($parsed) && is_array($parsed) && !empty($parsed['wrote_in'])) $cl_wrote = (array) $parsed['wrote_in'];
+// Kuralla dili çıkmayan başlıklara (ör. "Eclipse de Dios") tek çağrıda dil etiketi.
+$cl_tt = [];
+foreach ($items_final as $it) {
+    $cl_tt[] = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));
+    if (preg_match('/[\(\（]([^\)）]+)[\)）]\s*$/u', $it['title'], $om)) $cl_tt[] = $om[1];
+}
+wr_prime_langs($cl_tt);
 foreach ($items_final as $it) {
     // SAHTE PARANTEZ: "(Hebrew translation)", "(Latin edition)" gibi AÇIKLAMA
     // parantezleri orijinal ad değildir → paranteze at, ana başlık kalsın.
@@ -424,6 +438,29 @@ foreach ($items_final as $it) {
         $it['title'] = trim($pm[1]);
     }
     $main = trim(preg_replace('/\s*[\(\（].*$/u', '', $it['title']));   // parantez öncesi ana (İngilizce) başlık
+    // KURAL 1 (kod): yazarın yazdığı diller dışındaki başlık = ÇEVİRİ baskısı.
+    // Parantezdeki "orijinal" çeviri dilindeyse orijinal değildir → at.
+    if (preg_match('/[\(\（]([^\)）]+)[\)）]\s*$/u', $it['title'], $om)
+        && wr_translation_lang($om[1], $cl_wrote_in()) !== '') {
+        $it['title'] = $main;
+    }
+    // Ana başlık çeviri dilindeyse: eserin İngilizce adını çöz (sonra tekrar
+    // kuralı asıl eserle birleştirir); çözülemezse listeye ALINMAZ.
+    if (($tr = wr_translation_lang($main, $cl_wrote_in())) !== '') {
+        $cl_known = [];
+        foreach ($items_final as $o) {
+            $om2 = trim(preg_replace('/\s*[\(\（].*$/u', '', $o['title']));
+            if ($om2 !== $main && wr_translation_lang($om2, $cl_wrote_in()) === '' && !cl_looks_foreign($om2)) $cl_known[] = $om2;
+        }
+        $en_tr = wr_resolve_en($main, $author, $cl_known);
+        if ($en_tr !== '' && preg_match('/\p{Latin}/u', $en_tr) && !cl_looks_foreign($en_tr) && wr_translation_lang($en_tr, $cl_wrote_in()) === '') {
+            $it['title'] = $en_tr; $main = $en_tr;
+        } else {
+            $removed[] = ['title'=>$it['title'], 'author'=>$author, 'year'=>$it['year'], 'cover'=>$it['cover'],
+                          'reason'=>'çeviri baskısı (' . $tr . ') — yazar ' . implode('/', $cl_wrote_in()) . ' yazdı'];
+            continue;
+        }
+    }
     // ANA KISIM İNGİLİZCE DEĞİL Mİ? (farklı alfabe VEYA Latin ama yabancı ad —
     // Fransızca/Latince/İtalyanca/Almanca...). ÖNEMLİ: bu bir eleme sebebi DEĞİL.
     // Eser gerçek; sadece İngilizce adı çözülmemiş. O yüzden ELEMEK yerine tek kısa
@@ -459,17 +496,22 @@ foreach ($items_final as $it) {
     }
     // TEKRAR GARANTİSİ: aynı yazarda aynı ana başlık (normalize) tek satır olur.
     // (AI aynı eseri farklı parantez varyantlarıyla ayrı gruplara koyabiliyor.)
-    $nk = cl_norm($main);
-    if ($nk !== '' && isset($guard_seen[$nk])) {
-        $j = $guard_seen[$nk];   // ilk görüleni zenginleştir
+    // KURAL 2 (kod): "The sleep walkers" = "Sleepwalkers a History of…" gibi
+    // boşluk/tanımlık/alt başlık farkları aynı eserdir.
+    $j = null;
+    foreach ($guarded as $gi => $gv) {
+        if (wr_same_work(preg_replace('/\s*[\(\（].*$/u', '', $gv['title']), $main)) { $j = $gi; break; }
+    }
+    if ($j !== null) {   // ilk görüleni zenginleştir
         if ($guarded[$j]['year']  === '' && $it['year']  !== '') $guarded[$j]['year']  = $it['year'];
         if ($guarded[$j]['cover'] === '' && $it['cover'] !== '') $guarded[$j]['cover'] = $it['cover'];
         // Parantezli (orijinalli) başlık, parantezsize tercih edilir
-        if (!preg_match('/\(/', $guarded[$j]['title']) && preg_match('/\(/', $it['title'])) $guarded[$j]['title'] = $it['title'];
+        // Parantezli (orijinalli) başlık tercih edilir; yoksa daha kısa ana ad.
+        $gp = (bool) preg_match('/\(/', $guarded[$j]['title']); $ip = (bool) preg_match('/\(/', $it['title']);
+        if ((!$gp && $ip) || ($gp === $ip && mb_strlen($it['title']) < mb_strlen($guarded[$j]['title']))) $guarded[$j]['title'] = $it['title'];
         $guarded[$j]['merged'] += $it['merged'];
         continue;
     }
-    if ($nk !== '') $guard_seen[$nk] = count($guarded);
     $guarded[] = $it;
 }
 $items_final = $guarded;
