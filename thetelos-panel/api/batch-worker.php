@@ -1506,7 +1506,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     $clx_why = '';
                     $GLOBALS['tls_no_claude'] = false;   // yalnız bu devir için Claude açık
                     $clx = tls_anthropic_ready()
-                        ? bw_claude_last_resort($book, $author, $batch_file, $idx, $clx_why, $cl_target_words, $use_batch, true)
+                        ? bw_claude_last_resort($book, $author, $batch_file, $idx, $clx_why, $cl_target_words, true, true)   // Batch API: yavaş ama %50 ucuz
                         : '';
                     $GLOBALS['tls_no_claude'] = true;
                     if ($clx !== '') {
