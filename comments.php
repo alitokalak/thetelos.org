@@ -74,17 +74,11 @@ comment_form(array(
             <input type="email" name="email" required>
         </p>',
 
-        'url' =>
-        '<p class="comment-form-url">
-            <label>Website</label>
-            <input type="url" name="url">
-        </p>',
-
         'cookies' =>
         '<p class="comment-form-cookies-consent">
             <input id="wp-comment-cookies-consent" name="wp-comment-cookies-consent" type="checkbox" value="yes">
             <label for="wp-comment-cookies-consent">
-                Save my name, email, and website in this browser for the next time I comment.
+                Save my name and email in this browser for the next time I comment.
             </label>
         </p>',
     ),

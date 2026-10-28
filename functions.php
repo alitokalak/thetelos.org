@@ -381,6 +381,7 @@ require_once get_template_directory() . '/inc/php-guard.php';
 require_once get_template_directory() . '/inc/placeholder-noindex.php';
 require_once get_template_directory() . '/inc/bot-load.php';
 require_once get_template_directory() . '/inc/other-works.php';
+require_once get_template_directory() . '/inc/comment-guard.php';
 
 /* Reading List CPT — fallback (dosya yüklenemezse) */
 add_action('init', function() {
@@ -1302,12 +1303,7 @@ function my_update_comment_fields(  $fields  ) {
         esc_attr( $commenter['comment_author_email'] ),
         $aria_req
     );
-    // URL
-    $fields['url'] = sprintf( '<p class="comment-form-url col-md-4">
-            <input id="url" name="url" type="url"
-                   placeholder="%s"
-                   value="%s" size="30" />
-        </p></div>', esc_attr__( 'Website Link', 'mediumish' ), esc_attr( $commenter['comment_author_url'] ) );
+    $fields['email'] .= '</div>';   // satırı kapat (Website alanı kaldırıldı)
     return $fields;
 }
 
