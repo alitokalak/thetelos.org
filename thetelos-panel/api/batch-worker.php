@@ -518,7 +518,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
        accuracy denetiminden (web-grounded → trust_source=true) geçirip döndür.
        Bulamazsa (UNKNOWN) ve accuracy-first açıksa hafızadan ungrounded YAZMA →
        doğrudan yer tutucuya düş. */
-    if (!empty(tv_settings()['claude_websearch'])) {
+    if (!$lean && !empty(tv_settings()['claude_websearch'])) {   // lean: web araması YOK (maliyet)
         $rw = tls_claude_web_overview($book, $author, ['target_words' => $ideal, 'timeout' => 300, 'on_beat' => $hb]);
         $hb();
         if (!empty($rw['ok']) && trim((string) ($rw['md'] ?? '')) !== '') {
@@ -1498,9 +1498,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 }
                 // 2c) DEVİR: DeepSeek ne kaynaktan ne hafızadan yazabildi, kaynaklı Claude
                 //     Bilgi Metni de olmadı → Claude son çare (yalnız toplu üretimde).
-                // KAPALI (kullanıcı kararı): web aramalı Claude özeti kitap başına ~20-25 sent
-                // tutuyordu. DeepSeek yazamazsa kitap yazarın Other Works listesine gider.
-                if (false && (!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '')
+                // Claude devri ARAMASIZ (lean): yalnız kendi bilgisinden, bilmiyorsa UNKNOWN.
+                // Web aramalı hali kitap başına ~20-25 sent tutuyordu (kullanıcı kararı).
+                if ((!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '')
                     && $api_provider !== 'anthropic' && !$is_single) {
                     $clx_why = '';
                     $GLOBALS['tls_no_claude'] = false;   // yalnız bu devir için Claude açık
