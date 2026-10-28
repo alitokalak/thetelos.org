@@ -545,6 +545,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     // (Opus'un bildiği bazı nadir eserleri Sonnet bilmezse UNKNOWN → bilgi/yer
     // tutucuya düşer; istenirse ANTHROPIC_BEST_MODEL ile Opus geri açılabilir.)
     $model = defined('ANTHROPIC_LASTRESORT_MODEL') ? ANTHROPIC_LASTRESORT_MODEL : tls_claude_quality_model();
+    if ($lean) $model = tls_claude_fast_model();   // DeepSeek modundaki devir: Haiku (~3 kat ucuz)
     $r = tls_claude_overview($book, $author, [
         'model'        => $model,
         'target_words' => $ideal,
