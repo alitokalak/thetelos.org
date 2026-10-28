@@ -3,7 +3,7 @@
 # CF 522 iken origin de cevap vermiyorsa sunucu/ağ sorunu; origin cevap veriyorsa
 # sunucunun güvenlik duvarı Cloudflare IP'lerini engelliyor demektir.
 ORIGIN=95.173.165.196
-ROUNDS=${ROUNDS:-50}
+ROUNDS=${ROUNDS:-45}   # gri bulut sonrası doğrulama
 for i in $(seq 1 "$ROUNDS"); do
   t=$(date -u +%H:%M:%S)
   for d in thetelos.org koytarla.com; do
