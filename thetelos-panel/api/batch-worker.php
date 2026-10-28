@@ -1498,7 +1498,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 }
                 // 2c) DEVİR: DeepSeek ne kaynaktan ne hafızadan yazabildi, kaynaklı Claude
                 //     Bilgi Metni de olmadı → Claude son çare (yalnız toplu üretimde).
-                if ((!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '')
+                // KAPALI (kullanıcı kararı): web aramalı Claude özeti kitap başına ~20-25 sent
+                // tutuyordu. DeepSeek yazamazsa kitap yazarın Other Works listesine gider.
+                if (false && (!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '')
                     && $api_provider !== 'anthropic' && !$is_single) {
                     $clx_why = '';
                     $GLOBALS['tls_no_claude'] = false;   // yalnız bu devir için Claude açık
