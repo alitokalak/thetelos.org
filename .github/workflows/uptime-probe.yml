@@ -1,0 +1,14 @@
+name: Uptime probe
+# 522 teşhisi: ~25 dk boyunca Cloudflare ve doğrudan sunucu bağlantısını ölçer. Yayın yapmaz.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: [tools/uptime-probe.sh]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tools/uptime-probe.sh
