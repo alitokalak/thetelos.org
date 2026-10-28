@@ -1501,7 +1501,7 @@ function renderBatchStatus(b) {
 
   // YÖNTEM KIRILIMI: "taze içerik"in kaç kaynak-temelli / bilgi / Claude olduğunu
   // say → "ne yaptı belli değil" bitsin. Kitap listesindeki method alanından.
-  let mSrc = 0, mInfo = 0, mClaude = 0, mClaudeInfo = 0, mOther = 0;
+  let mSrc = 0, mInfo = 0, mClaude = 0, mClaudeInfo = 0, mModel = 0, mOther = 0;
   (b.books || []).forEach(bk => {
     if (bk.status !== 'done' || bk.placeholder || bk.kept) return;
     const m = bk.method || '';
@@ -1509,10 +1509,12 @@ function renderBatchStatus(b) {
     else if (m === 'bilgi-metni') mInfo++;
     else if (m === 'claude') mClaude++;           // Claude uzun özet (kendi bilgisi)
     else if (m === 'claude-bilgi') mClaudeInfo++; // Claude bilgi metni (kaynaklardan)
+    else if (m.indexOf('model') === 0) mModel++;   // DeepSeek/Qwen kendi bilgisinden
     else mOther++;
   });
   const brk = [];
   if (mSrc)        brk.push(`📖 ${mSrc} kaynak`);
+  if (mModel)      brk.push(`🧠 ${mModel} DeepSeek bilgisi`);
   if (mInfo)       brk.push(`📚 ${mInfo} bilgi`);
   if (mClaude)     brk.push(`🤖 ${mClaude} Claude`);
   if (mClaudeInfo) brk.push(`🤖 ${mClaudeInfo} Claude bilgi`);
@@ -1563,7 +1565,7 @@ function renderBatchStatus(b) {
       ? `⚠ ${idHtml} eski içerik korundu — yenilenmedi`
       : st==='done'
       ? `✓ ${idHtml}${bk.cover_set?' 🖼':''}`
-        + (bk.method ? ` <span style="font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:6px;padding:0 4px">${bk.method==='kaynak-temelli'?'📖 kaynak':bk.method==='bilgi-metni'?'📚 bilgi':bk.method==='claude'?'🤖 Claude':bk.method==='claude-bilgi'?'🤖 Claude bilgi':bk.method}</span>` : '')
+        + (bk.method ? ` <span style="font-size:10px;opacity:.75;border:1px solid currentColor;border-radius:6px;padding:0 4px">${bk.method==='kaynak-temelli'?'📖 kaynak':bk.method==='bilgi-metni'?'📚 bilgi':bk.method==='claude'?'🤖 Claude':bk.method==='claude-bilgi'?'🤖 Claude bilgi':bk.method==='model-deepseek'?'🧠 DeepSeek bilgisi':bk.method==='model-qwen'?'🧠 Qwen bilgisi':bk.method==='model'?'🧠 model bilgisi':bk.method}</span>` : '')
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'

@@ -472,6 +472,7 @@ function bw_translate_to_english($md, $hb = null) {
 }
 
 function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false) {
+    $GLOBALS['bw_model_engine'] = 'claude';   // sonuç ekranında 'kim yazdı' için
     require_once __DIR__ . '/_anthropic.php';
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
     $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
@@ -624,6 +625,7 @@ function bw_catalog_facts($book, $author) {
 
 function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why = '') {
     require_once dirname(__DIR__) . '/or-config.php';
+    $GLOBALS['bw_model_engine'] = tls_or_active() ? 'qwen' : 'deepseek';   // sonuç ekranında 'kim yazdı' için
     require_once __DIR__ . '/_proto.php';   // proto_openrouter() / proto_ds() burada
     // MOTOR SEÇİMİ: OpenRouter (Qwen) aktifse onu; değilse DOĞRUDAN DeepSeek kullan.
     // Böylece "model KENDİ bilgisinden yazar; bilmiyorsa UNKNOWN" adımı DeepSeek ile
@@ -810,6 +812,12 @@ function bw_author_note_any($book, $author, $beat = null, $api_provider = 'deeps
     }
     if ($is_single && $api_provider !== 'anthropic') return '';
     return bw_claude_author_note($book, $author, $beat);
+}
+
+/* Hafızadan yazılan özetin yöntem etiketi: kim yazdı? (claude / model-deepseek / model-qwen) */
+function bw_model_method() {
+    $e = (string) ($GLOBALS['bw_model_engine'] ?? '');
+    return $e === 'claude' ? 'claude' : ('model-' . ($e !== '' ? $e : 'deepseek'));
 }
 
 /* Aktif ucuz motorun adı (kullanıcıya doğru mesaj için: "Qwen" / "Claude"). */
@@ -1318,7 +1326,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why0, $cl_target_words, $use_batch, $api_provider, $is_single);
                 if ($cl !== '') {
                     $content = $cl;
-                    $gen_method = 'model';   // modelin kendi bilgisinden UZUN özet
+                    $gen_method = bw_model_method();   // modelin kendi bilgisinden UZUN özet
                     $skip_generation = true;   // içerik hazır → normal üretimi atla, yayına geç
                     bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'probe bilmiyor → ' . bw_engine_name($api_provider) . ' kendi bilgisinden özet', $update_pid, $rewrite ? 'rewrite' : 'create');
                 }
@@ -1456,7 +1464,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             }
             if ($cl !== '') {
                 $content = $cl;
-                $gen_method = 'model';   // modelin KENDİ bilgisinden UZUN özet
+                $gen_method = bw_model_method();   // modelin KENDİ bilgisinden UZUN özet
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'tam metin yok → ' . bw_engine_name($api_provider) . ' kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
             } else {
                 // 2) Hafızadan yazım kapalı/boş → DOĞRULANMIŞ kaynaktan Bilgi Metni.
@@ -1490,7 +1498,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     $clx = bw_claude_last_resort($book, $author, $batch_file, $idx, $clx_why, $cl_target_words, $use_batch);
                     if ($clx !== '') {
                         $ir = ['ok' => true, 'insufficient' => false, 'md' => $clx];
-                        $gen_method = 'model';
+                        $gen_method = 'claude';
                         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'DeepSeek yazamadı → Claude son çare', $update_pid, $rewrite ? 'rewrite' : 'create');
                     } elseif ($clx_why !== '') {
                         $cl_why = $cl_why ? ($cl_why . ' · ' . $clx_why) : $clx_why;
@@ -1561,7 +1569,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             }
             if ($cl !== '') {
                 $content = $cl;
-                $gen_method = 'model';   // modelin KENDİ bilgisinden UZUN özet
+                $gen_method = bw_model_method();   // modelin KENDİ bilgisinden UZUN özet
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'kaynak yok → ' . bw_engine_name($api_provider) . ' kendi bilgisinden uzun özet', $update_pid, $rewrite ? 'rewrite' : 'create');
             } elseif (trim((string) ($content ?? '')) !== '') {
                 // bilgi-notu yazıldı → aşağıda normal yayınlanır (hata yok).
