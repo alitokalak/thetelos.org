@@ -39,8 +39,8 @@ if (!file_exists($batch_file)) { echo json_encode(['status'=>'no_more']); exit; 
 // DeepSeek seçili batch → bu istekte Claude HİÇ çağrılamaz (temizleme, üretim,
 // denetim, meta dahil). İstek başında tanımlanır ki hiçbir yol önce davranmasın.
 $_bw_head = json_decode((string) @file_get_contents($batch_file), true);
-if (is_array($_bw_head) && !in_array(($_bw_head['api_provider'] ?? 'deepseek'), ['anthropic', 'anthropic_batch'], true) && !defined('TLS_NO_CLAUDE')) {
-    define('TLS_NO_CLAUDE', true);
+if (is_array($_bw_head) && !in_array(($_bw_head['api_provider'] ?? 'deepseek'), ['anthropic', 'anthropic_batch'], true)) {
+    $GLOBALS['tls_no_claude'] = true;
 }
 unset($_bw_head);
 
@@ -478,7 +478,7 @@ function bw_translate_to_english($md, $hb = null) {
     return !empty($r['ok']) ? trim((string) $r['text']) : '';
 }
 
-function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false) {
+function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $target_words = 0, $use_batch = false, $lean = false) {
     $GLOBALS['bw_model_engine'] = 'claude';   // sonuç ekranında 'kim yazdı' için
     require_once __DIR__ . '/_anthropic.php';
     if (!tls_anthropic_ready()) { $why = 'Claude anahtarı config.php\'de yok'; return ''; }
@@ -488,10 +488,10 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
        Claude eseri güvenle doğrulayamaz/yanlış bulursa content'i BLOK'lar ('' döner →
        çağıran yer tutucuya düşer). Düzeltirse düzeltilmiş hali döner. Denetim kapalıysa
        ya da API yoksa içerik olduğu gibi geçer (daha kötü yapma). */
-    $acc_fix = function ($md) use ($book, $author, $hb, &$why) {
+    $acc_fix = function ($md) use ($book, $author, $hb, &$why, $lean) {
         $md = (string) $md;
         if (trim($md) === '') return $md;
-        if (empty(tv_settings()['claude_accuracy'])) return $md;
+        if ($lean || empty(tv_settings()['claude_accuracy'])) return $md;   // lean: Claude kendi metnini tekrar denetlemez
         $acc = tls_claude_accuracy($book, $author, $md, ['trust_source' => false, 'on_beat' => $hb]);
         $hb();
         if (empty($acc['ok'])) return $md;                       // denetim yapılamadı → koru
@@ -524,7 +524,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         if (!empty($rw['ok']) && trim((string) ($rw['md'] ?? '')) !== '') {
             $why = '';
             $c = bw_clean_content($rw['md']);
-            if (!empty(tv_settings()['claude_accuracy'])) {
+            if (!$lean && !empty(tv_settings()['claude_accuracy'])) {
                 $acc = tls_claude_accuracy($book, $author, $c, ['trust_source' => true, 'on_beat' => $hb]);
                 if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'block') { $why = 'web içeriği farklı kişi/eser (yanlış) → yer tutucu'; return ''; }
                 if (!empty($acc['ok']) && ($acc['action'] ?? '') === 'fixed' && trim((string) $acc['text']) !== '') $c = $acc['text'];
@@ -1030,10 +1030,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // Claude çağrılarına geçer → tls_claude batch (submit+bekle) yoluna girer.
     $use_batch    = ($api_provider === 'anthropic_batch');
     if ($use_batch) $api_provider = 'anthropic';
-    // DEEPSEEK MODU = SIFIR CLAUDE: kaynak/hafıza/bilgi metni yollarının hepsi
-    // DeepSeek; yazılamayan kitap yazarın "Other Works" listesine gider. Claude'a
-    // ne denetim ne devir — tek kapıdan (tls_anthropic_ready) kapatılır.
-    if ($api_provider !== 'anthropic' && !defined('TLS_NO_CLAUDE')) define('TLS_NO_CLAUDE', true);
+    // DEEPSEEK MODU: kaynak → DeepSeek bilgisi → DeepSeek bilgi metni; bu adımlarda
+    // Claude ne yazar ne denetler. Yalnız hepsi başarısız olursa (2c) Claude devralır.
+    if ($api_provider !== 'anthropic') $GLOBALS['tls_no_claude'] = true;
     // Claude seçiliyse ANA İÇERİK modeli: kalite için varsayılan Sonnet, ucuz
     // isteyene Haiku. (Yoklama + meta yine DeepSeek — maliyet bölünür.)
     $claude_model = (($batch['claude_model'] ?? 'sonnet') === 'haiku') ? 'haiku' : 'sonnet';
@@ -1500,9 +1499,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // 2c) DEVİR: DeepSeek ne kaynaktan ne hafızadan yazabildi, kaynaklı Claude
                 //     Bilgi Metni de olmadı → Claude son çare (yalnız toplu üretimde).
                 if ((!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '')
-                    && $api_provider !== 'anthropic' && !$is_single && tls_anthropic_ready()) {
+                    && $api_provider !== 'anthropic' && !$is_single) {
                     $clx_why = '';
-                    $clx = bw_claude_last_resort($book, $author, $batch_file, $idx, $clx_why, $cl_target_words, $use_batch);
+                    $GLOBALS['tls_no_claude'] = false;   // yalnız bu devir için Claude açık
+                    $clx = tls_anthropic_ready()
+                        ? bw_claude_last_resort($book, $author, $batch_file, $idx, $clx_why, $cl_target_words, $use_batch, true)
+                        : '';
+                    $GLOBALS['tls_no_claude'] = true;
                     if ($clx !== '') {
                         $ir = ['ok' => true, 'insufficient' => false, 'md' => $clx];
                         $gen_method = 'claude';

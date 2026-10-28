@@ -901,7 +901,7 @@ function proto_sbs_prompt($book, $author, $notes, $g, $G, $seg_words = 0) {
 }
 
 /* ── ÇERÇEVE istemi: section-by-section HARİÇ tüm bölümler (tüm nottan) ─────── */
-function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summary', $chapters = []) {
+function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summary', $chapters = [], $frame_words = 0) {
     $chap_block = '';
     if (!empty($chapters)) {
         $chap_block = "\n=== REAL CHAPTER/SECTION STRUCTURE (detected from the actual text) ===\n"
@@ -922,8 +922,9 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
         . "3. The notes are labelled [Part N] — those are OUR internal processing segments, NOT the book's divisions; NEVER say the book 'is divided into N parts' based on them. Describe the book's REAL arrangement in the opening or the relevant section, in prose.\n"
         . "4. ENDING: read the LAST notes carefully; any section that describes how the book closes MUST match the book's TRUE final events in the last notes. Do NOT mistake a mid-book episode for the ending.\n"
         . "5. DISTINCT SECTIONS: each section must say something the others do not (claim vs. specific concepts vs. deeper meaning vs. legacy). If a section would just repeat another, OMIT it.\n"
-        . "6. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Third person, English. Start with the opening paragraph. END on a complete sentence.\n\n"
-        . "=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
+        . "6. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Third person, English. Start with the opening paragraph. END on a complete sentence.\n"
+        . ($frame_words > 0 ? "7. LENGTH — HARD LIMIT: all framing sections TOGETHER (everything except the walk-through) must total about {$frame_words} words, never more than " . (int) round($frame_words * 1.15) . ". Be selective; the walk-through carries most of the article.\n" : '')
+        . "\n=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
 
 /* ── Section-by-section'ı parça-gruplarında üret (tüm kitap garanti kapsanır) ─
@@ -961,7 +962,7 @@ function proto_build_sbs($notes, $book, $author, $prov, $beat, $stage, $sbs_word
     // (eskiden her segment 6000 token yazıp 60 dk'lık özet çıkıyordu). max_tokens'ı
     // da bütçeye göre kıs → hem uzunluk kontrolü hem TOKEN MALİYETİ düşer.
     $seg_words = $sbs_words > 0 ? max(180, (int) round($sbs_words / $G)) : 0;
-    $seg_max   = $seg_words > 0 ? max(900, min(6000, (int) round($seg_words * 2.2))) : 6000;
+    $seg_max   = $seg_words > 0 ? max(700, min(6000, (int) round($seg_words * 1.8))) : 6000;   // ~1.35 token/kelime + pay; fazlası hedefi aşıyordu
     $stage("bölüm-bölüm özet {$G} segmentte üretiliyor" . ($seg_words ? " (~{$seg_words} kelime/segment)" : '') . "…");
     $prompts = [];
     foreach ($groups as $i => $gn) $prompts[$i] = proto_sbs_prompt($book, $author, implode("\n\n", $gn), $i + 1, $G, $seg_words);
@@ -1251,8 +1252,11 @@ function proto_generate($book, $author, $opts = []) {
     } else {
         $stage("çerçeve bölümleri (About/Context/Themes…) yazılıyor…");
         // Çerçeve yalnız About/Themes… yazar (anlatı ayrı) → bütçenin kalanı kadar token.
-        $frame_max = max(1500, min(8000, (int) round(($W - $sbs_words) * 2.6) + 1200));
-        $frame = proto_synth(proto_frame_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters), $frame_max, $beat, $anthropic, $use_batch, $synth_model, $prov, $dg2);
+        // Çerçeve = bütçenin KALANI (~%28). Eskiden prompt'ta sınır yoktu, token tavanı
+        // da gevşekti → çerçeve tek başına hedef kadar yazıyor, toplam ~1.7× çıkıyordu.
+        $frame_words = max(350, $W - $sbs_words);
+        $frame_max = max(900, min(8000, (int) round($frame_words * 1.9) + 300));
+        $frame = proto_synth(proto_frame_prompt($book, $author, implode("\n\n", $notes), $cfg['rtar'], $chapters, $frame_words), $frame_max, $beat, $anthropic, $use_batch, $synth_model, $prov, $dg2);
         $md = proto_assemble($frame, $sbs);
     }
     if (trim($md) === '') return ['found' => true, 'insufficient' => true, 'source' => $src['source'], 'model' => $model_label, 'error' => $dg2,

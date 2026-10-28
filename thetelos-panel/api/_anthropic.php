@@ -32,8 +32,9 @@ function tls_anthropic_key() {
 
 /** Claude kullanılabilir mi? (anahtar tanımlı mı) */
 function tls_anthropic_ready() {
-    // DeepSeek seçili toplu üretimde Claude TAMAMEN kapalı (sıfır Claude harcaması).
-    if (defined('TLS_NO_CLAUDE') && TLS_NO_CLAUDE) return false;
+    // DeepSeek seçili toplu üretimde Claude kapalı; yalnız son çare devrinde
+    // batch-worker bayrağı kısa süreliğine kaldırır.
+    if (!empty($GLOBALS['tls_no_claude'])) return false;
     return tls_anthropic_key() !== '';
 }
 
@@ -102,7 +103,7 @@ function tls_claude_thinking_default($model, $explicit = null) {
  *                'usage'=>array, 'error'=>string, 'http'=>int]
  */
 function tls_claude($system, $user, $opts = []) {
-    if (defined('TLS_NO_CLAUDE') && TLS_NO_CLAUDE) return ['ok' => false, 'text' => '', 'error' => 'Claude kapalı (DeepSeek modu)'];
+    if (!empty($GLOBALS['tls_no_claude'])) return ['ok' => false, 'text' => '', 'error' => 'Claude kapalı (DeepSeek modu)'];
     $key = tls_anthropic_key();
     if ($key === '') {
         return ['ok' => false, 'http' => 0,
