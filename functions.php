@@ -1,9 +1,7 @@
 <?php
 
 // PHP uyarıları ziyaretçiye/panele basılmasın (kayıt dosyasına yine yazılır).
-if ( ! ( defined( 'WP_DEBUG_DISPLAY' ) && WP_DEBUG_DISPLAY && defined( 'WP_DEBUG' ) && WP_DEBUG ) ) {
-    @ini_set( 'display_errors', '0' );
-}
+@ini_set( 'display_errors', '0' );
 
 // Silinen eklentilerin (Wordfence) eski çeviri dosyası listesi önbellekte kaldıysa
 // bir kez temizle — "Failed to open stream ... wordfence-*.l10n.php" uyarılarının sebebi.
@@ -16,6 +14,14 @@ add_action( 'init', function () {
     }
     update_option( 'tls_l10n_cache_flushed', '1', false );
 }, 1 );
+// Eklenti/tema silinince de çeviri listesini tazele (aynı uyarılar tekrar çıkmasın).
+$tls_l10n_flush = function () {
+    if ( function_exists( 'wp_cache_flush_group' ) && wp_cache_supports( 'flush_group' ) ) wp_cache_flush_group( 'translations' );
+    else wp_cache_flush();
+};
+add_action( 'deleted_plugin', $tls_l10n_flush );
+add_action( 'deleted_theme', $tls_l10n_flush );
+add_action( 'deactivated_plugin', $tls_l10n_flush );
 
 // -----------------------------------------------------
 // Theme Version
