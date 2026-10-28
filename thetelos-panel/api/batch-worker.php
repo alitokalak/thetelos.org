@@ -1402,7 +1402,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             // 1) Model KENDİ bilgisinden uzun özet (arama/okuma YOK, yalnız hafıza).
             //    OpenRouter aktifse Qwen; Claude yalnız kullanıcı Anthropic seçtiyse.
             $cl_why = '';
-            $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch, $api_provider, $is_single);
+            if ($api_provider !== 'anthropic') {
+                // DEEPSEEK MODU (Claude yalnız kritik noktada): DeepSeek kitabı KESİN
+                // biliyorsa kendi bilgisinden yazar; bilmiyorsa UNKNOWN → Bilgi Metni.
+                // Burada Claude'a (web aramalı pahalı uzun özet) DÜŞÜLMEZ.
+                $cl = bw_or_overview($book, $author, $cl_target_words, $info_hb, $cl_why);
+                // KRİTİK NOKTA: kaynaksız (hafızadan) yazıldı → ucuz Claude (Haiku) denetler;
+                // doğrulayamazsa yayınlanmaz, kaynaklı Bilgi Metni'ne geçilir.
+                if ($cl !== '' && tls_anthropic_ready()) {
+                    $acc0 = tls_claude_accuracy($book, $author, $cl, [
+                        'trust_source' => false, 'model' => tls_claude_fast_model(), 'on_beat' => $info_hb,
+                    ]);
+                    if (!empty($acc0['ok']) && ($acc0['action'] ?? '') === 'block') {
+                        $cl = ''; $cl_why = 'Claude denetimi: DeepSeek hafıza özeti doğrulanamadı';
+                    } elseif (!empty($acc0['ok']) && ($acc0['action'] ?? '') === 'fixed' && trim((string) $acc0['text']) !== '') {
+                        $cl = $acc0['text'];
+                    }
+                }
+            } else {
+                $cl = bw_overview_lastresort($book, $author, $batch_file, $idx, $cl_why, $cl_target_words, $use_batch, $api_provider, $is_single);
+            }
             if ($cl === '') {
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'source_fallback', ($sr_trace ?: 'tam metin yok') . ' → doğrulanmış kaynaktan Bilgi Metni', $update_pid, $rewrite ? 'rewrite' : 'create');
             }
@@ -1414,8 +1433,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // 2) Hafızadan yazım kapalı/boş → DOĞRULANMIŞ kaynaktan Bilgi Metni.
                 $info_prov = proto_deepseek_reachable() ? 'deepseek' : 'gemini';
                 // 2a) DeepSeek YALNIZ çekilen kaynaktan + CLAUDE denetler (hakem).
+                // Denetim: hakem (kısa karar) yeter; ayrıca Claude'a tüm metni yeniden
+                // yazdırma (claude_accuracy) DeepSeek modunda kapalı — maliyet.
                 $ir = tls_info_generate($search_book, $author, [
                     'provider' => $info_prov, 'referee' => $ref_on, 'on_beat' => $info_hb,
+                    'claude_accuracy' => ($api_provider === 'anthropic'),
                 ]);
                 // 2b) DeepSeek yetersiz/uydurma bulundu → Claude aynı kaynaklardan yazsın.
                 //     OpenRouter aktifken (kullanıcı Claude seçmediyse) Claude'a düşme (maliyet).
@@ -1423,11 +1445,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     bw_touch_hb($batch_file, $idx);
                     $ir2 = tls_info_generate($search_book, $author, [
                         'provider' => 'anthropic', 'model' => tls_claude_quality_model(), 'referee' => $ref_on, 'on_beat' => $info_hb,
+                        'claude_accuracy' => false,   // Claude'un kendi metnini Claude'a tekrar denetletme
                     ]);
                     if (empty($ir2['insufficient']) && !empty($ir2['ok']) && trim((string) $ir2['md']) !== '') {
                         $ir = $ir2;
                         $gen_method = 'claude-bilgi';   // Claude, KAYNAKLARDAN bilgi metni yazdı
                         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude-bilgi', 'DeepSeek yetersiz → bilgi metni Claude ile (kaynak-temelli)', $update_pid, $rewrite ? 'rewrite' : 'create');
+                    }
+                }
+                // 2c) DEVİR: DeepSeek ne kaynaktan ne hafızadan yazabildi, kaynaklı Claude
+                //     Bilgi Metni de olmadı → Claude son çare (yalnız toplu üretimde).
+                if ((!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '')
+                    && $api_provider !== 'anthropic' && !$is_single && tls_anthropic_ready()) {
+                    $clx_why = '';
+                    $clx = bw_claude_last_resort($book, $author, $batch_file, $idx, $clx_why, $cl_target_words, $use_batch);
+                    if ($clx !== '') {
+                        $ir = ['ok' => true, 'insufficient' => false, 'md' => $clx];
+                        $gen_method = 'model';
+                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'DeepSeek yazamadı → Claude son çare', $update_pid, $rewrite ? 'rewrite' : 'create');
+                    } elseif ($clx_why !== '') {
+                        $cl_why = $cl_why ? ($cl_why . ' · ' . $clx_why) : $clx_why;
                     }
                 }
                 if (!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '') {
@@ -1471,6 +1508,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'provider' => in_array($api_provider, ['anthropic', 'gemini'], true) ? $api_provider : 'deepseek',
             'model'    => $info_cmodel,
             'referee'  => (($batch['referee'] ?? '1') !== '0'),   // kademeli hakem (Gemini→Claude)
+            'claude_accuracy' => false,   // hakem yeter; tüm metni Claude'a yeniden yazdırma (maliyet)
             'on_beat'  => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
         ]);
         if (!empty($ir['insufficient'])) {
