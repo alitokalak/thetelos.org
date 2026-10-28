@@ -2896,7 +2896,7 @@ function thetelos_seo_redirects() {
     ];
 
     $request = isset( $_SERVER['REQUEST_URI'] )
-        ? rtrim( parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH ), '/' ) . '/'
+        ? rtrim( (string) parse_url( wp_unslash( $_SERVER['REQUEST_URI'] ), PHP_URL_PATH ), '/' ) . '/'
         : '';
 
     foreach ( $redirects as $old => $new ) {

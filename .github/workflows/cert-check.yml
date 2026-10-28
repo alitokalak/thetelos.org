@@ -1,0 +1,14 @@
+name: Cert check
+# Sunucunun kendi SSL sertifikasını doğrular. Yayın yapmaz.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/**']
+    paths: [tools/cert-check.sh]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tools/cert-check.sh

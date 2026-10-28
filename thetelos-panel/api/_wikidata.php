@@ -247,7 +247,7 @@ function wd_clean_author($author, $items) {
                 // (b) normalize tam-metin: eşit ya da (>=6) biri diğerini içeriyor
                 if ($vn !== '') foreach ($w['norms'] as $wn) {
                     if ($wn === $vn) { $best = $wi; break 3; }
-                    if (strlen($vn) >= 6 && (str_contains($wn, $vn) || str_contains($vn, $wn))) { $best = $wi; break 3; }
+                    if (strlen($vn) >= 6 && ((strpos($wn, $vn) !== false) || (strpos($vn, $wn) !== false))) { $best = $wi; break 3; }
                 }
             }
         }

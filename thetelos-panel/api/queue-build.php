@@ -214,7 +214,7 @@ function qb_meta_from_map($title, $map) {
     if (strlen($q) >= 5) {                          // normalize içerme
         foreach ($map as $gt => $meta) {
             $ng = qb_norm_t($gt);
-            if ($ng !== '' && (str_contains($ng, $q) || str_contains($q, $ng))) return $meta;
+            if ($ng !== '' && ((strpos($ng, $q) !== false) || (strpos($q, $ng) !== false))) return $meta;
         }
     }
     return $empty;
@@ -227,7 +227,7 @@ function qb_openlibrary($author){
     $q = mb_strtolower($author);
     foreach($ad['docs']??[] as $a){
         $name = mb_strtolower(trim($a['name']??''));
-        if($name===$q||str_contains($name,$q)||str_contains($q,$name)){$author_key=$a['key']??null;break;}
+        if($name===$q||(strpos($name, $q) !== false)||(strpos($q, $name) !== false)){$author_key=$a['key']??null;break;}
     }
     if(!$author_key&&!empty($ad['docs'][0]['key'])) $author_key=$ad['docs'][0]['key'];
     if(!$author_key) return [];

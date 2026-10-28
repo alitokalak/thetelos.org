@@ -191,7 +191,7 @@ function ws_cover_from_map($title, $orig, $map) {
     foreach ($try as $t) {
         if (strlen($t) < 5) continue;
         foreach ($map as $gt => $url) {
-            if (str_contains($gt, $t) || str_contains($t, $gt)) return $url;
+            if ((strpos($gt, $t) !== false) || (strpos($t, $gt) !== false)) return $url;
         }
     }
     return '';
@@ -207,7 +207,7 @@ function ws_openlibrary_fallback($author, $limit) {
     $q = mb_strtolower($author);
     foreach ($data['docs'] ?? [] as $a) {
         $name = mb_strtolower(trim($a['name'] ?? ''));
-        if ($name === $q || str_contains($name, $q) || str_contains($q, $name)) {
+        if ($name === $q || (strpos($name, $q) !== false) || (strpos($q, $name) !== false)) {
             $author_key = $a['key'] ?? null; break;
         }
     }

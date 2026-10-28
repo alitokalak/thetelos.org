@@ -536,7 +536,7 @@ function cl_meta_from_map($title, $map) {
     if (isset($map[$q])) return $map[$q];
     if (strlen($q) >= 5) {
         foreach ($map as $k => $m) {
-            if (str_contains($k, $q) || str_contains($q, $k)) return $m;
+            if ((strpos($k, $q) !== false) || (strpos($q, $k) !== false)) return $m;
         }
     }
     return $empty;
