@@ -179,6 +179,15 @@ function bw_claim_next($batch_file) {
  * Bu süreç ölmeden önce kendi yerine yeni bir worker başlatır; böylece
  * sunucu uzun süren süreçleri öldürse bile batch sunucu tarafında
  * kendiliğinden devam eder. Tarayıcı açık olmasa bile çalışır. */
+/* Kendi alan adını bu sunucunun IP'sine çöz (Cloudflare'siz yerel istek). */
+function bw_self_resolve($host) {
+    $ip = (string) ($_SERVER['SERVER_ADDR'] ?? '');
+    if ($ip === '' || $ip === '::1') $ip = '127.0.0.1';
+    if (strpos($ip, ':') !== false) $ip = '[' . $ip . ']';
+    $h = preg_replace('/:\d+$/', '', (string) $host);
+    return ["$h:443:$ip", "$h:80:$ip"];
+}
+
 function bw_spawn_successor($batch_id) {
     $token  = hash('sha256', WP_APP_PASS . '|tls-batch-worker');
     $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
@@ -195,9 +204,25 @@ function bw_spawn_successor($batch_id) {
         CURLOPT_NOSIGNAL        => 1,
         CURLOPT_SSL_VERIFYPEER  => false,
         CURLOPT_SSL_VERIFYHOST  => 0,
+        // Cloudflare'i ATLA: istek doğrudan bu sunucuya gider. Cloudflare 522 /
+        // Under Attack / bot koruması kendi kendine isteği kesince batch donuyordu.
+        CURLOPT_RESOLVE         => bw_self_resolve($host),
     ]);
     curl_exec($ch);
+    // Yerel bağlantı hiç kurulamadıysa eski yoldan (Cloudflare üzerinden) dene.
+    $no_conn = in_array(curl_errno($ch), [6, 7, 35], true)
+        || (curl_errno($ch) === 28 && (float) curl_getinfo($ch, CURLINFO_CONNECT_TIME) == 0.0);
     curl_close($ch);
+    if ($no_conn) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query(['batch_id' => $batch_id, '_itok' => $token]),
+            CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => 5,
+            CURLOPT_NOSIGNAL => 1, CURLOPT_SSL_VERIFYPEER => false, CURLOPT_SSL_VERIFYHOST => 0,
+        ]);
+        curl_exec($ch);
+        curl_close($ch);
+    }
 }
 
 // ── WP REST yardımcısı ────────────────────────────────────────────
