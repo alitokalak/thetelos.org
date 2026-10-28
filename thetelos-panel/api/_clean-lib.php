@@ -70,7 +70,6 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
         if (is_array($cll_hit) && !empty($cll_hit['ok'])) return $cll_hit;
     }
 
-    if (!tls_anthropic_ready()) return ['ok' => false, 'groups' => [], 'not_by_author' => [], 'wrote_in' => [], 'error' => 'anthropic hazır değil'];
 
     $cap   = 120;                          // token güvenliği
     $slice = array_slice($titles, 0, $cap);

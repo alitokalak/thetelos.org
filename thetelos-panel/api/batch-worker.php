@@ -36,6 +36,13 @@ if (!$batch_id) { echo json_encode(['status'=>'error','error'=>'batch_id gerekli
 $jobs_dir   = dirname(__DIR__) . '/jobs';
 $batch_file = "$jobs_dir/{$batch_id}.json";
 if (!file_exists($batch_file)) { echo json_encode(['status'=>'no_more']); exit; }
+// DeepSeek seçili batch → bu istekte Claude HİÇ çağrılamaz (temizleme, üretim,
+// denetim, meta dahil). İstek başında tanımlanır ki hiçbir yol önce davranmasın.
+$_bw_head = json_decode((string) @file_get_contents($batch_file), true);
+if (is_array($_bw_head) && !in_array(($_bw_head['api_provider'] ?? 'deepseek'), ['anthropic', 'anthropic_batch'], true) && !defined('TLS_NO_CLAUDE')) {
+    define('TLS_NO_CLAUDE', true);
+}
+unset($_bw_head);
 
 // Per-worker alive dosyası: batch JSON'un yanına .wk.{id} oluştur.
 // server-status.php bu dosyaları sayarak canlı worker sayısını öğrenir.
