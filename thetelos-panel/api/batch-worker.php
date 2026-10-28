@@ -1015,6 +1015,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // Claude çağrılarına geçer → tls_claude batch (submit+bekle) yoluna girer.
     $use_batch    = ($api_provider === 'anthropic_batch');
     if ($use_batch) $api_provider = 'anthropic';
+    // DEEPSEEK MODU = SIFIR CLAUDE: kaynak/hafıza/bilgi metni yollarının hepsi
+    // DeepSeek; yazılamayan kitap yazarın "Other Works" listesine gider. Claude'a
+    // ne denetim ne devir — tek kapıdan (tls_anthropic_ready) kapatılır.
+    if ($api_provider !== 'anthropic' && !defined('TLS_NO_CLAUDE')) define('TLS_NO_CLAUDE', true);
     // Claude seçiliyse ANA İÇERİK modeli: kalite için varsayılan Sonnet, ucuz
     // isteyene Haiku. (Yoklama + meta yine DeepSeek — maliyet bölünür.)
     $claude_model = (($batch['claude_model'] ?? 'sonnet') === 'haiku') ? 'haiku' : 'sonnet';
