@@ -1548,7 +1548,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // DEEPSEEK MODU (Claude yalnız kritik noktada): DeepSeek kitabı KESİN
                 // biliyorsa kendi bilgisinden yazar; bilmiyorsa UNKNOWN → Bilgi Metni.
                 // Burada Claude'a (web aramalı pahalı uzun özet) DÜŞÜLMEZ.
+                $GLOBALS['ds_think'] = true;    // düşünerek yaz: yavaş ama daha az uydurma
                 $cl = bw_or_overview($book, $author, $cl_target_words, $info_hb, $cl_why);
+                $GLOBALS['ds_think'] = false;
                 // KRİTİK NOKTA: kaynaksız (hafızadan) yazıldı → ucuz Claude (Haiku) denetler;
                 // doğrulayamazsa yayınlanmaz, kaynaklı Bilgi Metni'ne geçilir.
                 if ($cl !== '' && tls_anthropic_ready()) {
@@ -1577,10 +1579,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // 2a) DeepSeek YALNIZ çekilen kaynaktan + CLAUDE denetler (hakem).
                 // Denetim: hakem (kısa karar) yeter; ayrıca Claude'a tüm metni yeniden
                 // yazdırma (claude_accuracy) DeepSeek modunda kapalı — maliyet.
+                $GLOBALS['ds_think'] = ($info_prov === 'deepseek');   // bilgi metni de düşünerek
                 $ir = tls_info_generate($search_book, $author, [
                     'provider' => $info_prov, 'referee' => $ref_on, 'on_beat' => $info_hb,
                     'claude_accuracy' => ($api_provider === 'anthropic'),
                 ]);
+                $GLOBALS['ds_think'] = false;
                 // 2b) DeepSeek yetersiz/uydurma bulundu → Claude aynı kaynaklardan yazsın.
                 //     OpenRouter aktifken (kullanıcı Claude seçmediyse) Claude'a düşme (maliyet).
                 if (!empty($ir['insufficient']) && tls_anthropic_ready() && !($api_provider !== 'anthropic' && tls_or_active()) && !($is_single && $api_provider !== 'anthropic')) {
@@ -2922,7 +2926,7 @@ while (true) {
     // kitaplarda yetmiyor ve PHP süreci kitabı ortada öldürüyordu → kitap
     // "processing"de asılı kalıyordu. parts*300 + 240sn (meta/bio/kapak/WP payı).
     $bk_parts = bw_effective_parts($batch);
-    set_time_limit($bk_parts * 300 + 240);
+    set_time_limit($bk_parts * 300 + 240 + 1200);   // +20 dk: düşünerek yazan DeepSeek adımları yavaş
     bw_process_book($batch_file, $idx, $batch, $auth, $wp_api);
     $processed++;
     if ($processed >= 5000)            { $reason = 'limit';  break; }   // güvenlik üst sınırı

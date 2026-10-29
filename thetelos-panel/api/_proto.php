@@ -1346,16 +1346,17 @@ function proto_deepseek_direct($prompt, $max_tokens, &$diag = null, $ping = null
            ? DEEPSEEK_MODEL : 'deepseek-v4-flash';
     // thinking:disabled → yanıt doğrudan content'e (temiz); v4-flash aksi halde
     // reasoning_content'e koyuyor. Model reddederse (400) parametresiz tekrar.
+    $ds_think = !empty($GLOBALS['ds_think']);   // düşünerek yaz (yalnız hafıza/bilgi adımları)
     $mk = fn($think) => json_encode(array_filter([
-        'model' => $model, 'max_tokens' => max(300, min(8000, (int) $max_tokens)), 'temperature' => 0.3,
-        'thinking' => $think ? ['type' => 'disabled'] : null,
+        'model' => $model, 'max_tokens' => $ds_think ? min(32000, max(300, (int) $max_tokens) + 8000) : max(300, min(8000, (int) $max_tokens)), 'temperature' => 0.3,
+        'thinking' => $think ? ['type' => $ds_think ? 'enabled' : 'disabled'] : null,
         'messages' => [['role' => 'user', 'content' => $prompt]],
     ], fn($v) => $v !== null), JSON_UNESCAPED_UNICODE);
     $last = time();
     $do = function ($body) use (&$code, &$err, $ping, &$last) {
         $ch = curl_init(DEEPSEEK_API_URL);
         $o = [CURLOPT_POST => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT => 280, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
+            CURLOPT_TIMEOUT => !empty($GLOBALS['ds_think']) ? 480 : 280, CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Authorization: Bearer ' . DEEPSEEK_KEY],
             CURLOPT_POSTFIELDS => $body];
         // Bloklu çağrı boyunca heartbeat: yoksa uzun reduce'ta kitap "ölü" sanılıp
         // başka worker'a geçebiliyordu (180 sn eşik). XFERINFOFUNCTION düzenli çağrılır.
@@ -1372,7 +1373,7 @@ function proto_deepseek_direct($prompt, $max_tokens, &$diag = null, $ping = null
     if ((int) $code === 400) $r = $do($mk(false));   // thinking desteklenmiyorsa
     $j = json_decode((string) $r, true);
     $txt = trim((string) ($j['choices'][0]['message']['content'] ?? ''));
-    if ($txt === '') $txt = trim((string) ($j['choices'][0]['message']['reasoning_content'] ?? ''));
+    if ($txt === '' && !$ds_think) $txt = trim((string) ($j['choices'][0]['message']['reasoning_content'] ?? ''));   // düşünme notu içerik olmaz
     $diag = 'deepseek http=' . (int) $code . ($err ? ' err=' . $err : '') . ' chars=' . mb_strlen($txt);
     return $txt;
 }

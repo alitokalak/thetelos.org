@@ -164,11 +164,16 @@ function tv_ask($prompt, $max_tokens = 700, $timeout = 90, $provider = null, $mo
        başarısız oluyordu). thinking:disabled ile yanıt doğrudan content'e ve
        hızlı gelir. Sağlayıcı bu parametreyi reddederse (400) parametresiz
        tekrar denenir — böylece hiçbir koşulda gerileme olmaz. */
+    // DÜŞÜNEREK YAZ (ds_think): uzun içerik adımlarında (hafızadan özet, bilgi metni)
+    // model önce düşünür, sonra yazar — yavaş ama daha az uydurur. Düşünme token'ı
+    // da max_tokens'tan yer → bütçe büyütülür.
+    $think = !empty($GLOBALS['ds_think']);
+    if ($think) { $max_tokens = min(32000, (int) $max_tokens + 8000); $timeout = max((int) $timeout, 420); }
     $body = [
         'model'       => $model,
         'max_tokens'  => $max_tokens,
         'temperature' => 0,
-        'thinking'    => ['type' => 'disabled'],
+        'thinking'    => ['type' => $think ? 'enabled' : 'disabled'],
         'messages'    => [['role' => 'user', 'content' => $prompt]],
     ];
     $do = function ($payload) use ($timeout) {
@@ -198,7 +203,7 @@ function tv_ask($prompt, $max_tokens = 700, $timeout = 90, $provider = null, $mo
        düşüyor). Bu olmadan HER olgu denetimi ve HER üretim-öncesi yoklama
        "HTTP 200 ama içerik boş" diye başarısız oluyordu — yani doğrulama
        katmanı fiilen çalışmıyordu. */
-    if ($text === '') $text = trim((string) ($m['reasoning_content'] ?? ''));
+    if ($text === '' && !$think) $text = trim((string) ($m['reasoning_content'] ?? ''));   // düşünme notu asla içerik olmaz
     if ($text === '') {
         $msg = $j['error']['message'] ?? trim(preg_replace('/\s+/', ' ', strip_tags((string) $raw)));
         return ['ok' => false, 'error' => 'HTTP ' . $code . ($msg ? ' · ' . mb_substr($msg, 0, 180) : '')];
