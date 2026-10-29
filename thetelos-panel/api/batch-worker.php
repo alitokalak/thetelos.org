@@ -665,6 +665,17 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
             . "and do NOT fill gaps with guesses. If, even after searching, you cannot verify what THIS book contains, reply UNKNOWN.";
     }
 
+    // WEB KAYNAKLARI (DeepSeek Search): adı + yazarı birebir eşleşen sayfalar.
+    // Varsa model hafızasından değil ÖNCE bunlardan yazar.
+    require_once __DIR__ . '/_dsweb.php';
+    $wsrc = tls_ds_web_sources($book, $author);
+    if (!empty($wsrc['count'])) {
+        $web .= "\n\n=== WEB SOURCES (each verified to name this exact title and author) ===\n"
+            . "Base the overview on these sources first; add from your own knowledge only what you are certain of. "
+            . "If a source turns out to be about a different work, ignore it.\n\n" . $wsrc['text']
+            . "\n=== END WEB SOURCES ===";
+    }
+
     // GROUNDING: doğrulanmış katalog künyesini çek ve prompt'a DAYAT.
     $cf = bw_catalog_facts($book, $author);
     if (is_callable($beat)) $beat();

@@ -378,6 +378,14 @@ function tls_info_dossier($book, $author) {
         $parts[] = "[Wikidata — structured facts]\n" . $wd['facts'];
     }
 
+    // DeepSeek web araması: yalnız adı + yazarı BİREBİR eşleşen sayfalar (bkz. _dsweb.php).
+    require_once __DIR__ . '/_dsweb.php';
+    $web = tls_ds_web_sources($book, $author);
+    if (!empty($web['count'])) {
+        $sources[] = 'Web (' . implode(', ', array_slice($web['sources'], 0, 3)) . ')';
+        $parts[] = $web['text'];
+    }
+
     // Birden çok kaynak farklı yıl verebilir (Google Books çoğu zaman YENİ
     // baskının yılını verir → 2018 gibi). Orijinal yayın = EN ERKEN yıl.
     if ($years) $year = min($years);
@@ -395,11 +403,12 @@ function tls_info_dossier($book, $author) {
     // yazar teyidi yok, "başlığı benzeyen farklı kitap" olabilir. Doğrulama
     // yoksa çağıran taraf Claude'un kesin bilgisine / yer tutucuya düşer —
     // uydurma grounding'den özet çıkmaz.
-    $have = $wiki_ok || !empty($wdv['verified']);
+    // (c) En az 2 bağımsız web sayfası adı + yazarı birebir eşleşerek kitabı anlatıyorsa.
+    $have = $wiki_ok || !empty($wdv['verified']) || ((int) ($web['count'] ?? 0) >= 2);
 
     return [
         'have'     => $have,
-        'verified' => (!empty($wdv['verified']) ? 'wikidata' : ($wiki_ok ? 'wikipedia' : '')),
+        'verified' => (!empty($wdv['verified']) ? 'wikidata' : ($wiki_ok ? 'wikipedia' : ((int) ($web['count'] ?? 0) >= 2 ? 'web' : ''))),
         'text'     => implode("\n\n", $parts),
         'sources'  => array_values(array_unique($sources)),
         'year'     => $year,
