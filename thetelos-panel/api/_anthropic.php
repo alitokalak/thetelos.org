@@ -399,6 +399,10 @@ function tls_claude_overview($book, $author, $opts = []) {
     // max_tokens'i tavana göre boyutlandır (~1 kelime ≈ 1.6 token + pay); tavan
     // yükseldiğinde uzun ama gerçek metin yarıda kesilmesin.
     $mtok = (int) ($opts['max_tokens'] ?? min(16000, max(1500, (int) round($cap * 1.9))));
+    // Asenkron Batch kuyruğu için: isteği GÖNDERME, yalnız prompt'u döndür.
+    if (!empty($opts['prompt_only'])) {
+        return ['ok' => true, 'prompt_only' => true, 'system' => $system, 'user' => $user, 'max_tokens' => $mtok];
+    }
 
     $r = tls_claude($system, $user, [
         'model'       => $opts['model'] ?? tls_claude_fast_model(),

@@ -43,7 +43,7 @@ if (is_dir($jobs_dir)) {
                 $hb = "$base.hb.$i";
                 $alive = file_exists($hb) && ($now - filemtime($hb)) <= $stale_thr;
                 if (!$alive) { $stale++; }   // per-kitap hb bayatlamış = worker öldü
-            } elseif ($bs === 'pending') {
+            } elseif ($bs === 'pending' || $bs === 'claude_wait') {   // Claude cevabı beklenen de iş sayılır
                 $pending++;
             }
         }

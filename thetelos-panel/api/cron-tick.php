@@ -75,7 +75,7 @@ if (!$is_cli && !hash_equals($cron_key, $key)) {
             $p = 0;
             foreach ($b['books'] ?? [] as $bk) {
                 $s = $bk['status'] ?? '';
-                if ($s === 'pending' || ($s === 'processing' && empty($bk['post_id']))) $p++;
+                if ($s === 'pending' || $s === 'claude_wait' || ($s === 'processing' && empty($bk['post_id']))) $p++;
             }
             if ($p > 0) { $running_batches++; $pending_total += $p; }
         }
@@ -191,7 +191,7 @@ if (is_dir($jobs_dir)) {
         $has_work = false;
         foreach ($b['books'] ?? [] as $bk) {
             $s = $bk['status'] ?? '';
-            if ($s === 'pending' || ($s === 'processing' && empty($bk['post_id']))) { $has_work = true; break; }
+            if ($s === 'pending' || $s === 'claude_wait' || ($s === 'processing' && empty($bk['post_id']))) { $has_work = true; break; }
         }
         if (!$has_work) continue;
 

@@ -1570,6 +1570,7 @@ function renderBatchStatus(b) {
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
       : st==='processing'? procLabel
+      : st==='claude_wait' ? '⏳ Claude (beklemeli) yazıyor'
       : 'Bekliyor';
     setRowStatus(i, cls, lbl, st==='error' ? bk : null);
   });

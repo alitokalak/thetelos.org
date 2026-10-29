@@ -161,9 +161,15 @@ function bw_claim_next($batch_file) {
     }
     if ($idx === -1) {
         // Hâlâ "processing" olan kitap varsa done yazma — başka worker çalışıyor olabilir
-        $has_processing = false;
+        $has_processing = false; $has_wait = false;
         foreach ($batch['books'] as $b) {
-            if (($b['status'] ?? '') === 'processing') { $has_processing = true; break; }
+            if (($b['status'] ?? '') === 'processing') { $has_processing = true; }
+            if (($b['status'] ?? '') === 'claude_wait') { $has_wait = true; }
+        }
+        if ($has_wait) {   // Claude cevabı bekleniyor → batch bitmedi
+            if ($changed) bw_write_atomic($batch_file, $batch);
+            bw_unlock($lk);
+            return [-5, null];
         }
         if (!$has_processing && $st !== 'done') {
             $batch['status'] = 'done';
@@ -822,6 +828,92 @@ function bw_author_note_any($book, $author, $beat = null, $api_provider = 'deeps
     return bw_claude_author_note($book, $author, $beat);
 }
 
+/* ── BEKLEMELİ CLAUDE DEVRİ (Anthropic Batch API, asenkron) ─────────────────
+   DeepSeek hiçbir yoldan yazamadığında: Haiku, aramasız, kendi bilgisinden.
+   İstek Batch API'ye gönderilir (−%50), worker BEKLEMEZ. */
+function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why = '') {
+    require_once __DIR__ . '/_anthropic.php';
+    $GLOBALS['tls_no_claude'] = false;
+    $ok = false;
+    if (tls_anthropic_ready()) {
+        $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
+        $p = tls_claude_overview($book, $author, ['prompt_only' => true, 'target_words' => $ideal]);
+        if (!empty($p['prompt_only'])) {
+            $cid = 'bk' . (int) $idx . '_' . substr(md5($book . microtime()), 0, 10);
+            $sub = tls_claude_batch_submit([[
+                'custom_id' => $cid, 'system' => $p['system'], 'user' => $p['user'],
+                'model' => tls_claude_fast_model(), 'max_tokens' => $p['max_tokens'],
+                'temperature' => 0.2, 'cache' => true,
+            ]]);
+            if (!empty($sub['ok']) && !empty($sub['id'])) {
+                bw_update_book($batch_file, $idx, [
+                    'status' => 'claude_wait', 'claude_bid' => $sub['id'], 'claude_cid' => $cid,
+                    'claude_at' => time(), 'claude_tried' => 1, 'error' => 'Claude (beklemeli) yazıyor…',
+                ]);
+                bw_clear_hb($batch_file, $idx);
+                $ok = true;
+            } else {
+                $why = 'Claude batch gönderilemedi: ' . ($sub['error'] ?? '?');
+            }
+        }
+    } else {
+        $why = 'Claude anahtarı yok';
+    }
+    $GLOBALS['tls_no_claude'] = true;
+    return $ok;
+}
+
+/* Bekleyen Claude cevaplarını yokla (en fazla 2 dk'da bir). Biten: metinle
+   'pending'e döner (bir sonraki turda yayınlanır). UNKNOWN/hata/26 saat: hata +
+   yazarın Other Works listesi (bw_flag_problem create modunda ekler). */
+function bw_claude_poll($batch_file) {
+    $b = json_decode((string) @file_get_contents($batch_file), true);
+    if (!is_array($b)) return;
+    $wait = [];
+    foreach ($b['books'] as $i => $bk) if (($bk['status'] ?? '') === 'claude_wait') $wait[$i] = $bk;
+    if (!$wait) return;
+    if (time() - (int) ($b['claude_poll_at'] ?? 0) < 120) return;
+    $lk = bw_lock($batch_file); if (!$lk) return;
+    $b = json_decode((string) @file_get_contents($batch_file), true);
+    if (is_array($b)) { $b['claude_poll_at'] = time(); bw_write_atomic($batch_file, $b); }
+    bw_unlock($lk);
+
+    require_once __DIR__ . '/_anthropic.php';
+    $GLOBALS['tls_no_claude'] = false;
+    $by_bid = [];
+    foreach ($wait as $i => $bk) $by_bid[(string) ($bk['claude_bid'] ?? '')][] = $i;
+    foreach ($by_bid as $bid => $idxs) {
+        $res = $bid !== '' ? tls_claude_batch_results($bid) : ['ok' => false, 'error' => 'batch id yok'];
+        if (empty($res['ok']) && !empty($res['pending'])) {
+            foreach ($idxs as $i) {
+                if (time() - (int) ($wait[$i]['claude_at'] ?? time()) > 26 * 3600) bw_claude_fail($batch_file, $i, $wait[$i], 'Claude 26 saatte cevap vermedi');
+            }
+            continue;
+        }
+        foreach ($idxs as $i) {
+            $one = $res['results'][(string) ($wait[$i]['claude_cid'] ?? '')] ?? null;
+            $txt = trim((string) ($one['text'] ?? ''));
+            if (empty($res['ok']) || !$one || empty($one['ok'])) {
+                bw_claude_fail($batch_file, $i, $wait[$i], 'Claude batch hatası: ' . ($one['error'] ?? $res['error'] ?? '?'));
+            } elseif ($txt === '' || strncmp($txt, 'UNKNOWN', 7) === 0 || str_word_count($txt) < 120) {
+                bw_claude_fail($batch_file, $i, $wait[$i], 'Claude da bu kitabı bilmiyor (UNKNOWN)');
+            } else {
+                bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $txt, 'error' => '']);
+            }
+        }
+    }
+    $GLOBALS['tls_no_claude'] = true;
+}
+
+function bw_claude_fail($batch_file, $i, $bk, $reason) {
+    $book = (string) ($bk['book_title'] ?? ''); $author = (string) ($bk['author_name'] ?? '');
+    $b = json_decode((string) @file_get_contents($batch_file), true);
+    $rw = is_array($b) && !empty($b['rewrite']) && $b['rewrite'] !== '0';
+    // create: Other Works listesine eklenir; rewrite: mevcut yazıya dokunulmaz.
+    bw_flag_problem($book, $author, '', '', 'unknown', $reason, 0, $rw ? 'rewrite' : 'create');
+    bw_update_book($batch_file, $i, ['status' => 'error', 'error' => $reason]);
+}
+
 /* Hafızadan yazılan özetin yöntem etiketi: kim yazdı? (claude / model-deepseek / model-qwen) */
 function bw_model_method() {
     $e = (string) ($GLOBALS['bw_model_engine'] ?? '');
@@ -1402,7 +1494,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
          1) tam metin var  → kapsamlı, bölüm-bölüm özet
          2) tam metin yok  → Wikipedia-temelli Bilgi Metni'ne düş (tls_info_generate)
          3) o da yok        → yer tutucu (rewrite) / atla (create). */
-    if ($type === 'source') {
+    $claude_md = trim((string) ($batch['books'][$idx]['claude_md'] ?? ''));
+    if ($type === 'source' && $claude_md !== '') {
+        // Beklemeli Claude devrinden dönen metin: üretimi atla, doğrudan yayına.
+        $content = bw_clean_content($claude_md);
+        $gen_method = 'claude';
+        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'DeepSeek yazamadı → Claude (beklemeli, Haiku)', $update_pid, $rewrite ? 'rewrite' : 'create');
+    } elseif ($type === 'source') {
         require_once __DIR__ . '/_proto.php';
         require_once __DIR__ . '/_info.php';
         bw_touch_hb($batch_file, $idx);
@@ -1501,21 +1599,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 //     Bilgi Metni de olmadı → Claude son çare (yalnız toplu üretimde).
                 // Claude devri ARAMASIZ (lean): yalnız kendi bilgisinden, bilmiyorsa UNKNOWN.
                 // Web aramalı hali kitap başına ~20-25 sent tutuyordu (kullanıcı kararı).
+                // BEKLEMELİ (Batch API, %50 ucuz) ve ASENKRON: istek gönderilir, kitap
+                // 'claude_wait' olur, worker sıradaki kitaba geçer. Cevap gelince
+                // bw_claude_poll kitabı Claude metniyle yeniden kuyruğa koyar.
                 if ((!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '')
-                    && $api_provider !== 'anthropic' && !$is_single) {
-                    $clx_why = '';
-                    $GLOBALS['tls_no_claude'] = false;   // yalnız bu devir için Claude açık
-                    $clx = tls_anthropic_ready()
-                        ? bw_claude_last_resort($book, $author, $batch_file, $idx, $clx_why, $cl_target_words, false, true)   // gerçek zamanlı Haiku: Batch API 6 saate kadar bekletip worker'ı kilitliyordu
-                        : '';
-                    $GLOBALS['tls_no_claude'] = true;
-                    if ($clx !== '') {
-                        $ir = ['ok' => true, 'insufficient' => false, 'md' => $clx];
-                        $gen_method = 'claude';
-                        bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'DeepSeek yazamadı → Claude son çare', $update_pid, $rewrite ? 'rewrite' : 'create');
-                    } elseif ($clx_why !== '') {
-                        $cl_why = $cl_why ? ($cl_why . ' · ' . $clx_why) : $clx_why;
-                    }
+                    && $api_provider !== 'anthropic' && !$is_single
+                    && empty($batch['books'][$idx]['claude_tried'])) {
+                    $q_why = '';
+                    if (bw_claude_queue($batch_file, $idx, $book, $author, $cl_target_words, $q_why)) return;
+                    $cl_why = $cl_why ? ($cl_why . ' · ' . $q_why) : $q_why;
                 }
                 if (!empty($ir['insufficient']) || empty($ir['ok']) || trim((string) $ir['md']) === '') {
                     // 3) Kaynak yetersiz. DOĞRULUK ÖNCE: uydurma UZUN özet YOK. Ama boş
@@ -2815,8 +2907,13 @@ while (true) {
         continue;   // başa dön: bu yazar artık temiz, kitapları yazılabilir
     }
 
+    bw_claude_poll($batch_file);   // beklemeli Claude cevapları geldiyse kuyruğa al
     [$idx, $batch] = bw_claim_next($batch_file);
     if ($idx === -1) { $reason = 'done';      break; }      // bekleyen yok
+    if ($idx === -5) {                                       // yalnız Claude cevabı bekleniyor
+        if (time() - $start >= $budget) { $reason = 'budget'; break; }
+        $g_beat(); sleep(10); continue;
+    }
     if ($idx === -3) { $reason = 'cancelled'; break; }      // iptal
     if ($idx === -4) { $reason = 'paused';    break; }      // duraklat
     if ($idx === -2) { usleep(400000); continue; }          // başka worker kilitledi
