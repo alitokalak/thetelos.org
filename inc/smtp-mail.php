@@ -59,7 +59,12 @@ add_action( 'phpmailer_init', 'tls_smtp_phpmailer', 999 );
 function tls_smtp_phpmailer( $phpmailer ) {
     $s = tls_smtp_settings();
 
-    if ( tls_smtp_ready() ) {
+    // SMTP KAPALI (varsayılan): sunucu kendi posta servisine yapılan SMTP bağlantılarını
+    // reddediyor ("Connection refused", port 25/465/587 — aynı sunucudaki diğer
+    // sitelerde de doğrulandı). Gönderim PHP mail() ile yapılır; gönderen adresi,
+    // HTML+düz metin ve DKIM imzası aşağıda aynen uygulanır. SMTP'yi geri açmak
+    // için wp-config.php: define( 'TLS_SMTP_FORCE', true );
+    if ( defined( 'TLS_SMTP_FORCE' ) && TLS_SMTP_FORCE && tls_smtp_ready() ) {
         $phpmailer->isSMTP();
         $phpmailer->Host       = $s['host'];
         $phpmailer->Port       = $s['port'] ?: 465;
@@ -76,6 +81,8 @@ function tls_smtp_phpmailer( $phpmailer ) {
             $phpmailer->SMTPOptions = [ 'ssl' => [ 'verify_peer' => false, 'verify_peer_name' => false, 'allow_self_signed' => true ] ];
         }
     }
+    if ( ! ( defined( 'TLS_SMTP_FORCE' ) && TLS_SMTP_FORCE ) ) $phpmailer->isMail();   // PHP mail()
+    if ( ! is_email( $s['from'] ) ) $s['from'] = 'noreply@thetelos.org';
     if ( is_email( $s['from'] ) ) {
         $phpmailer->setFrom( $s['from'], $s['from_name'], false );
         $phpmailer->Sender = $s['from'];   // Return-Path = gönderen → SPF hizalaması
@@ -207,7 +214,7 @@ function tls_smtp_admin_page() {
                 <?php echo $r === 'ok' ? 'Test e-postası gönderildi. Gelen kutusunu (ve spam klasörünü) kontrol edin.' : 'Hata: ' . esc_html( (string) $r ); ?>
             </p></div>
         <?php endif; ?>
-        <p>Durum: <strong style="color:<?php echo $ready ? '#2e7d52' : '#b32d2e'; ?>"><?php echo $ready ? 'SMTP aktif' : 'SMTP ayarlanmadı — e-postalar PHP mail() ile gidiyor'; ?></strong></p>
+        <p>Durum: <strong style="color:#2e7d52"><?php echo ( defined( 'TLS_SMTP_FORCE' ) && TLS_SMTP_FORCE ) ? 'SMTP zorunlu (wp-config TLS_SMTP_FORCE)' : 'E-postalar PHP mail() ile gidiyor (sunucu SMTP bağlantısını reddediyor) — gönderen adresi ve DKIM imzası uygulanıyor'; ?></strong></p>
         <p>cPanel'de oluşturduğunuz e-posta hesabının bilgilerini girin (cPanel → E-posta Hesapları → "Connect Devices" sayfasında yazar).</p>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
             <input type="hidden" name="action" value="tls_smtp_save">
