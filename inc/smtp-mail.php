@@ -166,6 +166,20 @@ add_action( 'admin_post_tls_smtp_save', function () {
     exit;
 } );
 
+/* ── Hata kaydı: başarısız her e-posta (şifre sıfırlama dahil) son 15 kayıt
+   olarak saklanır ve ayar sayfasında görünür — "mail gitmiyor" artık tahmin değil. */
+add_action( 'wp_mail_failed', function ( $e ) {
+    $d   = $e->get_error_data();
+    $log = (array) get_option( 'tls_mail_fail_log', [] );
+    array_unshift( $log, [
+        't'   => current_time( 'mysql' ),
+        'to'  => is_array( $d ) && ! empty( $d['to'] ) ? implode( ', ', (array) $d['to'] ) : '',
+        'sub' => is_array( $d ) ? mb_substr( (string) ( $d['subject'] ?? '' ), 0, 80 ) : '',
+        'err' => mb_substr( $e->get_error_message(), 0, 300 ),
+    ] );
+    update_option( 'tls_mail_fail_log', array_slice( $log, 0, 15 ), false );
+} );
+
 add_action( 'admin_post_tls_smtp_test', function () {
     if ( ! current_user_can( 'manage_options' ) ) wp_die( 'Yetki yok.' );
     check_admin_referer( 'tls_smtp_test' );
@@ -221,6 +235,13 @@ function tls_smtp_admin_page() {
             </table>
             <?php submit_button( 'Kaydet' ); ?>
         </form>
+        <?php $flog = (array) get_option( 'tls_mail_fail_log', [] ); ?>
+        <hr>
+        <h2>Son başarısız e-postalar</h2>
+        <?php if ( ! $flog ) : ?><p>Kayıtlı hata yok.</p><?php else : ?>
+        <table class="widefat striped"><thead><tr><th>Zaman</th><th>Alıcı</th><th>Konu</th><th>Hata</th></tr></thead><tbody>
+        <?php foreach ( $flog as $f ) : ?><tr><td><?php echo esc_html( $f['t'] ?? '' ); ?></td><td><?php echo esc_html( $f['to'] ?? '' ); ?></td><td><?php echo esc_html( $f['sub'] ?? '' ); ?></td><td><?php echo esc_html( $f['err'] ?? '' ); ?></td></tr><?php endforeach; ?>
+        </tbody></table><?php endif; ?>
         <hr>
         <h2>Test e-postası</h2>
         <form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
