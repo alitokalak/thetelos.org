@@ -2903,7 +2903,7 @@ while (true) {
                 bw_flag_problem($nc['author'], $nc['author'], '', '', 'clean_skip',
                     'ön-temizleme 3 kez yarıda kaldı → denetimsiz yazıldı');
             } else {
-                set_time_limit(150);
+                set_time_limit(900);   // yeni temizleme motoru düşünerek çalışır
                 // GÖRÜNÜRLÜK: "X yazarı kontrol ediliyor" durumunu yaz (panel gösterir).
                 bw_clean_set_now($batch_file, $nc['author'] . ' — ' . count($nc['idx']) . ' kitap kontrol ediliyor…');
                 // Gerçek-zamanlı (batch değil), kısa timeout. Herhangi bir Throwable

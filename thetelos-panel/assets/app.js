@@ -2583,7 +2583,7 @@ async function runCleanerLoop(authors, byAuthor, useAI, totalIn, fileName, doneO
     for (let attempt = 1; attempt <= 3; attempt++) {
       if (cleanerCancel) return;
       try {
-        res = await postData(API('clean-list.php'), { author: a, works: JSON.stringify(works), use_ai: useAI, ai_engine: engine }, 150000);
+        res = await postData(API('clean-list.php'), { author: a, works: JSON.stringify(works), use_ai: useAI, ai_engine: engine }, 900000);   // yeni motor düşünerek çalışır: yavaş
         if (res && res.ok) break;
       } catch(_) {}
       await new Promise(r => setTimeout(r, attempt * 2000));

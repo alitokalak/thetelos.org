@@ -17,7 +17,7 @@ if (empty($_SESSION['tls_auth'])) { http_response_code(401); exit; }
 session_write_close();
 header('Content-Type: application/json');
 @ini_set('display_errors', 0);
-set_time_limit(150);
+set_time_limit(900);   // yeni motor (düşünen DeepSeek) yavaş
 
 $author = trim($_POST['author'] ?? '');
 $works  = json_decode($_POST['works'] ?? '', true);
@@ -32,7 +32,7 @@ if ($author === '' || !is_array($works) || empty($works)) {
    gelir. Giriş listesi değişirse anahtar değişir → otomatik yeniden işlenir.
    Kural/motor geliştirilince CL_CACHE_VER artırılarak tüm önbellek tazelenir.
    POST nocache=1 → önbelleği atla (zorla yeniden temizle). */
-define('CL_CACHE_VER', '2');   // 2: dil kuralı + tekrar birleştirme kodla zorlanıyor
+define('CL_CACHE_VER', '3');   // 2: dil kuralı + tekrar birleştirme kodla zorlanıyor
 $cl_titles = array_values(array_filter(array_map(
     function ($w) { return mb_strtolower(trim((string) ($w['title'] ?? ''))); }, $works)));
 sort($cl_titles);
@@ -117,6 +117,39 @@ $ai_err  = '';
    Wikidata'da olmayan başlık ELENMEZ, korunur. Yazar/eser bulunamazsa AI ya da
    kural katmanına düşer (aşağıda). */
 $engine_sel = $_POST['ai_engine'] ?? 'wikidata';
+
+/* ── 2. NESİL MOTOR (varsayılan; Claude açıkça seçilmediyse) ──────────────
+   Wikidata kataloğu (tüm dillerdeki adlar) + sıkı eşleştirme + DeepSeek'e yalnız
+   eşleşmeyenler için seçmeli soru + kod kuralları (çeviri/tekrar/yanlış atıf).
+   Bkz. _clean2.php. Başarısız olursa eski yollara düşülür. */
+if ($engine_sel !== 'claude') {
+    require_once __DIR__ . '/_clean2.php';
+    $c2 = cl2_clean_author($author, array_map(fn($it) => $it['title'], $items));
+    if (!empty($c2['ok'])) {
+        $items_final = [];
+        foreach ($c2['groups'] as $g) {
+            $year = preg_match('/^\d{1,4}$/', (string) ($g['year'] ?? '')) ? (string) $g['year'] : '';
+            $cover = ''; $mergedN = 0;
+            foreach ($g['members'] as $ix) {
+                $it = $items[$ix] ?? null; if (!$it) continue;
+                $mergedN += (int) $it['merged'];
+                if ($cover === '' && $it['cover'] !== '') $cover = $it['cover'];
+                if ($year === '' && preg_match('/^\d{3,4}$/', $it['year'])) $year = $it['year'];
+            }
+            $items_final[] = ['title' => $g['display'], 'author' => $author, 'year' => $year, 'cover' => $cover, 'merged' => max(1, $mergedN)];
+        }
+        foreach ($c2['not_by_author'] as $f) {
+            $it = $items[(int) $f['n']] ?? null; if (!$it) continue;
+            $removed[] = ['title' => $it['title'], 'author' => $author, 'year' => $it['year'], 'cover' => $it['cover'], 'reason' => $f['reason']];
+        }
+        $parsed = ['wrote_in' => $c2['wrote_in']];   // aşağıdaki güvenlik katmanı yazarın dillerini kullansın
+        $ai_used = 'clean2 (katalog ' . (int) ($c2['catalog'] ?? 0) . ' eser · DeepSeek)';
+        $engine_sel = 'clean2';
+    } else {
+        $ai_err = 'Yeni motor: ' . ($c2['error'] ?? '?') . ' → eski yol';
+    }
+}
+
 if ($engine_sel === 'wikidata') {
     require_once __DIR__ . '/_wikidata.php';
     $wd = wd_clean_author($author, $items);

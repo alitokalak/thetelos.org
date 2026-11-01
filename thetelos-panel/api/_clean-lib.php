@@ -62,7 +62,7 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
        yazar tekrar para harcamaz, anında geçer. Liste değişirse anahtar değişir. */
     $cll_norm_titles = array_map('cll_norm', $titles);
     sort($cll_norm_titles);
-    $cll_key  = md5('cll2|' . mb_strtolower(trim((string) $author)) . '|' . implode("\n", $cll_norm_titles));
+    $cll_key  = md5('cll3|' . mb_strtolower(trim((string) $author)) . '|' . implode("\n", $cll_norm_titles));
     $cll_dir  = __DIR__ . '/cache/clean';
     $cll_file = $cll_dir . '/a_' . $cll_key . '.json';
     if (is_file($cll_file)) {
@@ -70,6 +70,16 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
         if (is_array($cll_hit) && !empty($cll_hit['ok'])) return $cll_hit;
     }
 
+
+    // 2. NESİL MOTOR (Wikidata kataloğu + sıkı eşleştirme + seçmeli yapay zekâ +
+    // kod kuralları). Başarısız olursa (ağ/JSON) aşağıdaki eski yola düşülür.
+    require_once __DIR__ . '/_clean2.php';
+    $c2 = cl2_clean_author($author, $titles);
+    if (!empty($c2['ok'])) {
+        if (!is_dir($cll_dir)) @mkdir($cll_dir, 0775, true);
+        @file_put_contents($cll_file, json_encode($c2, JSON_UNESCAPED_UNICODE), LOCK_EX);
+        return $c2;
+    }
 
     $cap   = 120;                          // token güvenliği
     $slice = array_slice($titles, 0, $cap);
