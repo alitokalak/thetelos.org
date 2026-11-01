@@ -31,6 +31,8 @@ require_once __DIR__ . '/_work-rules.php';
 
 if (!function_exists('cl2_clean_author')) {
 
+function array_is_list_compat($a) { if (!is_array($a)) return false; $i = 0; foreach ($a as $k => $_) { if ($k !== $i++) return false; } return true; }
+
 /* Eşleştirme anahtarı: küçük harf, aksansız, parantez ve alt başlık yok, baştaki
    tanımlık (birçok dilde) yok, yalnız harf/rakam, boşluksuz. */
 function cl2_key($s) {
@@ -134,7 +136,7 @@ function cl2_rule_drop($t, $author) {
 }
 
 /* DeepSeek (düşünerek) — eşleşmeyen başlıkları SINIFLA. */
-function cl2_ai_classify($author, array $wrote_in, array $works, array $unmapped, &$err = '') {
+function cl2_ai_classify($author, array $wrote_in, array $works, array $unmapped, &$err = '', $think = true) {
     if (!$unmapped) return [];
     $cat = '';
     foreach ($works as $wi => $w) {
@@ -171,19 +173,24 @@ function cl2_ai_classify($author, array $wrote_in, array $works, array $unmapped
         return $r;
     };
     $code = 0;
-    $r = $call(true);
-    if ($code === 400) $r = $call(false);   // düşünme + JSON birlikte reddedilirse
+    $r = $call($think);
+    if ($code === 400 && $think) $r = $call(false);   // düşünme + JSON birlikte reddedilirse
     if ($code !== 200 || !$r) { $err = "DeepSeek HTTP $code"; return null; }
     $d = json_decode($r, true);
     $txt = (string) ($d['choices'][0]['message']['content'] ?? '');
     $txt = preg_replace('/```json|```/i', '', $txt);
     $s = strpos($txt, '{'); $e = strrpos($txt, '}');
     $j = ($s !== false && $e > $s) ? json_decode(substr($txt, $s, $e - $s + 1), true) : null;
-    if (!is_array($j) || !isset($j['items'])) { $err = 'DeepSeek JSON çözümlenemedi'; return null; }
+    if (!is_array($j)) { $err = 'DeepSeek JSON çözümlenemedi'; return null; }
+    // Model farklı biçimde dönebiliyor: {"items":[...]}, {"items":{"1":{...}}}, [...] ya da {"1":{...}}.
+    $list = $j['items'] ?? $j['results'] ?? $j['titles'] ?? $j;
     $out = [];
-    foreach ((array) $j['items'] as $it) {
-        $n = (int) ($it['n'] ?? 0) - 1;
-        if ($n >= 0 && $n < count($unmapped)) $out[$n] = $it;
+    foreach ((array) $list as $k => $it) {
+        if (!is_array($it)) continue;
+        $num = $it['n'] ?? $it['id'] ?? $it['index'] ?? $it['number'] ?? (is_numeric($k) && !array_is_list_compat($list) ? $k : null);
+        if ($num === null && array_is_list_compat($list)) $num = $k + 1;   // sırayla verilmişse
+        $n = (int) preg_replace('/\D/', '', (string) $num) - 1;
+        if ($n >= 0 && $n < count($unmapped) && !isset($out[$n])) $out[$n] = $it;
     }
     return $out;
 }
@@ -202,7 +209,7 @@ function cl2_clean_author($author, array $titles) {
     // Önbellek (yazar + liste).
     $nt = array_map('cl2_key', $titles); sort($nt);
     $cdir = __DIR__ . '/cache/clean';
-    $cfile = $cdir . '/c2_' . md5('c2v1|' . mb_strtolower($author) . '|' . implode("\n", $nt)) . '.json';
+    $cfile = $cdir . '/c2_' . md5('c2v2|' . mb_strtolower($author) . '|' . implode("\n", $nt)) . '.json';
     if (is_file($cfile)) { $h = json_decode((string) file_get_contents($cfile), true); if (is_array($h) && !empty($h['ok'])) return $h; }
 
     $flags = [];      // ix => reason
@@ -234,13 +241,24 @@ function cl2_clean_author($author, array $titles) {
     // 4) Yapay zekâ — yalnız eşleşmeyenler
     // Uzun listeler 100'lük parçalar hâlinde (düşünme + JSON çıktısı bütçeye sığsın).
     $ai_err = ''; $ai = [];
-    foreach (array_chunk($unmapped, 100, true) as $ci => $chunk) {
+    foreach (array_chunk($unmapped, 40, true) as $ci => $chunk) {
         $part = cl2_ai_classify($author, $wrote_in, $works, array_values($chunk), $ai_err);
         if ($part === null) return ['ok' => false, 'groups' => [], 'not_by_author' => [], 'wrote_in' => $wrote_in, 'error' => $ai_err, 'engine' => 'clean2'];
         $keys = array_keys($chunk);
         foreach ($part as $k => $it) {
             if (isset($it['group'])) $it['group'] = 'c' . $ci . '_' . $it['group'];   // parçalar arası çakışmasın
             $ai[$keys[$k]] = $it;
+        }
+        // Model bazı başlıkları atladıysa: yalnız onlar için bir kez daha sor (düşünmesiz, hızlı).
+        $miss = array_values(array_filter($keys, fn($p) => !isset($ai[$p])));
+        if ($miss) {
+            $sub = []; foreach ($miss as $p) $sub[] = $unmapped[$p];
+            $e2 = '';
+            $part2 = cl2_ai_classify($author, $wrote_in, $works, $sub, $e2, false);
+            foreach ((array) $part2 as $k => $it) {
+                if (isset($it['group'])) $it['group'] = 'r' . $ci . '_' . $it['group'];
+                $ai[$miss[$k]] = $it;
+            }
         }
     }
 
@@ -252,16 +270,25 @@ function cl2_clean_author($author, array $titles) {
     $newg = [];   // group id => ['en','orig','members','langs']
     foreach ($umap as $pos => $i) {
         $it = $ai[$pos] ?? null;
-        if (!$it) { $flags[$i] = 'tanımlanamadı (model karar vermedi)'; continue; }
+        if (!$it) {   // model yine karar vermediyse ELEME — başlığı koru (yalnız açık çeviriyse ele)
+            if (wr_translation_lang($titles[$i], $wrote_in) !== '') { $flags[$i] = 'çeviri baskısı (karar verilemedi, yazarın dilinde değil)'; continue; }
+            $it = ['new' => $titles[$i], 'orig' => '', 'lang' => '', 'group' => 'k' . $i];
+        }
         if (!empty($it['work']) && preg_match('/^W(\d+)$/', (string) $it['work'], $m) && isset($works[(int) $m[1] - 1])) {
             $assign[$i] = (int) $m[1] - 1; continue;
         }
         if (!empty($it['drop'])) {
+            if ($it['drop'] === 'unidentified' && wr_translation_lang($titles[$i], $wrote_in) === '') {
+                // Tanınamadı diye eleme yok (fazla siliniyordu) — yazarın dilinde/İngilizce ise koru.
+                $it = ['new' => $titles[$i], 'orig' => '', 'lang' => '', 'group' => 'u' . $i];
+                goto cl2_new;
+            }
             $map = ['not_by_author' => 'yazara ait değil (yanlış atıf)', 'about_author' => 'yazar hakkında ikincil kitap',
                     'anthology' => 'antoloji/derleme', 'not_a_book' => 'kitap değil', 'unidentified' => 'tanımlanamadı'];
             $flags[$i] = ($map[$it['drop']] ?? 'elendi') . (!empty($it['why']) ? ' — ' . mb_substr((string) $it['why'], 0, 120) : '');
             continue;
         }
+        cl2_new:
         $en = trim((string) ($it['new'] ?? ''));
         if ($en === '') { $flags[$i] = 'tanımlanamadı'; continue; }
         // KURAL: listelenen başlık yazarın dilleri + İngilizce dışında → ÇEVİRİ.
