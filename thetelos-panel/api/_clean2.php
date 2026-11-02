@@ -154,7 +154,7 @@ function cl2_ai_classify($author, array $wrote_in, array $works, array $unmapped
         . "For EVERY listed title decide exactly ONE of:\n"
         . "  A) It is an edition or TRANSLATION (in ANY language) of a catalog work → {\"n\":1,\"work\":\"W3\"}\n"
         . "  B) It is a genuine work BY THIS AUTHOR that is not in the catalog → {\"n\":2,\"new\":\"established English title (or faithful translation)\",\"orig\":\"title in the language the author wrote it, or empty if written in English\",\"lang\":\"language of the LISTED title\",\"group\":\"g1\"}. Give the same group id to listed titles that are the same work.\n"
-        . "  C) Drop → {\"n\":3,\"drop\":\"not_by_author|about_author|anthology|not_a_book|unidentified\",\"why\":\"short reason\"}\n"
+        . "  C) Drop → {\"n\":3,\"drop\":\"not_by_author|about_author|anthology|not_a_book|unidentified\",\"why\":\"short reason\",\"real_author\":\"for not_by_author: the actual author's full name if you are sure, else empty\"}\n"
         . "RULES: Think about each title's language and meaning. A title in Portuguese/Spanish/Turkish/etc. of a book the author wrote in German is a TRANSLATION — map it to the catalog work (A) if it is one; never treat a translation as a new work. Use 'not_by_author' when the book is really by someone else (misattribution) — be strict. Use 'unidentified' if you cannot tell what work it is. Do NOT invent works.\n"
         . "Return ONLY JSON: {\"items\":[...]}";
     if (!defined('DEEPSEEK_KEY') || !DEEPSEEK_KEY) { $err = 'DeepSeek anahtarı yok'; return null; }
@@ -285,7 +285,10 @@ function cl2_clean_author($author, array $titles) {
             }
             $map = ['not_by_author' => 'yazara ait değil (yanlış atıf)', 'about_author' => 'yazar hakkında ikincil kitap',
                     'anthology' => 'antoloji/derleme', 'not_a_book' => 'kitap değil', 'unidentified' => 'tanımlanamadı'];
-            $flags[$i] = ($map[$it['drop']] ?? 'elendi') . (!empty($it['why']) ? ' — ' . mb_substr((string) $it['why'], 0, 120) : '');
+            $real = trim((string) ($it['real_author'] ?? ''));
+            $flags[$i] = ($map[$it['drop']] ?? 'elendi')
+                . ($real !== '' && $it['drop'] === 'not_by_author' ? ' — gerçek yazar: ' . mb_substr($real, 0, 80) : '')
+                . (!empty($it['why']) ? ' — ' . mb_substr((string) $it['why'], 0, 120) : '');
             continue;
         }
         cl2_new:
