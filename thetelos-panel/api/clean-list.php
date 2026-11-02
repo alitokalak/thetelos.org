@@ -130,7 +130,13 @@ if ($engine_sel !== 'claude') {
         foreach ($c2['groups'] as $g) {
             $year = preg_match('/^\d{1,4}$/', (string) ($g['year'] ?? '')) ? (string) $g['year'] : '';
             $cover = ''; $mergedN = 0;
-            foreach ($g['members'] as $ix) {
+            // KAPAK: aynı esere bağlanmış (birebir katalog adı ya da modelin aynı
+            // eser kararı) baskılardan alınır. Önce İngilizce/yazarın dilindeki
+            // baskının kapağı, yoksa çeviri baskısının kapağı.
+            $mem = $g['members'];
+            usort($mem, fn($a, $b) => (int) (wr_translation_lang($items[$a]['title'] ?? '', $c2['wrote_in']) !== '')
+                                    <=> (int) (wr_translation_lang($items[$b]['title'] ?? '', $c2['wrote_in']) !== ''));
+            foreach ($mem as $ix) {
                 $it = $items[$ix] ?? null; if (!$it) continue;
                 $mergedN += (int) $it['merged'];
                 if ($cover === '' && $it['cover'] !== '') $cover = $it['cover'];

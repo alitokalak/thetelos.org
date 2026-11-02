@@ -2337,8 +2337,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'https://openlibrary.org/search.json?title=' . urlencode($search_book)
             . '&author=' . urlencode($author) . '&limit=5&fields=cover_i,title,author_name'
         ), true);
+        // SIKI: yalnız adı birebir (tanımlık/alt başlık farkı hariç) ve yazarı eşleşen
+        // kaydın kapağı. "İlk sonucun kapağı" benzer adlı başka kitabın kapağını alıyordu.
+        require_once __DIR__ . '/_clean2.php';
+        $want = cl2_key($search_book);
+        $ap = preg_split('/\s+/', trim((string) $author)); $sur = mb_strtolower((string) end($ap), 'UTF-8');
         foreach ($ol['docs'] ?? [] as $doc) {
             if (empty($doc['cover_i'])) continue;
+            if ($want === '' || cl2_key((string) ($doc['title'] ?? '')) !== $want) continue;
+            if ($sur !== '' && mb_stripos(implode(' ', (array) ($doc['author_name'] ?? [])), $sur) === false) continue;
             $cover_url = 'https://covers.openlibrary.org/b/id/' . $doc['cover_i'] . '-L.jpg';
             break;
         }
@@ -2778,6 +2785,13 @@ function bw_clean_apply($batch_file, $author_key, array $idx_map, array $res, $a
             $members = array_values(array_filter((array) $g['members'], fn($m) => isset($idx_map[$m])));
             if (empty($members)) continue;
             $canon = $idx_map[$members[0]];
+            // Kanonik kitabın kapağı yoksa AYNI ESERE bağlanmış diğer baskılardan al.
+            if (trim((string) ($b['books'][$canon]['cover_url'] ?? '')) === '') {
+                foreach ($members as $m) {
+                    $cv = trim((string) ($b['books'][$idx_map[$m]]['cover_url'] ?? ''));
+                    if ($cv !== '') { $b['books'][$canon]['cover_url'] = $cv; break; }
+                }
+            }
             if (($b['books'][$canon]['status'] ?? '') === 'pending') {
                 if (trim((string) ($g['display'] ?? '')) !== '') $b['books'][$canon]['book_title'] = (string) $g['display'];
                 if (preg_match('/^\d{3,4}$/', (string) ($g['year'] ?? ''))) $b['books'][$canon]['pub_year'] = (string) $g['year'];
