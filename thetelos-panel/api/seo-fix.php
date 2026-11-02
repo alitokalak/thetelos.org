@@ -31,8 +31,8 @@ $prompt = "Generate SEO metadata for the book \"{$title}\"" . ($author ? " by {$
     . "Respond with ONLY this JSON:\n"
     . "{\n"
     . "  \"seo_title\": \"Concise SEO title, MAX 50 chars: the work's COMMON English name + author (e.g. 'The Wealth of Nations — Adam Smith'). NOT the long full title. No site name.\",\n"
-    . "  \"excerpt\": \"1-2 compelling complete sentences. Must end with period. Max 120 chars.\",\n"
-    . "  \"meta_description\": \"SEO description. Must end with period. Max 120 chars. Different from excerpt.\"\n"
+    . "  \"excerpt\": \"ONE compelling complete sentence. Must end with period. Max 150 chars.\",\n"
+    . "  \"meta_description\": \"SEO description. Must end with period. ONE complete sentence. Max 150 chars. Different from excerpt.\"\n"
     . "}\n\n"
     . "RULES: Complete sentences ending with period. Max 120 chars each. seo_title max 50 chars. Based on:\n\n" . $snippet;
 
@@ -42,7 +42,8 @@ curl_setopt_array($ch,[
     CURLOPT_HTTPHEADER=>['Content-Type: application/json','Authorization: Bearer '.DEEPSEEK_KEY],
     CURLOPT_POSTFIELDS=>json_encode([
         'model'     =>(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL),
-        'max_tokens'=>400,
+        'max_tokens'=>800,
+        'thinking'  =>['type'=>'disabled'],   // düşünme cevap bütçesini yiyip cümleyi kesiyordu
         'messages'  =>[
             ['role'=>'system','content'=>$system_prompt],
             ['role'=>'user',  'content'=>$prompt],
@@ -70,8 +71,13 @@ function trim_to_sentence($text,$max=150){
     return ($ls>20?mb_substr($cut,0,$ls):$cut).'.';
 }
 
-$new_excerpt = !empty($meta['excerpt'])          ? trim_to_sentence($meta['excerpt'])          : '';
-$new_meta    = !empty($meta['meta_description']) ? trim_to_sentence($meta['meta_description']) : '';
+// TEK KURAL (_meta-rules.php): ≤150 karakter, tek ve tam cümle. Uymayan cevap kullanılmaz,
+// model baştan yazar (5 deneme). Eskiden kesik cevabın sonuna nokta ekleniyordu.
+require_once __DIR__ . '/_meta-rules.php';
+$new_excerpt = trim((string) ($meta['excerpt'] ?? ''));
+if (!tls_meta_valid($new_excerpt)) $new_excerpt = tls_meta_generate($title, $author, $post->post_content, 'excerpt');
+$new_meta = trim((string) ($meta['meta_description'] ?? ''));
+if (!tls_meta_valid($new_meta) || $new_meta === $new_excerpt) $new_meta = tls_meta_generate($title, $author, $post->post_content, 'meta', $new_excerpt);
 // SEO title: H1'den (uzun kitap adı) FARKLI, kısa ve net. ≤60 karakter.
 $new_title   = !empty($meta['seo_title']) ? trim(preg_replace('/\s+/u',' ',$meta['seo_title'])) : '';
 if($new_title !== '' && mb_strlen($new_title) > 60) $new_title = rtrim(mb_substr($new_title,0,59)).'…';

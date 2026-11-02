@@ -2209,8 +2209,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 if (!empty($mr['ok']) && preg_match('/\{.*\}/s', (string) $mr['text'], $mm)) {
                     $mj = json_decode($mm[0], true);
                     if (is_array($mj)) {
-                        $new_ex = !empty($mj['excerpt'])          ? bw_norm_sentence($mj['excerpt'], 155, $rw_html)          : '';
-                        $new_md = !empty($mj['meta_description']) ? bw_norm_sentence($mj['meta_description'], 155, $rw_html) : '';
+                        require_once __DIR__ . '/_meta-rules.php';
+                        $new_ex = trim((string) ($mj['excerpt'] ?? ''));
+                        if (!tls_meta_valid($new_ex)) $new_ex = tls_meta_generate($book, $author, $rw_html, 'excerpt');
+                        $new_md = trim((string) ($mj['meta_description'] ?? ''));
+                        if (!tls_meta_valid($new_md) || $new_md === $new_ex) $new_md = tls_meta_generate($book, $author, $rw_html, 'meta', $new_ex);
                         if ($new_ex !== '') bw_wp("$wp_api/$ep/$update_pid", 'POST', ['excerpt' => $new_ex], $auth, 30);
                         if ($new_md !== '') bw_wp("$wp_api/$ep/$update_pid", 'POST', ['meta' => ['_yoast_wpseo_metadesc' => $new_md]], $auth, 30);
                     }
@@ -2320,27 +2323,16 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // mutlaka tam bir cümle (nokta/!/? ile biten) olsun. AI kısa ama yarıda
     // kesik bir cümle döndürse bile ("...the role of the") burada düzeltilir —
     // böylece panelde "Kesilmiş / Çok Uzun" olarak işaretlenmez.
+    // TEK KURAL (_meta-rules.php): ≤150 karakter, tek ve tam cümle. Uymayan cevap
+    // KULLANILMAZ; model aynı işi baştan yapar (5 deneme). Kırpma/nokta ekleme YOK.
+    require_once __DIR__ . '/_meta-rules.php';
     foreach (['excerpt', 'meta_description'] as $mf) {
-        // Model tam cümle + 155 sınırı kuralına uymadıysa: AYNI işi modele tekrar yaptır
-        // (2 deneme, sınır ve "tam cümle" açıkça hatırlatılır). Kırpma yalnız son çare.
-        $cur = trim((string) ($meta[$mf] ?? ''));
-        for ($rt = 0; $rt < 2 && bw_norm_sentence($cur, 155) !== $cur; $rt++) {
-            $snip = mb_substr(trim(strip_tags((string) ($content ?? ''))), 0, 1400);
-            if ($snip === '') break;
-            $rr = tv_ask("Write ONE complete English sentence of AT MOST 150 characters (count them) for the "
-                . ($mf === 'excerpt' ? 'excerpt' : 'meta description') . " of an article about the book \"{$book}\" by {$author}. "
-                . "It must be a whole, finished sentence ending with a period — never cut off. Use only facts from the text. "
-                . ($cur !== '' ? "Your previous attempt was invalid (too long or unfinished): \"{$cur}\". " : '')
-                . "Output ONLY the sentence.\n\n=== TEXT ===\n{$snip}", 200, 60, 'deepseek');
-            if (!empty($rr['ok'])) $cur = trim(preg_replace('/\s+/u', ' ', trim((string) $rr['text'], " \t\n\"'“”")));
+        $cur = trim(preg_replace('/\s+/u', ' ', (string) ($meta[$mf] ?? '')));
+        $avoid = ($mf === 'meta_description') ? (string) ($meta['excerpt'] ?? '') : '';
+        if (!tls_meta_valid($cur) || ($avoid !== '' && $cur === $avoid)) {
+            $cur = tls_meta_generate($book, $author, (string) ($content ?? ''), $mf === 'excerpt' ? 'excerpt' : 'meta', $avoid);
         }
-        $meta[$mf] = bw_norm_sentence($cur, 155, (string) ($content ?? ''));
-        if ($meta[$mf] === '') unset($meta[$mf]);   // yarım açıklama yazma; Yoast kendisi üretir
-    }
-    // Excerpt ile açıklama aynı cümleye düştüyse açıklama için metinden başka bir cümle dene.
-    if (!empty($meta['excerpt']) && !empty($meta['meta_description']) && $meta['excerpt'] === $meta['meta_description']) {
-        $alt = bw_norm_sentence('', 155, str_replace($meta['excerpt'], '', (string) ($content ?? '')));
-        if ($alt !== '') $meta['meta_description'] = $alt;
+        if ($cur !== '') $meta[$mf] = $cur; else unset($meta[$mf]);   // kurala uyan yoksa hiç yazma
     }
 
     // ── Kapak bul (cURL) ───────────────────────────────────────────
