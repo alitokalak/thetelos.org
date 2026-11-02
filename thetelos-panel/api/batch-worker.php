@@ -1031,22 +1031,32 @@ function bw_trim_sentence($text, $max = 155) {
  *   3) Sonda nokta/!/? yoksa: önceki tam cümleye geri döner; o da yoksa nokta ekler.
  * Böylece sonuç asla "Çok Uzun" ya da "Kesilmiş" olmaz.
  */
-function bw_norm_sentence($text, $max = 155) {
+function bw_norm_sentence($text, $max = 155, $source = '') {
     $text = trim(preg_replace('/\s+/u', ' ', (string) $text));
-    if ($text === '') return '';
-
-    if (mb_strlen($text) > $max) {
-        $text = bw_trim_sentence($text, $max);
+    // TAM CÜMLE Mİ? Noktayla bitmeli ve "of/the/and…" gibi yarım kalmış bir kelimeyle bitmemeli.
+    $complete = function ($t) {
+        return (bool) preg_match('/[.!?]["”’)\']?$/u', $t)
+            && !preg_match('/\b(the|a|an|of|and|or|but|to|with|for|in|on|at|by|its|their|his|her|as|that|which|from|into|than|this|these|whose|between|about)[.!?]["”’)\']?$/iu', $t);
+    };
+    // 1) Model metni zaten tam ve sınır içindeyse olduğu gibi.
+    if ($text !== '' && mb_strlen($text) <= $max && $complete($text)) return $text;
+    // 2) Uzunsa: sınır içindeki son TAM cümleye kırp (asla cümle ortasından değil).
+    if ($text !== '' && preg_match('/^.*[.!?](?=\s|$)/su', mb_substr($text, 0, $max), $m)) {
+        $t = trim($m[0]);
+        if (mb_strlen($t) >= 40 && $complete($t)) return $t;
     }
-    // Sonda cümle bitişi var mı? (kapanış tırnağı/parantez tolere edilir)
-    if (!preg_match('/[.!?][")\']?$/u', $text)) {
-        if (preg_match('/^.*[.!?](?=\s|$)/su', $text, $m) && mb_strlen(trim($m[0])) >= 20) {
-            $text = trim($m[0]);                       // son tam cümleye kırp
-        } else {
-            $text = rtrim($text, " ,;:—–-") . '.';     // kurtarılamıyorsa nokta ekle
+    // 3) Yazının kendi metninden sınıra sığan ilk tam cümle (gerçek metin → hep tam).
+    if ($source !== '') {
+        $plain = trim(preg_replace('/\s+/u', ' ', strip_tags(preg_replace('/^#+\s.*$/m', '', (string) $source))));
+        $plain = str_replace(['**', '__', '*'], '', $plain);
+        foreach (preg_split('/(?<=[.!?])\s+(?=[A-Z“"])/u', $plain) as $sen) {
+            $sen = trim($sen);
+            if (mb_strlen($sen) >= 50 && mb_strlen($sen) <= $max && $complete($sen)) return $sen;
         }
     }
-    return $text;
+    // 4) Kurtarılamadı: yarım cümle YAYINLAMA (eskiden sona nokta ekleniyordu →
+    //    "…the theory of double-voiced." gibi kesik açıklamalar çıkıyordu).
+    return '';
 }
 
 
@@ -2199,8 +2209,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 if (!empty($mr['ok']) && preg_match('/\{.*\}/s', (string) $mr['text'], $mm)) {
                     $mj = json_decode($mm[0], true);
                     if (is_array($mj)) {
-                        $new_ex = !empty($mj['excerpt'])          ? bw_norm_sentence($mj['excerpt'], 155)          : '';
-                        $new_md = !empty($mj['meta_description']) ? bw_norm_sentence($mj['meta_description'], 155) : '';
+                        $new_ex = !empty($mj['excerpt'])          ? bw_norm_sentence($mj['excerpt'], 155, $rw_html)          : '';
+                        $new_md = !empty($mj['meta_description']) ? bw_norm_sentence($mj['meta_description'], 155, $rw_html) : '';
                         if ($new_ex !== '') bw_wp("$wp_api/$ep/$update_pid", 'POST', ['excerpt' => $new_ex], $auth, 30);
                         if ($new_md !== '') bw_wp("$wp_api/$ep/$update_pid", 'POST', ['meta' => ['_yoast_wpseo_metadesc' => $new_md]], $auth, 30);
                     }
@@ -2311,9 +2321,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // kesik bir cümle döndürse bile ("...the role of the") burada düzeltilir —
     // böylece panelde "Kesilmiş / Çok Uzun" olarak işaretlenmez.
     foreach (['excerpt', 'meta_description'] as $mf) {
-        if (!empty($meta[$mf])) {
-            $meta[$mf] = bw_norm_sentence($meta[$mf], 155);
-        }
+        $meta[$mf] = bw_norm_sentence((string) ($meta[$mf] ?? ''), 155, (string) ($content ?? ''));
+        if ($meta[$mf] === '') unset($meta[$mf]);   // yarım açıklama yazma; Yoast kendisi üretir
+    }
+    // Excerpt ile açıklama aynı cümleye düştüyse açıklama için metinden başka bir cümle dene.
+    if (!empty($meta['excerpt']) && !empty($meta['meta_description']) && $meta['excerpt'] === $meta['meta_description']) {
+        $alt = bw_norm_sentence('', 155, str_replace($meta['excerpt'], '', (string) ($content ?? '')));
+        if ($alt !== '') $meta['meta_description'] = $alt;
     }
 
     // ── Kapak bul (cURL) ───────────────────────────────────────────

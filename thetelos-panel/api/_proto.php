@@ -923,6 +923,7 @@ function proto_frame_prompt($book, $author, $notes, $target = 'a thorough summar
         . "4. ENDING: read the LAST notes carefully; any section that describes how the book closes MUST match the book's TRUE final events in the last notes. Do NOT mistake a mid-book episode for the ending.\n"
         . "5. DISTINCT SECTIONS: each section must say something the others do not (claim vs. specific concepts vs. deeper meaning vs. legacy). If a section would just repeat another, OMIT it.\n"
         . "6. Draw on the WHOLE book (first to last note), not just the opening. Synthesize; do not pad. Third person, English. Start with the opening paragraph. END on a complete sentence.\n"
+        . "7b. NO RE-SUMMARY: the walk-through already retells the book part by part. Sections after it must NOT go back over the parts or chapters again, and must NOT use ### sub-headings that list the book's parts or concepts one by one. Discuss only ideas that cut across the whole book, in flowing paragraphs.\n"
         . ($frame_words > 0 ? "7. LENGTH — HARD LIMIT: all framing sections TOGETHER (everything except the walk-through) must total about {$frame_words} words, never more than " . (int) round($frame_words * 1.15) . ". Be selective; the walk-through carries most of the article.\n" : '')
         . "\n=== NOTES FROM THE REAL TEXT ===\n" . mb_substr($notes, 0, 60000) . "\n=== END NOTES ===";
 }
