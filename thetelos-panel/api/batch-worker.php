@@ -2321,7 +2321,20 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // kesik bir cümle döndürse bile ("...the role of the") burada düzeltilir —
     // böylece panelde "Kesilmiş / Çok Uzun" olarak işaretlenmez.
     foreach (['excerpt', 'meta_description'] as $mf) {
-        $meta[$mf] = bw_norm_sentence((string) ($meta[$mf] ?? ''), 155, (string) ($content ?? ''));
+        // Model tam cümle + 155 sınırı kuralına uymadıysa: AYNI işi modele tekrar yaptır
+        // (2 deneme, sınır ve "tam cümle" açıkça hatırlatılır). Kırpma yalnız son çare.
+        $cur = trim((string) ($meta[$mf] ?? ''));
+        for ($rt = 0; $rt < 2 && bw_norm_sentence($cur, 155) !== $cur; $rt++) {
+            $snip = mb_substr(trim(strip_tags((string) ($content ?? ''))), 0, 1400);
+            if ($snip === '') break;
+            $rr = tv_ask("Write ONE complete English sentence of AT MOST 150 characters (count them) for the "
+                . ($mf === 'excerpt' ? 'excerpt' : 'meta description') . " of an article about the book \"{$book}\" by {$author}. "
+                . "It must be a whole, finished sentence ending with a period — never cut off. Use only facts from the text. "
+                . ($cur !== '' ? "Your previous attempt was invalid (too long or unfinished): \"{$cur}\". " : '')
+                . "Output ONLY the sentence.\n\n=== TEXT ===\n{$snip}", 200, 60, 'deepseek');
+            if (!empty($rr['ok'])) $cur = trim(preg_replace('/\s+/u', ' ', trim((string) $rr['text'], " \t\n\"'“”")));
+        }
+        $meta[$mf] = bw_norm_sentence($cur, 155, (string) ($content ?? ''));
         if ($meta[$mf] === '') unset($meta[$mf]);   // yarım açıklama yazma; Yoast kendisi üretir
     }
     // Excerpt ile açıklama aynı cümleye düştüyse açıklama için metinden başka bir cümle dene.
