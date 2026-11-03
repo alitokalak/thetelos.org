@@ -18,6 +18,31 @@ function tls_get_views( $post_id ) {
     return (int) get_post_meta( $post_id, 'post_views_count', true );
 }
 
+/* ── GÜNLÜK SAYAÇ (son 8 gün) ── "Haftanın kitabı" = son 7 günde en çok okunan.
+   Toplam sayaç (post_views_count) yıllar boyunca birikir; haftalık seçim için
+   gün gün sayım gerekir. Tek seçenekte [gün => [yazı => sayı]] tutulur. */
+function tls_views_daily_bump( $pid ) {
+    $d   = (array) get_option( 'tls_views_daily', [] );
+    $day = gmdate( 'Y-m-d' );
+    $d[ $day ][ $pid ] = (int) ( $d[ $day ][ $pid ] ?? 0 ) + 1;
+    ksort( $d );
+    while ( count( $d ) > 8 ) array_shift( $d );
+    update_option( 'tls_views_daily', $d, false );
+}
+
+/** Son 7 günde en çok okunan yazılar: [post_id => okunma], çoktan aza. */
+function tls_views_week_top( $limit = 30 ) {
+    $d = (array) get_option( 'tls_views_daily', [] );
+    $from = gmdate( 'Y-m-d', time() - 6 * DAY_IN_SECONDS );
+    $sum = [];
+    foreach ( $d as $day => $rows ) {
+        if ( $day < $from ) continue;
+        foreach ( (array) $rows as $pid => $n ) $sum[ (int) $pid ] = ( $sum[ (int) $pid ] ?? 0 ) + (int) $n;
+    }
+    arsort( $sum );
+    return array_slice( $sum, 0, $limit, true );
+}
+
 /* ── Sayacı artıran AJAX ucu ── */
 function tls_handle_view_ping() {
     $pid = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
@@ -34,6 +59,7 @@ function tls_handle_view_ping() {
 
     $views = tls_get_views( $pid ) + 1;
     update_post_meta( $pid, 'post_views_count', $views );
+    tls_views_daily_bump( $pid );
     wp_send_json_success( [ 'views' => $views ] );
 }
 add_action( 'wp_ajax_tls_view_ping',        'tls_handle_view_ping' );

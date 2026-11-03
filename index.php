@@ -369,42 +369,25 @@ if ( $mr_ids ) :
      BOOK OF THE WEEK
 ══════════════════════════════════ -->
 <?php
-$botw = get_transient( 'tls_book_of_week' );
+// HAFTANIN KİTABI = son 7 günde EN ÇOK OKUNAN, kapak görseli olan, yer tutucu
+// olmayan kitap (inc/post-views.php günlük sayaç). Günlük veri henüz yoksa
+// toplam okunması en yüksek kapaklı kitap. 12 saatte bir yeniden hesaplanır.
+$botw = get_transient( 'tls_book_of_week_v2' );
 if ( false === $botw ) {
-    $candidates = get_posts( [
-        'post_type'      => 'post',
-        'post_status'    => 'publish',
-        'posts_per_page' => 60,
-        'orderby'        => 'date',
-        'order'          => 'DESC',
-        'date_query'     => [ [ 'after' => '30 days ago' ] ],
-        'fields'         => 'ids',
-        'no_found_rows'  => true,
-    ] );
-    if ( count( $candidates ) < 5 ) {
-        $candidates = get_posts( [
-            'post_type'      => 'post',
-            'post_status'    => 'publish',
-            'posts_per_page' => 80,
-            'fields'         => 'ids',
-            'no_found_rows'  => true,
-        ] );
+    $botw = 0;
+    $ph = function_exists( 'tls_placeholder_ids' ) ? array_flip( tls_placeholder_ids() ) : [];
+    $top = function_exists( 'tls_views_week_top' ) ? tls_views_week_top( 40 ) : [];
+    foreach ( array_keys( $top ) as $cid ) {
+        if ( isset( $ph[ $cid ] ) || get_post_status( $cid ) !== 'publish' || get_post_type( $cid ) !== 'post' || ! has_post_thumbnail( $cid ) ) continue;
+        $botw = (int) $cid; break;
     }
-    $best_id = 0; $best_score = -1;
-    foreach ( $candidates as $cid ) {
-        $r_data       = function_exists('thetelos_get_rating') ? thetelos_get_rating($cid) : ['avg'=>0,'count'=>0];
-        $avg          = (float)($r_data['avg'] ?? 0);
-        $rcnt         = (int)($r_data['count'] ?? 0);
-        $views        = (int) get_post_meta( $cid, 'post_views_count', true );
-        $rating_score = $rcnt > 0 ? ($avg * 20 * min($rcnt, 10)) : 0;
-        $view_score   = min($views, 1000);
-        $score        = $rating_score + $view_score;
-        if ( $score > $best_score ) { $best_score = $score; $best_id = $cid; }
+    if ( ! $botw ) {
+        $c = get_posts( [ 'post_type' => 'post', 'post_status' => 'publish', 'posts_per_page' => 1, 'fields' => 'ids',
+                          'meta_key' => 'post_views_count', 'orderby' => 'meta_value_num', 'order' => 'DESC', 'no_found_rows' => true ] );
+        $botw = $c ? (int) $c[0] : 0;   // kapak/yer tutucu filtresi ana sayfa sorgu kancasından gelir
     }
-    if ( !$best_id && !empty($candidates) ) $best_id = $candidates[0];
-    $botw = (int) $best_id;
-    $ttl  = max( 3600, strtotime('next monday midnight') - time() );
-    set_transient( 'tls_book_of_week', $botw, $ttl );
+    $ttl = 12 * HOUR_IN_SECONDS;
+    set_transient( 'tls_book_of_week_v2', $botw, $ttl );
 }
 
 if ( $botw ) :

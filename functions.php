@@ -407,6 +407,7 @@ require_once get_template_directory() . '/inc/other-works.php';
 require_once get_template_directory() . '/inc/comment-guard.php';
 require_once get_template_directory() . '/inc/net-diag.php';
 require_once get_template_directory() . '/inc/home-demo.php';
+require_once get_template_directory() . '/inc/home-covers.php';
 
 /* Reading List CPT — fallback (dosya yüklenemezse) */
 add_action('init', function() {
