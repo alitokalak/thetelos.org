@@ -841,7 +841,7 @@ if (!isset($_GET['mode'])) {
           ?>
           <div style="display:flex;gap:10px;align-items:center;padding:3px 0;<?= $ii>0?'border-top:1px solid rgba(255,255,255,.05)':'' ?>">
             <span style="flex:0 0 auto;<?= $ii===0?'color:var(--gold);font-weight:600':'color:var(--muted)' ?>"><?= $ii===0 ? '● en yeni' : '○' ?></span>
-            <span style="flex:0 0 88px;font-family:monospace;color:#888">#<?= $idsh ?></span>
+            <a href="#bc-<?= htmlspecialchars((string)($bb['id'] ?? '')) ?>" style="flex:0 0 88px;font-family:monospace;color:var(--gold)">#<?= $idsh ?></a>
             <span style="flex:0 0 auto;color:#aaa"><?= $wh2 ?> başladı</span>
             <span style="flex:1;text-align:right;color:#ddd"><b><?= number_format($bt2) ?></b>/<?= number_format($tt2) ?> işlendi<?= $agotx ? " · son ilerleme $agotx" : '' ?></span>
           </div>
@@ -874,7 +874,7 @@ if (!isset($_GET['mode'])) {
           // Eski kopya şüphesi: aktif olmayan + hiç ilerlememiş + aynı boyut
           $dup_hint = (!$is_active && $okc === 0 && $errs === 0 && $tot === $newest_total);
           ob_start(); ?>
-        <div style="background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px;<?= $is_active ? 'border:1px solid var(--gold);' : 'opacity:.85;' ?>" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>" data-workers="<?= $wkrs ?>">
+        <div id="bc-<?= $bid ?>" style="scroll-margin-top:20px;background:#1a1a1a;border-radius:6px;padding:12px;margin-bottom:8px;<?= $is_active ? 'border:1px solid var(--gold);' : 'opacity:.85;' ?>" data-batch-card="<?= $bid ?>" data-pending="<?= $pending ?>" data-workers="<?= $wkrs ?>">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:6px">
             <span style="font-size:13px;font-weight:600">
               <?php if ($is_active): ?><span style="background:var(--gold);color:#111;font-size:10px;padding:2px 7px;border-radius:10px;margin-right:6px;vertical-align:1px">AKTİF</span>
@@ -1014,15 +1014,12 @@ if (!isset($_GET['mode'])) {
 
         // Geri kalan eski batch'ler — katlanır bölümde gizli
         $rest = array_slice($stuck_batches, 1);
+        // Diğer batch'ler de AÇIK gösterilir (eskiden katlanmış bölümde saklıydı;
+        // iki batch aynı anda çalışırken eskisinin listesi görünmüyordu).
         if ($rest): ?>
-        <details style="margin-top:6px">
-          <summary style="cursor:pointer;color:var(--muted);font-size:12px;padding:6px 0">
-            &#9656; Diğer <?= count($rest) ?> eski yarım batch (göster / temizle)
-          </summary>
           <div style="margin-top:8px">
-            <?php foreach ($rest as $b) echo $render_batch($b); ?>
+            <?php foreach ($rest as $b) echo $render_batch($b, true); ?>
           </div>
-        </details>
         <?php endif; ?>
       </div>
       </details>
