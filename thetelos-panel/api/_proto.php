@@ -604,14 +604,12 @@ function proto_author_in_text($author, $text, $book = '') {
 function proto_acquire($book, $author, $beat = null) {
     $dbg = [];
     // Her kaynağı dene; yalnız YAZAR-TEYİTLİ metni kabul et.
-    // NOT: proto_wikisource zaten mevcuttu ama zincire hiç bağlanmamıştı —
-    // Gutenberg/Archive'de olmayan çok sayıda deneme/risale Wikisource'ta düz
-    // metin olarak var. Standard Ebooks'tan sonra, Archive'den (OCR gürültülü)
-    // ÖNCE denenir: temiz metin varsa onu tercih et.
+    // WIKISOURCE YOK: tam-metin araması kitabı ona yazılmış eleştiri/başka eserle
+    // karıştırıyordu ("şüpheli kaynak" sayacının kaynağı). Yukarıdaki politika
+    // notuna rağmen zincirde kalmıştı — kaldırıldı. Yalnız manuel URL ile çalışır.
     $sources = [
         'gutenberg'      => fn() => proto_gutenberg($book, $author, $beat),
         'standardebooks' => fn() => proto_standardebooks($book, $author, $beat),
-        'wikisource'     => fn() => proto_wikisource($book, $author, $beat),
         'archive'        => fn() => proto_archive($book, $author, $beat),
         // Yeni yasal kaynaklar: IA aramasının kaçırdığı serbest taramalar
         // (Open Library kataloğu üzerinden) ve Fransızca/Latince orijinaller (Gallica).
