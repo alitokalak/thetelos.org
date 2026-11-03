@@ -335,16 +335,14 @@ async function bulkFix(ff) {
   const pw = document.getElementById('prog-wrap'); pw.style.display='block';
   const pb = document.getElementById('prog-bar');  pb.style.width='0%';
 
-  let done = 0;
-  for (const p of toFix) {
-    setStatus('('+(done+1)+'/'+toFix.length+') '+p.title.substring(0,50));
+  // PARALEL: 8 yazı aynı anda (eskiden tek tek + 2 sn beklemeyle 1700 yazı saatler sürüyordu).
+  let done = 0, next = 0;
+  const fixOne = async (p) => {
     const iss  = detectIssues(p);
     const hasEx= iss.some(i=>i.f==='excerpt');
     const hasMt= iss.some(i=>i.f==='meta');
     const field= ff==='excerpt'?'excerpt': ff==='meta'?'meta': hasEx&&hasMt?'both':hasEx?'excerpt':'meta';
-
-    let attempts = 0;
-    while (attempts < 3) {
+    for (let attempts = 0; attempts < 3; attempts++) {
       try {
         const fd = new FormData();
         fd.append('post_id', p.id); fd.append('field', field);
@@ -354,14 +352,22 @@ async function bulkFix(ff) {
         if (d.ok) {
           if (d.excerpt)          p.excerpt          = d.excerpt;
           if (d.meta_description) p.meta_description = d.meta_description;
-          break;
-        } else { attempts++; if(attempts<3) await sleep(5000); }
-      } catch(e) { attempts++; if(attempts<3) await sleep(5000); }
+          return;
+        }
+      } catch(e) {}
+      await sleep(3000);
     }
-    done++;
-    pb.style.width = Math.round(done/toFix.length*100)+'%';
-    await sleep(2000);
-  }
+  };
+  const worker = async () => {
+    while (next < toFix.length) {
+      const p = toFix[next++];
+      await fixOne(p);
+      done++;
+      pb.style.width = Math.round(done/toFix.length*100)+'%';
+      setStatus('('+done+'/'+toFix.length+') '+p.title.substring(0,50));
+    }
+  };
+  await Promise.all(Array.from({length: 8}, worker));
 
   renderTable();
   ['btn-fix-ex','btn-fix-mt','btn-fix-all','btn-scan'].forEach(id => { const b=document.getElementById(id); if(b)b.disabled=false; });
