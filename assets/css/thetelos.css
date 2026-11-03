@@ -1543,11 +1543,16 @@
   .tls-shelf-arrow { display: none !important; }
 }
 @media (max-width: 600px) {
-  .tls-shelf-title { font-size: 18px; }
-  .tls-shelf--related .tls-book-card { width: 170px; }
-  .tls-mini-card { width: 112px; }
+  .tls-shelf-title { font-size: 20px; }
+  /* MOBİL RAF: kartlar büyük; ekranda 2 tam + 3.'nün yarısı görünür → kaydırılabildiği belli olur */
+  .tls-shelf--related .tls-book-card { width: 40vw; }
+  .tls-mini-card { width: 40vw; }
   .tls-mini-cover img,
-  .tls-mini-cover .thetelos-book-cover { width: 112px !important; height: 160px !important; }
+  .tls-mini-cover .thetelos-book-cover { width: 40vw !important; height: 57vw !important; }
+  .tls-mini-cover .thetelos-book-cover .cover-title { font-size: 15px !important; }
+  .tls-mini-title { font-size: 15px; }
+  .tls-mini-author { font-size: 13px; }
+  .tls-mini-excerpt { font-size: 13px; }
 }
 
 /* Prev/next navigation */
