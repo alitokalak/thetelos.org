@@ -51,7 +51,7 @@ function tls_anthropic_model($override = '') {
    sabit; istenirse config'den ANTHROPIC_FAST_MODEL ile değiştirilebilir. */
 function tls_claude_fast_model() {
     return (defined('ANTHROPIC_FAST_MODEL') && ANTHROPIC_FAST_MODEL)
-        ? (string) ANTHROPIC_FAST_MODEL : 'claude-haiku-4-5-20251001';
+        ? (string) ANTHROPIC_FAST_MODEL : 'claude-haiku-5-5';   // Haiku 5.5: 4.5'ten ~10 kat ucuz ($0.10/$0.50)
 }
 
 /** KALİTELİ model — yeniden yazma/özet gibi uzun, önemli üretim için.
@@ -89,6 +89,9 @@ function tls_claude_thinking_default($model, $explicit = null) {
     }
     if (strpos($ml, 'sonnet') !== false) {
         return ['type' => 'disabled'];               // Sonnet 5 ve öncesi
+    }
+    if (strpos($ml, 'haiku-5') !== false) {
+        return ['type' => 'disabled'];               // Haiku 5.5: düşünme varsayılan açık → kapat (para/zaman)
     }
     return null;                                     // Haiku/Opus: zaten kapalı
 }
