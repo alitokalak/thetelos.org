@@ -14,7 +14,7 @@
 if (!function_exists('tls_meta_valid')) {
 
 /* Kurala uyuyor mu? */
-function tls_meta_valid($t, $max = 150) {
+function tls_meta_valid($t, $max = 160) {   // model 150'ye yazar; 160'a kadar Google'da tam görünür → geçerli
     $t = trim((string) $t);
     if (mb_strlen($t) < 40 || mb_strlen($t) > $max) return false;
     if (!preg_match('/[.!?]["”’)\']?$/u', $t)) return false;                      // noktayla bitmeli

@@ -202,14 +202,14 @@ function detectIssues(post) {
   const ex = (post.excerpt || '').trim();
   const mt = (post.meta_description || '').trim();
 
-  // Kural (_meta-rules.php ile aynı): ≤150 karakter, tek ve tam cümle.
+  // Kural (_meta-rules.php ile aynı): ≤160 karakter (Google'da tam görünür), tek ve tam cümle.
   const cut = s => !/[.!?]["”’)']?$/.test(s) || /\b(the|a|an|of|and|or|but|to|with|for|in|on|at|by|its|their|his|her|as|that|which|from|into|than|this|these|whose|between|about)[.!?]["”’)']?$/i.test(s) || /\.\.\.|…/.test(s);
   if (!ex)            issues.push({f:'excerpt',t:'missing'});
-  else if (ex.length > 150)   issues.push({f:'excerpt',t:'too_long'});
+  else if (ex.length > 160)   issues.push({f:'excerpt',t:'too_long'});
   else if (cut(ex))   issues.push({f:'excerpt',t:'truncated'});
 
   if (!mt)            issues.push({f:'meta',t:'missing'});
-  else if (mt.length > 150)   issues.push({f:'meta',t:'too_long'});
+  else if (mt.length > 160)   issues.push({f:'meta',t:'too_long'});
   else if (cut(mt))   issues.push({f:'meta',t:'truncated'});
 
   return issues;
