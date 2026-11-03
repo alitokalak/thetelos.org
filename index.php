@@ -190,7 +190,7 @@ if ( $mr_ids ) :
     padding:4px 2px 18px;margin:0 -2px;-ms-overflow-style:none;scrollbar-width:none}
 .tls-rail::-webkit-scrollbar{display:none}
 .tls-rail-card{flex:0 0 264px;scroll-snap-align:start;display:block;text-decoration:none;
-    background:#fff;border:1px solid var(--tls-border);border-radius:14px;padding:22px 20px 24px;
+    background:#fff;border:1px solid var(--tls-border);border-radius:var(--tls-radius);padding:22px 20px 24px;   /* üstteki kartlarla aynı köşe */
     transition:box-shadow .22s,transform .18s}
 .tls-rail-card:hover{box-shadow:0 10px 30px rgba(0,0,0,.09);transform:translateY(-3px)}
 .tls-rail-num{font-family:var(--tls-sans);font-size:10px;font-weight:700;letter-spacing:.1em;
