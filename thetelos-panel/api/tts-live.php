@@ -22,6 +22,7 @@ if ($action === 'save') {
         $v = trim((string) ($_POST[$f] ?? ''));
         if ($v !== '') $cfg[$f] = $v;
     }
+    $cfg['enabled'] = !empty($_POST['enabled']) ? 1 : 0;
     $voice = (string) ($_POST['voice'] ?? '');
     if (in_array($voice, ['am_michael', 'af_heart', 'am_fenrir', 'af_bella', 'bm_george', 'bf_emma'], true)) $cfg['voice'] = $voice;
     if (isset($_POST['daily_chars']) && $_POST['daily_chars'] !== '') $cfg['daily_chars'] = max(10000, min(50000000, (int) $_POST['daily_chars']));
@@ -54,7 +55,8 @@ foreach ($rows as $r) {
 $use = get_option('tls_tts_live_usage', []);
 echo json_encode([
     'ok' => true,
-    'ready' => !empty($cfg['deepinfra_key']) && !empty($cfg['r2_key']) && !empty($cfg['r2_secret']),
+    'enabled' => !empty($cfg['enabled']),
+    'ready' => !empty($cfg['enabled']) && !empty($cfg['deepinfra_key']) && !empty($cfg['r2_key']) && !empty($cfg['r2_secret']),
     'deepinfra_key' => tl_mask($cfg['deepinfra_key'] ?? ''), 'r2_key' => tl_mask($cfg['r2_key'] ?? ''), 'r2_secret' => tl_mask($cfg['r2_secret'] ?? ''),
     'voice' => $cfg['voice'] ?? 'am_michael', 'daily_chars' => (int) ($cfg['daily_chars'] ?? 1500000),
     'today_chars' => (($use['d'] ?? '') === gmdate('Y-m-d')) ? (int) $use['c'] : 0,

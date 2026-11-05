@@ -20,13 +20,20 @@ const TLS_R2_PUBLIC  = 'https://audio.thetelos.org';
 function tls_live_cfg() {
     $c = get_option( 'tls_tts_live', [] );
     return wp_parse_args( is_array( $c ) ? $c : [], [
-        'deepinfra_key' => '', 'r2_key' => '', 'r2_secret' => '', 'voice' => 'am_michael', 'daily_chars' => 1500000,
+        'enabled' => 0, 'deepinfra_key' => '', 'r2_key' => '', 'r2_secret' => '', 'voice' => 'am_michael', 'daily_chars' => 1500000,
     ] );
 }
 function tls_live_ready() {
     $c = tls_live_cfg();
-    return $c['deepinfra_key'] !== '' && $c['r2_key'] !== '' && $c['r2_secret'] !== '';
+    return ! empty( $c['enabled'] ) && $c['deepinfra_key'] !== '' && $c['r2_key'] !== '' && $c['r2_secret'] !== '';
 }
+
+/* Anlık dinleme kapatıldı: önbellekteki sayfalarda kalan ▶'ı temizlemek için bir kez tüm önbelleği boşalt. */
+add_action( 'init', function () {
+    if ( get_option( 'tls_live_purged_v1' ) ) return;
+    update_option( 'tls_live_purged_v1', 1, false );
+    do_action( 'litespeed_purge_all' );
+} );
 
 /* Seslendirilecek düz metin: başlık + yazar + gövde. */
 function tls_tts_text( $pid ) {

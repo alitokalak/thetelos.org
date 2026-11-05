@@ -49,6 +49,7 @@ code.k{background:#111;padding:3px 8px;border-radius:4px;font-size:12px;word-bre
         <label>R2 Secret Access Key <span id="m-sk" class="mask"></span><input name="r2_secret" type="password" autocomplete="off"></label>
         <label>Ses<select name="voice"><option value="am_michael">Michael (erkek, ABD)</option><option value="af_heart">Heart (kadın, ABD)</option><option value="bm_george">George (erkek, İngiliz)</option><option value="bf_emma">Emma (kadın, İngiliz)</option></select></label>
         <label>Günlük üst sınır (karakter)<input name="daily_chars" type="number" min="10000" step="10000"></label>
+        <label style="flex-direction:row;align-items:center;gap:8px;font-size:13px;color:inherit"><input type="checkbox" name="enabled" value="1" style="width:auto"> Anlık dinleme açık (DeepInfra — ücretli)</label>
         <div><button class="btn btn-primary" type="submit">Kaydet</button> <span id="lv-msg" style="font-size:13px"></span></div>
       </form>
       <div id="lv-err" style="display:none;margin-top:10px;font-size:12px;color:#e07070"></div>
@@ -84,7 +85,7 @@ function load(){
     document.getElementById('m-di').textContent=d.deepinfra_key?'(kayıtlı: '+d.deepinfra_key+')':'';
     document.getElementById('m-ak').textContent=d.r2_key?'(kayıtlı: '+d.r2_key+')':'';
     document.getElementById('m-sk').textContent=d.r2_secret?'(kayıtlı: '+d.r2_secret+')':'';
-    const f=document.getElementById('lv-form'); f.voice.value=d.voice; f.daily_chars.value=d.daily_chars;
+    const f=document.getElementById('lv-form'); f.enabled.checked=!!d.enabled; f.voice.value=d.voice; f.daily_chars.value=d.daily_chars;
     if(d.last_error){const e=document.getElementById('lv-err');e.style.display='block';e.textContent='Son hata: '+d.last_error;}
     document.getElementById('lv-books').innerHTML=d.books.length?d.books.map(b=>
       '<tr><td><a href="'+esc(b.url)+'" target="_blank" style="color:var(--gold)">'+esc(b.title)+'</a></td><td>'+b.kind+'</td><td>'+fmtT(b.seconds)+'</td><td>'+(b.parts||'–')+'</td></tr>').join('')
