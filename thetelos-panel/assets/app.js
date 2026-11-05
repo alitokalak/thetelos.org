@@ -324,7 +324,7 @@ let pollTimer = null;
 // Başlangıç sağlayıcısını sunucunun işaretlediği düğmeden al (OpenRouter açıksa
 // varsayılan o olur), yoksa DeepSeek.
 let activeProvider = document.querySelector('.api-btn.active')?.dataset.provider || 'deepseek';
-let activeModel    = 'claude-haiku-4-5-20251001';
+let activeModel    = 'claude-haiku-5-5';
 
 const subGroup = document.getElementById('api-sub-anthropic');
 

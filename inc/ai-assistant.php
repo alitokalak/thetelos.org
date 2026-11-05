@@ -423,8 +423,9 @@ function tls_call_claude( string $system, string $user ): ?string {
             'content-type'      => 'application/json',
         ],
         'body' => json_encode([
-            'model'    => 'claude-haiku-4-5-20251001',
+            'model'    => 'claude-haiku-5-5',   // 4.5'e göre ~10 kat ucuz
             'max_tokens' => 800,
+            'thinking' => ['type' => 'disabled'],   // Haiku 5.5'te düşünme varsayılan açık
             'system'   => $system,
             'messages' => [['role'=>'user','content'=>$user]],
         ]),

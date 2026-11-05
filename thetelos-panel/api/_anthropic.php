@@ -42,7 +42,7 @@ function tls_anthropic_ready() {
 function tls_anthropic_model($override = '') {
     if ($override !== '') return $override;
     if (defined('ANTHROPIC_MODEL') && ANTHROPIC_MODEL) return (string) ANTHROPIC_MODEL;
-    return 'claude-haiku-4-5-20251001';
+    return 'claude-haiku-5-5';
 }
 
 /** HIZLI/UCUZ model — olgu denetimi, yoklama, meta gibi kısa çağrılar için.
