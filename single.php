@@ -460,6 +460,8 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
 
                 <?php wtn_ad_block_top_article(); ?>
 
+                <?php if ( function_exists( 'tls_audio_player' ) ) tls_audio_player( $post_id ); /* sesli özet (varsa) */ ?>
+
                 <article class="tls-article-content article-post">
                     <?php the_content(); ?>
                     <?php

@@ -49,6 +49,7 @@ $tls_groups = [
     ['key' => 'arac', 'ico' => '🧰', 'label' => 'Araçlar', 'items' => [
         ['cover-backfill.php', 'Kapak Bul', null],
         ['amazon-match.php', 'Amazon', null],
+        ['tts.php', 'Sesli Özet', null],
     ]],
 ];
 $WP = defined('WP_URL') ? rtrim(WP_URL, '/') : '';
