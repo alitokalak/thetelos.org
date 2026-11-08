@@ -250,12 +250,9 @@ function qb_openlibrary($author){
         // Sadece bu yazara ait eserler
         $was = $entry['authors']??[];
         if(!empty($was)){
-            $ok = false;
-            foreach($was as $wa){
-                $wk = preg_replace('~^/?(authors/)?~', '', (string)($wa['author']['key']??($wa['key']??'')));
-                if($wk===$olid){$ok=true;break;}
-            }
-            if(!$ok) continue;
+            // Yazar listenin BAŞINDA olmalı; değilse derleme/katkı (başkasının kitabı).
+            $wk = preg_replace('~^/?(authors/)?~', '', (string)($was[0]['author']['key']??($was[0]['key']??'')));
+            if($wk!==$olid) continue;
         }
 
         // "X of/on Kant" gibi ikincil literatürü at

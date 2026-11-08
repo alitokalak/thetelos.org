@@ -62,7 +62,7 @@ function cll_clean_author_ai($author, array $titles, array $opts = []) {
        yazar tekrar para harcamaz, anında geçer. Liste değişirse anahtar değişir. */
     $cll_norm_titles = array_map('cll_norm', $titles);
     sort($cll_norm_titles);
-    $cll_key  = md5('cll4|' . mb_strtolower(trim((string) $author)) . '|' . implode("\n", $cll_norm_titles));
+    $cll_key  = md5('cll5|' . mb_strtolower(trim((string) $author)) . '|' . implode("\n", $cll_norm_titles));
     $cll_dir  = __DIR__ . '/cache/clean';
     $cll_file = $cll_dir . '/a_' . $cll_key . '.json';
     if (is_file($cll_file)) {

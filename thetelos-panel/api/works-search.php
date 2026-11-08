@@ -232,12 +232,9 @@ function ws_openlibrary_fallback($author, $limit) {
         // Yazar doğrulaması
         $work_authors = $entry['authors'] ?? [];
         if (!empty($work_authors)) {
-            $matched = false;
-            foreach ($work_authors as $wa) {
-                $wa_key = $wa['author']['key'] ?? ($wa['key'] ?? '');
-                if ($wa_key === $author_key) { $matched = true; break; }
-            }
-            if (!$matched) continue;
+            // Yazar listenin BAŞINDA olmalı; değilse derleme/katkı (başkasının kitabı).
+            $wa_key = $work_authors[0]['author']['key'] ?? ($work_authors[0]['key'] ?? '');
+            if (preg_replace('~^/?(authors/)?~', '', (string) $wa_key) !== preg_replace('~^/?(authors/)?~', '', (string) $author_key)) continue;
         }
 
         // "X of/on Kant" pattern veya başlık = soyadı → at

@@ -32,7 +32,7 @@ if ($author === '' || !is_array($works) || empty($works)) {
    gelir. Giriş listesi değişirse anahtar değişir → otomatik yeniden işlenir.
    Kural/motor geliştirilince CL_CACHE_VER artırılarak tüm önbellek tazelenir.
    POST nocache=1 → önbelleği atla (zorla yeniden temizle). */
-define('CL_CACHE_VER', '4');   // 2: dil kuralı + tekrar birleştirme kodla zorlanıyor
+define('CL_CACHE_VER', '5');   // 5: Open Library katkı/derleme elemesi   // 2: dil kuralı + tekrar birleştirme kodla zorlanıyor
 $cl_titles = array_values(array_filter(array_map(
     function ($w) { return mb_strtolower(trim((string) ($w['title'] ?? ''))); }, $works)));
 sort($cl_titles);

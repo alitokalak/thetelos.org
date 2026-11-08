@@ -115,6 +115,30 @@ function cl2_wd_author_langs($qid, $works) {
     return $from_works;
 }
 
+/* Open Library: yazarın adının geçtiği kayıtlar → başlık anahtarı => [ilk yazar mı, ilk iki ad].
+   Bir kitap Open Library'de yazarın adıyla görünse bile, yazar listenin BAŞINDA değilse
+   (ör. 10 kişilik derlemede 10. sırada) o kitap onun değildir: derleme/katkı/önsöz. */
+function cl2_ol_contrib($author) {
+    $ch = curl_init('https://openlibrary.org/search.json?' . http_build_query(['author' => $author, 'fields' => 'title,author_name', 'limit' => 1000]));
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 40, CURLOPT_CONNECTTIMEOUT => 10, CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTPHEADER => ['User-Agent: ThetelosBot/1.0 (+https://thetelos.org)']]);
+    $r = curl_exec($ch); $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE); curl_close($ch);
+    if ($code !== 200 || !$r) return [];
+    $d = json_decode($r, true);
+    $parts = preg_split('/\s+/', trim($author)); $sur = cl2_key((string) end($parts));
+    $out = [];
+    foreach ((array) ($d['docs'] ?? []) as $doc) {
+        $names = array_values((array) ($doc['author_name'] ?? []));
+        $k = cl2_key($doc['title'] ?? '');
+        if ($k === '' || !$names) continue;
+        $first = ($sur !== '' && strpos(cl2_key($names[0]), $sur) !== false);
+        if (!isset($out[$k])) $out[$k] = ['first' => false, 'others' => ''];
+        if ($first) $out[$k]['first'] = true;
+        elseif ($out[$k]['others'] === '') $out[$k]['others'] = implode(', ', array_slice($names, 0, 2)) . (count($names) > 2 ? ' vd.' : '');
+    }
+    return $out;
+}
+
 /* Bedava kural elemesi. */
 function cl2_rule_drop($t, $author) {
     $tl = mb_strtolower(trim((string) $t), 'UTF-8');
@@ -209,13 +233,21 @@ function cl2_clean_author($author, array $titles) {
     // Önbellek (yazar + liste).
     $nt = array_map('cl2_key', $titles); sort($nt);
     $cdir = __DIR__ . '/cache/clean';
-    $cfile = $cdir . '/c2_' . md5('c2v2|' . mb_strtolower($author) . '|' . implode("\n", $nt)) . '.json';
+    $cfile = $cdir . '/c2_' . md5('c2v3|' . mb_strtolower($author) . '|' . implode("\n", $nt)) . '.json';
     if (is_file($cfile)) { $h = json_decode((string) file_get_contents($cfile), true); if (is_array($h) && !empty($h['ok'])) return $h; }
 
     $flags = [];      // ix => reason
     $assign = [];     // ix => work index (katalog)
     // 1) Kural elemesi
     foreach ($titles as $i => $t) { $why = cl2_rule_drop($t, $author); if ($why !== '') $flags[$i] = $why; }
+
+    // 1b) Open Library: yazar hiçbir kayıtta ilk sırada değilse → başkasının kitabı (derleme/katkı).
+    $olc = $author !== '' ? cl2_ol_contrib($author) : [];
+    foreach ($titles as $i => $t) {
+        if (isset($flags[$i])) continue;
+        $c = $olc[cl2_key($t)] ?? null;
+        if ($c && !$c['first'] && $c['others'] !== '') $flags[$i] = 'başkasının kitabı (yazar yalnız katkıda bulunmuş/derlemede bir bölüm) — asıl yazar/editör: ' . mb_substr($c['others'], 0, 100);
+    }
 
     // 2) Katalog
     $qid = $author !== '' ? wd_find_entity($author) : null;
