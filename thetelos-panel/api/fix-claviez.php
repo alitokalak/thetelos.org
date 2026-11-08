@@ -20,8 +20,8 @@ $post = get_page_by_path($old_slug, OBJECT, 'post') ?: get_page_by_path($new_slu
 if (!$post) exit("Yazı bulunamadı ($old_slug).");
 $pid = $post->ID;
 
-$author_name = 'Thomas Claviez and Viola Marchi';
-$title = 'Throwing the Moral Dice – Thomas Claviez and Viola Marchi';
+$author_name = 'Thomas Claviez & Viola Marchi';
+$title = 'Throwing the Moral Dice – Thomas Claviez & Viola Marchi';
 $meta  = 'Throwing the Moral Dice, edited by Thomas Claviez and Viola Marchi, gathers nine thinkers on how ethics can respond to contingency.';
 $excerpt = 'A 2021 Fordham University Press collection, edited by Thomas Claviez and Viola Marchi, on ethics and the problem of contingency.';
 
