@@ -189,7 +189,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                     </div>
                     <?php if ( $book_author ) : ?>
                     <div class="tls-meta-item">
-                        <span class="tls-meta-label">Author</span>
+                        <span class="tls-meta-label"><?php echo get_post_meta( get_the_ID(), '_tls_author_role', true ) === 'editor' ? 'Editors' : 'Author'; ?></span>
                         <span class="tls-meta-value">
                             <a href="<?php echo esc_url( get_term_link( $book_author ) ); ?>"
                                style="color:inherit;text-decoration:none;border-bottom:1px solid var(--tls-border);">
@@ -573,7 +573,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                 <!-- Prev / Next -->
                 <nav class="tls-prevnext" aria-label="Post navigation">
                     <div>
-                        <?php $prev = get_previous_post(); if ( $prev ) : ?>
+                        <?php $prev = get_previous_post( true, '', 'authors' ); if ( $prev ) : ?>
                         <a class="tls-prevnext-link" href="<?php echo esc_url( get_permalink( $prev ) ); ?>">
                             <span>&larr; Previous</span>
                             <strong><?php echo esc_html( $prev->post_title ); ?></strong>
@@ -581,7 +581,7 @@ $reading_time = function_exists( 'thetelos_post_reading_time' ) ? thetelos_post_
                         <?php endif; ?>
                     </div>
                     <div>
-                        <?php $next = get_next_post(); if ( $next ) : ?>
+                        <?php $next = get_next_post( true, '', 'authors' ); if ( $next ) : ?>
                         <a class="tls-prevnext-link next" href="<?php echo esc_url( get_permalink( $next ) ); ?>">
                             <span>Next &rarr;</span>
                             <strong><?php echo esc_html( $next->post_title ); ?></strong>
@@ -609,7 +609,7 @@ if ( $disable_rp == 0 ) :
     $tls_related = ! empty( $tls_cats ) ? get_posts( [
         'post_type'      => 'post',
         'post_status'    => 'publish',
-        'posts_per_page' => 12,
+        'posts_per_page' => 60,
         'post__not_in'   => array_merge( [ $post_id ], $tls_shown_ids ),
         'no_found_rows'  => true,
         'orderby'        => 'date',
@@ -620,6 +620,20 @@ if ( $disable_rp == 0 ) :
             'terms'    => $tls_cats,
         ] ],
     ] ) : array();
+    // Çeşitlilik: bir yazardan en fazla 2 kitap; sıra yazıya göre sabit karışık.
+    if ( ! empty( $tls_related ) ) {
+        mt_srand( $post_id ); shuffle( $tls_related ); mt_srand();
+        $tls_per = array(); $tls_pick = array();
+        foreach ( $tls_related as $tls_r ) {
+            $tls_a = wp_get_post_terms( $tls_r->ID, 'authors', [ 'fields' => 'ids' ] );
+            $tls_k = ( ! is_wp_error( $tls_a ) && $tls_a ) ? $tls_a[0] : 0;
+            if ( ( $tls_per[ $tls_k ] ?? 0 ) >= 2 ) continue;
+            $tls_per[ $tls_k ] = ( $tls_per[ $tls_k ] ?? 0 ) + 1;
+            $tls_pick[] = $tls_r;
+            if ( count( $tls_pick ) >= 12 ) break;
+        }
+        $tls_related = $tls_pick;
+    }
     if ( ! empty( $tls_related ) ) : ?>
 <div class="tls-related">
     <div class="container">

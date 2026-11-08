@@ -44,11 +44,13 @@ function thetelos_book_schema() {
 
     if ( $author ) {
         $aurl = get_term_link( $author );
-        $schema['author'] = array_filter( [
-            '@type' => 'Person',
-            'name'  => $author->name,
-            'url'   => is_wp_error( $aurl ) ? '' : $aurl,
-        ] );
+        $aname  = html_entity_decode( $author->name, ENT_QUOTES, 'UTF-8' );
+        $people = [];
+        foreach ( preg_split( '/\s+&\s+/u', $aname ) as $nm ) {
+            $people[] = array_filter( [ '@type' => 'Person', 'name' => trim( $nm ), 'url' => is_wp_error( $aurl ) ? '' : $aurl ] );
+        }
+        $role = get_post_meta( $post_id, '_tls_author_role', true ) === 'editor' ? 'editor' : 'author';
+        $schema[ $role ] = count( $people ) === 1 ? $people[0] : $people;
     }
 
     // Kitabın yayın yılı (OpenLibrary'den panelce doldurulur).

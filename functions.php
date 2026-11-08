@@ -3235,7 +3235,7 @@ function tls_amazon_url( $post_id ) {
     // Başlıktan " - Yazar" ekini ve sondaki parantezli orijinal adı temizle.
     $title   = html_entity_decode( get_the_title( $post_id ), ENT_QUOTES, 'UTF-8' );
     $authors = get_the_terms( $post_id, 'authors' );
-    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0]->name : '';
+    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? html_entity_decode( $authors[0]->name, ENT_QUOTES, 'UTF-8' ) : '';
     if ( $author !== '' ) {
         $title = preg_replace( '/\s*[-–—]\s*' . preg_quote( $author, '/' ) . '\s*$/u', '', $title );
     }
@@ -3252,7 +3252,7 @@ function tls_amazon_url( $post_id ) {
 function tls_book_query( $post_id ) {
     $title   = html_entity_decode( get_the_title( $post_id ), ENT_QUOTES, 'UTF-8' );
     $authors = get_the_terms( $post_id, 'authors' );
-    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0]->name : '';
+    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? html_entity_decode( $authors[0]->name, ENT_QUOTES, 'UTF-8' ) : '';
     if ( $author !== '' ) {
         $title = preg_replace( '/\s*[-–—]\s*' . preg_quote( $author, '/' ) . '\s*$/u', '', $title );
     }
@@ -3384,7 +3384,7 @@ add_action( 'wp_footer', function () {
     if ( ! is_singular( 'post' ) ) return;
     if ( trim( (string) get_option( 'tls_amazon_tag', '' ) ) === '' ) return;
     $authors = get_the_terms( get_the_ID(), 'authors' );
-    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? $authors[0]->name : '';
+    $author  = ( ! empty( $authors ) && ! is_wp_error( $authors ) ) ? html_entity_decode( $authors[0]->name, ENT_QUOTES, 'UTF-8' ) : '';
     ?>
     <script>
     (function () {
@@ -3599,3 +3599,7 @@ add_filter( 'aioseo_description', function ( $desc ) {
     }
     return $desc;
 }, 20 );
+
+
+// Kapaklar küçük (180×270): büyük kart bozuk görünür → kitap sayfalarında küçük kart.
+add_filter( 'wpseo_twitter_card_type', function ( $t ) { return is_singular( 'post' ) ? 'summary' : $t; } );

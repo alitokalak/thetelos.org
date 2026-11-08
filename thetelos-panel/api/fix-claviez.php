@@ -81,6 +81,11 @@ $r = wp_update_post(['ID' => $pid, 'post_title' => $title, 'post_name' => $new_s
 if (is_wp_error($r)) exit('Güncellenemedi: ' . $r->get_error_message());
 update_post_meta($pid, '_yoast_wpseo_metadesc', $meta);
 update_post_meta($pid, '_tls_pub_year', '2021');
+update_post_meta($pid, '_tls_author_role', 'editor');
+update_post_meta($pid, '_tls_amazon_asin', '0823298086');          // ISBN-10 (karton kapak) → doğrudan Amazon ürün sayfası
+$cats = [];
+foreach (['ethics', 'philosophy', 'critical-theory'] as $sl) { $c = get_category_by_slug($sl); if ($c) $cats[] = (int) $c->term_id; }
+if ($cats) wp_set_post_categories($pid, $cats, false);             // Psychoanalysis vb. eski (Žižek) kategoriler çıkar
 delete_post_meta($pid, '_tls_audio_url');
 if (function_exists('litespeed_purge_single_post')) litespeed_purge_single_post($pid);
 do_action('litespeed_purge_post', $pid);
