@@ -1091,13 +1091,13 @@ function bw_is_adult($text) {
 
 
 /* ── YAYIN HIZI: Google toplu üretim görmesin diye yeni yazılar güne yayılır. ──
-   Ayar: cache/pub-rate.json {"per_day":5,"max_ahead_days":7}
+   Ayar: cache/pub-rate.json {"per_day":30,"max_ahead_days":7}
    Yeni yazı hemen yayınlanmaz; sıradaki boş saate ZAMANLANIR (WordPress 'future').
    Zamanlanmış yazılar max_ahead_days'i aşarsa worker yazmayı bekletir. */
 function bw_pub_rate() {
     $f = __DIR__ . '/cache/pub-rate.json';
     $c = is_file($f) ? (array) json_decode((string) file_get_contents($f), true) : [];
-    return ['per_day' => max(1, (int) ($c['per_day'] ?? 5)), 'max_ahead_days' => max(1, (int) ($c['max_ahead_days'] ?? 7))];
+    return ['per_day' => max(1, (int) ($c['per_day'] ?? 30)), 'max_ahead_days' => max(1, (int) ($c['max_ahead_days'] ?? 7))];
 }
 function bw_pub_last() {
     $f = __DIR__ . '/cache/pub-slots.json';
