@@ -408,6 +408,7 @@ require_once get_template_directory() . '/inc/comment-guard.php';
 require_once get_template_directory() . '/inc/net-diag.php';
 require_once get_template_directory() . '/inc/home-demo.php';
 require_once get_template_directory() . '/inc/home-covers.php';
+require_once get_template_directory() . '/inc/seo-prune.php';
 require_once get_template_directory() . '/inc/audio-live.php';
 require_once get_template_directory() . '/inc/audio-player.php';
 
