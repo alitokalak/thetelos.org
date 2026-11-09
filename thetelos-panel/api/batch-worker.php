@@ -1089,6 +1089,39 @@ function bw_is_adult($text) {
     return false;
 }
 
+
+/* ── YAYIN HIZI: Google toplu üretim görmesin diye yeni yazılar güne yayılır. ──
+   Ayar: cache/pub-rate.json {"per_day":5,"max_ahead_days":7}
+   Yeni yazı hemen yayınlanmaz; sıradaki boş saate ZAMANLANIR (WordPress 'future').
+   Zamanlanmış yazılar max_ahead_days'i aşarsa worker yazmayı bekletir. */
+function bw_pub_rate() {
+    $f = __DIR__ . '/cache/pub-rate.json';
+    $c = is_file($f) ? (array) json_decode((string) file_get_contents($f), true) : [];
+    return ['per_day' => max(1, (int) ($c['per_day'] ?? 5)), 'max_ahead_days' => max(1, (int) ($c['max_ahead_days'] ?? 7))];
+}
+function bw_pub_last() {
+    $f = __DIR__ . '/cache/pub-slots.json';
+    return is_file($f) ? (int) (json_decode((string) file_get_contents($f), true)['last'] ?? 0) : 0;
+}
+function bw_pub_slot() {
+    $r = bw_pub_rate(); $gap = (int) floor(86400 / $r['per_day']);
+    $f = __DIR__ . '/cache/pub-slots.json';
+    if (!is_dir(dirname($f))) @mkdir(dirname($f), 0775, true);
+    $h = fopen($f, 'c+'); if (!$h) return time();
+    flock($h, LOCK_EX);
+    $d = json_decode((string) stream_get_contents($h), true);
+    $last = (int) ($d['last'] ?? 0);
+    $slot = max(time(), $last + $gap);
+    $slot += random_int(0, (int) min(1800, $gap / 4));          // saatler makine gibi düzenli olmasın
+    ftruncate($h, 0); rewind($h); fwrite($h, json_encode(['last' => $slot]));
+    flock($h, LOCK_UN); fclose($h);
+    return $slot;
+}
+function bw_pub_backlog_full() {
+    $r = bw_pub_rate();
+    return bw_pub_last() > time() + $r['max_ahead_days'] * 86400;
+}
+
 function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     $book         = $batch['books'][$idx]['book_title'];
     $author       = $batch['books'][$idx]['author_name'];
@@ -2549,6 +2582,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         'status'  => $post_status,
     ];
     if ($ep !== 'analysis' && $cat_ids) $pb['categories'] = $cat_ids;
+    // Yeni yazı → güne yayılmış bir saate zamanla (yeniden yazmalar hemen güncellenir).
+    if (!($rewrite && $update_pid) && $post_status === 'publish' && $ep !== 'analysis') {
+        $slot = bw_pub_slot();
+        if ($slot > time() + 120) { $pb['status'] = 'future'; $pb['date_gmt'] = gmdate('Y-m-d\TH:i:s', $slot); }
+    }
 
     // YENİDEN YAZ: mevcut yazının ÜSTÜNE yaz (POST /$ep/$id). Aksi halde yeni oluştur.
     if ($rewrite && $update_pid) {
@@ -2956,6 +2994,10 @@ while (true) {
     }
 
     bw_claude_poll($batch_file);   // beklemeli Claude cevapları geldiyse kuyruğa al
+    if (bw_pub_backlog_full()) {   // yeterince zamanlanmış yazı var → yazmayı beklet (Google'a toplu üretim görünmesin)
+        if (time() - $start >= $budget) { $reason = 'budget'; break; }
+        $g_beat(); sleep(60); continue;
+    }
     [$idx, $batch] = bw_claim_next($batch_file);
     if ($idx === -1) { $reason = 'done';      break; }      // bekleyen yok
     if ($idx === -5) {                                       // yalnız Claude cevabı bekleniyor
