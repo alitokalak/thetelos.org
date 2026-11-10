@@ -1005,7 +1005,7 @@ function proto_assemble($frame, $sbs) {
     }
     // İşaretçi yok (model unuttu) → yeni başlıklardan birinden ÖNCE ekle, yoksa sona.
     // NOT: PREG_OFFSET_CAPTURE ofseti BAYT cinsindendir → substr (bayt) kullan.
-    $block = "## Inside the Book\n\n" . $sbs . "\n\n";
+    $block = $sbs . "\n\n";   // kalıp başlık ("Inside the Book") EKLEME — ### alt başlıklar kitaba özgü
     if (preg_match('/^##[ \t]+(Key Ideas|Themes|Characters|Main Arguments)/mi', $frame, $m, PREG_OFFSET_CAPTURE)) {
         $pos = $m[0][1];
         return rtrim(substr($frame, 0, $pos)) . "\n\n" . $block . substr($frame, $pos);

@@ -105,7 +105,7 @@ function bw_clean_content($text) {
     //  "### Part 3: The Absurd"→ "### The Absurd" (gerçek başlığı koru)
     // Gövde cümlelerine ("In Part 1…") DOKUNMAYIZ — yalnız başlık satırları.
     $strip_part = fn($s) => trim(preg_replace(
-        '/^part\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|[ivxlcdm]+)\b\s*[:.\-–—)]*\s*/i',
+        '/^(?:part|chapter|section|book|lecture|bölüm|kısım)\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|[ivxlcdm]+)\b\s*[:.\-–—)]*\s*/iu',
         '', $s));
     // (a) Markdown başlık: "### Part 3: The Absurd" → "### The Absurd"; "### Part 3" → sil.
     $text = preg_replace_callback('/^(#{2,6})[ \t]+(.+?)[ \t]*$/m', function ($m) use ($strip_part) {

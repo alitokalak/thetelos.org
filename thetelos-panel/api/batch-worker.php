@@ -734,7 +734,8 @@ function bw_or_overview($book, $author, $target_words = 0, $beat = null, &$why =
         . "multi-paragraph passages. Summarize in your own words instead.\n\n"
         . "If you DO know the book: write a Markdown article (## / ### headings only where you know real structure) that "
         . "is as thorough as your GENUINE knowledge of THIS BOOK supports, up to about {$ideal} words. Do NOT pad with "
-        . "biography or invention to reach a length. English only. Never mention AI, yourself, or the word \"I\"."
+        . "biography or invention to reach a length. English only. Never mention AI, yourself, or the word \"I\".\n"
+        . proto_heading_rules() . "\n" . str_replace('grounded in the notes', 'grounded in what you truly know', proto_voice_rules())
         . $warn . $web . $ground . "\n\n"
         . "Work: " . trim((string) $book) . "\nAuthor (may be wrong): " . trim((string) $author) . "\n\n"
         . "Write the overview of the BOOK {$who} now, or reply UNKNOWN if you are not sure what the book itself contains.";
