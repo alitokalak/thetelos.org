@@ -962,7 +962,10 @@ function bw_claude_fail($batch_file, $i, $bk, $reason) {
     $rw = is_array($b) && !empty($b['rewrite']) && $b['rewrite'] !== '0';
     // create: Other Works listesine eklenir; rewrite: mevcut yazıya dokunulmaz.
     bw_flag_problem($book, $author, '', '', 'unknown', $reason, 0, $rw ? 'rewrite' : 'create');
-    bw_update_book($batch_file, $i, ['status' => 'error', 'error' => $reason]);
+    // KULLANICI SIRASI (2026-11-10): Claude da yazamadı → kitap yeniden sıraya girer ve bu kez
+    // tam metin / DeepSeek hafıza adımları ATLANIR; DeepSeek internet araması ile kısa Bilgi
+    // Metni denenir, o da olmazsa yer tutucu (noindex) açılır.
+    bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_unknown' => 1, 'error' => $reason . ' → internetten kısa bilgi deneniyor']);
 }
 
 /* Hafızadan yazılan özetin yöntem etiketi: kim yazdı? (claude / model-deepseek / model-qwen) */
@@ -1597,7 +1600,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         require_once __DIR__ . '/_proto.php';
         require_once __DIR__ . '/_info.php';
         bw_touch_hb($batch_file, $idx);
-        $sr = proto_generate($search_book, $author, [
+        $claude_unknown = !empty($batch['books'][$idx]['claude_unknown']);   // Claude da bilmedi → yalnız internet bilgi metni / yer tutucu
+        $sr = $claude_unknown ? ['found' => false, 'trace' => 'Claude da bilmiyor'] : proto_generate($search_book, $author, [
             'length'  => in_array($batch['length'] ?? 'standart', ['kisa','standart','kapsamli'], true) ? $batch['length'] : 'standart',
             'words'   => (int) ($batch['source_words'] ?? 0),   // serbest hedef kelime (kaydırıcı); 0 → 'length' ön-ayarı
             'url'     => $eff_src_url,    // MANUEL kaynak: URL (kitaba özel > batch geneli)
@@ -1642,8 +1646,15 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 // biliyorsa kendi bilgisinden yazar; bilmiyorsa UNKNOWN → Bilgi Metni.
                 // Burada Claude'a (web aramalı pahalı uzun özet) DÜŞÜLMEZ.
                 $GLOBALS['ds_think'] = true;    // düşünerek yaz: yavaş ama daha az uydurma
-                $cl = bw_or_overview($book, $author, $cl_target_words, $info_hb, $cl_why);
+                $cl = $claude_unknown ? '' : bw_or_overview($book, $author, $cl_target_words, $info_hb, $cl_why);
                 $GLOBALS['ds_think'] = false;
+                // KULLANICI SIRASI: DeepSeek kitabı kesin bilmiyorsa → Bilgi Metninden ÖNCE Claude'a devret
+                // (Haiku, beklemeli Batch −%50, aramasız; biliyorsa geniş, kısmen biliyorsa bildiği kadar özet).
+                if ($cl === '' && !$claude_unknown && !$is_single && empty($batch['books'][$idx]['claude_tried'])) {
+                    $q_why = '';
+                    if (bw_claude_queue($batch_file, $idx, $book, $author, $cl_target_words, $q_why)) return;
+                    $cl_why = $cl_why ? ($cl_why . ' · ' . $q_why) : $q_why;
+                }
                 // KRİTİK NOKTA: kaynaksız (hafızadan) yazıldı → ucuz Claude (Haiku) denetler;
                 // doğrulayamazsa yayınlanmaz, kaynaklı Bilgi Metni'ne geçilir.
                 if ($cl !== '' && tls_anthropic_ready()) {
