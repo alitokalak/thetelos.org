@@ -401,7 +401,11 @@ function bw_placeholder_html($book, $author) {
     $ph = "<p>A detailed overview of <strong>" . $b . "</strong>"
          . ($a !== '' ? " by " . $a : "")
          . " is being prepared and will be published here soon.</p>";
-    return trim($note) !== '' ? trim($note) . "\n\n" . $ph : $ph;
+    if (trim($note) === '') return $ph;
+    // Not varsa: biçimli HTML + işaret cümlesi GÖRÜNMEZ (HTML yorumu) → okuyucu model dili
+    // görmez, ama yer tutucu tespiti (noindex, site haritası, PDF butonu) aynen çalışır.
+    $html = function_exists('bw_md2html') ? bw_md2html(trim($note)) : trim($note);
+    return $html . "\n<!-- tls-placeholder: " . strip_tags($ph) . " -->";
 }
 
 /* ── DÜRÜST YEDEK: Claude eseri kesin tanıyamadığında boş yer tutucu yerine
@@ -414,15 +418,16 @@ function bw_claude_author_note($book, $author, $hb = null) {
     require_once __DIR__ . '/_anthropic.php';
     if (!tls_anthropic_ready()) return '';
     $who = trim((string) $book) . (trim((string) $author) !== '' ? ' by ' . trim((string) $author) : '');
-    $sys = 'You are a knowledgeable literary editor writing a short, FACTUAL note in English. '
-         . 'The exact edition/title given could NOT be verified against a source. Do NOT fabricate the '
-         . 'specific book\'s plot, argument, characters, quotations, chapter list, or dates. '
-         . 'Instead write 2-3 short paragraphs of context you are genuinely confident about: who the '
-         . 'author is, the themes and character of their work, and IF you can reasonably tell which of '
-         . 'the author\'s works this title corresponds to, state it carefully (e.g. "This title appears '
-         . 'to correspond to <English name> ..."). Be honest and useful; never invent specifics of an '
-         . 'unverified title. Use Markdown with 1-2 short ## headings. English only. Never mention AI, '
-         . 'yourself, or the word "I".';
+    $sys = 'You are a knowledgeable literary editor writing a short, FACTUAL piece in English for a book page. '
+         . 'Write 2-3 natural paragraphs: who the author is and what their work is about, and — ONLY if you are '
+         . 'genuinely confident — what this particular work deals with and where it sits in the author\'s output. '
+         . 'Do NOT invent plot, arguments, characters, quotations, chapter lists or dates. If you know nothing '
+         . 'specific about this work, write only about the author and their field. '
+         . 'NEVER write about sources, verification, editions you could not confirm, identification, or that more '
+         . 'content is coming — no phrases like "could not be verified", "appears to", "is being prepared", '
+         . '"not described here". Write like a human editor: plain, flowing prose; at most ONE short heading that '
+         . 'is specific (never "About the Author", "Context", "Identification", "Overview"). English only. Never '
+         . 'mention AI, yourself, or the word "I".';
     $usr = "Title: " . trim((string) $book) . "\nAuthor: " . trim((string) $author) . "\n\n"
          . "Write the factual note about $who as instructed — real, confident context only, no invented specifics.";
     // MALİYET: bu yalnız kısa, dürüst bir yazar/bağlam notu (spesifik kitap teyit
@@ -2545,7 +2550,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         return;
     }
 
-    $body_html = bw_md2html($clean);
+    // Yer tutucu gövde zaten HTML (bw_placeholder_html) → ikinci kez çevirme (<p><p> iç içe olmasın).
+    $body_html = (preg_match('/^\s*<(?:p|h[2-6]|div)\b/i', $clean) || strpos($clean, '<!-- tls-placeholder') !== false) ? $clean : bw_md2html($clean);
 
     /* ── YAYIN KAPISI ─────────────────────────────────────────────────────
        Hacmin tamamı buradan geçiyor; kapı asıl burada gerekli. Kusurlu ya da
