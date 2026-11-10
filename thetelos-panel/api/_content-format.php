@@ -11,6 +11,12 @@ function tls_strip_search_preamble($text) {
         $t2 = preg_replace('/^\s*(#{1,6}\s)/u', '$1', $t2);
         return ltrim($t2);
     }
+    // Not cümlesi arama fiili içermese de ("I have enough to write…", "The work is identified…")
+    // ilk paragraf modelin çalışma notuysa ve arkasında asıl metin varsa o paragrafı at.
+    if (preg_match('/^\s*(?:I[\'’](?:ll|ve|m)|I will|I have enough|I now have|Let me|The work is identified|There[\'’]s an authorship question|Now I)\b/iu', $t)
+        && preg_match('/^(.*?)(\n\s*\n|(?=#{1,6}\s))/su', $t, $m) && mb_strlen($t) - mb_strlen($m[0]) > 400) {
+        return ltrim(mb_substr($t, mb_strlen($m[1])));
+    }
     return $t;
 }
 
