@@ -528,7 +528,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
        accuracy denetiminden (web-grounded → trust_source=true) geçirip döndür.
        Bulamazsa (UNKNOWN) ve accuracy-first açıksa hafızadan ungrounded YAZMA →
        doğrudan yer tutucuya düş. */
-    if (!$lean && !empty(tv_settings()['claude_websearch'])) {   // lean: web araması YOK (maliyet)
+    if (!$lean && empty($GLOBALS['bw_claude_lean']) && !empty(tv_settings()['claude_websearch'])) {   // lean/Haiku: web araması YOK (senkron, tam fiyat + arama ücreti)
         $rw = tls_claude_web_overview($book, $author, ['target_words' => $ideal, 'timeout' => 300, 'on_beat' => $hb]);
         $hb();
         if (!empty($rw['ok']) && trim((string) ($rw['md'] ?? '')) !== '') {
@@ -799,7 +799,7 @@ function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $
     // (grounded). Web aramalı değilse boş dön → kaynak-temelli Bilgi Metni'ne düşülür.
     // Claude WEB ARAMASI açıksa (grounded) accuracy-first erken-çıkışı yapma —
     // Claude son-çaresine ulaşsın, orada canlı kaynaktan yazsın.
-    $cws_on = tls_anthropic_ready() && !empty(tv_settings()['claude_websearch']);
+    $cws_on = tls_anthropic_ready() && empty($GLOBALS['bw_claude_lean']) && !empty(tv_settings()['claude_websearch']);
     $hb = function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); };
 
     // 1) UCUZ MOTOR KENDİ bilgisinden yazar — OpenRouter/Qwen aktifse o, DEĞİLSE
