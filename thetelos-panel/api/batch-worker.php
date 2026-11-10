@@ -386,19 +386,22 @@ function bw_placeholder_html($book, $author) {
     // bilmiyorsa gerçeği söylesin" kuralı TEK yerden tüm yollara uygulanır.
     // OpenRouter aktifse önce Qwen ile dürüst not (Claude parası yakma); değilse Claude/Haiku.
     require_once dirname(__DIR__) . '/or-config.php';
-    if (false) {   // yer tutucuya not yok (kullanıcı kuralı)
-        $note = '';
-        if ($note !== '') return $note;
-    } elseif (false) {   // yer tutucuya yazar notu koyma (kullanıcı kuralı): sabit metin → noindex
-        $note = '';
-        if ($note !== '') return $note;
+    // KULLANICI KURALI (2026-11-10): yer tutucu sayfada yazar hakkında kısa not OLABİLİR,
+    // ama altına HER ZAMAN "hazırlanıyor" cümlesi eklenir → sayfa yer tutucu sayılır,
+    // Google'dan gizlenir (noindex) ve site haritasına girmez.
+    $note = '';
+    if (function_exists('tls_or_active') && tls_or_active()) {
+        $note = bw_or_author_note($book, $author, null);
+    } elseif (function_exists('bw_claude_author_note') && function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
+        $note = bw_claude_author_note($book, $author, null);
     }
     $b = htmlspecialchars(trim((string) $book),   ENT_QUOTES, 'UTF-8');
     $a = htmlspecialchars(trim((string) $author), ENT_QUOTES, 'UTF-8');
-    // Kısa, profesyonel, itirafsız. (Site İngilizce.)
-    return "<p>A detailed overview of <strong>" . $b . "</strong>"
+    // Kısa, profesyonel, itirafsız. (Site İngilizce.) BU CÜMLE noindex işaretidir — değiştirme.
+    $ph = "<p>A detailed overview of <strong>" . $b . "</strong>"
          . ($a !== '' ? " by " . $a : "")
          . " is being prepared and will be published here soon.</p>";
+    return trim($note) !== '' ? trim($note) . "\n\n" . $ph : $ph;
 }
 
 /* ── DÜRÜST YEDEK: Claude eseri kesin tanıyamadığında boş yer tutucu yerine
@@ -1514,14 +1517,12 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                     return;
                 }
                 if (empty($skip_generation)) {
-                // Sıfırdan üretim + bilinmiyor: post oluşturma, atla.
+                // Sıfırdan üretim + bilinmiyor: YER TUTUCU sayfa aç (noindex) — yazarın
+                // hangi kitapları olduğu sitede görünsün (kullanıcı kuralı 2026-11-10).
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', (string) $pr['reason'], 0, 'create');
-                bw_update_book($batch_file, $idx, [
-                    'status' => 'error',
-                    'error'  => 'DOĞRULANAMADI: eser kataloglarda yok, model de tanımıyor — ' .
-                                mb_substr((string) $pr['reason'], 0, 180),
-                ]);
-                return;
+                $content = bw_placeholder_html($book, $author);
+                $gen_method = 'yer-tutucu';
+                $skip_generation = true;
                 }
             }
         }
@@ -1691,8 +1692,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                             return;
                         }
                         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'unknown', $ph_reason, 0, 'create');
-                        bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'kaynak yok: doğrulanmış kaynak/tam metin/Wikipedia yok · '.($cl_why?:'—')]);
-                        return;
+                        $content = bw_placeholder_html($book, $author);   // yer tutucu SAYFA (noindex)
+                        $gen_method = 'yer-tutucu';
                     }
                 } else {
                     $content = bw_clean_content($ir['md']);
@@ -2554,7 +2555,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
        Kapı yalnızca "publish" isteniyorsa çalışır: zaten taslak kaydedilecek
        bir metni doğrulamak için API harcamanın anlamı yok. */
     $gate_report = null;
-    if ($post_status === 'publish') {
+    if ($post_status === 'publish' && strpos($body_html, 'is being prepared and will be published here soon') === false) {   // yer tutucu kapıdan geçmez (zaten noindex)
         require_once __DIR__ . '/_checks.php';
         require_once __DIR__ . '/_verify.php';
         if (tv_settings()['gate']) {
@@ -2568,13 +2569,9 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
                 $body_html = bw_placeholder_html($book, $author);
                 if (is_array($gate_report)) $gate_report['action'] = 'yer-tutucu (taslak yerine)';
                 bw_flag_problem($book, $author, $pre_cover, $pre_year, 'gate_placeholder',
-                    'kapı geçemedi → ' . (($rewrite && $update_pid) ? 'yer tutucu yayınlandı' : 'sayfa açılmadı, yazarın eser listesine eklendi') . ': ' . implode(' | ', array_slice($g['reasons'] ?? [], 0, 2)),
+                    'kapı geçemedi → yer tutucu yayınlandı (noindex)' . ': ' . implode(' | ', array_slice($g['reasons'] ?? [], 0, 2)),
                     $update_pid, $rewrite ? 'rewrite' : 'create');
-                if (!($rewrite && $update_pid)) {
-                    bw_update_book($batch_file, $idx, ['status' => 'error',
-                        'error' => 'kapı geçemedi → sayfa açılmadı (eser, yazar sayfasındaki listeye eklendi)']);
-                    return;
-                }
+                // Yeni kitapta da yer tutucu SAYFA yayınlanır (noindex) — kullanıcı kuralı.
             }
         }
     }
@@ -2587,7 +2584,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     ];
     if ($ep !== 'analysis' && $cat_ids) $pb['categories'] = $cat_ids;
     // Yeni yazı → güne yayılmış bir saate zamanla (yeniden yazmalar hemen güncellenir).
-    if (!($rewrite && $update_pid) && $post_status === 'publish' && $ep !== 'analysis') {
+    if (!($rewrite && $update_pid) && $post_status === 'publish' && $ep !== 'analysis'
+        && strpos($body_html, 'is being prepared and will be published here soon') === false) {   // yer tutucu sıraya girmez
         $slot = bw_pub_slot();
         if ($slot > time() + 120) { $pb['status'] = 'future'; $pb['date_gmt'] = gmdate('Y-m-d\TH:i:s', $slot); }
     }

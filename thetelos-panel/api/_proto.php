@@ -120,6 +120,7 @@ function proto_gutenberg($book, $author, $beat = null) {
             if ($surname !== '' && mb_stripos((string) ($a['name'] ?? ''), $surname) !== false) { $ok_auth = true; break; }
         }
         if (!$ok_auth) continue;
+        if (!proto_title_strict($book, (string) ($r['title'] ?? ''), $author)) { continue; }   // KESİN başlık: benzer kitap değil
         $id = (int) ($r['id'] ?? 0);
         $is_book = fn($u) => stripos((string) $u, 'readme') === false && stripos((string) $u, '.zip') === false;
         $cands = [];
@@ -205,8 +206,7 @@ function proto_archive($book, $author, $beat = null) {
                 $tt_t = $toks($tt);
                 $ov_e = $eng_t  ? count(array_intersect($eng_t,  $tt_t)) : 0;
                 $ov_o = $orig_t ? count(array_intersect($orig_t, $tt_t)) : 0;
-                $title_ok = ($eng_t  && $ov_e >= max(1, (int) ceil(count($eng_t)  * 0.5)))
-                         || ($orig_t && $ov_o >= max(1, (int) ceil(count($orig_t) * 0.5)));
+                $title_ok = proto_title_strict($book, $tt, $author);   // KESİN başlık
                 if (!$title_ok) { $debug['tried'][] = ['id' => $id, 'note' => 'başlık tutmadı → reddedildi']; continue; }
                 if ($surname !== '' && trim($cr) !== '' && mb_stripos($cr, $surname) === false) {
                     $debug['tried'][] = ['id' => $id, 'note' => 'yazar tutmadı (creator=' . mb_substr($cr, 0, 40) . ') → reddedildi']; continue;
@@ -410,7 +410,7 @@ function proto_standardebooks($book, $author, $beat = null) {
         $title_hit = 0; foreach ($bt as $w) if (strpos($title_seg, $w) !== false) $title_hit++;
         $auth_hit  = ($surname !== '' && strpos($auth_seg, $surname) !== false);
         // Başlığın anlamlı kelimelerinin çoğu geçmeli VE (yazar biliniyorsa) yazar da tutmalı.
-        if ($bt && $title_hit >= max(1, (int) ceil(count($bt) * 0.6)) && ($surname === '' || $auth_hit)) {
+        if (proto_title_strict($book, str_replace('-', ' ', $title_seg), $author) && ($surname === '' || $auth_hit)) {
             $paths['/' . implode('/', array_slice($seg, 0, 3))] = true;
         }
     }
@@ -430,7 +430,7 @@ function proto_standardebooks($book, $author, $beat = null) {
         $len = mb_strlen(trim($txt));
         $debug['tried'][] = ['path' => $p, 'epub' => $epub, 'chars' => $len];
         if ($len >= 5000 && substr_count($txt, '. ') >= 20) {
-            return ['found' => true, 'title' => $eng, 'source' => 'Standard Ebooks', 'text' => $txt, 'raw_len' => $len,
+            return ['found' => true, 'title' => str_replace('-', ' ', $title_seg ?? $eng), 'source' => 'Standard Ebooks', 'text' => $txt, 'raw_len' => $len,
                     'url' => 'https://standardebooks.org' . $p, 'debug' => $debug];
         }
     }
@@ -438,6 +438,39 @@ function proto_standardebooks($book, $author, $beat = null) {
 }
 
 /* ── Ortak: başlık eşleşmesi (≥%50 anlamlı kelime örtüşmesi) ─────────────── */
+
+/* ── KESİN BAŞLIK EŞLEŞMESİ (kullanıcı kuralı: benzer/farklı kitap ASLA kabul edilmez) ──
+   Eskiden "anlamlı kelimelerin yarısı tutsun" yetiyordu → "Critique of Practical Reason"
+   istenip "Critique of Pure Reason" kabul edilebiliyordu. Artık ÇEKİRDEK başlık birebir
+   aynı olmalı: büyük/küçük harf, aksan, noktalama, baştaki tanımlık, alt başlık
+   (: ; , — sonrası) ve "of/by Yazar" eki dışında HİÇBİR fark kabul edilmez. */
+function proto_title_core($t, $author = '') {
+    $t = mb_strtolower(trim((string) $t), 'UTF-8');
+    $t = preg_replace('/\s*[\(\[][^\)\]]*[\)\]]\s*/u', ' ', $t);            // parantez içi
+    $t = preg_replace('/\s*(?:[:;,]|\s[–—-]\s|\.\s).*$/u', '', $t);       // alt başlık / "; or, …"
+    $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $t); if ($x !== false && trim($x) !== '') $t = $x;
+    $t = preg_replace('/[^a-z0-9 ]+/', ' ', $t);
+    $t = ' ' . preg_replace('/\s+/', ' ', trim($t)) . ' ';
+    if ($author !== '') {   // "Plato's Republic", "The Republic of Plato", "… by Plato"
+        $ap = preg_split('/\s+/', trim((string) $author)); $sn = strtolower((string) @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', (string) end($ap)));
+        $sn = preg_replace('/[^a-z]/', '', $sn);
+        if (strlen($sn) >= 3) {
+            $t = preg_replace('/^ ' . $sn . ' s /', ' ', $t);
+            $t = preg_replace('/ (?:of|by) (?:[a-z]+ ){0,3}' . $sn . ' $/', ' ', $t);
+        }
+    }
+    $t = preg_replace('/^ (?:the|a|an|le|la|les|der|die|das|el|los|las|il|lo) /', ' ', $t);
+    return trim(preg_replace('/\s+/', ' ', $t));
+}
+function proto_title_strict($book, $candidate, $author = '') {
+    $c = proto_title_core($candidate, $author);
+    if ($c === '') return false;
+    $eng = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', (string) $book)); if ($eng === '') $eng = (string) $book;
+    $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', (string) $book, $mm)) $orig = trim($mm[1]);
+    foreach ([$eng, $orig] as $b) { if ($b !== '' && proto_title_core($b, $author) === $c) return true; }
+    return false;
+}
+
 function proto_title_tokens($s) {
     $s = mb_strtolower((string) $s, 'UTF-8');
     $x = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s); if ($x !== false && $x !== '') $s = $x;
@@ -445,6 +478,7 @@ function proto_title_tokens($s) {
     return array_values(array_unique(array_filter(explode(' ', $s), fn($w) => mb_strlen($w) >= 4)));
 }
 function proto_title_matches($book, $candidate) {
+    return proto_title_strict($book, $candidate);   // KESİN eşleşme (eski gevşek kural aşağıda, kullanılmıyor)
     $eng = trim(preg_replace('/\s*\([^()]*\)\s*$/', '', $book)); if ($eng === '') $eng = $book;
     $orig = ''; if (preg_match('/\(([^()]+)\)\s*$/u', $book, $mm)) $orig = trim($mm[1]);
     $ct = proto_title_tokens($candidate);
@@ -475,7 +509,7 @@ function proto_openlibrary_ia($book, $author, $beat = null) {
             if (($d['ebook_access'] ?? '') !== 'public') continue;
             $tt = (string) ($d['title'] ?? '');
             if (!proto_title_matches($book, $tt)) { $debug['tried'][] = ['ol' => $d['key'] ?? '', 'note' => 'başlık tutmadı']; continue; }
-            $an = implode(' ', (array) ($d['author_name'] ?? []));
+            $an = (string) (((array) ($d['author_name'] ?? []))[0] ?? '');   // yalnız ASIL (ilk) yazar
             if ($surname !== '' && $an !== '' && mb_stripos($an, $surname) === false) { $debug['tried'][] = ['ol' => $d['key'] ?? '', 'note' => 'yazar tutmadı']; continue; }
             foreach (array_slice((array) ($d['ia'] ?? []), 0, 4) as $id) {
                 $id = (string) $id; if ($id === '' || isset($seen[$id])) continue;
@@ -620,6 +654,7 @@ function proto_acquire($book, $author, $beat = null) {
         $r = $fetch();
         $dbg[$name] = $r['debug'] ?? null;
         if (empty($r['found'])) continue;
+        if (!proto_title_strict($book, (string) ($r['title'] ?? ''), $author)) { $dbg[$name . '_title_fail'] = (string) ($r['title'] ?? ''); continue; }   // son kapı: başlık KESİN aynı
         if (proto_author_in_text($author, $r['text'] ?? '', $book)) {
             $r['debug'] = $dbg;
             return $r;
