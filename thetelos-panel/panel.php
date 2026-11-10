@@ -86,8 +86,8 @@ if (!isset($_GET['mode'])) {
         </button>
       </div>
       <div class="api-sub-group" id="api-sub-anthropic" style="display:none">
-        <button class="api-sub-btn active" data-model="claude-haiku-5-5" data-label="haiku">Haiku 5.5 <span class="api-sub-hint">Hızlı</span></button>
-        <button class="api-sub-btn" data-model="claude-sonnet-5-5" data-label="sonnet">Sonnet <span class="api-sub-hint">Kaliteli</span></button>
+        <button class="api-sub-btn active" data-model="claude-haiku-5-5" data-label="haiku">Haiku 5.5 <span class="api-sub-hint">Ucuz</span></button>
+        <button class="api-sub-btn" data-model="claude-sonnet-5-5" data-label="sonnet">Sonnet <span class="api-sub-hint">Pahalı</span></button>
       </div>
       <span class="api-active-label" id="api-active-label"><?= defined('DEEPSEEK_MODEL') ? htmlspecialchars(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL) : 'deepseek' ?></span>
     </div>
