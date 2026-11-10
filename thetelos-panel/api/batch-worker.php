@@ -386,11 +386,11 @@ function bw_placeholder_html($book, $author) {
     // bilmiyorsa gerçeği söylesin" kuralı TEK yerden tüm yollara uygulanır.
     // OpenRouter aktifse önce Qwen ile dürüst not (Claude parası yakma); değilse Claude/Haiku.
     require_once dirname(__DIR__) . '/or-config.php';
-    if (function_exists('tls_or_active') && tls_or_active()) {
-        $note = bw_or_author_note($book, $author, null);
+    if (false) {   // yer tutucuya not yok (kullanıcı kuralı)
+        $note = '';
         if ($note !== '') return $note;
-    } elseif (function_exists('bw_claude_author_note') && function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
-        $note = bw_claude_author_note($book, $author, null);
+    } elseif (false) {   // yer tutucuya yazar notu koyma (kullanıcı kuralı): sabit metin → noindex
+        $note = '';
         if ($note !== '') return $note;
     }
     $b = htmlspecialchars(trim((string) $book),   ENT_QUOTES, 'UTF-8');
@@ -584,7 +584,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         }
         // Sonnet + Opus da eseri tanıyamadı → BOŞ yer tutucu yerine DÜRÜST yazar/
         // bağlam notu yaz (kullanıcı isteği). Uydurma yok; sadece bilinen bağlam.
-        $note = bw_claude_author_note($book, $author, $hb);
+        $note = '';   // yazar/bağlam notu kapalı (kullanıcı kuralı) → çağıran Bilgi Metni / yer tutucuya düşer
         if ($note !== '') { $why = 'Eser kesin tanınamadı → yazar/bağlam notu yazıldı (yer tutucu yerine)'; return $note; }
         $why = 'Claude bu eseri kesin bilmediğini bildirdi (UNKNOWN)'; return '';
     }
@@ -831,6 +831,7 @@ function bw_overview_lastresort($book, $author, $batch_file, $idx, &$why = '', $
 /* KISA NOT DAĞITICI: OpenRouter aktifse Qwen; değilse Claude (Haiku).
    TEKLİ + Claude seçilmemişse → Claude'a devretme (kullanıcı kuralı). */
 function bw_author_note_any($book, $author, $beat = null, $api_provider = 'deepseek', $is_single = false) {
+    return '';   // KULLANICI KURALI (2026-11-10): bilinmeyen kitap için yazar/bağlam notu YAYINLANMAZ → Bilgi Metni, o da yoksa yer tutucu (noindex)
     require_once dirname(__DIR__) . '/or-config.php';
     if ($api_provider !== 'anthropic' && tls_or_active()) {
         $n = bw_or_author_note($book, $author, $beat);
@@ -1568,7 +1569,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             'text'    => $eff_src_text,   // MANUEL kaynak: yapıştırılan/yüklenen metin (kitaba özel > batch geneli)
             // SENTEZ SAĞLAYICI: Anthropic seçiliyse ASIL özeti Claude yazar (notları
             // yine ucuz DeepSeek çıkarır — Claude'a ham tam metin okutulmaz). Batch açık.
-            'provider'=> ($api_provider === 'anthropic') ? 'anthropic' : 'auto',
+            'provider'=> 'auto',   // tam metinden özeti DAİMA DeepSeek yazar; Claude tam metin işine girmez (token maliyeti — kullanıcı kuralı)
             'batch'   => $use_batch,
             'claude_model' => $claude_model,
             'on_beat' => function () use ($batch_file, $idx) { bw_touch_hb($batch_file, $idx); },
