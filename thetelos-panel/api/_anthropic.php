@@ -252,7 +252,10 @@ function tls_claude($system, $user, $opts = []) {
 
         $turn_text = '';
         foreach (($j['content'] ?? []) as $blk) {
-            if (($blk['type'] ?? '') === 'text') $turn_text .= (string) ($blk['text'] ?? '');
+            // Arama aracı bloğundan ÖNCEKİ metin modelin kendi notudur ("I'll search…") →
+            // yalnız SON araç bloğundan SONRAKİ metin yazıdır.
+            if (($blk['type'] ?? '') !== 'text') { $turn_text = ''; continue; }
+            $turn_text .= (string) ($blk['text'] ?? '');
         }
         $turn_text = trim($turn_text);
         if ($turn_text !== '') $collected = $turn_text;   // nihai özet son turda gelir

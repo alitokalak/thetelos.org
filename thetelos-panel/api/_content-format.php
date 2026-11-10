@@ -1,4 +1,19 @@
 <?php
+/* Modelin arama/çalışma anlatısı yazının başına sızarsa sil:
+   "I'll start by searching for information about this work. I'll run one more search … # Başlık"
+   Yalnız METNİN BAŞINDAKİ birinci-şahıs çalışma cümleleri silinir; gövdeye dokunulmaz. */
+function tls_strip_search_preamble($text) {
+    $t = (string) $text;
+    $re = '/^\s*(?:(?:I[\'’]ll|I will|I[\'’]m going to|I am going to|Let me|First,? I[\'’]ll|Now I[\'’]ll|I need to|I should)\b[^.!?\n#]*?(?:search|look|find|check|research|gather|run|verify|confirm|start|begin|write|compose|draft)[^.!?\n#]*[.!?:]\s*)+/iu';
+    $t2 = preg_replace($re, '', $t, 1);
+    if ($t2 !== null && $t2 !== $t) {
+        // "…reception.# Başlık" gibi yapışık başlığı satır başına al
+        $t2 = preg_replace('/^\s*(#{1,6}\s)/u', '$1', $t2);
+        return ltrim($t2);
+    }
+    return $t;
+}
+
 /**
  * _content-format.php — Model çıktısını yayına hazır HTML'e çeviren ortak kod.
  *
@@ -75,6 +90,7 @@ function bw_dedup_sections($text) {
 }
 
 function bw_clean_content($text) {
+    $text = tls_strip_search_preamble($text);
     $text = preg_replace('/%%PART[12]_(?:END|START)%%/i', '', $text);
     $text = preg_replace('/%%PART_END%%/i', '', $text);
     $text = preg_replace('/\[Note:[^\]]*\]/i', '', $text);
