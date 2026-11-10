@@ -392,7 +392,9 @@ function bw_placeholder_html($book, $author) {
     $note = '';
     if (function_exists('tls_or_active') && tls_or_active()) {
         $note = bw_or_author_note($book, $author, null);
-    } elseif (function_exists('bw_claude_author_note') && function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
+    }
+    if (trim($note) === '') $note = bw_ds_author_note($book, $author);   // EN UCUZ: DeepSeek (DeepSeek modunda Claude kapalı)
+    if (trim($note) === '' && function_exists('bw_claude_author_note') && function_exists('tls_anthropic_ready') && tls_anthropic_ready()) {
         $note = bw_claude_author_note($book, $author, null);
     }
     $b = htmlspecialchars(trim((string) $book),   ENT_QUOTES, 'UTF-8');
@@ -406,6 +408,33 @@ function bw_placeholder_html($book, $author) {
     // görmez, ama yer tutucu tespiti (noindex, site haritası, PDF butonu) aynen çalışır.
     $html = function_exists('bw_md2html') ? bw_md2html(trim($note)) : trim($note);
     return $html . "\n<!-- tls-placeholder: " . strip_tags($ph) . " -->";
+}
+
+
+/* Yer tutucu sayfa için kısa YAZAR/ALAN yazısı — DeepSeek (ucuz, düşünmesiz).
+   Kitabın içeriği uydurulmaz; yalnız yazar ve emin olunan bağlam. Model dili yok. */
+function bw_ds_author_note($book, $author) {
+    if (trim((string) $author) === '') return '';
+    require_once __DIR__ . '/_proto.php';
+    if (!function_exists('proto_ds') || !function_exists('proto_deepseek_reachable') || !proto_deepseek_reachable()) return '';
+    $p = "You are a knowledgeable literary editor writing a short, FACTUAL piece in English for a book page.\n"
+       . "Book: " . trim((string) $book) . "\nAuthor: " . trim((string) $author) . "\n\n"
+       . "Write 2-3 natural paragraphs: who the author is and what their work is about, and ONLY if you are genuinely "
+       . "confident, what this particular work deals with and where it sits in the author's output. Do NOT invent plot, "
+       . "arguments, characters, quotations, chapter lists or dates. If you know nothing specific about this work, write "
+       . "only about the author and their field.\n"
+       . "NEVER write about sources, verification, identification, editions, or that more content is coming — no phrases "
+       . "like 'could not be verified', 'appears to', 'is being prepared', 'not described here'. Plain, flowing prose like "
+       . "a human editor; at most ONE short, specific heading (never 'About the Author', 'Context', 'Overview'). English "
+       . "only. Never mention AI or yourself. If you do not know who this author is, reply exactly UNKNOWN.";
+    $prev = $GLOBALS['ds_think'] ?? null; $GLOBALS['ds_think'] = false;
+    $dg = '';
+    $t = trim((string) proto_ds($p, 1500, null, 120, $dg, 'deepseek'));
+    $GLOBALS['ds_think'] = $prev;
+    if ($t === '' || stripos(substr($t, 0, 20), 'UNKNOWN') !== false) return '';
+    if (function_exists('tls_strip_search_preamble')) $t = tls_strip_search_preamble($t);
+    if (str_word_count(strip_tags($t)) < 60) return '';
+    return $t;
 }
 
 /* ── DÜRÜST YEDEK: Claude eseri kesin tanıyamadığında boş yer tutucu yerine
