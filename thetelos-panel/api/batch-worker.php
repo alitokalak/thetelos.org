@@ -498,7 +498,8 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
         $md = (string) $md;
         if (trim($md) === '') return $md;
         if ($lean || empty(tv_settings()['claude_accuracy'])) return $md;   // lean: Claude kendi metnini tekrar denetlemez
-        $acc = tls_claude_accuracy($book, $author, $md, ['trust_source' => false, 'on_beat' => $hb]);
+        $acc = tls_claude_accuracy($book, $author, $md, ['trust_source' => false, 'on_beat' => $hb]
+            + (!empty($GLOBALS['bw_claude_lean']) ? ['model' => tls_claude_fast_model()] : []));   // Haiku seçiliyse denetim de Haiku
         $hb();
         if (empty($acc['ok'])) return $md;                       // denetim yapılamadı → koru
         if (($acc['action'] ?? '') === 'block') { $why = 'Claude bilgi-denetimi: eser güvenle doğrulanamadı → yer tutucu'; return ''; }
@@ -551,7 +552,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     // (Opus'un bildiği bazı nadir eserleri Sonnet bilmezse UNKNOWN → bilgi/yer
     // tutucuya düşer; istenirse ANTHROPIC_BEST_MODEL ile Opus geri açılabilir.)
     $model = defined('ANTHROPIC_LASTRESORT_MODEL') ? ANTHROPIC_LASTRESORT_MODEL : tls_claude_quality_model();
-    if ($lean) $model = tls_claude_fast_model();   // DeepSeek modundaki devir: Haiku (~3 kat ucuz)
+    if ($lean || !empty($GLOBALS['bw_claude_lean'])) $model = tls_claude_fast_model();   // Haiku seçimi son çarede de geçerli   // DeepSeek modundaki devir: Haiku (~3 kat ucuz)
     $r = tls_claude_overview($book, $author, [
         'model'        => $model,
         'target_words' => $ideal,
@@ -571,7 +572,7 @@ function bw_claude_last_resort($book, $author, $batch_file, $idx, &$why = '', $t
     // yalnız Sonnet'in bilmediği azınlıkta çalışır). Böylece "Claude biliyor ama
     // yer tutucu koydu" durumu ortadan kalkar.
     if (!empty($r['unknown'])) {
-        $best = defined('ANTHROPIC_BEST_MODEL') ? ANTHROPIC_BEST_MODEL : 'claude-opus-4-8';
+        $best = !empty($GLOBALS['bw_claude_lean']) ? '' : (defined('ANTHROPIC_BEST_MODEL') ? ANTHROPIC_BEST_MODEL : 'claude-opus-4-8');   // Haiku seçiliyse Opus'a yükselme YOK (maliyet)
         if ($best && $best !== $model) {
             $hb();
             $r2 = tls_claude_overview($book, $author, [
@@ -1183,7 +1184,8 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     if ($api_provider !== 'anthropic') $GLOBALS['tls_no_claude'] = true;
     // Claude seçiliyse ANA İÇERİK modeli: kalite için varsayılan Sonnet, ucuz
     // isteyene Haiku. (Yoklama + meta yine DeepSeek — maliyet bölünür.)
-    $claude_model = (($batch['claude_model'] ?? 'sonnet') === 'haiku') ? 'haiku' : 'sonnet';
+    $claude_model = (($batch['claude_model'] ?? 'haiku') === 'sonnet') ? 'sonnet' : 'haiku';
+    $GLOBALS['bw_claude_lean'] = ($claude_model === 'haiku');   // Haiku seçildi → son çarede de Haiku, Sonnet/Opus'a çıkma
     $parts        = bw_effective_parts($batch);
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
 

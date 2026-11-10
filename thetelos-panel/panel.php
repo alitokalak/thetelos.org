@@ -453,21 +453,7 @@ if (!isset($_GET['mode'])) {
           </div>
         </div>
 
-        <!-- Claude modeli — yalnız üstte "Anthropic" seçiliyken geçerli.
-             Ana içeriği Claude yazar; yoklama+meta yine DeepSeek (maliyet böl). -->
-        <div class="form-row" id="claude-model-row" style="margin-top:14px;display:none">
-          <div>
-            <label for="bulk_claude_model">Claude Modeli <span style="color:#c58af0;font-weight:400;font-size:11px">(Anthropic seçili)</span></label>
-            <select id="bulk_claude_model">
-              <option value="sonnet" selected>Sonnet 5 — kaliteli (önerilen; bilinmeyen kitapta Opus 4.8'e yükselir)</option>
-              <option value="haiku">Haiku 4.5 — ucuz/hızlı</option>
-            </select>
-            <span style="display:block;margin-top:6px;font-size:11px;color:#e6963c;line-height:1.5">
-              ⚠️ Claude ücretlidir. Ana metni Claude yazar; yoklama ve meta yine DeepSeek kalır
-              (maliyet düşük tutulur). Önce <b>küçük bir listeyle (5–10)</b> deneyip maliyeti gör.
-            </span>
-          </div>
-        </div>
+        <!-- Claude modeli üstteki API satırından (Haiku 5.5 / Sonnet) seçilir; burada ayrı seçim yok. -->
 
         <?php
           $tls_peak_flag = __DIR__ . '/jobs/.peak-skip';

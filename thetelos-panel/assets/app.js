@@ -1267,7 +1267,7 @@ document.getElementById('btn-batch-start')?.addEventListener('click', async () =
   // Yeniden yazma + "eski içeriği koruma" işaretliyse: yenisi olmazsa eski
   // (güvenilmez) gövde korunmaz, yer tutucu konur.
   const noKeep = (rewrite === '1' && document.getElementById('bulk_no_keep')?.checked) ? '1' : '0';
-  const claudeModel = document.getElementById('bulk_claude_model')?.value || 'sonnet';
+  const claudeModel = document.querySelector('.api-sub-btn.active')?.dataset.label === 'sonnet' ? 'sonnet' : 'haiku';   // üstteki seçim
   let res;
   try {
     res = await postData(API('batch-create.php'), {
@@ -1396,7 +1396,7 @@ async function retryBooks(books) {
     post_status:  s.post_status  || 'draft',
     max_tokens:   s.max_tokens   || 3000,
     api_provider: s.api_provider || 'deepseek',
-    claude_model: s.claude_model || 'sonnet',
+    claude_model: s.claude_model || 'haiku',
     parts:        s.parts        || 2,
   });
 
