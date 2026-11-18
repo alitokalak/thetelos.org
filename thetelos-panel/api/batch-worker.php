@@ -883,12 +883,14 @@ function bw_author_note_any($book, $author, $beat = null, $api_provider = 'deeps
    DeepSeek hiçbir yoldan yazamadığında: Haiku, aramasız, kendi bilgisinden.
    İstek Batch API'ye gönderilir (−%50), worker BEKLEMEZ. */
 function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why = '') {
+    require_once __DIR__ . '/_verify.php';   // tv_settings (kesin bilgi modu)
     require_once __DIR__ . '/_anthropic.php';
     $GLOBALS['tls_no_claude'] = false;
     $ok = false;
     if (tls_anthropic_ready()) {
         $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
-        $p = tls_claude_overview($book, $author, ['prompt_only' => true, 'target_words' => $ideal]);
+        $p = tls_claude_overview($book, $author, ['prompt_only' => true, 'target_words' => $ideal,
+                                                  'strict' => !empty(tv_settings()['strict_mode'])]);   // kesin bilgi modu
         if (!empty($p['prompt_only'])) {
             $cid = 'bk' . (int) $idx . '_' . substr(md5($book . microtime()), 0, 10);
             $sub = tls_claude_batch_submit([[
@@ -918,6 +920,7 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
    'pending'e döner (bir sonraki turda yayınlanır). UNKNOWN/hata/26 saat: hata +
    yazarın Other Works listesi (bw_flag_problem create modunda ekler). */
 function bw_claude_poll($batch_file) {
+    require_once __DIR__ . '/_verify.php';   // tv_settings (kesin bilgi modu)
     $b = json_decode((string) @file_get_contents($batch_file), true);
     if (!is_array($b)) return;
     $wait = [];
@@ -946,7 +949,8 @@ function bw_claude_poll($batch_file) {
             $txt = trim((string) ($one['text'] ?? ''));
             if (empty($res['ok']) || !$one || empty($one['ok'])) {
                 bw_claude_fail($batch_file, $i, $wait[$i], 'Claude batch hatası: ' . ($one['error'] ?? $res['error'] ?? '?'));
-            } elseif ($txt === '' || strncmp($txt, 'UNKNOWN', 7) === 0 || str_word_count($txt) < 120) {
+            } elseif ($txt === '' || strncmp($txt, 'UNKNOWN', 7) === 0
+                      || str_word_count($txt) < (!empty(tv_settings()['strict_mode']) ? 300 : 120)) {   // kesin modda zayıf/kısa sayfa açılmaz
                 bw_claude_fail($batch_file, $i, $wait[$i], 'Claude da bu kitabı bilmiyor (UNKNOWN)');
             } else {
                 bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $txt, 'error' => '']);
@@ -957,11 +961,17 @@ function bw_claude_poll($batch_file) {
 }
 
 function bw_claude_fail($batch_file, $i, $bk, $reason) {
+    require_once __DIR__ . '/_verify.php';   // tv_settings (kesin bilgi modu)
     $book = (string) ($bk['book_title'] ?? ''); $author = (string) ($bk['author_name'] ?? '');
     $b = json_decode((string) @file_get_contents($batch_file), true);
     $rw = is_array($b) && !empty($b['rewrite']) && $b['rewrite'] !== '0';
     // create: Other Works listesine eklenir; rewrite: mevcut yazıya dokunulmaz.
     bw_flag_problem($book, $author, '', '', 'unknown', $reason, 0, $rw ? 'rewrite' : 'create');
+    // KESİN BİLGİ MODU: Claude kesin bilmiyorsa kitap ATLANIR — Bilgi Metni / yer tutucu yok.
+    if (!empty(tv_settings()['strict_mode'])) {
+        bw_update_book($batch_file, $i, ['status' => 'skipped', 'claude_unknown' => 1, 'error' => $reason . ' → atlandı (kesin bilgi modu: sayfa açılmadı)']);
+        return;
+    }
     // KULLANICI SIRASI (2026-11-10): Claude da yazamadı → kitap yeniden sıraya girer ve bu kez
     // tam metin / DeepSeek hafıza adımları ATLANIR; DeepSeek internet araması ile kısa Bilgi
     // Metni denenir, o da olmazsa yer tutucu (noindex) açılır.
@@ -1227,6 +1237,13 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // isteyene Haiku. (Yoklama + meta yine DeepSeek — maliyet bölünür.)
     $claude_model = (($batch['claude_model'] ?? 'haiku') === 'sonnet') ? 'sonnet' : 'haiku';
     $GLOBALS['bw_claude_lean'] = ($claude_model === 'haiku');   // Haiku seçildi → son çarede de Haiku, Sonnet/Opus'a çıkma
+    // KESİN BİLGİ MODU: toplu yazdırmada özet/bilgi tipleri de aynı katı yoldan geçer
+    // (tam metin → yoksa Claude kesin bilgi → yoksa atla). Analiz kendi yolunda kalır.
+    require_once __DIR__ . '/_verify.php';
+    if (!empty(tv_settings()['strict_mode']) && $api_provider !== 'anthropic' && !$is_single
+        && in_array($type, ['summary', 'info'], true)) {
+        $type = 'source';
+    }
     $parts        = bw_effective_parts($batch);
     $ep           = $type === 'analysis' ? 'analysis' : 'posts';
 
@@ -1439,6 +1456,26 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             ]);
             return;
         }
+        // GÜÇLÜ ÇİFT DENETİMİ: aynı kitabın çevirisi / farklı adı / baskısı / aynı derlemesi
+        // sitede varsa yeni sayfa AÇILMAZ (kullanıcı kuralı: bir kitap sitede iki kez olamaz).
+        require_once __DIR__ . '/_dup-guard.php';
+        bw_set_stage($batch_file, $idx, 'sitede aynı kitap (çeviri/farklı ad) var mı bakılıyor…');
+        $dg_diag = '';
+        $dg = dg_find_duplicate($book, $author, function ($q) use ($wp_api, $auth) {
+            return bw_wp("$wp_api/$q", 'GET', [], $auth, 20);
+        }, $ep, $dg_diag);
+        bw_touch_hb($batch_file, $idx);
+        if ($dg) {
+            bw_update_book($batch_file, $idx, [
+                'status'    => 'skipped',
+                'duplicate' => 1,
+                'post_id'   => (int) $dg['id'],
+                'post_url'  => $dg['link'],
+                'edit_url'  => rtrim(WP_URL,'/') . '/wp-admin/post.php?post=' . (int) $dg['id'] . '&action=edit',
+                'error'     => 'Atlandı: sitede aynı kitap var → #' . (int) $dg['id'] . ' “' . mb_substr($dg['title'], 0, 120) . '” (' . $dg['why'] . ')',
+            ]);
+            return;
+        }
     }
 
     // ── Prompt ────────────────────────────────────────────────────
@@ -1621,6 +1658,19 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
             $gen_source = (string) ($sr['source'] ?? '');
             $gen_source_url = (string) ($sr['url'] ?? '');   // KAYNAK ARŞİVİ: kitap↔kaynak linki
             $gen_book_words = (int) ($sr['book_words'] ?? 0);
+        } elseif (!empty(tv_settings()['strict_mode']) && $api_provider !== 'anthropic' && !$is_single) {
+            // KESİN BİLGİ MODU: tam metin yok → DeepSeek hafızadan YAZMAZ; doğrudan Claude'a
+            // devredilir (Haiku, beklemeli, aramasız, katı istem). Claude kesin bilmiyorsa
+            // kitap atlanır (bw_claude_fail). Bilgi Metni / kısa not / yer tutucu AÇILMAZ.
+            if (empty($batch['books'][$idx]['claude_tried'])) {
+                $q_why = '';
+                if (bw_claude_queue($batch_file, $idx, $book, $author, $cl_target_words, $q_why)) return;
+                // Claude'a gönderilemedi (anahtar/bağlantı) → teknik hata; sonra yeniden denenebilir.
+                bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'kaynak yok · ' . $q_why . ' (kesin bilgi modu: sayfa açılmadı)']);
+                return;
+            }
+            bw_update_book($batch_file, $idx, ['status' => 'skipped', 'error' => 'kaynak yok, Claude metni yok → atlandı (kesin bilgi modu)']);
+            return;
         } else {
             // Tam metin YOK — DeepSeek kaynağı bulup kaynak-temelli yazamadı.
             // SIRA (kullanıcı tercihi). ÖNEMLİ: Claude tam metni ASLA aramaz/okumaz;

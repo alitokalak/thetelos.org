@@ -90,6 +90,12 @@ function tv_settings() {
         // DeepSeek kaynak bulamaz, Bilgi Metni de çıkmazsa iş Claude'a devredilir
         // (web aramalı, grounded). Kapatmak: claude_websearch=false.
         'claude_websearch' => !isset($j['claude_websearch']) || (bool) $j['claude_websearch'],
+        // KESİN BİLGİ MODU (2026-11-18, kullanıcı kararı): VARSAYILAN AÇIK. Toplu yazdırmada
+        // yalnız iki yol: (1) DeepSeek kitabın tam metnini bulur → kaynaktan yazar;
+        // (2) bulamazsa doğrudan Claude (Haiku, beklemeli): kitabı KESİN biliyorsa yazar,
+        // bilmiyorsa kitap ATLANIR. DeepSeek hafıza özeti, internetten Bilgi Metni,
+        // kısa not ve yer tutucu sayfa AÇILMAZ. Kapatmak: settings.json strict_mode=false.
+        'strict_mode' => !isset($j['strict_mode']) || (bool) $j['strict_mode'],
     ];
     return $s;
 }

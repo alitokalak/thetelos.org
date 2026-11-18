@@ -17,6 +17,25 @@ if ($action === 'save_prompts') {
     $data = file_exists(PROMPTS_FILE) ? json_decode(file_get_contents(PROMPTS_FILE),true) : ['summary'=>'','analysis'=>''];
     echo json_encode(['ok'=>true,'data'=>$data]);
 
+} elseif ($action === 'save_strict' || $action === 'get_strict') {
+    /* KESİN BİLGİ MODU aç/kapa (varsayılan AÇIK). */
+    $f = dirname(__DIR__) . '/settings.json';
+    $s = file_exists($f) ? json_decode((string) file_get_contents($f), true) : [];
+    if (!is_array($s)) $s = [];
+    if ($action === 'save_strict') {
+        $s['strict_mode'] = (($_POST['on'] ?? '1') === '1');
+        $json = json_encode($s, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        $tmp  = $f . '.tmp';
+        if (@file_put_contents($tmp, $json) === strlen($json) && @rename($tmp, $f)) {
+            @chmod($f, 0664);
+        } else {
+            @unlink($tmp);
+            echo json_encode(['ok' => false, 'error' => 'settings.json yazılamadı — FTP ile klasöre yazma izni ver.']);
+            exit;
+        }
+    }
+    echo json_encode(['ok' => true, 'on' => !isset($s['strict_mode']) || (bool) $s['strict_mode']]);
+
 } elseif ($action === 'save_verify' || $action === 'get_verify') {
     /* Yayın kapısı ayarları. Doğrulama katmanları API harcadığı için
        kapatılabilir olmalı; ama VARSAYILAN AÇIKTIR — bir okuyucunun uydurma

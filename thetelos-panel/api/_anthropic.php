@@ -419,6 +419,21 @@ function tls_claude_overview($book, $author, $opts = []) {
       . "than guess. Do NOT add any note about your own knowledge or its limits. Output "
       . "exactly UNKNOWN only if you genuinely cannot identify this work at all.";
 
+    // KESİN BİLGİ MODU: yalnız gerçekten bildiği kitabı yazsın; tanımak yetmez.
+    if (!empty($opts['strict'])) {
+        $strict =
+            "\n\nSTRICT MODE — this overrides rule 2 and any instruction above about when to answer UNKNOWN. "
+          . "Output exactly UNKNOWN unless BOTH are true: (a) you are CERTAIN which exact work this is, and "
+          . "(b) you genuinely remember its ACTUAL CONTENT from your own knowledge — the real story (premise, "
+          . "main characters, how it unfolds) or the real argument (its thesis and main steps). Recognising the "
+          . "title, the author, the subject or the genre is NOT enough. If you would end up writing mostly about "
+          . "the author's life, the period, the subject in general or the author's other works instead of THIS "
+          . "book's own content, output UNKNOWN. If you know only part of the book, write only that part — a "
+          . "shorter text is fine — and never fill gaps with guesses, generalities or invented specifics.";
+        $system .= $strict;
+        $user   .= $strict;
+    }
+
     // max_tokens'i tavana göre boyutlandır (~1 kelime ≈ 1.6 token + pay); tavan
     // yükseldiğinde uzun ama gerçek metin yarıda kesilmesin.
     $mtok = (int) ($opts['max_tokens'] ?? min(16000, max(1500, (int) round($cap * 1.9))));

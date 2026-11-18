@@ -17,7 +17,13 @@
 - **Sonnet ve Claude web araması kullanılmaz** (5 kitap ≈ 2$ gitmişti). Haiku seçiliyken web araması kodda kapalı (`$GLOBALS['bw_claude_lean']`).
 - Panelde üstteki API satırı: Toplu yazdırmada **DeepSeek** seçilmeli. "Anthropic Batch" seçilirse ana yazar Claude olur (daha pahalı).
 
-## Toplu yazdırma sırası (DeepSeek modu, `api/batch-worker.php`)
+## KESİN BİLGİ MODU (18 Kasım 2026, varsayılan AÇIK — panelde API satırındaki 🎯 kutu)
+- Sıra: tam metin → DeepSeek kaynaktan yazar. Yoksa **doğrudan Claude Haiku** (beklemeli batch, aramasız, katı istem `strict`): kitabın gerçek içeriğini kesin biliyorsa yazar (kısmen biliyorsa yalnız bildiğini; <300 kelime = açılmaz). Bilmiyorsa kitap **atlanır** (`skipped`). DeepSeek hafıza özeti, Bilgi Metni, kısa not, yer tutucu AÇILMAZ.
+- Özet/bilgi tipli toplu işler de bu yola girer (tekli üretim ve "Anthropic" seçimi hariç). Ayar: `settings.json` `strict_mode`.
+- **Çift kayıt engeli** (`api/_dup-guard.php`, her yeni yazıda): sitede aynı yazarın tüm yazıları toplanır; parantezdeki orijinal ad / alt başlık / yazım farkı kodla, çeviri-farklı ad-aynı derleme DeepSeek ile yakalanır → yeni sayfa açılmaz.
+- Kullanıcı günlük sınırı düşürmek istemiyor (30 kalsın; "5" önerisi reddedildi).
+
+## Toplu yazdırma sırası (ESKİ DeepSeek modu — kesin bilgi modu KAPALIYSA, `api/batch-worker.php`)
 1. Kitabın tam metni (Gutenberg/IA/Standard Ebooks/OL-IA/Gallica) → DeepSeek özet. **Başlık birebir eşleşmeli** (`proto_title_strict`), benzer/kardeş eser asla; OL'de yazar **ilk sırada** olmalı.
 2. DeepSeek kesin biliyorsa → düşünerek (`ds_think`) geniş özet.
 3. Bilmiyorsa → Claude Haiku (beklemeli batch, aramasız): biliyorsa geniş, kısmen biliyorsa bildiği kadar, uydurmasız.

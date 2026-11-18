@@ -2882,3 +2882,19 @@ document.querySelectorAll('input[name=bulk_type]').forEach(r => {
 })();
 updateBulkTypeUI();   // sayfa açılışında da uygula
 updateBulkSourceWords(document.getElementById('bulk-source-words')?.value || 3500);   // kaydırıcı görselini/etiketini kur
+
+// ── KESİN BİLGİ MODU aç/kapa (sunucuda settings.json strict_mode) ──
+(function(){
+  const cb = document.getElementById('strict-mode');
+  if (!cb) return;
+  postData(API('settings.php'), { action: 'get_strict' })
+    .then(r => { if (r && r.ok) cb.checked = !!r.on; })
+    .catch(() => {});
+  cb.addEventListener('change', async () => {
+    const want = cb.checked;
+    try {
+      const r = await postData(API('settings.php'), { action: 'save_strict', on: want ? '1' : '0' });
+      if (!r || !r.ok) { cb.checked = !want; alert((r && r.error) || 'Kaydedilemedi.'); }
+    } catch (e) { cb.checked = !want; alert('Kaydedilemedi: ' + e.message); }
+  });
+})();
