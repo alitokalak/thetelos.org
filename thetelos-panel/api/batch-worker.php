@@ -992,28 +992,32 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
 /* Claude taslağını bildiği GERÇEK içerikle genişletir (beklemeli Batch, düşünerek).
    Kitap claude_wait'te kalır (tek tek kuralı). Gönderilemezse false → çağıran taslağı yayınlar. */
 function bw_claude_expand($batch_file, $i, $bk, $txt, $tgt, $round) {
-    $wc  = str_word_count($txt);
-    $sys = "You are expanding a book summary that you wrote earlier. Add MORE of the book's REAL content that you "
-         . "genuinely know: more of its actual argument, how it is built, its main sections and what each does, its "
-         . "key concepts, examples, cases and evidence, its conclusions; for a narrative, more of the actual story. "
-         . "Keep every existing true sentence; integrate new material where it belongs. ABSOLUTE RULES: everything "
-         . "must be true; never invent names, quotations, dates, chapter titles or details you are unsure of; no "
-         . "padding, no repetition, no generic remarks about the author, the period or the field; no notes about "
-         . "yourself or your knowledge. If you truly know nothing more about this book, return the text unchanged. "
-         . "Keep Markdown with a few natural, book-specific ## headings (never 'Chapter N', 'Overview', 'Key Ideas', "
-         . "'Why It Matters', 'Conclusion'). Write in English. Output ONLY the complete summary.";
+    // DEVAM (eski parça sistemi gibi): Claude tüm yazıyı YENİDEN yazmaz (tek cevapta ~2.000
+    // kelimede durduğu için büyümüyordu) — yalnız YENİ bölümler yazar, biz sona ekleriz.
+    $wc   = str_word_count($txt);
+    $need = max(800, min(1800, $tgt - $wc));
+    $sys = "You are continuing a book summary that you wrote earlier. Write ONLY NEW sections that add more of "
+         . "the book's REAL content you genuinely know and that the current summary does not yet cover in depth: "
+         . "further parts of its argument or story, how it is built, its main sections and what each does, key "
+         . "concepts, examples, cases, evidence, conclusions. Do NOT repeat or re-summarise what is already written. "
+         . "ABSOLUTE RULES: everything must be true; never invent names, quotations, dates, chapter titles or details "
+         . "you are unsure of; no padding, no generic remarks about the author, the period or the field, no reception "
+         . "or legacy filler, no notes about yourself or your knowledge. If you genuinely know nothing more about THIS "
+         . "book that is not already covered, output exactly NOTHING. Start each new section with a natural, "
+         . "book-specific ## heading (never 'Chapter N', 'Overview', 'Key Ideas', 'Why It Matters', 'Conclusion', "
+         . "'Legacy'). Write in English. Output ONLY the new sections.";
     $usr = "Book: \"" . ($bk['book_title'] ?? '') . "\" by " . ($bk['author_name'] ?? '') . ".\n"
-         . "Expand the summary below toward about $tgt words (never more) — only with real content you know.\n\n"
-         . "=== CURRENT SUMMARY ($wc words) ===\n" . $txt;
+         . "Write about $need words of NEW sections to append to the summary below (only real content you know; "
+         . "if nothing more, output NOTHING).\n\n=== CURRENT SUMMARY ($wc words) ===\n" . $txt;
     $cid = 'bx' . (int) $i . 'r' . (int) $round . '_' . substr(md5(($bk['book_title'] ?? '') . microtime()), 0, 10);
     $sub = tls_claude_batch_submit([[
         'custom_id' => $cid, 'system' => $sys, 'user' => $usr, 'model' => tls_claude_fast_model(),
-        'max_tokens' => min(16000, (int) round($tgt * 1.9) + 4000), 'thinking' => ['type' => 'adaptive'],
+        'max_tokens' => min(16000, (int) round($need * 2) + 4000), 'thinking' => ['type' => 'adaptive'],
     ]]);
     if (empty($sub['ok']) || empty($sub['id'])) return false;
     bw_update_book($batch_file, $i, ['status' => 'claude_wait', 'claude_bid' => $sub['id'], 'claude_cid' => $cid,
         'claude_at' => time(), 'claude_expanded' => (int) $round, 'claude_draft' => $txt,
-        'error' => "Claude genişletiyor — tur $round/3 ($wc → ~$tgt kelime)…"]);
+        'error' => "Claude devam bölümü yazıyor — tur $round/3 (şu an $wc / hedef ~$tgt kelime)…"]);
     return true;
 }
 
@@ -1053,12 +1057,12 @@ function bw_claude_poll($batch_file) {
             $draft = trim((string) ($wait[$i]['claude_draft'] ?? ''));
             $tgt   = (int) ($wait[$i]['claude_target'] ?? 0);
             if ($draft !== '') {
-                $ok2  = !empty($res['ok']) && $one && !empty($one['ok']) && $txt !== '' && strncmp($txt, 'UNKNOWN', 7) !== 0;
-                $dwc  = str_word_count($draft);
-                $best = ($ok2 && str_word_count($txt) > $dwc) ? $txt : $draft;
+                $add  = (!empty($res['ok']) && $one && !empty($one['ok'])) ? $txt : '';
+                $none = ($add === '' || stripos($add, 'NOTHING') === 0 || str_word_count($add) < 150);
+                $best = $none ? $draft : ($draft . "\n\n" . $add);
                 $bwc  = str_word_count($best);
                 $round = (int) ($wait[$i]['claude_expanded'] ?? 1);
-                if ($round < 3 && $bwc > $dwc * 1.15 && $bwc < 0.6 * $tgt
+                if (!$none && $round < 3 && $bwc < 0.85 * $tgt
                     && bw_claude_expand($batch_file, $i, $wait[$i], $best, $tgt, $round + 1)) continue;
                 bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $best, 'claude_draft' => '', 'error' => '']);
                 continue;
@@ -1066,7 +1070,7 @@ function bw_claude_poll($batch_file) {
             // İLK TASLAK hedefin çok altında → genişletme turu 1.
             $wc = str_word_count($txt);
             if (!empty($res['ok']) && $one && !empty($one['ok']) && $txt !== '' && strncmp($txt, 'UNKNOWN', 7) !== 0
-                && $wc >= 150 && $tgt >= 2500 && $wc < 0.6 * $tgt
+                && $wc >= 150 && $tgt >= 2500 && $wc < 0.85 * $tgt
                 && bw_claude_expand($batch_file, $i, $wait[$i], $txt, $tgt, 1)) continue;
             if (empty($res['ok']) || !$one || empty($one['ok'])) {
                 bw_claude_fail($batch_file, $i, $wait[$i], 'Claude batch hatası: ' . ($one['error'] ?? $res['error'] ?? '?'));

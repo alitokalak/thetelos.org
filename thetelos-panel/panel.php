@@ -1142,8 +1142,8 @@ if (!isset($_GET['mode'])) {
                 if      (bk.status === 'done' && bk.placeholder)  { bg='#b8860b'; symbol='⚠'; ttl='Yer tutucu — içerik yok'; }
                 else if (bk.status === 'done' && bk.kept)         { bg='#b8860b'; symbol='⚠'; ttl='Eski içerik korundu — yenilenmedi'; }
                 else if (bk.status === 'done')                    { bg='#1f7a3d'; symbol='✓'; ttl = bk.method ? ('Yöntem: '+bk.method) : ''; }
-                else if (bk.status === 'error')                   { bg='#a33';    symbol='✕'; }
-                else if (bk.status === 'skipped')                 { bg='#555';    symbol=(bk.clean_merged?'⤳':'✂'); ttl = bk.skip_reason || 'Temizlikte elendi/birleştirildi'; }
+                else if (bk.status === 'error')                   { bg='#a33';    symbol='✕'; ttl = bk.error || ''; }
+                else if (bk.status === 'skipped')                 { bg='#555';    symbol=(bk.clean_merged?'⤳':'✂'); ttl = bk.error || bk.skip_reason || 'Temizlikte elendi/birleştirildi'; }
                 else if (isStale)                                  { bg='#cc4400'; symbol='!'; }
                 else if (bk.status === 'processing')              { bg='#b8860b'; symbol='⚙'; }
                 else                                               { bg='#333';    symbol='…'; }
@@ -1152,10 +1152,20 @@ if (!isset($_GET['mode'])) {
                 var mtag = '', mcol = '#666';
                 if      (bk.status === 'done' && bk.placeholder) { mtag='⚠ yer tutucu'; mcol='#b8860b'; }
                 else if (bk.status === 'done' && bk.kept)        { mtag='⚠ eski korundu'; mcol='#b8860b'; }
-                else if (bk.status === 'skipped')                { mtag=(bk.clean_merged?'⤳ birleştirildi':'✂ elendi'); mcol='#888'; }
+                else if (bk.status === 'skipped') {
+                  mcol='#888';
+                  if (bk.clean_merged)                      mtag='⤳ birleştirildi (aynı eser)';
+                  else if (bk.duplicate && bk.post_id)      mtag='⊘ sitede var #'+bk.post_id;
+                  else if (bk.duplicate)                    mtag='⊘ listede tekrar';
+                  else if (/UNKNOWN|bilmiyor/.test(bk.error||'')) mtag='⊘ Claude bilmiyor';
+                  else if (/kısa yazdı/.test(bk.error||''))  mtag='⊘ çok kısa';
+                  else if (bk.skip_reason)                  mtag='✂ '+String(bk.skip_reason).slice(0,40);
+                  else                                      mtag='✂ yazara ait değil / elendi';
+                }
+                else if (bk.status === 'error') { mtag='✕ '+String(bk.error||'hata').replace(/\s*\(.*$/,'').slice(0,45); mcol='#c55'; }
                 else if (bk.status === 'done' && bk.method) {
                   var _mm = {'kaynak-temelli':'📖 kaynak','bilgi-metni':'📚 bilgi','claude':'🤖 Claude','claude-bilgi':'🤖 Claude bilgi','kaynaksız':'✍ kaynaksız','yer-tutucu':'⚠ yer tutucu'};
-                  mtag = _mm[bk.method] || bk.method;
+                  mtag = (_mm[bk.method] || bk.method) + (bk.words ? ' · ' + Number(bk.words).toLocaleString('tr') + ' kelime' : '');
                   mcol = bk.method==='kaynak-temelli' ? '#1f7a3d' : ((bk.method==='claude'||bk.method==='claude-bilgi') ? '#7a5cff' : '#666');
                 }
                 var mel = row.querySelector('[data-bc-method]');
