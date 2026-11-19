@@ -2898,3 +2898,21 @@ updateBulkSourceWords(document.getElementById('bulk-source-words')?.value || 350
     } catch (e) { cb.checked = !want; alert('Kaydedilemedi: ' + e.message); }
   });
 })();
+
+// ── YALNIZ CLAUDE modu aç/kapa (settings.json claude_only; açıkken kesin bilgi de açık) ──
+(function(){
+  const cb = document.getElementById('claude-only'), st = document.getElementById('strict-mode');
+  if (!cb) return;
+  const sync = () => { if (st && cb.checked) { st.checked = true; st.disabled = true; } else if (st) st.disabled = false; };
+  postData(API('settings.php'), { action: 'get_strict' })
+    .then(r => { if (r && r.ok) { cb.checked = !!r.claude_only; sync(); } })
+    .catch(() => {});
+  cb.addEventListener('change', async () => {
+    const want = cb.checked;
+    try {
+      const r = await postData(API('settings.php'), { action: 'save_strict', claude_only: want ? '1' : '0' });
+      if (!r || !r.ok) { cb.checked = !want; alert((r && r.error) || 'Kaydedilemedi.'); }
+    } catch (e) { cb.checked = !want; alert('Kaydedilemedi: ' + e.message); }
+    sync();
+  });
+})();

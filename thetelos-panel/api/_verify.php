@@ -96,7 +96,14 @@ function tv_settings() {
         // bilmiyorsa kitap ATLANIR. DeepSeek hafıza özeti, internetten Bilgi Metni,
         // kısa not ve yer tutucu sayfa AÇILMAZ. Kapatmak: settings.json strict_mode=false.
         'strict_mode' => !isset($j['strict_mode']) || (bool) $j['strict_mode'],
+        // YALNIZ CLAUDE (19.11.2026, kullanıcı kararı): VARSAYILAN KAPALI. Açıkken toplu
+        // yazdırmada tam metin aranmaz, DeepSeek yazmaz: her kitap doğrudan Claude Haiku'ya
+        // (BEKLEMELİ Batch API, −%50, aramasız, katı istem) gider; kesin biliyorsa yazar,
+        // bilmiyorsa atlanır. Çift kayıt sorusu da Claude Haiku'ya gider. DeepSeek yoğun saat
+        // beklemesi uygulanmaz. Kesin bilgi modunu da açık sayar.
+        'claude_only' => !empty($j['claude_only']),
     ];
+    if ($s['claude_only']) $s['strict_mode'] = true;
     return $s;
 }
 

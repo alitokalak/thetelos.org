@@ -1661,6 +1661,17 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $content = bw_clean_content($claude_md);
         $gen_method = 'claude';
         bw_flag_problem($book, $author, $pre_cover, $pre_year, 'claude', 'DeepSeek yazamadı → Claude (beklemeli, Haiku)', $update_pid, $rewrite ? 'rewrite' : 'create');
+    } elseif ($type === 'source' && !empty(tv_settings()['claude_only']) && $api_provider !== 'anthropic' && !$is_single && !$has_manual_source) {
+        // YALNIZ CLAUDE: tam metin ARANMAZ, DeepSeek yazmaz → doğrudan Claude Haiku (beklemeli
+        // Batch API, katı "kesin bilgi" istemi). Bilmiyorsa bw_claude_fail kitabı atlar.
+        if (empty($batch['books'][$idx]['claude_tried'])) {
+            $q_why = '';
+            if (bw_claude_queue($batch_file, $idx, $book, $author, $cl_target_words, $q_why)) return;
+            bw_update_book($batch_file, $idx, ['status' => 'error', 'error' => 'Claude\'a gönderilemedi: ' . $q_why]);
+            return;
+        }
+        bw_update_book($batch_file, $idx, ['status' => 'skipped', 'error' => 'Claude metni yok → atlandı (yalnız Claude modu)']);
+        return;
     } elseif ($type === 'source') {
         require_once __DIR__ . '/_proto.php';
         require_once __DIR__ . '/_info.php';
@@ -2886,6 +2897,8 @@ function bw_peak_now() {
     if (defined('TLS_DEEPSEEK_SKIP_PEAK') && !TLS_DEEPSEEK_SKIP_PEAK) return false;
     $flag = dirname(__DIR__) . '/jobs/.peak-skip';
     if (file_exists($flag) && trim((string)@file_get_contents($flag)) === '0') return false;
+    require_once __DIR__ . '/_verify.php';
+    if (!empty(tv_settings()['claude_only'])) return false;   // yalnız Claude: DeepSeek yoğun saati önemsiz
     // 23.08.2026'dan beri HAFTA SONU (Cmt/Paz, Pekin/UTC+8) TÜM GÜN off-peak → duraklatma yok.
     $bj_dow = (int) gmdate('N', time() + 8 * 3600);   // 6=Cmt, 7=Paz (Pekin)
     if ($bj_dow >= 6) return false;

@@ -159,6 +159,8 @@ if ($build_target) {
 $peak_flag = $jobs_dir . '/.peak-skip';
 $peak_skip = !file_exists($peak_flag) || trim((string) @file_get_contents($peak_flag)) !== '0';
 if (defined('TLS_DEEPSEEK_SKIP_PEAK')) $peak_skip = (bool) TLS_DEEPSEEK_SKIP_PEAK;
+$tls_set = @json_decode((string) @file_get_contents(dirname(__DIR__) . '/settings.json'), true);
+if (!empty($tls_set['claude_only'])) $peak_skip = false;   // yalnız Claude modu: DeepSeek yoğun saati beklenmez
 if ($peak_skip && (($_GET['peak'] ?? '') !== 'off')) {
     $h = (int) gmdate('G'); // UTC saati 0–23
     // HAFTA SONU (Cmt/Paz, Pekin/UTC+8) tüm gün off-peak → duraklatma yok.

@@ -17,6 +17,10 @@
 - **Sonnet ve Claude web araması kullanılmaz** (5 kitap ≈ 2$ gitmişti). Haiku seçiliyken web araması kodda kapalı (`$GLOBALS['bw_claude_lean']`).
 - Panelde üstteki API satırı: Toplu yazdırmada **DeepSeek** seçilmeli. "Anthropic Batch" seçilirse ana yazar Claude olur (daha pahalı).
 
+## YALNIZ CLAUDE MODU (19 Kasım 2026, panelde 🤖 kutu, varsayılan KAPALI)
+- Açıkken: tam metin ARANMAZ, DeepSeek yazmaz. Her kitap doğrudan **Claude Haiku 5.5 beklemeli Batch** (−%50: $0.05/$0.25 /1M — DeepSeek gece fiyatından ucuz), katı "kesin bilgi" istemi; bilmiyorsa atlanır. Çift kayıt sorusu da Claude Haiku'ya gider. DeepSeek yoğun saat beklemesi yok (worker, cron-tick, panel uyarısı). Meta/kategori gibi küçük yan işler hâlâ DeepSeek.
+- Ayar: `settings.json` `claude_only` (açıkken `strict_mode` da açık sayılır).
+
 ## KESİN BİLGİ MODU (18 Kasım 2026, varsayılan AÇIK — panelde API satırındaki 🎯 kutu)
 - Sıra: tam metin → DeepSeek kaynaktan yazar. Yoksa **doğrudan Claude Haiku** (beklemeli batch, aramasız, katı istem `strict`): kitabın gerçek içeriğini kesin biliyorsa yazar (kısmen biliyorsa yalnız bildiğini; <300 kelime = açılmaz). Bilmiyorsa kitap **atlanır** (`skipped`). DeepSeek hafıza özeti, Bilgi Metni, kısa not, yer tutucu AÇILMAZ.
 - Özet/bilgi tipli toplu işler de bu yola girer (tekli üretim ve "Anthropic" seçimi hariç). Ayar: `settings.json` `strict_mode`.

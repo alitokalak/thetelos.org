@@ -93,6 +93,10 @@ if (!isset($_GET['mode'])) {
         <input type="checkbox" id="strict-mode" checked>
         <span>🎯 <b>Kesin bilgi modu</b> <span style="opacity:.65">kaynak → Claude kesin bilgi → yoksa atla</span></span>
       </label>
+      <label id="claude-only-row" title="Açık: tam metin aranmaz, DeepSeek yazmaz. Her kitap doğrudan Claude Haiku'ya (beklemeli, ucuz) gider; kesin biliyorsa yazar, bilmiyorsa atlanır. Yoğun saat beklemesi yok." style="display:flex;align-items:center;gap:6px;margin-left:8px;font-size:12px;cursor:pointer;border:1px solid rgba(217,119,87,.5);border-radius:8px;padding:5px 10px;background:rgba(217,119,87,.08)">
+        <input type="checkbox" id="claude-only">
+        <span>🤖 <b>Yalnız Claude</b> <span style="opacity:.65">beklemeli Haiku · kaynak aranmaz</span></span>
+      </label>
       <span class="api-active-label" id="api-active-label"><?= defined('DEEPSEEK_MODEL') ? htmlspecialchars(in_array(DEEPSEEK_MODEL,['deepseek-chat','deepseek-reasoner'],true)?'deepseek-v4-flash':DEEPSEEK_MODEL) : 'deepseek' ?></span>
     </div>
 
@@ -462,6 +466,8 @@ if (!isset($_GET['mode'])) {
         <?php
           $tls_peak_flag = __DIR__ . '/jobs/.peak-skip';
           $tls_peak_on   = !file_exists($tls_peak_flag) || trim((string) @file_get_contents($tls_peak_flag)) !== '0';
+      $tls_set_j     = @json_decode((string) @file_get_contents(__DIR__ . '/settings.json'), true);
+      if (!empty($tls_set_j['claude_only'])) $tls_peak_on = false;   // yalnız Claude: yoğun saat yok
         ?>
         <label style="display:flex;align-items:flex-start;gap:8px;margin-top:16px;font-size:13px;color:var(--muted);cursor:pointer;line-height:1.5">
           <input type="checkbox" id="cb-peak-skip" style="margin-top:2px" <?= $tls_peak_on ? 'checked' : '' ?>>
@@ -793,6 +799,8 @@ if (!isset($_GET['mode'])) {
          arıza mı, tasarruf molası mı ayırt edilebilsin. */
       $tls_peak_flag = __DIR__ . '/jobs/.peak-skip';
       $tls_peak_on   = !file_exists($tls_peak_flag) || trim((string) @file_get_contents($tls_peak_flag)) !== '0';
+      $tls_set_j     = @json_decode((string) @file_get_contents(__DIR__ . '/settings.json'), true);
+      if (!empty($tls_set_j['claude_only'])) $tls_peak_on = false;   // yalnız Claude: yoğun saat yok
       $tls_h_utc     = (int) gmdate('G');
       $tls_bj_dow    = (int) gmdate('N', time() + 8 * 3600);   // Pekin günü: 6=Cmt, 7=Paz
       $tls_in_peak   = ($tls_bj_dow < 6) && (($tls_h_utc >= 1 && $tls_h_utc < 4) || ($tls_h_utc >= 6 && $tls_h_utc < 10));

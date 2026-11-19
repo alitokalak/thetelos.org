@@ -172,7 +172,12 @@ function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$di
         . "two books the same. Answer SAME only if you are certain; when in doubt answer 0. Answer with JSON "
         . "only: {\"match\": <item number or 0>, \"reason\": \"<max 12 words>\"}";
     $prev_think = $GLOBALS['ds_think'] ?? null; $GLOBALS['ds_think'] = false;
-    $a = tv_ask($prompt, 200, 60, 'deepseek');
+    // Yalnız Claude modunda soru da Claude Haiku'ya gider (kısa, tek istek); aksi halde DeepSeek.
+    $use_claude = !empty(tv_settings()['claude_only']);
+    $prev_nc = $GLOBALS['tls_no_claude'] ?? null;
+    if ($use_claude) $GLOBALS['tls_no_claude'] = false;
+    $a = tv_ask($prompt, 200, 60, $use_claude ? 'anthropic' : 'deepseek');
+    $GLOBALS['tls_no_claude'] = $prev_nc;
     $GLOBALS['ds_think'] = $prev_think;
     $j = !empty($a['ok']) ? tv_json($a['text'] ?? '') : null;
     if (!is_array($j)) { $diag = 'DeepSeek yanıt vermedi → yalnız kod denetimi'; return null; }
@@ -180,7 +185,7 @@ function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$di
     if ($n >= 1 && $n <= count($list)) {
         $c = $list[$n - 1];
         return ['id' => $c['id'], 'title' => $c['book'] . ' – ' . $c['author'], 'link' => $c['link'],
-                'why' => 'DeepSeek: ' . mb_substr(trim((string) ($j['reason'] ?? 'aynı eser')), 0, 90)];
+                'why' => ($use_claude ? 'Claude: ' : 'DeepSeek: ') . mb_substr(trim((string) ($j['reason'] ?? 'aynı eser')), 0, 90)];
     }
     $diag = count($list) . ' aday, eşleşme yok';
     return null;

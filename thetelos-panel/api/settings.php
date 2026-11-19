@@ -23,7 +23,8 @@ if ($action === 'save_prompts') {
     $s = file_exists($f) ? json_decode((string) file_get_contents($f), true) : [];
     if (!is_array($s)) $s = [];
     if ($action === 'save_strict') {
-        $s['strict_mode'] = (($_POST['on'] ?? '1') === '1');
+        if (isset($_POST['on']))          $s['strict_mode'] = ($_POST['on'] === '1');
+        if (isset($_POST['claude_only'])) $s['claude_only'] = ($_POST['claude_only'] === '1');
         $json = json_encode($s, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
         $tmp  = $f . '.tmp';
         if (@file_put_contents($tmp, $json) === strlen($json) && @rename($tmp, $f)) {
@@ -34,7 +35,8 @@ if ($action === 'save_prompts') {
             exit;
         }
     }
-    echo json_encode(['ok' => true, 'on' => !isset($s['strict_mode']) || (bool) $s['strict_mode']]);
+    echo json_encode(['ok' => true, 'on' => !isset($s['strict_mode']) || (bool) $s['strict_mode'],
+                      'claude_only' => !empty($s['claude_only'])]);
 
 } elseif ($action === 'save_verify' || $action === 'get_verify') {
     /* Yayın kapısı ayarları. Doğrulama katmanları API harcadığı için
