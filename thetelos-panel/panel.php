@@ -796,7 +796,10 @@ if (!isset($_GET['mode'])) {
       $tls_h_utc     = (int) gmdate('G');
       $tls_bj_dow    = (int) gmdate('N', time() + 8 * 3600);   // Pekin günü: 6=Cmt, 7=Paz
       $tls_in_peak   = ($tls_bj_dow < 6) && (($tls_h_utc >= 1 && $tls_h_utc < 4) || ($tls_h_utc >= 6 && $tls_h_utc < 10));
-      if ($tls_peak_on && $tls_in_peak):
+      // Yalnız GERÇEKTEN bekleyen bir iş varsa göster — batch silindiyse "duraklatıldı" yazmasın.
+      $tls_has_work  = false;
+      foreach ($stuck_batches as $sb) if (($sb['_remaining'] ?? 0) > 0) { $tls_has_work = true; break; }
+      if ($tls_peak_on && $tls_in_peak && $tls_has_work):
           $tls_end_utc = ($tls_h_utc < 4) ? 4 : 10;                 // yoğunluğun biteceği UTC saat
           $tls_end_tr  = ($tls_end_utc + 3) % 24;                    // TR = UTC+3
       ?>

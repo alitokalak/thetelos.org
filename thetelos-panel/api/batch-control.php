@@ -17,7 +17,13 @@ $batch_file = dirname(__DIR__) . '/jobs/' . $batch_id . '.json';
 
 /* delete: batch dosyasını tamamen sil (eski yarım kalan denemeleri temizlemek için) */
 if ($action === 'delete') {
+    // Mezar taşı: arkada çalışan worker dosyayı yeniden yazıp batch'i geri getiremesin.
+    @file_put_contents($batch_file . '.deleted', (string) time());
+    $lk = @fopen($batch_file . '.lock', 'c');
+    if ($lk) flock($lk, LOCK_EX);
     if (file_exists($batch_file)) @unlink($batch_file);
+    foreach (glob($batch_file . '.tmp.*') ?: [] as $t) @unlink($t);
+    if ($lk) { flock($lk, LOCK_UN); fclose($lk); }
     echo json_encode(['ok'=>true, 'deleted'=>true]);
     exit;
 }
@@ -82,7 +88,7 @@ if ($action === 'resume') {
 $json = json_encode($batch, JSON_UNESCAPED_UNICODE);
 if ($json !== false && $json !== '') {
     $tmp = $batch_file . '.tmp.' . getmypid() . '.' . mt_rand();
-    if (@file_put_contents($tmp, $json) === strlen($json)) { @rename($tmp, $batch_file); }
+    if (!file_exists($batch_file . '.deleted') && @file_put_contents($tmp, $json) === strlen($json)) { @rename($tmp, $batch_file); }
     else { @unlink($tmp); }
 }
 flock($lk, LOCK_UN); fclose($lk);

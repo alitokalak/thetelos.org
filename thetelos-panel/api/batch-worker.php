@@ -114,7 +114,10 @@ function bw_write_atomic($batch_file, $batch) {
     $json = json_encode($batch, JSON_UNESCAPED_UNICODE);
     if ($json === false || $json === '') return false;
     $tmp = $batch_file . '.tmp.' . getmypid() . '.' . mt_rand();
+    // SİLİNEN BATCH GERİ GELMESİN: kullanıcı sildiyse (mezar taşı .deleted) çalışan worker yazamaz.
+    if (file_exists($batch_file . '.deleted')) return false;
     if (@file_put_contents($tmp, $json) !== strlen($json)) { @unlink($tmp); return false; }
+    if (file_exists($batch_file . '.deleted')) { @unlink($tmp); return false; }
     return @rename($tmp, $batch_file);
 }
 function bw_lock($batch_file) {
