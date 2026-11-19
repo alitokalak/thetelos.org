@@ -1525,6 +1525,7 @@ function renderBatchStatus(b) {
     `<span class="badge badge-green">✓ ${b.ok} taze içerik</span>${brkTxt}&nbsp;`
     + ((b.placeholder|0) > 0 ? `<span class="badge badge-warn">⚠ ${b.placeholder} yer tutucu (içerik yok)</span>&nbsp;` : '')
     + ((b.kept|0) > 0 ? `<span class="badge badge-warn">⚠ ${b.kept} eski korundu (yenilenmedi)</span>&nbsp;` : '')
+    + ((b.skipped|0) > 0 ? `<span class="badge badge-gray">⊘ ${b.skipped} atlandı (sitede var / bilinmiyor)</span>&nbsp;` : '')
     + `<span class="badge badge-red">✗ ${b.failed} hatalı</span>&nbsp;`
     + (b.total - b.done > 0 ? `<span class="badge badge-gray">⏳ ${(b.total-b.done).toLocaleString('tr')} bekliyor</span>` : '');
 
@@ -1569,6 +1570,7 @@ function renderBatchStatus(b) {
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
+      : st==='skipped'   ? `<span title="${String(bk.error||bk.skip_reason||'').replace(/"/g,'&quot;')}">⊘ ${bk.duplicate ? 'Sitede var — atlandı' : 'Atlandı (Claude kesin bilmiyor)'}${bk.post_id ? ' ' + idHtml : ''}</span>`
       : st==='processing'? procLabel
       : st==='claude_wait' ? '⏳ Claude (beklemeli) yazıyor'
       : 'Bekliyor';

@@ -1480,7 +1480,7 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         if ($dup_code === 200 && !empty($dup_posts[0]['id'])) {
             $dpid = (int) $dup_posts[0]['id'];
             bw_update_book($batch_file, $idx, [
-                'status'    => 'done',
+                'status'    => 'skipped',   // yazılmadı → "taze içerik" sayılmasın, ✓ görünmesin
                 'duplicate' => 1,
                 'post_id'   => $dpid,
                 'post_url'  => $dup_posts[0]['link'] ?? '',
