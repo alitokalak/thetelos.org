@@ -110,7 +110,7 @@ function dg_same_by_rules($new_book, $old_book) {
  * Dönüş: null (yok) | ['id'=>int, 'title'=>string, 'link'=>string, 'why'=>string]
  * $wp_get: function(string $path_and_query): [array|null $json, int $http]
  */
-function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$diag = '') {
+function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$diag = '', array $extra = []) {
     $book = trim((string) $book); $author = trim((string) $author);
     $diag = '';
     if ($book === '') return null;
@@ -137,12 +137,19 @@ function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$di
             if (count($r) < 100) break;
         }
     }
+    // AYNI LİSTEDE önceden işleme alınmış kitaplar (Claude'da bekleyen / yazılmış): henüz
+    // sitede görünmeseler de çevirisi/farklı adı ikinci kez gönderilmesin.
+    foreach ($extra as $k => $e) {
+        $eb = trim((string) ($e['book'] ?? '')); $ea = trim((string) ($e['author'] ?? ''));
+        if ($eb === '' || strpos(' ' . dg_key($ea) . ' ', ' ' . $last . ' ') === false) continue;
+        $cands['b' . $k] = ['id' => 0, 'book' => $eb, 'author' => $ea, 'link' => '', 'bidx' => (int) $k];
+    }
     if (!$cands) { $diag = 'yazarın sitede yazısı yok'; return null; }
 
     // 2) Kodla kesin eşleşme.
     foreach ($cands as $c) {
         if (dg_same_by_rules($book, $c['book'])) {
-            return ['id' => $c['id'], 'title' => $c['book'] . ' – ' . $c['author'], 'link' => $c['link'], 'why' => 'aynı başlık (yazım farkı)'];
+            return ['id' => $c['id'], 'bidx' => $c['bidx'] ?? null, 'title' => $c['book'] . ' – ' . $c['author'], 'link' => $c['link'], 'why' => 'aynı başlık (yazım farkı)'];
         }
     }
 
@@ -184,7 +191,7 @@ function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$di
     $n = (int) ($j['match'] ?? 0);
     if ($n >= 1 && $n <= count($list)) {
         $c = $list[$n - 1];
-        return ['id' => $c['id'], 'title' => $c['book'] . ' – ' . $c['author'], 'link' => $c['link'],
+        return ['id' => $c['id'], 'bidx' => $c['bidx'] ?? null, 'title' => $c['book'] . ' – ' . $c['author'], 'link' => $c['link'],
                 'why' => ($use_claude ? 'Claude: ' : 'DeepSeek: ') . mb_substr(trim((string) ($j['reason'] ?? 'aynı eser')), 0, 90)];
     }
     $diag = count($list) . ' aday, eşleşme yok';

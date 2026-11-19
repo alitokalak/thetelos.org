@@ -183,9 +183,23 @@ function bw_claim_next($batch_file) {
         $changed = true;
     }
 
+    // CLAUDE GÖNDERİM SINIRI (19.11.2026, kullanıcı isteği): cevabı gelmemiş en fazla 40 kitap
+    // Claude'da beklesin. Sınır doluysa yalnız Claude cevabı GELMİŞ (yayına hazır) kitaplar
+    // işlenir; yenileri gönderilmez → liste "sorgusuz" toptan Claude'a akmaz.
+    $in_flight = 0;
+    foreach ($batch['books'] as $b) if (($b['status'] ?? '') === 'claude_wait') $in_flight++;
+    $cap_full = ($in_flight >= 40);
+
     $idx = -1;
     foreach ($batch['books'] as $i => $b) {
-        if (($b['status'] ?? '') === 'pending') { $idx = $i; break; }
+        if (($b['status'] ?? '') !== 'pending') continue;
+        if ($cap_full && trim((string) ($b['claude_md'] ?? '')) === '') continue;
+        $idx = $i; break;
+    }
+    if ($idx === -1 && $cap_full) {   // bekleyen var ama sınır dolu → Claude cevaplarını bekle
+        if ($changed) bw_write_atomic($batch_file, $batch);
+        bw_unlock($lk);
+        return [-5, null];
     }
     if ($idx === -1) {
         // Hâlâ "processing" olan kitap varsa done yazma — başka worker çalışıyor olabilir
@@ -1494,10 +1508,28 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         require_once __DIR__ . '/_dup-guard.php';
         bw_set_stage($batch_file, $idx, 'sitede aynı kitap (çeviri/farklı ad) var mı bakılıyor…');
         $dg_diag = '';
+        // Aynı listede ÖNCEDEN işleme alınmış kitaplar (Claude'da bekleyen, işlenen, yazılan)
+        $dg_extra = [];
+        $bnow = json_decode((string) @file_get_contents($batch_file), true);
+        foreach ((is_array($bnow) ? ($bnow['books'] ?? []) : []) as $bi => $bb) {
+            if ($bi === $idx) continue;
+            $bst = $bb['status'] ?? '';
+            $live = in_array($bst, ['claude_wait', 'processing', 'done'], true)
+                 || ($bst === 'pending' && trim((string) ($bb['claude_md'] ?? '')) !== '');
+            if ($live && empty($bb['duplicate'])) $dg_extra[$bi] = ['book' => (string) ($bb['book_title'] ?? ''), 'author' => (string) ($bb['author_name'] ?? '')];
+        }
         $dg = dg_find_duplicate($book, $author, function ($q) use ($wp_api, $auth) {
             return bw_wp("$wp_api/$q", 'GET', [], $auth, 20);
-        }, $ep, $dg_diag);
+        }, $ep, $dg_diag, $dg_extra);
         bw_touch_hb($batch_file, $idx);
+        if ($dg && empty($dg['id']) && isset($dg['bidx'])) {
+            bw_update_book($batch_file, $idx, [
+                'status'    => 'skipped',
+                'duplicate' => 1,
+                'error'     => 'Atlandı: listede aynı kitap zaten var → ' . ((int) $dg['bidx'] + 1) . '. satır “' . mb_substr($dg['title'], 0, 120) . '” (' . $dg['why'] . ')',
+            ]);
+            return;
+        }
         if ($dg) {
             bw_update_book($batch_file, $idx, [
                 'status'    => 'skipped',
