@@ -182,6 +182,20 @@ function bw_claim_next($batch_file) {
         $batch['dg_requeue_v2'] = 1;
         $changed = true;
     }
+    // TEK SEFERLİK (19.11.2026): eski sert istemle "bilmiyor" diye atlanan kitaplar yeni
+    // (düşünerek, dengeli) istemle bir kez daha Claude'a sorulur.
+    if (empty($batch['cl_requeue_v3'])) {
+        foreach ($batch['books'] as $i => $b) {
+            if (($b['status'] ?? '') === 'skipped' && empty($b['duplicate']) && !empty($b['claude_unknown'])) {
+                $batch['books'][$i]['status'] = 'pending';
+                unset($batch['books'][$i]['claude_unknown'], $batch['books'][$i]['claude_tried'],
+                      $batch['books'][$i]['claude_bid'], $batch['books'][$i]['claude_cid']);
+                $batch['books'][$i]['error'] = '';
+            }
+        }
+        $batch['cl_requeue_v3'] = 1;
+        $changed = true;
+    }
 
     // CLAUDE GÖNDERİM SINIRI (19.11.2026, kullanıcı isteği): cevabı gelmemiş en fazla 40 kitap
     // Claude'da beklesin. Sınır doluysa yalnız Claude cevabı GELMİŞ (yayına hazır) kitaplar
@@ -950,8 +964,11 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
             $cid = 'bk' . (int) $idx . '_' . substr(md5($book . microtime()), 0, 10);
             $sub = tls_claude_batch_submit([[
                 'custom_id' => $cid, 'system' => $p['system'], 'user' => $p['user'],
-                'model' => tls_claude_fast_model(), 'max_tokens' => $p['max_tokens'],
-                'temperature' => 0.2, 'cache' => true,
+                'model' => tls_claude_fast_model(),
+                // DÜŞÜNEREK (adaptive): küçük model aceleyle "UNKNOWN" demesin, bildiğini hatırlasın.
+                // Düşünme token'ı max_tokens'tan yer → +4000 pay. (Haiku 5.5: kuruş farkı.)
+                'max_tokens' => (int) $p['max_tokens'] + 4000, 'thinking' => ['type' => 'adaptive'],
+                'cache' => true,
             ]]);
             if (!empty($sub['ok']) && !empty($sub['id'])) {
                 bw_update_book($batch_file, $idx, [
@@ -1004,9 +1021,10 @@ function bw_claude_poll($batch_file) {
             $txt = trim((string) ($one['text'] ?? ''));
             if (empty($res['ok']) || !$one || empty($one['ok'])) {
                 bw_claude_fail($batch_file, $i, $wait[$i], 'Claude batch hatası: ' . ($one['error'] ?? $res['error'] ?? '?'));
-            } elseif ($txt === '' || strncmp($txt, 'UNKNOWN', 7) === 0
-                      || str_word_count($txt) < (!empty(tv_settings()['strict_mode']) ? 300 : 120)) {   // kesin modda zayıf/kısa sayfa açılmaz
-                bw_claude_fail($batch_file, $i, $wait[$i], 'Claude da bu kitabı bilmiyor (UNKNOWN)');
+            } elseif ($txt === '' || strncmp($txt, 'UNKNOWN', 7) === 0) {
+                bw_claude_fail($batch_file, $i, $wait[$i], 'Claude bu kitabı bilmiyor (UNKNOWN dedi)');
+            } elseif (str_word_count($txt) < 150) {   // çok kısa → zayıf sayfa açılmaz
+                bw_claude_fail($batch_file, $i, $wait[$i], 'Claude çok kısa yazdı (' . str_word_count($txt) . ' kelime) → zayıf sayfa açılmadı');
             } else {
                 bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $txt, 'error' => '']);
             }

@@ -1570,7 +1570,7 @@ function renderBatchStatus(b) {
         + (partial ? ` <span title="${String(bk.error).replace(/"/g,'&quot;')}" style="color:#e0a800">⚠</span>` : '')
       : st==='error'     ? '✗ ' + (bk.error||'Hata')
       : st==='duplicate' ? '⊘ Zaten var'
-      : st==='skipped'   ? `<span title="${String(bk.error||bk.skip_reason||'').replace(/"/g,'&quot;')}">⊘ ${bk.duplicate ? (bk.post_id ? 'Sitede var — atlandı' : 'Listede tekrar — atlandı') : 'Atlandı (Claude kesin bilmiyor)'}${bk.post_id ? ' ' + idHtml : ''}</span>`
+      : st==='skipped'   ? `<span title="${String(bk.error||bk.skip_reason||'').replace(/"/g,'&quot;')}">⊘ ${bk.duplicate ? (bk.post_id ? 'Sitede var — atlandı' : 'Listede tekrar — atlandı') : ('Atlandı: ' + String(bk.error||'sebep yok').replace(/ → atlandı.*$/,'').replace(/</g,'&lt;').slice(0,90))}${bk.post_id ? ' ' + idHtml : ''}</span>`
       : st==='processing'? procLabel
       : st==='claude_wait' ? '⏳ Claude (beklemeli) yazıyor'
       : 'Bekliyor';

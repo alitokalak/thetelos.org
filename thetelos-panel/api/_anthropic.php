@@ -422,14 +422,12 @@ function tls_claude_overview($book, $author, $opts = []) {
     // KESİN BİLGİ MODU: yalnız gerçekten bildiği kitabı yazsın; tanımak yetmez.
     if (!empty($opts['strict'])) {
         $strict =
-            "\n\nSTRICT MODE — this overrides rule 2 and any instruction above about when to answer UNKNOWN. "
-          . "Output exactly UNKNOWN unless BOTH are true: (a) you are CERTAIN which exact work this is, and "
-          . "(b) you genuinely remember its ACTUAL CONTENT from your own knowledge — the real story (premise, "
-          . "main characters, how it unfolds) or the real argument (its thesis and main steps). Recognising the "
-          . "title, the author, the subject or the genre is NOT enough. If you would end up writing mostly about "
-          . "the author's life, the period, the subject in general or the author's other works instead of THIS "
-          . "book's own content, output UNKNOWN. If you know only part of the book, write only that part — a "
-          . "shorter text is fine — and never fill gaps with guesses, generalities or invented specifics.";
+            "\n\nACCURACY MODE. If you know this book — including well-known works whose main argument "
+          . "or story you remember — WRITE the full summary of what it actually contains; do not hold back out "
+          . "of excess caution. Output UNKNOWN only if you cannot recall this specific book's actual content "
+          . "(its real argument or story) and would have to write mostly about the author, the period or the "
+          . "general subject instead. Where you know only part of the book, write that part and leave out the "
+          . "rest. Never invent names, quotations, dates or details you are unsure of.";
         $system .= $strict;
         $user   .= $strict;
     }
