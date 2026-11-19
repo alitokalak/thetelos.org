@@ -149,10 +149,35 @@ function bw_claim_next($batch_file) {
             bw_clear_hb($batch_file, $i);
             $changed = true;
         } elseif (bw_hb_dead($batch_file, $i)) {
-            $batch['books'][$i]['status'] = 'pending';
+            // ÖLÜM DÖNGÜSÜ KORUMASI (19.11.2026: "The logic of life" 13 saat aynı kitapta
+            // kaldı): bir kitap işlenirken süreç 3 kez ölürse sonsuza dek yeniden deneme —
+            // hata olarak işaretle, sıradaki kitaba geç. ("Hataları tekrar dene" ile denenebilir.)
+            $deaths = (int) ($b['deaths'] ?? 0) + 1;
+            $batch['books'][$i]['deaths'] = $deaths;
+            if ($deaths >= 3) {
+                $batch['books'][$i]['status'] = 'error';
+                $batch['books'][$i]['error']  = 'işlenirken 3 kez yarıda kaldı (sunucu süreci kesildi) → atlandı, sıradakine geçildi';
+            } else {
+                $batch['books'][$i]['status'] = 'pending';
+            }
             bw_clear_hb($batch_file, $i);
             $changed = true;
         }
+    }
+    // TEK SEFERLİK: çift kayıt denetiminin eski (gevşek) DeepSeek kararıyla atlanan kitaplar
+    // yeni sıkı denetimle yeniden sıraya girer (Mayr olayı, 19.11.2026).
+    if (empty($batch['dg_requeue_v2'])) {
+        foreach ($batch['books'] as $i => $b) {
+            if (($b['status'] ?? '') === 'skipped' && !empty($b['duplicate'])
+                && strpos((string) ($b['error'] ?? ''), '(DeepSeek:') !== false) {
+                $batch['books'][$i]['status'] = 'pending';
+                unset($batch['books'][$i]['duplicate'], $batch['books'][$i]['post_id'],
+                      $batch['books'][$i]['post_url'], $batch['books'][$i]['edit_url']);
+                $batch['books'][$i]['error'] = '';
+            }
+        }
+        $batch['dg_requeue_v2'] = 1;
+        $changed = true;
     }
 
     $idx = -1;

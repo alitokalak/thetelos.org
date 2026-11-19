@@ -21,6 +21,9 @@
 - Sıra: tam metin → DeepSeek kaynaktan yazar. Yoksa **doğrudan Claude Haiku** (beklemeli batch, aramasız, katı istem `strict`): kitabın gerçek içeriğini kesin biliyorsa yazar (kısmen biliyorsa yalnız bildiğini; <300 kelime = açılmaz). Bilmiyorsa kitap **atlanır** (`skipped`). DeepSeek hafıza özeti, Bilgi Metni, kısa not, yer tutucu AÇILMAZ.
 - Özet/bilgi tipli toplu işler de bu yola girer (tekli üretim ve "Anthropic" seçimi hariç). Ayar: `settings.json` `strict_mode`.
 - **Çift kayıt engeli** (`api/_dup-guard.php`, her yeni yazıda): sitede aynı yazarın tüm yazıları toplanır; parantezdeki orijinal ad / alt başlık / yazım farkı kodla, çeviri-farklı ad-aynı derleme DeepSeek ile yakalanır → yeni sayfa açılmaz.
+- DeepSeek'e yalnız çeviri ihtimali (yabancı başlık: aksan/Kiril/pinyin/yabancı durak kelime) ya da %60+ kelime örtüşmesi olan adaylar sorulur; iki farklı İngilizce başlık asla "aynı" sayılmaz (19.11: Mayr'ın farklı kitapları yanlışlıkla atlanmıştı → düzeltildi, `dg_requeue_v2` ile yeniden sıraya alındı).
+- Ölüm döngüsü koruması: bir kitap işlenirken süreç 3 kez ölürse `error` olur, sıradakine geçilir (`deaths`). (19.11: "The logic of life" 13 saat kilitlemişti.)
+- "Sitede zaten olan yazarları atla" kutusu açıkken o yazarların TÜM satırları listeden düşer (ör. Quesnay).
 - Kullanıcı günlük sınırı düşürmek istemiyor (30 kalsın; "5" önerisi reddedildi).
 
 ## Toplu yazdırma sırası (ESKİ DeepSeek modu — kesin bilgi modu KAPALIYSA, `api/batch-worker.php`)

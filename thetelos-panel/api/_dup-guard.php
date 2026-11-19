@@ -57,6 +57,36 @@ function dg_variants($book) {
     return array_values(array_unique($out));
 }
 
+/** Başlık İngilizce dışı mı? (Latin dışı alfabe ya da başka dilin işaret/durak kelimesi) */
+function dg_foreign($t) {
+    $t = trim(preg_replace('/\s*\([^()]*\)\s*/u', ' ', html_entity_decode((string) $t, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+    if ($t === '') return false;
+    if (wr_script_langs($t) !== null || (bool) wr_guess_langs($t)) return true;
+    // İngilizce dışı Latin harfi (ė, ō, ē, é…) → transliterasyon/yabancı dil
+    if (preg_match('/[^\x00-\x7F]/u', preg_replace('/[\x{2018}\x{2019}\x{201C}\x{201D}\x{2013}\x{2014}\x{2026}]/u', '', $t))) return true;
+    $words = array_values(array_filter(explode(' ', dg_key($t))));
+    if (array_intersect($words, ['avec','ses','sur','und','oder','sobre','sulla','nella','dello','och','och','ob','pro','kak','ili','zur'])) return true;
+    // Pinyin (Çince transliterasyon): kelimelerin çoğu pinyin hecesi
+    if (count($words) >= 3) {
+        $py = 0;
+        foreach ($words as $w) if (preg_match('/^(?:zh|ch|sh|[bpmfdtnlgkhjqxrzcsyw])?(?:a|o|e|i|u|v|ai|ei|ui|ao|ou|iu|ie|ue|er|an|en|in|un|ang|eng|ing|ong|ia|iao|ian|iang|iong|ua|uo|uai|uan|uang)$/', $w)) $py++;
+        if ($py / count($words) >= 0.7) return true;
+    }
+    return false;
+}
+
+/** İki İngilizce başlığın anlamlı kelime örtüşmesi (kısa olanın kelimelerine oranla). */
+function dg_overlap($a, $b) {
+    $stop = ['the','and','of','in','on','to','for','with','from','an','a','is','its','his','her','their','by','at','as','or','into','what','how','why','about','vol','volume','part','book'];
+    $w = function ($s) use ($stop) {
+        $k = dg_key(preg_replace('/\s*\([^()]*\)\s*/u', ' ', (string) $s));
+        return array_values(array_unique(array_filter(explode(' ', $k), fn($x) => strlen($x) >= 3 && !in_array($x, $stop, true))));
+    };
+    $A = $w($a); $B = $w($b);
+    if (!$A || !$B) return 0.0;
+    return count(array_intersect($A, $B)) / min(count($A), count($B));
+}
+
 /** Kodla kesin "aynı eser" kararı. */
 function dg_same_by_rules($new_book, $old_book) {
     foreach (dg_variants($new_book) as $a) {
@@ -117,7 +147,17 @@ function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$di
     }
 
     // 3) DeepSeek: çeviri / farklı ad / aynı derleme mi?
-    $list = array_values($cands);
+    // YANLIŞ POZİTİF KORUMASI (19.11.2026: Mayr'ın "One Long Argument", "What Evolution Is"
+    // gibi FARKLI kitapları "aynı" sayılıp atlanmıştı): DeepSeek'e yalnız GERÇEKTEN aynı
+    // olabilecek adaylar sorulur — başlıklardan biri yabancı dilde (çeviri ihtimali) ya da
+    // iki İngilizce başlık anlamlı kelimelerin çoğunu paylaşıyor. İki farklı İngilizce
+    // başlık ("Animal Species and Evolution" / "Systematics and the Origin of Species")
+    // DeepSeek'e hiç sorulmaz.
+    $new_foreign = dg_foreign($book);
+    $list = array_values(array_filter($cands, function ($c) use ($book, $new_foreign) {
+        return $new_foreign || dg_foreign($c['book']) || dg_overlap($book, $c['book']) >= 0.6;
+    }));
+    if (!$list) { $diag = count($cands) . ' aday, hiçbiri benzer/çeviri değil'; return null; }
     if (count($list) > 120) $list = array_slice($list, 0, 120);
     $lines = '';
     foreach ($list as $i => $c) $lines .= ($i + 1) . '. ' . $c['book'] . "\n";
@@ -128,7 +168,9 @@ function dg_find_duplicate($book, $author, callable $wp_get, $ep = 'posts', &$di
         . "different edition, an abridged or unabridged version, a subtitle variant, or a collection with "
         . "essentially the same contents (e.g. 'Complete Economic Writings' vs 'Economic Works'). Count as "
         . "DIFFERENT: a genuinely different book, a different volume/part of a multi-volume work, a sequel, "
-        . "or a different work on a similar subject. Answer with JSON only: {\"match\": <item number or 0>, \"reason\": \"<max 12 words>\"}";
+        . "or a different work on a similar subject. Sharing a topic, words or the same author does NOT make "
+        . "two books the same. Answer SAME only if you are certain; when in doubt answer 0. Answer with JSON "
+        . "only: {\"match\": <item number or 0>, \"reason\": \"<max 12 words>\"}";
     $prev_think = $GLOBALS['ds_think'] ?? null; $GLOBALS['ds_think'] = false;
     $a = tv_ask($prompt, 200, 60, 'deepseek');
     $GLOBALS['ds_think'] = $prev_think;
