@@ -1258,6 +1258,11 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
     // Claude çağrılarına geçer → tls_claude batch (submit+bekle) yoluna girer.
     $use_batch    = ($api_provider === 'anthropic_batch');
     if ($use_batch) $api_provider = 'anthropic';
+    // YALNIZ CLAUDE işaretliyse üstteki API seçimi (DeepSeek / Anthropic / Anthropic Batch)
+    // ne olursa olsun AYNI yol: kitap Claude Haiku beklemeli Batch ile yazılır (bw_claude_queue),
+    // yan işler (meta/kategori) ucuz DeepSeek'te kalır. Eski pahalı Anthropic yoluna girilmez.
+    require_once __DIR__ . '/_verify.php';
+    if (!empty(tv_settings()['claude_only']) && !$is_single) { $api_provider = 'deepseek'; $use_batch = false; }
     // DEEPSEEK MODU: kaynak → DeepSeek bilgisi → DeepSeek bilgi metni; bu adımlarda
     // Claude ne yazar ne denetler. Yalnız hepsi başarısız olursa (2c) Claude devralır.
     if ($api_provider !== 'anthropic') $GLOBALS['tls_no_claude'] = true;
