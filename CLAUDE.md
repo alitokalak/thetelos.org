@@ -22,6 +22,7 @@
 - **TEK TEK (kullanıcı kuralı, kesin):** yalnız Claude modunda aynı anda TEK kitap: Claude'a gider → cevap gelir → yazılır/atlanır → ancak sonra sıradaki (`bw_claim_next`, `processing` varken ve `claude_wait` varken yeni kitap alınmaz). Kullanıcı toplu gönderime çok kızdı; paralelleştirme önerme.
 - Çift kayıt denetimi listedeki ÖNCEDEN gönderilmiş/yazılmış kitaplara da bakar ("Listede tekrar — atlandı").
 - 19.11: ilk denemede Haiku ünlü kitapları bile (Bloch "Principle of Hope", Mayr "Growth of Biological Thought") "UNKNOWN" dedi → istem dengelendi ("biliyorsan yaz, aşırı temkin yok; bilmiyorsan UNKNOWN"), Haiku **düşünerek** (adaptive, +4000 max_tokens), kısa eşik 150 kelime; atlananlar `cl_requeue_v3` ile bir kez yeniden soruldu. Ekranda atlama sebebi açık yazılır (UNKNOWN / kısa N kelime / batch hatası).
+- Uzunluk: Haiku tek seferde ~1.500–2.000 kelimede duruyor. Taslak hedefin %60'ından kısaysa (hedef ≥2.500) **bir genişletme turu** (yine beklemeli Haiku, düşünerek): "bildiğin gerçek içerikle genişlet, dolgu/uydurma yok"; uzun dönerse o, değilse ilk taslak yayınlanır (`claude_draft`, `claude_expanded`).
 - Ayar: `settings.json` `claude_only` (açıkken `strict_mode` da açık sayılır).
 
 ## KESİN BİLGİ MODU (18 Kasım 2026, varsayılan AÇIK — panelde API satırındaki 🎯 kutu)
