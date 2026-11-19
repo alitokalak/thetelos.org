@@ -186,9 +186,22 @@ function bw_claim_next($batch_file) {
     // CLAUDE GÖNDERİM SINIRI (19.11.2026, kullanıcı isteği): cevabı gelmemiş en fazla 40 kitap
     // Claude'da beklesin. Sınır doluysa yalnız Claude cevabı GELMİŞ (yayına hazır) kitaplar
     // işlenir; yenileri gönderilmez → liste "sorgusuz" toptan Claude'a akmaz.
-    $in_flight = 0;
-    foreach ($batch['books'] as $b) if (($b['status'] ?? '') === 'claude_wait') $in_flight++;
-    $cap_full = ($in_flight >= 40);
+    // YALNIZ CLAUDE modunda TEK TEK (kullanıcı kuralı 19.11.2026): bir kitap Claude'a gider,
+    // cevabı gelir, yazılır/atlanır — ANCAK ondan sonra sıradakine geçilir. Aynı anda tek kitap.
+    require_once __DIR__ . '/_verify.php';
+    $one_by_one = !empty(tv_settings()['claude_only']);
+    $in_flight = 0; $busy = false;
+    foreach ($batch['books'] as $b) {
+        $bs = $b['status'] ?? '';
+        if ($bs === 'claude_wait') $in_flight++;
+        if ($bs === 'processing')  $busy = true;
+    }
+    if ($one_by_one && $busy) {   // başka worker bir kitabı işliyor → bekle (paralel işlem yok)
+        if ($changed) bw_write_atomic($batch_file, $batch);
+        bw_unlock($lk);
+        return [-5, null];
+    }
+    $cap_full = ($in_flight >= ($one_by_one ? 1 : 40));
 
     $idx = -1;
     foreach ($batch['books'] as $i => $b) {
