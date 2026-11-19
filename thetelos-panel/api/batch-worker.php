@@ -958,8 +958,19 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
     $ok = false;
     if (tls_anthropic_ready()) {
         $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
-        $p = tls_claude_overview($book, $author, ['prompt_only' => true, 'target_words' => $ideal,
+        // ÇOK PARÇALI (eski parça sistemi): Claude tek cevapta ~1.800 kelimede durur → hedef
+        // ~1.800'lük parçalara bölünür (en fazla 4). Parça 1 kitabın BAŞINI yazar; sonrakiler sırayla devam.
+        $nparts = max(1, min(4, (int) ceil($ideal / 1800)));
+        $pw     = (int) ceil($ideal / $nparts);
+        $p = tls_claude_overview($book, $author, ['prompt_only' => true, 'target_words' => $pw,
                                                   'strict' => !empty(tv_settings()['strict_mode'])]);   // kesin bilgi modu
+        if (!empty($p['prompt_only']) && $nparts >= 2) {
+            $p['user'] .= "\n\n=== PART 1 of $nparts ===\nThis is PART 1 of $nparts of ONE continuous summary that follows "
+                . "the book's OWN ORDER from beginning to end. Open with 2–4 sentences introducing the book, then cover "
+                . "ONLY roughly the first 1/$nparts of the work in its own order (~$pw words). Do NOT write any conclusion "
+                . "— the next parts continue from where you stop. End at a section boundary.";
+            $p['max_tokens'] = min(16000, (int) round($pw * 2) + 1500);
+        }
         if (!empty($p['prompt_only'])) {
             $cid = 'bk' . (int) $idx . '_' . substr(md5($book . microtime()), 0, 10);
             $sub = tls_claude_batch_submit([[
@@ -974,7 +985,8 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
                 bw_update_book($batch_file, $idx, [
                     'status' => 'claude_wait', 'claude_bid' => $sub['id'], 'claude_cid' => $cid,
                     'claude_at' => time(), 'claude_tried' => 1, 'error' => 'Claude (beklemeli) yazıyor…',
-                    'claude_target' => $ideal,
+                    'claude_target' => $ideal, 'claude_parts' => $nparts, 'claude_pw' => $pw, 'claude_part' => 1,
+                    'claude_acc' => '',
                 ]);
                 bw_clear_hb($batch_file, $idx);
                 $ok = true;
@@ -989,35 +1001,44 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
     return $ok;
 }
 
-/* Claude taslağını bildiği GERÇEK içerikle genişletir (beklemeli Batch, düşünerek).
-   Kitap claude_wait'te kalır (tek tek kuralı). Gönderilemezse false → çağıran taslağı yayınlar. */
-function bw_claude_expand($batch_file, $i, $bk, $txt, $tgt, $round) {
-    // DEVAM (eski parça sistemi gibi): Claude tüm yazıyı YENİDEN yazmaz (tek cevapta ~2.000
-    // kelimede durduğu için büyümüyordu) — yalnız YENİ bölümler yazar, biz sona ekleriz.
-    $wc   = str_word_count($txt);
-    $need = max(800, min(1800, $tgt - $wc));
-    $sys = "You are continuing a book summary that you wrote earlier. Write ONLY NEW sections that add more of "
-         . "the book's REAL content you genuinely know and that the current summary does not yet cover in depth: "
-         . "further parts of its argument or story, how it is built, its main sections and what each does, key "
-         . "concepts, examples, cases, evidence, conclusions. Do NOT repeat or re-summarise what is already written. "
-         . "ABSOLUTE RULES: everything must be true; never invent names, quotations, dates, chapter titles or details "
-         . "you are unsure of; no padding, no generic remarks about the author, the period or the field, no reception "
-         . "or legacy filler, no notes about yourself or your knowledge. If you genuinely know nothing more about THIS "
-         . "book that is not already covered, output exactly NOTHING. Start each new section with a natural, "
-         . "book-specific ## heading (never 'Chapter N', 'Overview', 'Key Ideas', 'Why It Matters', 'Conclusion', "
-         . "'Legacy'). Write in English. Output ONLY the new sections.";
-    $usr = "Book: \"" . ($bk['book_title'] ?? '') . "\" by " . ($bk['author_name'] ?? '') . ".\n"
-         . "Write about $need words of NEW sections to append to the summary below (only real content you know; "
-         . "if nothing more, output NOTHING).\n\n=== CURRENT SUMMARY ($wc words) ===\n" . $txt;
-    $cid = 'bx' . (int) $i . 'r' . (int) $round . '_' . substr(md5(($bk['book_title'] ?? '') . microtime()), 0, 10);
+/* ÇOK PARÇALI YAZIMIN SIRADAKİ PARÇASI (eski "2-3-4 parça" sistemi): Claude kitabın bir
+   sonraki bölümünü KİTABIN KENDİ SIRASIYLA, önceki metnin kesintisiz devamı olarak yazar.
+   Biten bölüm başlıkları ve metnin son kısmı verilir → tekrar ve kronoloji kayması olmaz.
+   Kitap claude_wait'te kalır (tek tek kuralı). Gönderilemezse false → eldeki metin yayınlanır. */
+function bw_claude_next_part($batch_file, $i, $bk, $acc, $k) {
+    $n   = max(2, (int) ($bk['claude_parts'] ?? 2));
+    $pw  = max(800, (int) ($bk['claude_pw'] ?? 1500));
+    $book = (string) ($bk['book_title'] ?? ''); $author = (string) ($bk['author_name'] ?? '');
+    preg_match_all('/^#{2,3}\s+(.+)$/m', $acc, $mh);
+    $covered = ''; foreach (($mh[1] ?? []) as $h) $covered .= "  - " . trim($h) . "\n";
+    $tail = mb_substr($acc, -900);
+    $p = tls_claude_overview($book, $author, ['prompt_only' => true, 'target_words' => $pw, 'strict' => true]);
+    $sys = (string) ($p['system'] ?? '');
+    $final = ($k >= $n);
+    $usr = "You are writing PART $k of $n of ONE continuous summary of the book \"$book\" by $author. The summary "
+         . "follows the book's OWN ORDER from beginning to end; earlier parts already covered the opening of the book.\n"
+         . "These sections are ALREADY WRITTEN — do NOT repeat, revisit or re-summarise them:\n" . ($covered ?: "  (opening sections)\n")
+         . "RULES:\n"
+         . "1. Continue SEAMLESSLY from where the text ends, with the NEXT part of the book in its own order"
+         . ($final ? " and cover ALL of the remaining parts of the book through to its end." : " — roughly the next 1/$n of the work.") . "\n"
+         . "2. About $pw words for this part. Do NOT write a new title or introduction.\n"
+         . "3. Use a few natural, book-specific ## headings for the new sections (never 'Part N', 'Chapter N', 'Overview', "
+         . "'Key Ideas', 'Conclusion', 'Legacy').\n"
+         . ($final ? "4. End with the book's final substantive point — no summary paragraph, no closing moral.\n"
+                   : "4. Do NOT write any conclusion — more parts follow.\n")
+         . "5. Everything must be TRUE; never invent names, quotations, dates or details you are unsure of. If you "
+         . "genuinely do not know the remaining parts of this book, output exactly NOTHING.\n"
+         . "6. Output ONLY the new continuation text.\n\n"
+         . "The text so far ENDS here (continue right after it, do not repeat it):\n..." . $tail;
+    $cid = 'bp' . (int) $i . 'k' . (int) $k . '_' . substr(md5($book . microtime()), 0, 10);
     $sub = tls_claude_batch_submit([[
         'custom_id' => $cid, 'system' => $sys, 'user' => $usr, 'model' => tls_claude_fast_model(),
-        'max_tokens' => min(16000, (int) round($need * 2) + 4000), 'thinking' => ['type' => 'adaptive'],
+        'max_tokens' => min(16000, (int) round($pw * 2) + 4000), 'thinking' => ['type' => 'adaptive'], 'cache' => true,
     ]]);
     if (empty($sub['ok']) || empty($sub['id'])) return false;
     bw_update_book($batch_file, $i, ['status' => 'claude_wait', 'claude_bid' => $sub['id'], 'claude_cid' => $cid,
-        'claude_at' => time(), 'claude_expanded' => (int) $round, 'claude_draft' => $txt,
-        'error' => "Claude devam bölümü yazıyor — tur $round/3 (şu an $wc / hedef ~$tgt kelime)…"]);
+        'claude_at' => time(), 'claude_part' => (int) $k, 'claude_acc' => $acc,
+        'error' => "Claude yazıyor — parça $k/$n (şu ana kadar " . str_word_count($acc) . " kelime)…"]);
     return true;
 }
 
@@ -1052,26 +1073,22 @@ function bw_claude_poll($batch_file) {
         foreach ($idxs as $i) {
             $one = $res['results'][(string) ($wait[$i]['claude_cid'] ?? '')] ?? null;
             $txt = trim((string) ($one['text'] ?? ''));
-            // GENİŞLETME TURU dönüşü (en fazla 3 tur, eski "2-3 parça" sistemi gibi): büyüdüyse
-            // ve hâlâ hedefin %60'ının altındaysa bir tur daha; büyümediyse en uzun hal yayınlanır.
-            $draft = trim((string) ($wait[$i]['claude_draft'] ?? ''));
-            $tgt   = (int) ($wait[$i]['claude_target'] ?? 0);
-            if ($draft !== '') {
-                $add  = (!empty($res['ok']) && $one && !empty($one['ok'])) ? $txt : '';
-                $none = ($add === '' || stripos($add, 'NOTHING') === 0 || str_word_count($add) < 150);
-                $best = $none ? $draft : ($draft . "\n\n" . $add);
-                $bwc  = str_word_count($best);
-                $round = (int) ($wait[$i]['claude_expanded'] ?? 1);
-                if (!$none && $round < 3 && $bwc < 0.85 * $tgt
-                    && bw_claude_expand($batch_file, $i, $wait[$i], $best, $tgt, $round + 1)) continue;
-                bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $best, 'claude_draft' => '', 'error' => '']);
+            // ÇOK PARÇALI YAZIM (eski parça sistemi, kronoloji korunur): kitap baştan sona
+            // N parçada SIRAYLA yazılır; her parça bir öncekinin devamıdır. Parça 1 normal akıştan
+            // geçer (UNKNOWN/kısa kontrolü aşağıda); sonraki parçalar biriktirilir.
+            $nparts = (int) ($wait[$i]['claude_parts'] ?? 1);
+            $kpart  = (int) ($wait[$i]['claude_part'] ?? 1);
+            $acc    = trim((string) ($wait[$i]['claude_acc'] ?? ''));
+            $okres  = !empty($res['ok']) && $one && !empty($one['ok']);
+            if ($kpart >= 2) {
+                $none = !$okres || $txt === '' || stripos($txt, 'NOTHING') === 0 || str_word_count($txt) < 100;
+                if (!$none) $acc .= "\n\n" . $txt;
+                if (!$none && $kpart < $nparts && bw_claude_next_part($batch_file, $i, $wait[$i], $acc, $kpart + 1)) continue;
+                bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $acc, 'claude_acc' => '', 'error' => '']);
                 continue;
             }
-            // İLK TASLAK hedefin çok altında → genişletme turu 1.
-            $wc = str_word_count($txt);
-            if (!empty($res['ok']) && $one && !empty($one['ok']) && $txt !== '' && strncmp($txt, 'UNKNOWN', 7) !== 0
-                && $wc >= 150 && $tgt >= 2500 && $wc < 0.85 * $tgt
-                && bw_claude_expand($batch_file, $i, $wait[$i], $txt, $tgt, 1)) continue;
+            if ($okres && $nparts >= 2 && $txt !== '' && strncmp($txt, 'UNKNOWN', 7) !== 0 && str_word_count($txt) >= 150
+                && bw_claude_next_part($batch_file, $i, $wait[$i], $txt, 2)) continue;
             if (empty($res['ok']) || !$one || empty($one['ok'])) {
                 bw_claude_fail($batch_file, $i, $wait[$i], 'Claude batch hatası: ' . ($one['error'] ?? $res['error'] ?? '?'));
             } elseif ($txt === '' || strncmp($txt, 'UNKNOWN', 7) === 0) {
