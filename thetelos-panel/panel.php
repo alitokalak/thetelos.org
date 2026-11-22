@@ -1159,6 +1159,7 @@ if (!isset($_GET['mode'])) {
                   else if (bk.duplicate)                    mtag='⊘ listede tekrar';
                   else if (/UNKNOWN|bilmiyor/.test(bk.error||'')) mtag='⊘ Claude bilmiyor';
                   else if (/kısa yazdı/.test(bk.error||''))  mtag='⊘ çok kısa';
+                  else if (/cilt\/baskı/.test(bk.error||'')) mtag='⊘ cilt/baskı satırı — kitap değil';
                   else if (bk.skip_reason)                  mtag='✂ '+String(bk.skip_reason).slice(0,40);
                   else                                      mtag='✂ yazara ait değil / elendi';
                 }

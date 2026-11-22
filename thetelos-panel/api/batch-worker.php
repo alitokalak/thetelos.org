@@ -1348,6 +1348,19 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         bw_update_book($batch_file, $idx, ['status'=>'error','error'=>'blocked_translation (başlık yabancı dilde ve İngilizce adı yok — muhtemelen çeviri baskısı; Liste Temizle ile İngilizce adına çözün)']);
         return;
     }
+    // CİLT / BASKI / KATALOG SATIRI → ayrı kitap değil, hiç yazılmaz (22.11.2026, Bolzano listesi:
+    // "Gesamtausgabe / Reihe II / Band 17", "[microform]", başlık = yazar adı). Toplu eserin tek
+    // cildi ayrı sayfa olursa onlarca zayıf, birbirine benzer sayfa çıkar (Google cezası sebebi).
+    if (empty($batch['rewrite'])) {
+        $tnorm = mb_strtolower($book, 'UTF-8');
+        $is_vol = preg_match('/\b(gesamtausgabe|gesammelte\s+(werke|schriften)|s[äa]mtliche\s+werke|werke|nachlass|briefwechsel|collected\s+works|complete\s+works|[œo]euvres\s+compl[èe]tes|opere\s+complete|obras\s+completas|sobranie\s+sochinenii)\b.*\b(band|bd\.?|reihe|vol\.?|volume|tome|tomo|teil)\s*[\divxlc]/iu', $tnorm)
+               || preg_match('/\[\s*microform\s*\]/i', $book)
+               || ($author !== '' && trim(preg_replace('/[^a-z]/', '', mb_strtolower($book))) === trim(preg_replace('/[^a-z]/', '', mb_strtolower($author))));
+        if ($is_vol) {
+            bw_update_book($batch_file, $idx, ['status' => 'skipped', 'error' => 'cilt/baskı/katalog satırı — ayrı kitap değil, yazılmadı']);
+            return;
+        }
+    }
     $pre_cover    = trim($batch['books'][$idx]['cover_url'] ?? '');
     $pre_year     = trim((string)($batch['books'][$idx]['pub_year'] ?? '')); // listeden gelen yayın yılı
     // Dış aramalar (Google Books / OpenLibrary / dedup) için başlığın
