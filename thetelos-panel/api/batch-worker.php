@@ -958,6 +958,9 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
     $ok = false;
     if (tls_anthropic_ready()) {
         $ideal = ((int) $target_words > 0) ? max(1200, min(6000, (int) $target_words)) : 1500;
+        // YALNIZ CLAUDE: kullanıcı kuralı — hep UZUN (~30 dk okuma). Paneldeki kelime ayarı
+        // (varsayılan 3.500 → yalnız 2 parça) ne olursa olsun hedef 6.000 = 4 parça.
+        if (!empty(tv_settings()['claude_only'])) $ideal = 6000;
         // ÇOK PARÇALI (eski parça sistemi): Claude tek cevapta ~1.800 kelimede durur → hedef
         // ~1.800'lük parçalara bölünür (en fazla 4). Parça 1 kitabın BAŞINI yazar; sonrakiler sırayla devam.
         $nparts = max(1, min(4, (int) ceil($ideal / 1800)));
@@ -1026,8 +1029,10 @@ function bw_claude_next_part($batch_file, $i, $bk, $acc, $k) {
          . "'Key Ideas', 'Conclusion', 'Legacy').\n"
          . ($final ? "4. End with the book's final substantive point — no summary paragraph, no closing moral.\n"
                    : "4. Do NOT write any conclusion — more parts follow.\n")
-         . "5. Everything must be TRUE; never invent names, quotations, dates or details you are unsure of. If you "
-         . "genuinely do not know the remaining parts of this book, output exactly NOTHING.\n"
+         . "5. Go into real DEPTH: the actual arguments, how they are built, concepts, examples, cases, evidence, "
+         . "turning points. Write the full ~$pw words with real content you know about this part of the book — do not "
+         . "stop short out of caution. Everything must be TRUE; never invent names, quotations, dates or details you "
+         . "are unsure of. Output exactly NOTHING only if you know NOTHING at all about the rest of this book.\n"
          . "6. Output ONLY the new continuation text.\n\n"
          . "The text so far ENDS here (continue right after it, do not repeat it):\n..." . $tail;
     $cid = 'bp' . (int) $i . 'k' . (int) $k . '_' . substr(md5($book . microtime()), 0, 10);
