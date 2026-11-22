@@ -1032,7 +1032,7 @@ function bw_claude_next_part($batch_file, $i, $bk, $acc, $k) {
          . "5. Go into real DEPTH: the actual arguments, how they are built, concepts, examples, cases, evidence, "
          . "turning points. Write the full ~$pw words with real content you know about this part of the book — do not "
          . "stop short out of caution. Everything must be TRUE; never invent names, quotations, dates or details you "
-         . "are unsure of. Output exactly NOTHING only if you know NOTHING at all about the rest of this book.\n"
+         . "are unsure of. You have already established that you know this book: write this part in full.\n"
          . "6. Output ONLY the new continuation text.\n\n"
          . "The text so far ENDS here (continue right after it, do not repeat it):\n..." . $tail;
     $cid = 'bp' . (int) $i . 'k' . (int) $k . '_' . substr(md5($book . microtime()), 0, 10);
@@ -1086,9 +1086,11 @@ function bw_claude_poll($batch_file) {
             $acc    = trim((string) ($wait[$i]['claude_acc'] ?? ''));
             $okres  = !empty($res['ok']) && $one && !empty($one['ok']);
             if ($kpart >= 2) {
-                $none = !$okres || $txt === '' || stripos($txt, 'NOTHING') === 0 || str_word_count($txt) < 100;
-                if (!$none) $acc .= "\n\n" . $txt;
-                if (!$none && $kpart < $nparts && bw_claude_next_part($batch_file, $i, $wait[$i], $acc, $kpart + 1)) continue;
+                // Bilip bilmediğine parça 1'de karar verildi → sonraki parçalarda "durma" yok:
+                // her parça yazılır, N'e kadar devam edilir. (Yalnız teknik hata olursa eldeki metin yayınlanır.)
+                $got = $okres && $txt !== '' && stripos($txt, 'NOTHING') !== 0 && strncmp($txt, 'UNKNOWN', 7) !== 0;
+                if ($got) $acc .= "\n\n" . $txt;
+                if ($kpart < $nparts && bw_claude_next_part($batch_file, $i, $wait[$i], $acc, $kpart + 1)) continue;
                 bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $acc, 'claude_acc' => '', 'error' => '']);
                 continue;
             }
