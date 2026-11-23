@@ -15,6 +15,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
 .site-table td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
 .bulk-row{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap;align-items:center}
 #md-status{font-size:13px;color:var(--tls-gold);min-height:18px}
+.bulk-row{position:sticky;top:0;z-index:5;background:var(--bg,#111);padding:8px 0}
+.md-ok{color:#3fb168;font-weight:600}.md-err{color:#e06060;font-weight:600}.md-wait{color:var(--tls-gold)}
 .muted{color:var(--muted);font-size:12px}
 .tag-off{color:#c55;font-size:11px}
 #md-prev{width:100%;height:640px;border:1px solid var(--border);border-radius:8px;background:#fff;display:none;margin-top:14px}
@@ -56,12 +58,12 @@ async function load() {
   const r = await fetch('api/member-digest.php?action=list').then(x => x.json()).catch(e => ({ok:false,error:e.message}));
   if (!r.ok) { st('Hata: ' + (r.error||'?')); return; }
   ADMIN = r.admin_email || '';
-  const rows = r.members.map(m => `<tr>
+  const rows = r.members.map(m => `<tr data-uid="${m.uid}">
     <td><input type="checkbox" class="md-cb" value="${m.uid}" ${m.optout||!m.recs&&!m.reminders?'disabled':''} data-hasdata="${m.has_data?1:0}"></td>
     <td><b>${esc(m.name)}</b><br><span class="muted">${esc(m.email)}</span>${m.optout?'<br><span class="tag-off">abonelikten çıktı · '+esc(m.optout_at)+' — mail gitmez</span> <button class="btn btn-sm" style="padding:1px 8px;font-size:11px" onclick="resub('+m.uid+')">↺ Geri aç</button>':''}</td>
     <td class="muted">${esc(m.basis)}${(m.log&&m.log.length)?'<br><span title="'+esc(m.log.map(l=>l.join(' · ')).join('\n'))+'" style="cursor:help;text-decoration:underline dotted">📜 son: '+esc(m.log[m.log.length-1].join(' · '))+'</span>':''}</td>
     <td>${m.recs} öneri${m.reminders?` + ${m.reminders} hatırlatma`:''}</td>
-    <td class="muted">${m.last_sent||'—'}</td>
+    <td class="muted md-sent">${m.last_sent?('✓ '+esc(m.last_sent)):'—'}</td>
     <td style="white-space:nowrap"><button class="btn btn-sm" onclick="prev(${m.uid})">👁 Önizle</button>
         <button class="btn btn-sm" onclick="test(${m.uid})">🧪 Bana test gönder</button></td></tr>`).join('');
   $('#md-body').innerHTML = rows || '<tr><td colspan="6" class="muted">Üye yok.</td></tr>';
@@ -80,11 +82,28 @@ $('#md-send').onclick = async () => {
   const ids = [...document.querySelectorAll('.md-cb:checked')].map(c => c.value);
   if (!ids.length) { st('Önce üye seçin.'); return; }
   if (!confirm(ids.length + ' üyeye GERÇEK mail gönderilsin mi?')) return;
-  st('Gönderiliyor… (' + ids.length + ' üye)');
-  const r = await post({action:'send', uids: ids.join(',')});
-  if (!r.ok) { st('✗ ' + (r.error||'hata')); return; }
-  st(`✓ ${r.sent} mail gönderildi` + (r.failed.length ? ` · ${r.failed.length} gönderilemedi (${r.failed.map(f=>f.error).join(', ')})` : ''));
-  load();
+  const btn = $('#md-send'); btn.disabled = true;
+  let ok = 0, bad = 0;
+  for (let i = 0; i < ids.length; i++) {
+    const uid = ids[i];
+    const cell = document.querySelector(`tr[data-uid="${uid}"] .md-sent`);
+    if (cell) cell.innerHTML = '<span class="md-wait">⏳ gönderiliyor…</span>';
+    st(`Gönderiliyor… ${i + 1} / ${ids.length} · ✓ ${ok} · ✗ ${bad}`);
+    const r = await post({action:'send', uids: uid, no_bump: '1'});
+    const failed = (r && r.ok) ? (r.failed || []) : [{error: (r && r.error) || 'bağlantı hatası'}];
+    if (r && r.ok && r.sent > 0) {
+      ok++;
+      if (cell) cell.innerHTML = '<span class="md-ok">✓ gönderildi ' + new Date().toLocaleTimeString('tr-TR', {hour:'2-digit', minute:'2-digit'}) + '</span>';
+      const cb = document.querySelector(`tr[data-uid="${uid}"] .md-cb`); if (cb) cb.checked = false;
+    } else {
+      bad++;
+      if (cell) cell.innerHTML = '<span class="md-err">✗ ' + esc(failed[0] ? failed[0].error : 'gönderilemedi') + '</span>';
+    }
+    if (i < ids.length - 1) await new Promise(res => setTimeout(res, 2000));   // mailler arası 2 sn (spam koruması)
+  }
+  if (ok > 0) await post({action:'bump'});   // sayı (Issue Nº) bu gönderim için 1 artar
+  btn.disabled = false;
+  st(`Bitti ✓ ${ok} mail gönderildi` + (bad ? ` · ✗ ${bad} gönderilemedi (satırlarda sebebi yazıyor)` : ''));
 };
 load();
 </script>

@@ -64,15 +64,20 @@ if ($action === 'resub') {   // yöneticinin geri açması (ör. otomatik taray�
     exit(json_encode(['ok' => false, 'error' => 'üye yok']));
 }
 
+if ($action === 'bump') {   // tek tek gönderim bittikten sonra sayı bir kez artar
+    update_option('tls_digest_issue', (int) get_option('tls_digest_issue', 0) + 1, false);
+    exit(json_encode(['ok' => true]));
+}
+
 if ($action === 'send') {
     $uids = array_filter(array_map('intval', explode(',', (string) ($_POST['uids'] ?? ''))));
     $sent = 0; $fail = [];
     foreach ($uids as $uid) {
         $r = tls_digest_send($uid);
         if ($r['ok']) $sent++; else $fail[] = ['uid' => $uid, 'error' => $r['error']];
-        sleep(2);   // toplu gönderimde yavaş git: sağlayıcılar ani yığını spam sayar
+        if (count($uids) > 1) sleep(2);   // çoklu gönderimde yavaş git (panel artık tek tek gönderir, ara orada)
     }
-    if ($sent > 0) update_option('tls_digest_issue', (int) get_option('tls_digest_issue', 0) + 1, false);   // sayı (Issue Nº) gerçek gönderimde artar
+    if ($sent > 0 && empty($_POST['no_bump'])) update_option('tls_digest_issue', (int) get_option('tls_digest_issue', 0) + 1, false);   // sayı (Issue Nº) gerçek gönderimde artar
     exit(json_encode(['ok' => true, 'sent' => $sent, 'failed' => $fail], JSON_UNESCAPED_UNICODE));
 }
 
