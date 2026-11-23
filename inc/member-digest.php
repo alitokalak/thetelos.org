@@ -190,7 +190,10 @@ function tls_digest_html( array $d ) {
     $issue = (int) get_option( 'tls_digest_issue', 0 ) + 1;
     $total = (int) ( wp_count_posts( 'post' )->publish ?? 0 );
     $total_txt = $total >= 100 ? 'Over ' . number_format( (int) ( floor( $total / 100 ) * 100 ) ) . ' book summaries, essays and analyses.' : '';
-    $first = trim( explode( ' ', (string) $d['name'] )[0] );
+    // Ad alanına e-posta yazılmışsa ("ali@gmail.com") @'ten sonrasını gösterme.
+    $nm    = (string) $d['name'];
+    if ( strpos( $nm, '@' ) !== false ) $nm = substr( $nm, 0, strpos( $nm, '@' ) );
+    $first = trim( explode( ' ', trim( $nm ) )[0] );
 
     $h  = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
         . '<body style="margin:0;padding:0;background:' . $BG . '">'
