@@ -151,23 +151,23 @@ function tls_digest_html( array $d ) {
         $img = ''; $tid = get_post_thumbnail_id( $pid );
         if ( $tid ) { $src = wp_get_attachment_image_src( $tid, 'medium' ); if ( $src && (int) $src[2] > (int) $src[1] * 1.15 ) $img = $src[0]; }
         if ( $img ) {
-            $cover = '<a href="' . $url . '"><img src="' . esc_url( $img ) . '" width="56" alt="" style="display:block;width:56px;height:auto;border:0"></a>';
+            $cover = '<a href="' . $url . '"><img src="' . esc_url( $img ) . '" width="84" alt="" style="display:block;width:84px;height:auto;border:0"></a>';
         } else {
             $pal = function_exists( 'thetelos_get_category_palette' ) ? thetelos_get_category_palette( $cats ? $cats[0]->slug : 'philosophy' ) : [ '#1C2B3A', '#C8A165', '#F5EFE6', '#A89070' ];
             $ct  = mb_strlen( $bt ) > 40 ? rtrim( mb_substr( $bt, 0, 38 ), ' ,;:' ) . '…' : $bt;
             $ca  = mb_strlen( $au ) > 22 ? mb_substr( $au, 0, 20 ) . '…' : $au;
-            $cover = '<a href="' . $url . '" style="text-decoration:none"><table width="56" cellpadding="0" cellspacing="0" role="presentation" style="width:56px;table-layout:fixed;background:' . $pal[0] . '">'
-                   . '<tr><td height="80" valign="top" style="height:80px;padding:7px 6px">'
-                   . '<div style="font:6px/1.3 ' . $SANS . ';letter-spacing:.8px;text-transform:uppercase;color:' . $pal[3] . '">The Telos</div>'
-                   . '<div style="font:8px/1.25 ' . $SERIF . ';word-break:break-word;color:' . $pal[2] . ';margin-top:12px">' . $esc( $ct ) . '</div>'
-                   . '<div style="font:6px/1.2 ' . $SANS . ';color:' . $pal[3] . ';margin-top:4px">' . $esc( $ca ) . '</div>'
+            $cover = '<a href="' . $url . '" style="text-decoration:none"><table width="84" cellpadding="0" cellspacing="0" role="presentation" style="width:84px;table-layout:fixed;background:' . $pal[0] . '">'
+                   . '<tr><td height="122" valign="top" style="height:122px;padding:9px 8px">'
+                   . '<div style="font:7px/1.3 ' . $SANS . ';letter-spacing:.8px;text-transform:uppercase;color:' . $pal[3] . '">The Telos</div>'
+                   . '<div style="font:11px/1.25 ' . $SERIF . ';word-break:break-word;color:' . $pal[2] . ';margin-top:18px">' . $esc( $ct ) . '</div>'
+                   . '<div style="font:8px/1.2 ' . $SANS . ';color:' . $pal[3] . ';margin-top:6px">' . $esc( $ca ) . '</div>'
                    . '</td></tr></table></a>';
         }
         $meta = $esc( $au ) . ( $cat !== '' ? ' <span style="color:#c9c5bc">&middot;</span> <span style="color:' . $MUTED . '">' . $esc( $cat ) . '</span>' : '' )
               . ' <span style="color:#c9c5bc">&middot;</span> <span style="color:' . $MUTED . '">' . $mins . ' min</span>';
         return '<tr><td style="padding:26px 0;' . ( $last ? '' : 'border-bottom:1px solid ' . $LINE ) . '">'
              . '<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>'
-             . '<td width="76" valign="top" style="width:76px;padding-right:20px">' . $cover . '</td>'
+             . '<td width="108" valign="top" style="width:108px;padding-right:24px">' . $cover . '</td>'
              . '<td valign="top">'
              . '<div style="font:11px/1.4 ' . $SANS . ';color:' . $INK . '">' . $meta . '</div>'
              . '<a href="' . $url . '" style="display:block;font:19px/1.3 ' . $SERIF . ';color:' . $INK . ';text-decoration:none;margin-top:6px;word-break:break-word">' . $esc( $bt ) . '</a>'
