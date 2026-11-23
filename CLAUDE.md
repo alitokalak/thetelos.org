@@ -63,7 +63,7 @@
 ## Üye mailleri (23.11.2026)
 - Panel → Araçlar → **Üye Mailleri** (`thetelos-panel/member-digest.php`, `api/member-digest.php`); mantık temada `inc/member-digest.php`. ELLE gönderim (otomatik yok, kullanıcı kararı).
 - Öneri: işaretli kitaplar (want/reading/read) + kayıtlı özetler + ilgi alanlarının kategorileri → işaretlenmemiş, noindex/yer tutucu olmayan, ≥2.000 kelimelik özetlerden 5 (aynı yazardan ≤2) + "Want to Read" hatırlatması (≤3). Yapay zekâ yok.
-- Mail İngilizce, HTML; abonelikten çıkış linki `?tls_unsub=UID&k=` → `_tls_digest_optout`. Test maili site admin e-postasına gider. Gezinme geçmişi TUTULMUYOR (istenirse eklenir + gizlilik metni).
+- Mail İngilizce, HTML; abonelikten çıkış linki `?tls_unsub=UID&k=` → `_tls_digest_optout`. Test maili thetelosorg@gmail.com adresine gider (`TLS_DIGEST_TEST_TO`). Her öneride kitap kapağı (öne çıkan görsel; yoksa sitenin ürettiği kapak). Gezinme geçmişi TUTULMUYOR (istenirse eklenir + gizlilik metni).
 
 ## Faydalı araçlar (panel oturumu gerekir)
 - `api/seo-inventory.php` (yazı başına okunma/noindex, salt okunur), `api/seo-prune.php`, `api/fix-preamble.php`, `api/fix-claviez.php` (tek seferlik, uygulandı).

@@ -135,8 +135,18 @@ function tls_digest_html( array $d ) {
     $item = function ( $pid ) use ( $esc ) {
         $mins = max( 1, (int) round( tls_digest_words( $pid ) / 200 ) );
         $ex   = wp_trim_words( get_the_excerpt( $pid ), 32 );
-        return '<tr><td style="padding:14px 0;border-bottom:1px solid #eee">'
-             . '<a href="' . esc_url( get_permalink( $pid ) ) . '" style="font:600 17px Georgia,serif;color:#1a1a1a;text-decoration:none">' . $esc( get_the_title( $pid ) ) . '</a>'
+        $url  = esc_url( get_permalink( $pid ) );
+        // Kapak: gerçek kitap kapağı (öne çıkan görsel); yoksa sitenin ürettiği kapak görseli.
+        $img  = get_the_post_thumbnail_url( $pid, 'medium' );
+        $wide = false;
+        if ( ! $img && function_exists( 'thetelos_og_cover_url' ) ) { $img = thetelos_og_cover_url( $pid ); $wide = true; }
+        $cell = $img
+            ? '<td width="' . ( $wide ? 130 : 84 ) . '" valign="top" style="padding:14px 14px 14px 0;border-bottom:1px solid #eee">'
+              . '<a href="' . $url . '"><img src="' . esc_url( $img ) . '" width="' . ( $wide ? 120 : 76 ) . '" alt="" '
+              . 'style="display:block;border-radius:4px;border:1px solid #e5e5e5;max-width:' . ( $wide ? 120 : 76 ) . 'px;height:auto"></a></td>'
+            : '';
+        return '<tr>' . $cell . '<td valign="top" style="padding:14px 0;border-bottom:1px solid #eee">'
+             . '<a href="' . $url . '" style="font:600 17px Georgia,serif;color:#1a1a1a;text-decoration:none">' . $esc( get_the_title( $pid ) ) . '</a>'
              . '<div style="font:13px/1.5 Arial,sans-serif;color:#555;margin-top:6px">' . $esc( $ex ) . '</div>'
              . '<div style="font:12px Arial,sans-serif;color:#1f7a3d;margin-top:6px">' . $mins . ' min read</div></td></tr>';
     };

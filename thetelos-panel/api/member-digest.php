@@ -3,7 +3,7 @@
  * member-digest.php (API) — Üyelere kişisel okuma önerisi maili. Panel oturumu gerekir.
  *   GET  ?action=list               → üyeler + öneri sayıları (değişiklik yapmaz)
  *   GET  ?action=preview&uid=N      → o üyenin mailinin HTML önizlemesi
- *   POST action=test&uid=N          → o üyenin maili YALNIZ yöneticiye (site admin e-postası) gider
+ *   POST action=test&uid=N          → o üyenin maili YALNIZ test adresine (TLS_DIGEST_TEST_TO) gider
  *   POST action=send&uids=1,2,3     → seçilen üyelere gerçek gönderim (çıkış yapanlar atlanır)
  * Mantık temada: inc/member-digest.php
  */
@@ -15,6 +15,7 @@ ob_start(); require_once '/home/thetelos/public_html/wp-load.php'; ob_end_clean(
 @set_time_limit(300);
 
 $action = $_REQUEST['action'] ?? 'list';
+const TLS_DIGEST_TEST_TO = 'thetelosorg@gmail.com';   // test mailleri (kullanıcı isteği 23.11.2026)
 if (!function_exists('tls_digest_build')) { header('Content-Type: application/json'); exit(json_encode(['ok' => false, 'error' => 'tema modülü yüklenmemiş (inc/member-digest.php)'])); }
 
 if ($action === 'preview') {
@@ -40,14 +41,14 @@ if ($action === 'list') {
         ];
     }
     usort($out, fn($a, $b) => ($b['has_data'] <=> $a['has_data']) ?: strcmp($a['name'], $b['name']));
-    exit(json_encode(['ok' => true, 'admin_email' => get_option('admin_email'), 'members' => $out], JSON_UNESCAPED_UNICODE));
+    exit(json_encode(['ok' => true, 'admin_email' => TLS_DIGEST_TEST_TO, 'members' => $out], JSON_UNESCAPED_UNICODE));
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_encode(['ok' => false, 'error' => 'POST gerekli'])); }
 
 if ($action === 'test') {
-    $r = tls_digest_send((int) ($_POST['uid'] ?? 0), (string) get_option('admin_email'));
-    exit(json_encode($r + ['to' => get_option('admin_email')], JSON_UNESCAPED_UNICODE));
+    $r = tls_digest_send((int) ($_POST['uid'] ?? 0), TLS_DIGEST_TEST_TO);
+    exit(json_encode($r + ['to' => TLS_DIGEST_TEST_TO], JSON_UNESCAPED_UNICODE));
 }
 
 if ($action === 'send') {
