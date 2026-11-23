@@ -59,6 +59,7 @@ if ($action === 'send') {
         if ($r['ok']) $sent++; else $fail[] = ['uid' => $uid, 'error' => $r['error']];
         usleep(300000);   // SMTP'yi yormamak için kısa ara
     }
+    if ($sent > 0) update_option('tls_digest_issue', (int) get_option('tls_digest_issue', 0) + 1, false);   // sayı (Issue Nº) gerçek gönderimde artar
     exit(json_encode(['ok' => true, 'sent' => $sent, 'failed' => $fail], JSON_UNESCAPED_UNICODE));
 }
 

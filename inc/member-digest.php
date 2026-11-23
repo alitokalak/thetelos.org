@@ -131,61 +131,97 @@ function tls_digest_build( $uid, $limit = 5 ) {
 
 /* Mail HTML'i (İngilizce — site dili). */
 function tls_digest_html( array $d ) {
-    $esc = function ( $s ) { return esc_html( html_entity_decode( (string) $s, ENT_QUOTES, 'UTF-8' ) ); };
-    $item = function ( $pid ) use ( $esc ) {
-        $mins = max( 1, (int) round( tls_digest_words( $pid ) / 200 ) );
-        $ex   = wp_trim_words( get_the_excerpt( $pid ), 32 );
-        $url  = esc_url( get_permalink( $pid ) );
-        // KAPAK: gerçek kitap kapağı (dikey öne çıkan görsel) varsa o; yoksa ya da görsel yatay/kare
-        // (otomatik üretilmiş, mailde bozuk görünüyor) ise mailde güvenle çalışan HTML kapak kutusu
-        // — sitedeki kapakla aynı renk paleti, başlık + yazar.
-        $img = ''; $tid = get_post_thumbnail_id( $pid );
-        if ( $tid ) {
-            $src = wp_get_attachment_image_src( $tid, 'medium' );
-            if ( $src && (int) $src[2] > (int) $src[1] * 1.15 ) $img = $src[0];   // yalnız dikey = gerçek kapak
-        }
-        if ( $img ) {
-            $cell = '<td width="84" valign="top" style="padding:14px 14px 14px 0;border-bottom:1px solid #eee">'
-                  . '<a href="' . $url . '"><img src="' . esc_url( $img ) . '" width="76" alt="" '
-                  . 'style="display:block;border-radius:4px;border:1px solid #e5e5e5;width:76px;height:auto"></a></td>';
-        } else {
-            $cats = get_the_category( $pid );
-            $pal  = function_exists( 'thetelos_get_category_palette' )
-                  ? thetelos_get_category_palette( $cats ? $cats[0]->slug : 'philosophy' ) : [ '#1C2B3A', '#C8A165', '#F5EFE6', '#A89070' ];
-            $au   = function_exists( 'thetelos_get_book_author' ) ? thetelos_get_book_author( $pid ) : tls_digest_title_author( $pid );
-            $bt   = html_entity_decode( get_post_field( 'post_title', $pid ), ENT_QUOTES, 'UTF-8' );
-            $bt   = trim( preg_replace( [ '/\s*[\(\（].*$/u', '/\s+[-–—]\s+\S.*$/u' ], '', $bt ) );
-            if ( mb_strlen( $bt ) > 48 ) { $bt = mb_substr( $bt, 0, 46 ); $bt = rtrim( mb_substr( $bt, 0, (int) ( mb_strrpos( $bt, ' ' ) ?: 46 ) ), ' ,;:' ) . '…'; }
-            $cell = '<td width="84" valign="top" style="padding:14px 14px 14px 0;border-bottom:1px solid #eee">'
-                  . '<a href="' . $url . '" style="text-decoration:none">'
-                  . '<table width="76" cellpadding="0" cellspacing="0" style="width:76px;background:' . $pal[0] . ';border:2px solid ' . $pal[1] . ';border-radius:4px">'
-                  . '<tr><td height="104" align="center" valign="middle" style="height:104px;padding:6px 5px">'
-                  . '<div style="font:7px/1.2 Arial,sans-serif;letter-spacing:1px;text-transform:uppercase;color:' . $pal[3] . ';margin-bottom:6px">' . $esc( $au ) . '</div>'
-                  . '<div style="font:italic 10px/1.25 Georgia,serif;color:' . $pal[2] . '">' . $esc( $bt ) . '</div>'
-                  . '</td></tr></table></a></td>';
-        }
-        return '<tr>' . $cell . '<td valign="top" style="padding:14px 0;border-bottom:1px solid #eee">'
-             . '<a href="' . $url . '" style="font:600 17px Georgia,serif;color:#1a1a1a;text-decoration:none;word-break:break-word">' . $esc( get_the_title( $pid ) ) . '</a>'
-             . '<div style="font:13px/1.5 Arial,sans-serif;color:#555;margin-top:6px">' . $esc( $ex ) . '</div>'
-             . '<div style="font:12px Arial,sans-serif;color:#1f7a3d;margin-top:6px">' . $mins . ' min read</div></td></tr>';
+    $esc  = function ( $s ) { return esc_html( html_entity_decode( (string) $s, ENT_QUOTES, 'UTF-8' ) ); };
+    $SERIF = "Georgia,'Times New Roman',serif"; $SANS = "Helvetica,Arial,sans-serif";
+    $INK = '#1a1a1a'; $MUTED = '#8a877f'; $LINE = '#e6e3dc'; $CARD = '#faf9f6'; $BG = '#f1efea';
+    $book_title = function ( $pid ) {
+        $t = html_entity_decode( get_post_field( 'post_title', $pid ), ENT_QUOTES, 'UTF-8' );
+        $t = preg_replace( '/\s+[-–—]\s+[^–—]+$/u', '', $t );            // " – Yazar" kuyruğu
+        return trim( $t );
     };
-    $h  = '<div style="max-width:600px;margin:0 auto;padding:24px;background:#fff">';
-    $h .= '<div style="font:700 26px Georgia,serif;color:#111;margin-bottom:18px">thetelos</div>';
-    $h .= '<p style="font:15px/1.6 Arial,sans-serif;color:#222">Hi ' . $esc( $d['name'] ) . ',</p>';
-    $h .= '<p style="font:15px/1.6 Arial,sans-serif;color:#222">Based on the books you have read, saved and marked on The Telos, here are a few summaries we think you will enjoy.</p>';
-    if ( $d['recs'] ) {
-        $h .= '<h3 style="font:600 16px Arial,sans-serif;color:#111;margin:22px 0 4px">Picked for you</h3><table width="100%" cellpadding="0" cellspacing="0">';
-        foreach ( $d['recs'] as $pid ) $h .= $item( $pid );
-        $h .= '</table>';
-    }
-    if ( $d['reminders'] ) {
-        $h .= '<h3 style="font:600 16px Arial,sans-serif;color:#111;margin:26px 0 4px">Still on your “Want to Read” list</h3><table width="100%" cellpadding="0" cellspacing="0">';
-        foreach ( $d['reminders'] as $pid ) $h .= $item( $pid );
-        $h .= '</table>';
-    }
-    $h .= '<p style="font:15px/1.6 Arial,sans-serif;color:#222;margin-top:24px">Happy reading,<br>The Telos</p>';
-    $h .= '<p style="font:11px/1.5 Arial,sans-serif;color:#999;margin-top:30px;border-top:1px solid #eee;padding-top:12px">You are receiving this because you have an account at thetelos.org. '
-        . '<a href="' . esc_url( tls_digest_unsub_url( $d['uid'] ) ) . '" style="color:#999">Unsubscribe</a></p></div>';
+    $item = function ( $pid, $last ) use ( $esc, $book_title, $SERIF, $SANS, $INK, $MUTED, $LINE ) {
+        $mins = max( 1, (int) round( tls_digest_words( $pid ) / 200 ) );
+        $ex   = wp_trim_words( get_the_excerpt( $pid ), 34 );
+        $url  = esc_url( get_permalink( $pid ) );
+        $cats = array_values( array_filter( get_the_category( $pid ), function ( $c ) { return $c->term_id != (int) get_option( 'default_category' ); } ) );
+        $cat  = $cats ? $cats[0]->name : '';
+        $au   = function_exists( 'thetelos_get_book_author' ) ? thetelos_get_book_author( $pid ) : tls_digest_title_author( $pid );
+        $bt   = $book_title( $pid );
+        // KAPAK: dikey öne çıkan görsel = gerçek kapak; yoksa mailde güvenle çizilen HTML kapak kutusu.
+        $img = ''; $tid = get_post_thumbnail_id( $pid );
+        if ( $tid ) { $src = wp_get_attachment_image_src( $tid, 'medium' ); if ( $src && (int) $src[2] > (int) $src[1] * 1.15 ) $img = $src[0]; }
+        if ( $img ) {
+            $cover = '<a href="' . $url . '"><img src="' . esc_url( $img ) . '" width="56" alt="" style="display:block;width:56px;height:auto;border:0"></a>';
+        } else {
+            $pal = function_exists( 'thetelos_get_category_palette' ) ? thetelos_get_category_palette( $cats ? $cats[0]->slug : 'philosophy' ) : [ '#1C2B3A', '#C8A165', '#F5EFE6', '#A89070' ];
+            $ct  = mb_strlen( $bt ) > 40 ? rtrim( mb_substr( $bt, 0, 38 ), ' ,;:' ) . '…' : $bt;
+            $ca  = mb_strlen( $au ) > 22 ? mb_substr( $au, 0, 20 ) . '…' : $au;
+            $cover = '<a href="' . $url . '" style="text-decoration:none"><table width="56" cellpadding="0" cellspacing="0" role="presentation" style="width:56px;table-layout:fixed;background:' . $pal[0] . '">'
+                   . '<tr><td height="80" valign="top" style="height:80px;padding:7px 6px">'
+                   . '<div style="font:6px/1.3 ' . $SANS . ';letter-spacing:.8px;text-transform:uppercase;color:' . $pal[3] . '">The Telos</div>'
+                   . '<div style="font:8px/1.25 ' . $SERIF . ';word-break:break-word;color:' . $pal[2] . ';margin-top:12px">' . $esc( $ct ) . '</div>'
+                   . '<div style="font:6px/1.2 ' . $SANS . ';color:' . $pal[3] . ';margin-top:4px">' . $esc( $ca ) . '</div>'
+                   . '</td></tr></table></a>';
+        }
+        $meta = $esc( $au ) . ( $cat !== '' ? ' <span style="color:#c9c5bc">&middot;</span> <span style="color:' . $MUTED . '">' . $esc( $cat ) . '</span>' : '' )
+              . ' <span style="color:#c9c5bc">&middot;</span> <span style="color:' . $MUTED . '">' . $mins . ' min</span>';
+        return '<tr><td style="padding:26px 0;' . ( $last ? '' : 'border-bottom:1px solid ' . $LINE ) . '">'
+             . '<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>'
+             . '<td width="76" valign="top" style="width:76px;padding-right:20px">' . $cover . '</td>'
+             . '<td valign="top">'
+             . '<div style="font:11px/1.4 ' . $SANS . ';color:' . $INK . '">' . $meta . '</div>'
+             . '<a href="' . $url . '" style="display:block;font:19px/1.3 ' . $SERIF . ';color:' . $INK . ';text-decoration:none;margin-top:6px;word-break:break-word">' . $esc( $bt ) . '</a>'
+             . '<div style="font:13px/1.65 ' . $SANS . ';color:#5a5750;margin-top:8px">' . $esc( $ex ) . '</div>'
+             . '<a href="' . $url . '" style="display:inline-block;font:12px ' . $SANS . ';color:' . $INK . ';text-decoration:none;margin-top:12px">Read summary &#8599;</a>'
+             . '</td></tr></table></td></tr>';
+    };
+    $section = function ( $label, $pids ) use ( $item, $SANS, $MUTED, $LINE ) {
+        if ( ! $pids ) return '';
+        $n = count( $pids );
+        $h = '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:30px;border-bottom:1px solid ' . $LINE . '"><tr>'
+           . '<td style="font:10px ' . $SANS . ';letter-spacing:2px;text-transform:uppercase;color:' . $MUTED . ';padding-bottom:10px">' . $label . '</td>'
+           . '<td align="right" style="font:10px ' . $SANS . ';color:' . $MUTED . ';padding-bottom:10px">' . $n . ' ' . ( $n === 1 ? 'Summary' : 'Summaries' ) . '</td></tr></table>'
+           . '<table width="100%" cellpadding="0" cellspacing="0" role="presentation">';
+        foreach ( $pids as $i => $pid ) $h .= $item( $pid, $i === $n - 1 );
+        return $h . '</table>';
+    };
+
+    $logo  = get_template_directory_uri() . '/assets/img/thetelos_wordmark_email.png';
+    $issue = (int) get_option( 'tls_digest_issue', 0 ) + 1;
+    $total = (int) ( wp_count_posts( 'post' )->publish ?? 0 );
+    $total_txt = $total >= 100 ? 'Over ' . number_format( (int) ( floor( $total / 100 ) * 100 ) ) . ' book summaries, essays and analyses.' : '';
+    $first = trim( explode( ' ', (string) $d['name'] )[0] );
+
+    $h  = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
+        . '<body style="margin:0;padding:0;background:' . $BG . '">'
+        . '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:' . $BG . '"><tr><td align="center" style="padding:32px 12px">'
+        . '<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;max-width:600px;background:' . $CARD . ';border:1px solid ' . $LINE . '">'
+        . '<tr><td style="padding:44px 44px 36px">';
+    // Başlık: logo + sayı / alt başlık + tarih
+    $h .= '<table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>'
+        . '<td valign="middle"><a href="' . esc_url( home_url( '/' ) ) . '"><img src="' . esc_url( $logo ) . '" width="132" alt="thetelos" style="display:block;width:132px;height:auto;border:0"></a></td>'
+        . '<td align="right" valign="middle" style="font:10px ' . $SANS . ';letter-spacing:2px;text-transform:uppercase;color:' . $MUTED . '">Issue N&ordm; ' . $issue . '</td></tr>'
+        . '<tr><td style="font:11px ' . $SANS . ';color:' . $MUTED . ';padding-top:12px">Your personal reading selection</td>'
+        . '<td align="right" style="font:11px ' . $SANS . ';color:' . $MUTED . ';padding-top:12px">' . esc_html( date_i18n( 'F j, Y' ) ) . '</td></tr></table>'
+        . '<div style="border-top:1px solid ' . $LINE . ';margin:28px 0 30px;font-size:0;line-height:0">&nbsp;</div>';
+    $h .= '<div style="font:24px ' . $SERIF . ';color:' . $INK . '">Hi ' . $esc( $first ?: $d['name'] ) . ',</div>'
+        . '<p style="font:13px/1.7 ' . $SANS . ';color:#5a5750;margin:14px 0 0">Based on the books you have read, saved and marked on The Telos, here are a few summaries selected for your next reading.</p>';
+    $h .= $section( 'Curated selection', $d['recs'] );
+    $h .= $section( 'Still on your reading list', $d['reminders'] );
+    // Kütüphane düğmesi
+    $h .= '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:36px"><tr><td align="center">'
+        . '<a href="' . esc_url( home_url( '/' ) ) . '" style="display:inline-block;background:#111;color:#fff;font:bold 11px ' . $SANS . ';letter-spacing:1px;text-transform:uppercase;text-decoration:none;padding:14px 26px;border-radius:22px">Browse the library on thetelos.org &rarr;</a>'
+        . ( $total_txt ? '<div style="font:11px ' . $SANS . ';color:' . $MUTED . ';margin-top:12px">' . $total_txt . '</div>' : '' )
+        . '</td></tr></table>';
+    // Alt bilgi
+    $h .= '<div style="border-top:1px solid ' . $LINE . ';margin:36px 0 22px;font-size:0;line-height:0">&nbsp;</div>'
+        . '<div style="text-align:center;font:11px/1.7 ' . $SANS . ';color:' . $MUTED . '">Delivered to <span style="color:' . $INK . '">' . esc_html( $d['email'] ) . '</span> based on your reading activity on The Telos.</div>'
+        . '<div style="text-align:center;font:11px ' . $SANS . ';margin-top:12px">'
+        . '<a href="' . esc_url( home_url( '/profile/' ) ) . '" style="color:' . $MUTED . ';text-decoration:underline">Reading preferences</a>'
+        . ' <span style="color:#c9c5bc">&nbsp;&middot;&nbsp;</span> '
+        . '<a href="' . esc_url( tls_digest_unsub_url( $d['uid'] ) ) . '" style="color:' . $MUTED . ';text-decoration:underline">Unsubscribe</a></div>'
+        . '<div style="text-align:center;font:10px ' . $SANS . ';letter-spacing:2px;text-transform:uppercase;color:#b5b1a8;margin-top:18px">The Telos &middot; thetelos.org</div>';
+    $h .= '</td></tr></table></td></tr></table></body></html>';
     return $h;
 }
 
