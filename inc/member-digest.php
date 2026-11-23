@@ -136,17 +136,36 @@ function tls_digest_html( array $d ) {
         $mins = max( 1, (int) round( tls_digest_words( $pid ) / 200 ) );
         $ex   = wp_trim_words( get_the_excerpt( $pid ), 32 );
         $url  = esc_url( get_permalink( $pid ) );
-        // Kapak: gerçek kitap kapağı (öne çıkan görsel); yoksa sitenin ürettiği kapak görseli.
-        $img  = get_the_post_thumbnail_url( $pid, 'medium' );
-        $wide = false;
-        if ( ! $img && function_exists( 'thetelos_og_cover_url' ) ) { $img = thetelos_og_cover_url( $pid ); $wide = true; }
-        $cell = $img
-            ? '<td width="' . ( $wide ? 130 : 84 ) . '" valign="top" style="padding:14px 14px 14px 0;border-bottom:1px solid #eee">'
-              . '<a href="' . $url . '"><img src="' . esc_url( $img ) . '" width="' . ( $wide ? 120 : 76 ) . '" alt="" '
-              . 'style="display:block;border-radius:4px;border:1px solid #e5e5e5;max-width:' . ( $wide ? 120 : 76 ) . 'px;height:auto"></a></td>'
-            : '';
+        // KAPAK: gerçek kitap kapağı (dikey öne çıkan görsel) varsa o; yoksa ya da görsel yatay/kare
+        // (otomatik üretilmiş, mailde bozuk görünüyor) ise mailde güvenle çalışan HTML kapak kutusu
+        // — sitedeki kapakla aynı renk paleti, başlık + yazar.
+        $img = ''; $tid = get_post_thumbnail_id( $pid );
+        if ( $tid ) {
+            $src = wp_get_attachment_image_src( $tid, 'medium' );
+            if ( $src && (int) $src[2] > (int) $src[1] * 1.15 ) $img = $src[0];   // yalnız dikey = gerçek kapak
+        }
+        if ( $img ) {
+            $cell = '<td width="84" valign="top" style="padding:14px 14px 14px 0;border-bottom:1px solid #eee">'
+                  . '<a href="' . $url . '"><img src="' . esc_url( $img ) . '" width="76" alt="" '
+                  . 'style="display:block;border-radius:4px;border:1px solid #e5e5e5;width:76px;height:auto"></a></td>';
+        } else {
+            $cats = get_the_category( $pid );
+            $pal  = function_exists( 'thetelos_get_category_palette' )
+                  ? thetelos_get_category_palette( $cats ? $cats[0]->slug : 'philosophy' ) : [ '#1C2B3A', '#C8A165', '#F5EFE6', '#A89070' ];
+            $au   = function_exists( 'thetelos_get_book_author' ) ? thetelos_get_book_author( $pid ) : tls_digest_title_author( $pid );
+            $bt   = html_entity_decode( get_post_field( 'post_title', $pid ), ENT_QUOTES, 'UTF-8' );
+            $bt   = trim( preg_replace( [ '/\s*[\(\（].*$/u', '/\s+[-–—]\s+\S.*$/u' ], '', $bt ) );
+            if ( mb_strlen( $bt ) > 48 ) { $bt = mb_substr( $bt, 0, 46 ); $bt = rtrim( mb_substr( $bt, 0, (int) ( mb_strrpos( $bt, ' ' ) ?: 46 ) ), ' ,;:' ) . '…'; }
+            $cell = '<td width="84" valign="top" style="padding:14px 14px 14px 0;border-bottom:1px solid #eee">'
+                  . '<a href="' . $url . '" style="text-decoration:none">'
+                  . '<table width="76" cellpadding="0" cellspacing="0" style="width:76px;background:' . $pal[0] . ';border:2px solid ' . $pal[1] . ';border-radius:4px">'
+                  . '<tr><td height="104" align="center" valign="middle" style="height:104px;padding:6px 5px">'
+                  . '<div style="font:7px/1.2 Arial,sans-serif;letter-spacing:1px;text-transform:uppercase;color:' . $pal[3] . ';margin-bottom:6px">' . $esc( $au ) . '</div>'
+                  . '<div style="font:italic 10px/1.25 Georgia,serif;color:' . $pal[2] . '">' . $esc( $bt ) . '</div>'
+                  . '</td></tr></table></a></td>';
+        }
         return '<tr>' . $cell . '<td valign="top" style="padding:14px 0;border-bottom:1px solid #eee">'
-             . '<a href="' . $url . '" style="font:600 17px Georgia,serif;color:#1a1a1a;text-decoration:none">' . $esc( get_the_title( $pid ) ) . '</a>'
+             . '<a href="' . $url . '" style="font:600 17px Georgia,serif;color:#1a1a1a;text-decoration:none;word-break:break-word">' . $esc( get_the_title( $pid ) ) . '</a>'
              . '<div style="font:13px/1.5 Arial,sans-serif;color:#555;margin-top:6px">' . $esc( $ex ) . '</div>'
              . '<div style="font:12px Arial,sans-serif;color:#1f7a3d;margin-top:6px">' . $mins . ' min read</div></td></tr>';
     };
