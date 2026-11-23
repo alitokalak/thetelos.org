@@ -197,7 +197,9 @@ function tls_digest_html( array $d ) {
 
     $h  = '<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
         . '<body style="margin:0;padding:0;background:' . $BG . '">'
-        . '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:' . $BG . '"><tr><td align="center" style="padding:32px 12px">'
+        . '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:' . $BG . '"><tr><td align="center" style="padding:18px 12px 32px">'
+        . '<div style="max-width:600px;text-align:right;font:11px ' . $SANS . ';color:' . $MUTED . ';padding:0 4px 10px">'
+        . 'Don\'t want these emails? <a href="' . esc_url( tls_digest_unsub_url( $d['uid'] ) ) . '" style="color:' . $MUTED . ';text-decoration:underline">Unsubscribe</a></div>'
         . '<table width="600" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;max-width:600px;background:' . $CARD . ';border:1px solid ' . $LINE . '">'
         . '<tr><td style="padding:44px 44px 36px">';
     // Başlık: logo + sayı / alt başlık + tarih
@@ -222,8 +224,8 @@ function tls_digest_html( array $d ) {
         . '<div style="text-align:center;font:11px ' . $SANS . ';margin-top:12px">'
         . '<a href="' . esc_url( home_url( '/profile/' ) ) . '" style="color:' . $MUTED . ';text-decoration:underline">Reading preferences</a>'
         . ' <span style="color:#c9c5bc">&nbsp;&middot;&nbsp;</span> '
-        . '<a href="' . esc_url( tls_digest_unsub_url( $d['uid'] ) ) . '" style="color:' . $MUTED . ';text-decoration:underline">Unsubscribe</a></div>'
-        . '<div style="text-align:center;font:10px ' . $SANS . ';letter-spacing:2px;text-transform:uppercase;color:#b5b1a8;margin-top:18px">The Telos &middot; thetelos.org</div>';
+        . '<a href="' . esc_url( tls_digest_unsub_url( $d['uid'] ) ) . '" style="color:' . $MUTED . ';text-decoration:underline">Unsubscribe from these emails</a></div>'
+        . '<div style="text-align:center;font:10px ' . $SANS . ';letter-spacing:2px;text-transform:uppercase;color:#b5b1a8;margin-top:18px">The Telos &middot; thetelos.org &middot; Issue ' . $issue . ' &middot; ' . esc_html( date_i18n( 'M j, Y H:i' ) ) . '</div>';
     $h .= '</td></tr></table></td></tr></table></body></html>';
     return $h;
 }
