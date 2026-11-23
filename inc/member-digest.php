@@ -20,6 +20,12 @@ function tls_digest_unsub_url( $uid ) {
     return add_query_arg( [ 'tls_unsub' => (int) $uid, 'k' => tls_digest_unsub_key( $uid ) ], home_url( '/' ) );
 }
 function tls_digest_optout( $uid ) { return (bool) get_user_meta( $uid, '_tls_digest_optout', true ); }
+/* Açma/kapama geçmişi (son 20): [tarih, işlem, kaynak]. Neden kapandı sorusu kesin cevaplansın. */
+function tls_digest_log( $uid, $what, $src ) {
+    $log = get_user_meta( $uid, '_tls_digest_log', true ); if ( ! is_array( $log ) ) $log = [];
+    $log[] = [ current_time( 'mysql' ), $what, $src ];
+    update_user_meta( $uid, '_tls_digest_log', array_slice( $log, -20 ) );
+}
 
 /* Abonelikten çıkış linki.
    GET (linke tıklama) → yalnız ONAY sayfası; çıkış POST ile olur. Sebep (23.11.2026): spam test
@@ -34,6 +40,7 @@ add_action( 'init', function () {
     $back = '<p><a href="' . esc_url( home_url( '/' ) ) . '">Back to The Telos</a></p>';
     if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) === 'POST' ) {
         update_user_meta( $uid, '_tls_digest_optout', current_time( 'mysql' ) );
+        tls_digest_log( $uid, 'kapattı', isset( $_POST['List-Unsubscribe'] ) ? 'Gmail/Outlook tek tık' : 'maildeki çıkış linki (onaylı)' );
         wp_die( '<h2>You have been unsubscribed.</h2><p>You will no longer receive reading recommendations from The Telos. You can turn them back on anytime in your <a href="' . esc_url( home_url( '/profile/' ) ) . '">profile settings</a>.</p>' . $back, 'Unsubscribed', [ 'response' => 200 ] );
     }
     $action = esc_url( tls_digest_unsub_url( $uid ) );
@@ -52,10 +59,12 @@ add_action( 'wp_ajax_tls_digest_pref', function () {
     if ( ( $_POST['on'] ?? '' ) === '1' ) {
         delete_user_meta( $uid, '_tls_digest_optout' );
         update_user_meta( $uid, '_tls_digest_optin', current_time( 'mysql' ) );
-        wp_send_json_success( [ 'on' => true ] );
+        tls_digest_log( $uid, 'açtı', 'profil ayarı' );
+        wp_send_json_success( [ 'on' => true, 'state' => ! tls_digest_optout( $uid ) ] );
     }
     update_user_meta( $uid, '_tls_digest_optout', current_time( 'mysql' ) );
-    wp_send_json_success( [ 'on' => false ] );
+    tls_digest_log( $uid, 'kapattı', 'profil ayarı' );
+    wp_send_json_success( [ 'on' => false, 'state' => ! tls_digest_optout( $uid ) ] );
 } );
 
 /* Yazının gerçek kelime sayısı (önbellekli). */
@@ -149,7 +158,8 @@ function tls_digest_build( $uid, $limit = 5 ) {
     }
     return [
         'uid' => (int) $uid, 'name' => $u->display_name ?: $u->user_login, 'email' => $u->user_email,
-        'optout' => tls_digest_optout( $uid ), 'optout_at' => (string) get_user_meta( $uid, '_tls_digest_optout', true ), 'reminders' => array_slice( $want, 0, 3 ), 'recs' => $recs,
+        'optout' => tls_digest_optout( $uid ), 'optout_at' => (string) get_user_meta( $uid, '_tls_digest_optout', true ),
+        'log' => (array) ( get_user_meta( $uid, '_tls_digest_log', true ) ?: [] ), 'reminders' => array_slice( $want, 0, 3 ), 'recs' => $recs,
         'basis' => $basis, 'has_data' => ( (bool) $act['items'] || (bool) $saved || (bool) $ints ),
         'last_sent' => (string) get_user_meta( $uid, '_tls_digest_last_sent', true ),
     ];

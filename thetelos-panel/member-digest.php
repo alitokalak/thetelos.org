@@ -59,7 +59,7 @@ async function load() {
   const rows = r.members.map(m => `<tr>
     <td><input type="checkbox" class="md-cb" value="${m.uid}" ${m.optout||!m.recs&&!m.reminders?'disabled':''} data-hasdata="${m.has_data?1:0}"></td>
     <td><b>${esc(m.name)}</b><br><span class="muted">${esc(m.email)}</span>${m.optout?'<br><span class="tag-off">abonelikten çıktı · '+esc(m.optout_at)+' — mail gitmez</span> <button class="btn btn-sm" style="padding:1px 8px;font-size:11px" onclick="resub('+m.uid+')">↺ Geri aç</button>':''}</td>
-    <td class="muted">${esc(m.basis)}</td>
+    <td class="muted">${esc(m.basis)}${(m.log&&m.log.length)?'<br><span title="'+esc(m.log.map(l=>l.join(' · ')).join('\n'))+'" style="cursor:help;text-decoration:underline dotted">📜 son: '+esc(m.log[m.log.length-1].join(' · '))+'</span>':''}</td>
     <td>${m.recs} öneri${m.reminders?` + ${m.reminders} hatırlatma`:''}</td>
     <td class="muted">${m.last_sent||'—'}</td>
     <td style="white-space:nowrap"><button class="btn btn-sm" onclick="prev(${m.uid})">👁 Önizle</button>

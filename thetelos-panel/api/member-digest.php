@@ -34,7 +34,7 @@ if ($action === 'list') {
         $d = tls_digest_build((int) $uid);
         if (!$d) continue;
         $out[] = [
-            'uid' => $d['uid'], 'name' => $d['name'], 'email' => $d['email'], 'optout' => $d['optout'], 'optout_at' => $d['optout_at'] ?? '',
+            'uid' => $d['uid'], 'name' => $d['name'], 'email' => $d['email'], 'optout' => $d['optout'], 'optout_at' => $d['optout_at'] ?? '', 'log' => $d['log'] ?? [],
             'recs' => count($d['recs']), 'reminders' => count($d['reminders']),
             'basis' => implode(' · ', $d['basis']) ?: '— veri yok', 'has_data' => $d['has_data'],
             'last_sent' => $d['last_sent'],
@@ -58,6 +58,7 @@ if ($action === 'resub') {   // yöneticinin geri açması (ör. otomatik taray�
     if ($uid > 0 && get_userdata($uid)) {
         delete_user_meta($uid, '_tls_digest_optout');
         update_user_meta($uid, '_tls_digest_optin', current_time('mysql') . ' (panel)');
+        if (function_exists('tls_digest_log')) tls_digest_log($uid, 'açtı', 'yönetici paneli');
         exit(json_encode(['ok' => true]));
     }
     exit(json_encode(['ok' => false, 'error' => 'üye yok']));

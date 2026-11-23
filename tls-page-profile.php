@@ -527,7 +527,7 @@ get_header();
     if(snews)snews.addEventListener('change',function(){
         var on=snews.checked;
         settPost({action:'tls_digest_pref',on:on?'1':'0'},function(res){
-            if(!res||!res.success){snews.checked=!on;notice('tls-news-msg','Could not save. Please try again.','error');return;}
+            if(!res||!res.success||(res.data&&res.data.state!==on)){snews.checked=!on;notice('tls-news-msg','Could not save. Please try again.','error');return;}
             notice('tls-news-msg',on?'You will receive personal reading recommendations.':'You will no longer receive reading recommendation emails.','success');
         });
     });
