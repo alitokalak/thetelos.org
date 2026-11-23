@@ -34,7 +34,7 @@ if ($action === 'list') {
         $d = tls_digest_build((int) $uid);
         if (!$d) continue;
         $out[] = [
-            'uid' => $d['uid'], 'name' => $d['name'], 'email' => $d['email'], 'optout' => $d['optout'],
+            'uid' => $d['uid'], 'name' => $d['name'], 'email' => $d['email'], 'optout' => $d['optout'], 'optout_at' => $d['optout_at'] ?? '',
             'recs' => count($d['recs']), 'reminders' => count($d['reminders']),
             'basis' => implode(' · ', $d['basis']) ?: '— veri yok', 'has_data' => $d['has_data'],
             'last_sent' => $d['last_sent'],

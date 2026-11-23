@@ -123,7 +123,7 @@ function tls_digest_build( $uid, $limit = 5 ) {
     }
     return [
         'uid' => (int) $uid, 'name' => $u->display_name ?: $u->user_login, 'email' => $u->user_email,
-        'optout' => tls_digest_optout( $uid ), 'reminders' => array_slice( $want, 0, 3 ), 'recs' => $recs,
+        'optout' => tls_digest_optout( $uid ), 'optout_at' => (string) get_user_meta( $uid, '_tls_digest_optout', true ), 'reminders' => array_slice( $want, 0, 3 ), 'recs' => $recs,
         'basis' => $basis, 'has_data' => ( (bool) $act['items'] || (bool) $saved || (bool) $ints ),
         'last_sent' => (string) get_user_meta( $uid, '_tls_digest_last_sent', true ),
     ];
@@ -243,6 +243,7 @@ function tls_digest_send( $uid, $to_override = '' ) {
     $ok = wp_mail( $to, $subject, tls_digest_html( $d ), [
         'Content-Type: text/html; charset=UTF-8',
         'List-Unsubscribe: <' . tls_digest_unsub_url( $uid ) . '>',
+        'List-Unsubscribe-Post: List-Unsubscribe=One-Click',   // Gmail/Outlook tek tık "Abonelikten çık" düğmesi
     ] );
     if ( $ok && $to_override === '' ) update_user_meta( $uid, '_tls_digest_last_sent', current_time( 'mysql' ) );
     return [ 'ok' => (bool) $ok, 'error' => $ok ? '' : 'mail gönderilemedi (SMTP)' ];

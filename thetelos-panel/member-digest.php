@@ -56,7 +56,7 @@ async function load() {
   ADMIN = r.admin_email || '';
   const rows = r.members.map(m => `<tr>
     <td><input type="checkbox" class="md-cb" value="${m.uid}" ${m.optout||!m.recs&&!m.reminders?'disabled':''} data-hasdata="${m.has_data?1:0}"></td>
-    <td><b>${esc(m.name)}</b><br><span class="muted">${esc(m.email)}</span>${m.optout?'<br><span class="tag-off">abonelikten çıktı</span>':''}</td>
+    <td><b>${esc(m.name)}</b><br><span class="muted">${esc(m.email)}</span>${m.optout?'<br><span class="tag-off">abonelikten çıktı · '+esc(m.optout_at)+' — mail gitmez</span>':''}</td>
     <td class="muted">${esc(m.basis)}</td>
     <td>${m.recs} öneri${m.reminders?` + ${m.reminders} hatırlatma`:''}</td>
     <td class="muted">${m.last_sent||'—'}</td>
@@ -64,7 +64,8 @@ async function load() {
         <button class="btn btn-sm" onclick="test(${m.uid})">🧪 Bana test gönder</button></td></tr>`).join('');
   $('#md-body').innerHTML = rows || '<tr><td colspan="6" class="muted">Üye yok.</td></tr>';
   const withData = r.members.filter(m => m.has_data).length;
-  st(`${r.members.length} üye · ${withData} tanesinin verisi var. Test mailleri ${ADMIN} adresine gider.`);
+  const outs = r.members.filter(m => m.optout).length;
+  st(`${r.members.length} üye · ${withData} tanesinin verisi var · ${outs} kişi abonelikten çıktı (onlara mail gitmez). Test mailleri ${ADMIN} adresine gider.`);
 }
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function prev(uid){ const f=$('#md-prev'); f.style.display='block'; f.src='api/member-digest.php?action=preview&uid='+uid; f.scrollIntoView({behavior:'smooth'}); }
