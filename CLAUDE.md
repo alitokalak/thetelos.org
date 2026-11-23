@@ -67,5 +67,7 @@
 
 - Üye kendisi de yönetir: Profil → Settings → **Email Preferences** kutusu (ajax `tls_digest_pref`): kapatınca `_tls_digest_optout`, açınca silinir + `_tls_digest_optin` tarihi. Mailde Unsubscribe en üstte ve en altta; linke tıklama yalnız ONAY sayfası açar, çıkış POST ile (23.11: mail-tester link denetimi üyeyi habersiz çıkarmıştı); Gmail tek tık (`List-Unsubscribe-Post`) doğrudan çıkarır. Panelde çıkanlar için "↺ Geri aç".
 
+- **Dönüş ölçümü:** gerçek gönderimde maildeki linkler `?tls_go=PID&u=UID&i=SAYI&k=` → tıklama `_tls_digest_clicks`'e (bot UA elenir; 10 sn'de 3+ tık = şüpheli) → UTM'li sayfaya yönlenir (`utm_source=member_digest`, `utm_campaign=issue_N`, Analytics'te görünür). Test/önizleme takip edilmez. Panel: son sayı özeti (kaç kişiye gitti / kaç kişi geldi %) + satırda kim geldi, hangi kitap. Açılma (pixel) takibi YOK (güvenilmez).
+
 ## Faydalı araçlar (panel oturumu gerekir)
 - `api/seo-inventory.php` (yazı başına okunma/noindex, salt okunur), `api/seo-prune.php`, `api/fix-preamble.php`, `api/fix-claviez.php` (tek seferlik, uygulandı).

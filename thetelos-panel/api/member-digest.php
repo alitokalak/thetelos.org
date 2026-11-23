@@ -37,7 +37,10 @@ if ($action === 'list') {
             'uid' => $d['uid'], 'name' => $d['name'], 'email' => $d['email'], 'optout' => $d['optout'], 'optout_at' => $d['optout_at'] ?? '', 'log' => $d['log'] ?? [],
             'recs' => count($d['recs']), 'reminders' => count($d['reminders']),
             'basis' => implode(' · ', $d['basis']) ?: '— veri yok', 'has_data' => $d['has_data'],
-            'last_sent' => $d['last_sent'],
+            'last_sent' => $d['last_sent'], 'last_issue' => $d['last_issue'] ?? 0,
+            'click' => (!empty($d['last_issue']) && function_exists('tls_digest_click_stats'))
+                ? (function ($cs) { $cs['titles'] = array_map(fn($p) => $p ? html_entity_decode(get_the_title($p), ENT_QUOTES, 'UTF-8') : 'Ana sayfa', $cs['books']); return $cs; })(tls_digest_click_stats($d['uid'], $d['last_issue']))
+                : null,
         ];
     }
     usort($out, fn($a, $b) => ($b['has_data'] <=> $a['has_data']) ?: strcmp($a['name'], $b['name']));

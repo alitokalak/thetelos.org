@@ -27,6 +27,48 @@ function tls_digest_log( $uid, $what, $src ) {
     update_user_meta( $uid, '_tls_digest_log', array_slice( $log, -20 ) );
 }
 
+/* ── TIKLAMA TAKİBİ ──────────────────────────────────────────────────────────
+   Gerçek gönderimde maildeki linkler ?tls_go=PID&u=UID&i=SAYI&k=İMZA olur → tıklama üyeye
+   kaydedilir (_tls_digest_clicks, son 100) → okuyucu UTM'li gerçek sayfaya yönlenir
+   (Analytics'te kaynak: member_digest). Test mailleri ve panel önizlemesi takip edilmez.
+   Otomatik link tarayıcıları (güvenlik/önizleme botları) User-Agent'tan elenir; aynı üyenin
+   10 sn içinde 3+ tıklaması panelde "şüpheli (bot)" sayılır. */
+function tls_digest_go_key( $pid, $uid, $issue ) { return substr( wp_hash( "tls-go|$pid|$uid|$issue" ), 0, 12 ); }
+function tls_digest_go_url( $pid, $uid, $issue ) {
+    return add_query_arg( [ 'tls_go' => (int) $pid, 'u' => (int) $uid, 'i' => (int) $issue,
+                            'k' => tls_digest_go_key( $pid, $uid, $issue ) ], home_url( '/' ) );
+}
+add_action( 'init', function () {
+    if ( ! isset( $_GET['tls_go'], $_GET['u'], $_GET['i'], $_GET['k'] ) ) return;
+    $pid = (int) $_GET['tls_go']; $uid = (int) $_GET['u']; $issue = (int) $_GET['i'];
+    $dest = $pid > 0 ? get_permalink( $pid ) : home_url( '/' );
+    if ( ! $dest ) $dest = home_url( '/' );
+    if ( hash_equals( tls_digest_go_key( $pid, $uid, $issue ), (string) $_GET['k'] ) && get_userdata( $uid ) ) {
+        $ua  = (string) ( $_SERVER['HTTP_USER_AGENT'] ?? '' );
+        $bot = ( $ua === '' || preg_match( '/bot|crawl|spider|preview|scan|proofpoint|mimecast|barracuda|safelinks|urldefense|python|curl|wget|headless|monitor|checker|mail-tester/i', $ua ) );
+        if ( ! $bot ) {
+            $log = get_user_meta( $uid, '_tls_digest_clicks', true ); if ( ! is_array( $log ) ) $log = [];
+            $log[] = [ current_time( 'mysql' ), $issue, $pid ];
+            update_user_meta( $uid, '_tls_digest_clicks', array_slice( $log, -100 ) );
+        }
+    }
+    $dest = add_query_arg( [ 'utm_source' => 'member_digest', 'utm_medium' => 'email', 'utm_campaign' => 'issue_' . $issue ], $dest );
+    nocache_headers();
+    wp_redirect( $dest, 302 );
+    exit;
+}, 1 );
+
+/* Bir üyenin bir sayıdaki tıklama özeti: ['clicks'=>n, 'books'=>[pid], 'first'=>tarih, 'bot'=>bool] */
+function tls_digest_click_stats( $uid, $issue ) {
+    $log = get_user_meta( $uid, '_tls_digest_clicks', true ); if ( ! is_array( $log ) ) $log = [];
+    $rows = array_values( array_filter( $log, function ( $r ) use ( $issue ) { return (int) $r[1] === (int) $issue; } ) );
+    if ( ! $rows ) return [ 'clicks' => 0, 'books' => [], 'first' => '', 'bot' => false ];
+    $ts = array_map( function ( $r ) { return strtotime( $r[0] ); }, $rows ); sort( $ts );
+    $bot = count( $ts ) >= 3 && ( $ts[2] - $ts[0] ) <= 10;   // 10 sn içinde 3+ farklı tıklama = otomatik tarayıcı
+    return [ 'clicks' => count( $rows ), 'books' => array_values( array_unique( array_map( function ( $r ) { return (int) $r[2]; }, $rows ) ) ),
+             'first' => $rows[0][0], 'bot' => $bot ];
+}
+
 /* Abonelikten çıkış linki.
    GET (linke tıklama) → yalnız ONAY sayfası; çıkış POST ile olur. Sebep (23.11.2026): spam test
    sitesi ve kurumsal güvenlik tarayıcıları maildeki linkleri otomatik açıyor → üye habersiz çıkmış
@@ -162,6 +204,7 @@ function tls_digest_build( $uid, $limit = 5 ) {
         'log' => (array) ( get_user_meta( $uid, '_tls_digest_log', true ) ?: [] ), 'reminders' => array_slice( $want, 0, 3 ), 'recs' => $recs,
         'basis' => $basis, 'has_data' => ( (bool) $act['items'] || (bool) $saved || (bool) $ints ),
         'last_sent' => (string) get_user_meta( $uid, '_tls_digest_last_sent', true ),
+        'last_issue' => (int) get_user_meta( $uid, '_tls_digest_last_issue', true ),
     ];
 }
 
@@ -175,10 +218,14 @@ function tls_digest_html( array $d ) {
         $t = preg_replace( '/\s+[-–—]\s+[^–—]+$/u', '', $t );            // " – Yazar" kuyruğu
         return trim( $t );
     };
-    $item = function ( $pid, $last ) use ( $esc, $book_title, $SERIF, $SANS, $INK, $MUTED, $LINE ) {
+    $issue = (int) get_option( 'tls_digest_issue', 0 ) + 1;
+    $go = function ( $pid ) use ( $d, $issue ) {   // gerçek gönderimde takipli link, test/önizlemede düz link
+        return ! empty( $d['track'] ) ? tls_digest_go_url( $pid, $d['uid'], $issue ) : ( $pid ? get_permalink( $pid ) : home_url( '/' ) );
+    };
+    $item = function ( $pid, $last ) use ( $esc, $book_title, $SERIF, $SANS, $INK, $MUTED, $LINE, $go ) {
         $mins = max( 1, (int) round( tls_digest_words( $pid ) / 200 ) );
         $ex   = wp_trim_words( get_the_excerpt( $pid ), 34 );
-        $url  = esc_url( get_permalink( $pid ) );
+        $url  = esc_url( $go( $pid ) );
         $cats = array_values( array_filter( get_the_category( $pid ), function ( $c ) { return $c->term_id != (int) get_option( 'default_category' ); } ) );
         $cat  = $cats ? $cats[0]->name : '';
         $au   = function_exists( 'thetelos_get_book_author' ) ? thetelos_get_book_author( $pid ) : tls_digest_title_author( $pid );
@@ -223,7 +270,6 @@ function tls_digest_html( array $d ) {
     };
 
     $logo  = get_template_directory_uri() . '/assets/img/thetelos_wordmark_email.png';
-    $issue = (int) get_option( 'tls_digest_issue', 0 ) + 1;
     $total = (int) ( wp_count_posts( 'post' )->publish ?? 0 );
     $total_txt = $total >= 100 ? 'Over ' . number_format( (int) ( floor( $total / 100 ) * 100 ) ) . ' book summaries, essays and analyses.' : '';
     // Ad alanına e-posta yazılmışsa ("ali@gmail.com") @'ten sonrasını gösterme.
@@ -251,7 +297,7 @@ function tls_digest_html( array $d ) {
     $h .= $section( 'Still on your reading list', $d['reminders'] );
     // Kütüphane düğmesi
     $h .= '<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:36px"><tr><td align="center">'
-        . '<a href="' . esc_url( home_url( '/' ) ) . '" style="display:inline-block;background:#111;color:#fff;font:bold 11px ' . $SANS . ';letter-spacing:1px;text-transform:uppercase;text-decoration:none;padding:14px 26px;border-radius:22px">Browse the library on thetelos.org &rarr;</a>'
+        . '<a href="' . esc_url( $go( 0 ) ) . '" style="display:inline-block;background:#111;color:#fff;font:bold 11px ' . $SANS . ';letter-spacing:1px;text-transform:uppercase;text-decoration:none;padding:14px 26px;border-radius:22px">Browse the library on thetelos.org &rarr;</a>'
         . ( $total_txt ? '<div style="font:11px ' . $SANS . ';color:' . $MUTED . ';margin-top:12px">' . $total_txt . '</div>' : '' )
         . '</td></tr></table>';
     // Alt bilgi
@@ -279,6 +325,7 @@ function tls_digest_send( $uid, $to_override = '' ) {
     if ( ! is_email( $to ) ) return [ 'ok' => false, 'error' => 'geçersiz e-posta' ];
     $subject = ( $to_override !== '' ? '[TEST] ' : '' ) . 'Your reading picks from The Telos';
     // DÜZ METİN SÜRÜMÜ (multipart/alternative): yalnız-HTML mailler spam puanını yükseltir.
+    $d['track'] = ( $to_override === '' );
     $html = tls_digest_html( $d );
     $alt  = "Hi,\n\nHere are a few summaries picked for you on The Telos:\n\n";
     foreach ( array_merge( $d['recs'], $d['reminders'] ) as $pid ) {
@@ -293,7 +340,10 @@ function tls_digest_send( $uid, $to_override = '' ) {
         'List-Unsubscribe-Post: List-Unsubscribe=One-Click',   // Gmail/Outlook tek tık "Abonelikten çık" düğmesi
     ] );
     remove_action( 'phpmailer_init', $set_alt );
-    if ( $ok && $to_override === '' ) update_user_meta( $uid, '_tls_digest_last_sent', current_time( 'mysql' ) );
+    if ( $ok && $to_override === '' ) {
+        update_user_meta( $uid, '_tls_digest_last_sent', current_time( 'mysql' ) );
+        update_user_meta( $uid, '_tls_digest_last_issue', (int) get_option( 'tls_digest_issue', 0 ) + 1 );
+    }
     return [ 'ok' => (bool) $ok, 'error' => $ok ? '' : 'mail gönderilemedi (SMTP)' ];
 }
 

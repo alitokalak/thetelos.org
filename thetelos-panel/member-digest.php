@@ -40,6 +40,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <span id="md-status"></span>
     </div>
 
+    <div id="md-summary" style="font-size:14px;margin:4px 0 12px"></div>
     <div class="card">
       <table class="site-table">
         <thead><tr><th></th><th>Üye</th><th>Neye göre</th><th>Öneri</th><th>Son gönderim</th><th></th></tr></thead>
@@ -63,13 +64,28 @@ async function load() {
     <td><b>${esc(m.name)}</b><br><span class="muted">${esc(m.email)}</span>${m.optout?'<br><span class="tag-off">abonelikten çıktı · '+esc(m.optout_at)+' — mail gitmez</span> <button class="btn btn-sm" style="padding:1px 8px;font-size:11px" onclick="resub('+m.uid+')">↺ Geri aç</button>':''}</td>
     <td class="muted">${esc(m.basis)}${(m.log&&m.log.length)?'<br><span title="'+esc(m.log.map(l=>l.join(' · ')).join('\n'))+'" style="cursor:help;text-decoration:underline dotted">📜 son: '+esc(m.log[m.log.length-1].join(' · '))+'</span>':''}</td>
     <td>${m.recs} öneri${m.reminders?` + ${m.reminders} hatırlatma`:''}</td>
-    <td class="muted md-sent">${m.last_sent?('✓ '+esc(m.last_sent)):'—'}</td>
+    <td class="muted md-sent">${m.last_sent?('✓ '+esc(m.last_sent)):'—'}${clk(m)}</td>
     <td style="white-space:nowrap"><button class="btn btn-sm" onclick="prev(${m.uid})">👁 Önizle</button>
         <button class="btn btn-sm" onclick="test(${m.uid})">🧪 Bana test gönder</button></td></tr>`).join('');
   $('#md-body').innerHTML = rows || '<tr><td colspan="6" class="muted">Üye yok.</td></tr>';
   const withData = r.members.filter(m => m.has_data).length;
   const outs = r.members.filter(m => m.optout).length;
+  // Son sayının dönüş özeti
+  const maxIssue = Math.max(0, ...r.members.map(m => m.last_issue||0));
+  const inIssue = r.members.filter(m => maxIssue && m.last_issue === maxIssue);
+  const came = inIssue.filter(m => m.click && m.click.clicks && !m.click.bot).length;
+  $('#md-summary').innerHTML = maxIssue
+    ? `📊 <b>Sayı ${maxIssue}</b>: ${inIssue.length} kişiye gitti · <b>${came} kişi siteye geldi</b> (%${inIssue.length?Math.round(came*100/inIssue.length):0})`
+    : '📊 Tıklama takibi bir sonraki gönderimden itibaren ölçülecek.';
   st(`${r.members.length} üye · ${withData} tanesinin verisi var · ${outs} kişi abonelikten çıktı (onlara mail gitmez). Test mailleri ${ADMIN} adresine gider.`);
+}
+function clk(m){
+  if (!m.last_sent) return '';
+  if (!m.click) return '<br><span class="muted" style="font-size:11px">(takip öncesi gönderim)</span>';
+  const c = m.click;
+  if (!c.clicks) return '<br><span class="muted" style="font-size:11px">Sayı '+m.last_issue+' · henüz tıklamadı</span>';
+  if (c.bot) return '<br><span style="font-size:11px;color:#c90">⚠ Sayı '+m.last_issue+' · '+c.clicks+' tıklama — otomatik tarayıcı olabilir</span>';
+  return '<br><span class="md-ok" style="font-size:12px" title="'+esc(c.titles.join('\n'))+'">👆 Sayı '+m.last_issue+' · siteye geldi ('+c.books.length+' kitap) · '+esc(c.first)+'</span>';
 }
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function prev(uid){ const f=$('#md-prev'); f.style.display='block'; f.src='api/member-digest.php?action=preview&uid='+uid; f.scrollIntoView({behavior:'smooth'}); }
