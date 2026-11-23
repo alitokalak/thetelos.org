@@ -53,6 +53,16 @@ if ($action === 'test') {
     exit(json_encode($r + ['to' => $to], JSON_UNESCAPED_UNICODE));
 }
 
+if ($action === 'resub') {   // yöneticinin geri açması (ör. otomatik tarayıcı yanlışlıkla çıkardıysa)
+    $uid = (int) ($_POST['uid'] ?? 0);
+    if ($uid > 0 && get_userdata($uid)) {
+        delete_user_meta($uid, '_tls_digest_optout');
+        update_user_meta($uid, '_tls_digest_optin', current_time('mysql') . ' (panel)');
+        exit(json_encode(['ok' => true]));
+    }
+    exit(json_encode(['ok' => false, 'error' => 'üye yok']));
+}
+
 if ($action === 'send') {
     $uids = array_filter(array_map('intval', explode(',', (string) ($_POST['uids'] ?? ''))));
     $sent = 0; $fail = [];

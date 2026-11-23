@@ -21,15 +21,26 @@ function tls_digest_unsub_url( $uid ) {
 }
 function tls_digest_optout( $uid ) { return (bool) get_user_meta( $uid, '_tls_digest_optout', true ); }
 
-/* Abonelikten çıkış linki */
+/* Abonelikten çıkış linki.
+   GET (linke tıklama) → yalnız ONAY sayfası; çıkış POST ile olur. Sebep (23.11.2026): spam test
+   sitesi ve kurumsal güvenlik tarayıcıları maildeki linkleri otomatik açıyor → üye habersiz çıkmış
+   sayılıyordu. Gmail/Outlook "tek tık" (List-Unsubscribe-Post) zaten POST gönderir → doğrudan çıkar. */
 add_action( 'init', function () {
     if ( ! isset( $_GET['tls_unsub'], $_GET['k'] ) ) return;
     $uid = (int) $_GET['tls_unsub'];
-    if ( $uid > 0 && hash_equals( tls_digest_unsub_key( $uid ), (string) $_GET['k'] ) && get_userdata( $uid ) ) {
-        update_user_meta( $uid, '_tls_digest_optout', current_time( 'mysql' ) );
-        wp_die( '<h2>You have been unsubscribed.</h2><p>You will no longer receive reading recommendations from The Telos. You can turn them back on anytime in your <a href="' . esc_url( home_url( '/profile/' ) ) . '">profile settings</a>.</p><p><a href="' . esc_url( home_url( '/' ) ) . '">Back to The Telos</a></p>', 'Unsubscribed', [ 'response' => 200 ] );
+    if ( ! ( $uid > 0 && hash_equals( tls_digest_unsub_key( $uid ), (string) $_GET['k'] ) && get_userdata( $uid ) ) ) {
+        wp_die( 'Invalid unsubscribe link.', 'Unsubscribe', [ 'response' => 400 ] );
     }
-    wp_die( 'Invalid unsubscribe link.', 'Unsubscribe', [ 'response' => 400 ] );
+    $back = '<p><a href="' . esc_url( home_url( '/' ) ) . '">Back to The Telos</a></p>';
+    if ( ( $_SERVER['REQUEST_METHOD'] ?? 'GET' ) === 'POST' ) {
+        update_user_meta( $uid, '_tls_digest_optout', current_time( 'mysql' ) );
+        wp_die( '<h2>You have been unsubscribed.</h2><p>You will no longer receive reading recommendations from The Telos. You can turn them back on anytime in your <a href="' . esc_url( home_url( '/profile/' ) ) . '">profile settings</a>.</p>' . $back, 'Unsubscribed', [ 'response' => 200 ] );
+    }
+    $action = esc_url( tls_digest_unsub_url( $uid ) );
+    wp_die( '<h2>Unsubscribe from reading recommendations?</h2>'
+        . '<p>You will stop receiving personal reading recommendation emails from The Telos.</p>'
+        . '<form method="post" action="' . $action . '"><button type="submit" style="background:#111;color:#fff;border:0;border-radius:20px;padding:12px 24px;font-size:14px;cursor:pointer">Yes, unsubscribe me</button></form>'
+        . $back, 'Unsubscribe', [ 'response' => 200 ] );
 }, 1 );
 
 /* Profil → Settings → Email Preferences: üye bülteni kendisi açar/kapatır.

@@ -65,7 +65,7 @@
 - Öneri: işaretli kitaplar (want/reading/read) + kayıtlı özetler + ilgi alanlarının kategorileri → işaretlenmemiş, noindex/yer tutucu olmayan, ≥2.000 kelimelik özetlerden 5 (aynı yazardan ≤2) + "Want to Read" hatırlatması (≤3). Yapay zekâ yok.
 - Mail İngilizce, HTML; abonelikten çıkış linki `?tls_unsub=UID&k=` → `_tls_digest_optout`. Test maili thetelosorg@gmail.com adresine gider (`TLS_DIGEST_TEST_TO`). Her öneride kitap kapağı (öne çıkan görsel; yoksa sitenin ürettiği kapak). Gezinme geçmişi TUTULMUYOR (istenirse eklenir + gizlilik metni).
 
-- Üye kendisi de yönetir: Profil → Settings → **Email Preferences** kutusu (ajax `tls_digest_pref`): kapatınca `_tls_digest_optout`, açınca silinir + `_tls_digest_optin` tarihi. Mailde Unsubscribe en üstte ve en altta; Gmail tek tık (`List-Unsubscribe-Post`).
+- Üye kendisi de yönetir: Profil → Settings → **Email Preferences** kutusu (ajax `tls_digest_pref`): kapatınca `_tls_digest_optout`, açınca silinir + `_tls_digest_optin` tarihi. Mailde Unsubscribe en üstte ve en altta; linke tıklama yalnız ONAY sayfası açar, çıkış POST ile (23.11: mail-tester link denetimi üyeyi habersiz çıkarmıştı); Gmail tek tık (`List-Unsubscribe-Post`) doğrudan çıkarır. Panelde çıkanlar için "↺ Geri aç".
 
 ## Faydalı araçlar (panel oturumu gerekir)
 - `api/seo-inventory.php` (yazı başına okunma/noindex, salt okunur), `api/seo-prune.php`, `api/fix-preamble.php`, `api/fix-claviez.php` (tek seferlik, uygulandı).

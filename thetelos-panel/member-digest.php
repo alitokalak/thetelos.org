@@ -58,7 +58,7 @@ async function load() {
   ADMIN = r.admin_email || '';
   const rows = r.members.map(m => `<tr>
     <td><input type="checkbox" class="md-cb" value="${m.uid}" ${m.optout||!m.recs&&!m.reminders?'disabled':''} data-hasdata="${m.has_data?1:0}"></td>
-    <td><b>${esc(m.name)}</b><br><span class="muted">${esc(m.email)}</span>${m.optout?'<br><span class="tag-off">abonelikten çıktı · '+esc(m.optout_at)+' — mail gitmez</span>':''}</td>
+    <td><b>${esc(m.name)}</b><br><span class="muted">${esc(m.email)}</span>${m.optout?'<br><span class="tag-off">abonelikten çıktı · '+esc(m.optout_at)+' — mail gitmez</span> <button class="btn btn-sm" style="padding:1px 8px;font-size:11px" onclick="resub('+m.uid+')">↺ Geri aç</button>':''}</td>
     <td class="muted">${esc(m.basis)}</td>
     <td>${m.recs} öneri${m.reminders?` + ${m.reminders} hatırlatma`:''}</td>
     <td class="muted">${m.last_sent||'—'}</td>
@@ -73,6 +73,7 @@ function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt
 function prev(uid){ const f=$('#md-prev'); f.style.display='block'; f.src='api/member-digest.php?action=preview&uid='+uid; f.scrollIntoView({behavior:'smooth'}); }
 async function post(data){ const fd=new FormData(); for(const k in data) fd.append(k,data[k]); return fetch('api/member-digest.php',{method:'POST',body:fd}).then(x=>x.json()).catch(e=>({ok:false,error:e.message})); }
 async function test(uid){ st('Test maili gönderiliyor…'); const r=await post({action:'test',uid,to:($('#md-testto').value||'').trim()}); st(r.ok?('✓ Test maili gönderildi → '+r.to):('✗ '+(r.error||'hata'))); }
+async function resub(uid){ if(!confirm('Bu üyenin aboneliği geri açılsın mı? (Yalnız üye gerçekten çıkmadıysa — ör. otomatik tarayıcı tıkladıysa.)')) return; const r=await post({action:'resub',uid}); st(r.ok?'✓ Abonelik geri açıldı.':('✗ '+(r.error||'hata'))); load(); }
 $('#md-load').onclick = load;
 $('#md-all').onclick = () => document.querySelectorAll('.md-cb').forEach(c => { if(!c.disabled && c.dataset.hasdata==='1') c.checked = true; });
 $('#md-send').onclick = async () => {
