@@ -50,6 +50,7 @@ $tls_groups = [
         ['cover-backfill.php', 'Kapak Bul', null],
         ['amazon-match.php', 'Amazon', null],
         ['tts.php', 'Sesli Özet', null],
+        ['member-digest.php', 'Üye Mailleri', null],
     ]],
 ];
 $WP = defined('WP_URL') ? rtrim(WP_URL, '/') : '';

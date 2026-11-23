@@ -411,6 +411,7 @@ require_once get_template_directory() . '/inc/home-covers.php';
 require_once get_template_directory() . '/inc/seo-prune.php';
 require_once get_template_directory() . '/inc/audio-live.php';
 require_once get_template_directory() . '/inc/audio-player.php';
+require_once get_template_directory() . '/inc/member-digest.php';
 
 /* Reading List CPT — fallback (dosya yüklenemezse) */
 add_action('init', function() {
