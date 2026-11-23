@@ -179,6 +179,16 @@ get_header();
           <div class="tls-sett-field"><label>New Password <span>(min. 6 characters)</span></label><input type="password" id="s-pass-new" placeholder="••••••••"></div>
           <button class="tls-sett-btn" id="s-save-pass">Update Password</button>
         </div>
+        <?php $tls_digest_on = ! ( function_exists( 'tls_digest_optout' ) && tls_digest_optout( $user->ID ) ); ?>
+        <div class="tls-sett-card" id="tls-newsletter-card">
+          <h2 class="tls-sett-title">Email Preferences</h2>
+          <div id="tls-news-msg" class="tls-sett-notice" style="display:none;"></div>
+          <label style="display:flex;align-items:flex-start;gap:12px;cursor:pointer;font-family:var(--tls-sans);font-size:14px;line-height:1.5;color:var(--tls-bg-dark)">
+            <input type="checkbox" id="s-newsletter" <?php checked( $tls_digest_on ); ?> style="margin-top:3px;width:18px;height:18px;accent-color:var(--tls-gold);flex-shrink:0">
+            <span><b>Personal reading recommendations</b><br>
+              <span style="color:var(--tls-muted);font-size:13px">Occasional emails with summaries picked for you, based on the books you read, save and mark on The Telos. You can turn this off at any time.</span></span>
+          </label>
+        </div>
         <div class="tls-sett-card tls-sett-card--flat">
           <h2 class="tls-sett-title">Account</h2>
           <button class="tls-sett-btn tls-sett-btn--outline" id="tls-ph-signout-2">Sign Out</button>
@@ -511,6 +521,14 @@ get_header();
     if(sp)sp.addEventListener('click',function(){
         settPost({action:'tls_update_profile',tls_name:document.getElementById('s-name').value.trim(),tls_email:document.getElementById('s-email').value.trim()},function(res){
             notice('tls-prof-msg',res.success?res.data.message:res.data.message,res.success?'success':'error');
+        });
+    });
+    var snews=document.getElementById('s-newsletter');
+    if(snews)snews.addEventListener('change',function(){
+        var on=snews.checked;
+        settPost({action:'tls_digest_pref',on:on?'1':'0'},function(res){
+            if(!res||!res.success){snews.checked=!on;notice('tls-news-msg','Could not save. Please try again.','error');return;}
+            notice('tls-news-msg',on?'You will receive personal reading recommendations.':'You will no longer receive reading recommendation emails.','success');
         });
     });
     var spass=document.getElementById('s-save-pass');

@@ -27,10 +27,25 @@ add_action( 'init', function () {
     $uid = (int) $_GET['tls_unsub'];
     if ( $uid > 0 && hash_equals( tls_digest_unsub_key( $uid ), (string) $_GET['k'] ) && get_userdata( $uid ) ) {
         update_user_meta( $uid, '_tls_digest_optout', current_time( 'mysql' ) );
-        wp_die( '<h2>You have been unsubscribed.</h2><p>You will no longer receive reading recommendations from The Telos.</p><p><a href="' . esc_url( home_url( '/' ) ) . '">Back to The Telos</a></p>', 'Unsubscribed', [ 'response' => 200 ] );
+        wp_die( '<h2>You have been unsubscribed.</h2><p>You will no longer receive reading recommendations from The Telos. You can turn them back on anytime in your <a href="' . esc_url( home_url( '/profile/' ) ) . '">profile settings</a>.</p><p><a href="' . esc_url( home_url( '/' ) ) . '">Back to The Telos</a></p>', 'Unsubscribed', [ 'response' => 200 ] );
     }
     wp_die( 'Invalid unsubscribe link.', 'Unsubscribe', [ 'response' => 400 ] );
 }, 1 );
+
+/* Profil → Settings → Email Preferences: üye bülteni kendisi açar/kapatır.
+   Kapatma = _tls_digest_optout (tarih); açma = kayıt silinir + _tls_digest_optin (tarih) iz olarak tutulur. */
+add_action( 'wp_ajax_tls_digest_pref', function () {
+    if ( ! is_user_logged_in() ) wp_send_json_error( [ 'message' => 'login_required' ] );
+    check_ajax_referer( 'tls_auth_nonce', 'nonce', false );
+    $uid = get_current_user_id();
+    if ( ( $_POST['on'] ?? '' ) === '1' ) {
+        delete_user_meta( $uid, '_tls_digest_optout' );
+        update_user_meta( $uid, '_tls_digest_optin', current_time( 'mysql' ) );
+        wp_send_json_success( [ 'on' => true ] );
+    }
+    update_user_meta( $uid, '_tls_digest_optout', current_time( 'mysql' ) );
+    wp_send_json_success( [ 'on' => false ] );
+} );
 
 /* Yazının gerçek kelime sayısı (önbellekli). */
 function tls_digest_words( $pid ) {
