@@ -46,6 +46,10 @@ add_action( 'init', function () {
     if ( hash_equals( tls_digest_go_key( $pid, $uid, $issue ), (string) $_GET['k'] ) && get_userdata( $uid ) ) {
         $ua  = (string) ( $_SERVER['HTTP_USER_AGENT'] ?? '' );
         $bot = ( $ua === '' || preg_match( '/bot|crawl|spider|preview|scan|proofpoint|mimecast|barracuda|safelinks|urldefense|python|curl|wget|headless|monitor|checker|mail-tester/i', $ua ) );
+        // Kalıcı tıklama kaydı (Mail Analitiği): [tarih, sayı, üye, kitap, bot?]
+        $cl = get_option( 'tls_digest_click_log', [] ); if ( ! is_array( $cl ) ) $cl = [];
+        $cl[] = [ current_time( 'mysql' ), $issue, $uid, $pid, $bot ? 1 : 0 ];
+        update_option( 'tls_digest_click_log', array_slice( $cl, -5000 ), false );
         if ( ! $bot ) {
             $log = get_user_meta( $uid, '_tls_digest_clicks', true ); if ( ! is_array( $log ) ) $log = [];
             $log[] = [ current_time( 'mysql' ), $issue, $pid ];
@@ -343,6 +347,10 @@ function tls_digest_send( $uid, $to_override = '' ) {
     if ( $ok && $to_override === '' ) {
         update_user_meta( $uid, '_tls_digest_last_sent', current_time( 'mysql' ) );
         update_user_meta( $uid, '_tls_digest_last_issue', (int) get_option( 'tls_digest_issue', 0 ) + 1 );
+        // Kalıcı gönderim kaydı (Mail Analitiği): [tarih, sayı, üye]
+        $sl = get_option( 'tls_digest_sends', [] ); if ( ! is_array( $sl ) ) $sl = [];
+        $sl[] = [ current_time( 'mysql' ), (int) get_option( 'tls_digest_issue', 0 ) + 1, (int) $uid ];
+        update_option( 'tls_digest_sends', array_slice( $sl, -5000 ), false );
     }
     return [ 'ok' => (bool) $ok, 'error' => $ok ? '' : 'mail gönderilemedi (SMTP)' ];
 }

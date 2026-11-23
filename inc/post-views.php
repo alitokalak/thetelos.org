@@ -28,6 +28,12 @@ function tls_views_daily_bump( $pid ) {
     ksort( $d );
     while ( count( $d ) > 8 ) array_shift( $d );
     update_option( 'tls_views_daily', $d, false );
+    // Günlük TOPLAM okunma (400 gün) — Mail Analitiği'nde "gönderim sonrası trafik" grafiği için.
+    $t = (array) get_option( 'tls_views_daily_total', [] );
+    $t[ $day ] = (int) ( $t[ $day ] ?? 0 ) + 1;
+    ksort( $t );
+    while ( count( $t ) > 400 ) array_shift( $t );
+    update_option( 'tls_views_daily_total', $t, false );
 }
 
 /** Son 7 günde en çok okunan yazılar: [post_id => okunma], çoktan aza. */

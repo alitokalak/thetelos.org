@@ -32,6 +32,7 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
     </div></div>
 
     <div class="bulk-row">
+      <a class="btn" href="member-digest-stats.php" style="text-decoration:none">📊 Analitik</a>
       <button class="btn" id="md-load">🔄 Üyeleri yükle</button>
       <button class="btn" id="md-all">☑ Verisi olanların hepsini seç</button>
       <button class="btn btn-primary" id="md-send">✉ Seçilenlere gönder</button>

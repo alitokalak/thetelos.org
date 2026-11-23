@@ -69,5 +69,7 @@
 
 - **Dönüş ölçümü:** gerçek gönderimde maildeki linkler `?tls_go=PID&u=UID&i=SAYI&k=` → tıklama `_tls_digest_clicks`'e (bot UA elenir; 10 sn'de 3+ tık = şüpheli) → UTM'li sayfaya yönlenir (`utm_source=member_digest`, `utm_campaign=issue_N`, Analytics'te görünür). Test/önizleme takip edilmez. Panel: son sayı özeti (kaç kişiye gitti / kaç kişi geldi %) + satırda kim geldi, hangi kitap. Açılma (pixel) takibi YOK (güvenilmez).
 
+- **Mail Analitiği** sayfası (Araçlar → Mail Analitiği, `member-digest-stats.php` + `api/member-digest-stats.php`): özet kartlar, 45 günlük grafik (mailden tıklama + sitenin günlük toplam okunması, ✉ gönderim günleri), sayı bazında tablo (gönderilen / gelen / dönüş % / en çok tıklanan), tüm tıklamalar (tarih, üye, kitap; şüpheliler işaretli ve sayılmaz), üye bazında. Kayıtlar: `tls_digest_sends`, `tls_digest_click_log` (option, son 5000), `tls_views_daily_total` (400 gün, 23.11.2026'dan itibaren). Takip öncesi gönderimler üye meta'sından geri doldurulur.
+
 ## Faydalı araçlar (panel oturumu gerekir)
 - `api/seo-inventory.php` (yazı başına okunma/noindex, salt okunur), `api/seo-prune.php`, `api/fix-preamble.php`, `api/fix-claviez.php` (tek seferlik, uygulandı).
