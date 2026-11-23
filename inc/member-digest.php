@@ -207,7 +207,7 @@ function tls_digest_html( array $d ) {
         . '<tr><td style="font:11px ' . $SANS . ';color:' . $MUTED . ';padding-top:12px">Your personal reading selection</td>'
         . '<td align="right" style="font:11px ' . $SANS . ';color:' . $MUTED . ';padding-top:12px">' . esc_html( date_i18n( 'F j, Y' ) ) . '</td></tr></table>'
         . '<div style="border-top:1px solid ' . $LINE . ';margin:28px 0 30px;font-size:0;line-height:0">&nbsp;</div>';
-    $h .= '<div style="font:24px ' . $SERIF . ';color:' . $INK . '">Hi ' . $esc( $first ?: $d['name'] ) . ',</div>'
+    $h .= '<div style="font:24px ' . $SERIF . ';color:' . $INK . '">' . ( $first !== '' ? 'Hi ' . $esc( $first ) . ',' : 'Hi,' ) . '</div>'
         . '<p style="font:13px/1.7 ' . $SANS . ';color:#5a5750;margin:14px 0 0">Based on the books you have read, saved and marked on The Telos, here are a few summaries selected for your next reading.</p>';
     $h .= $section( 'Curated selection', $d['recs'] );
     $h .= $section( 'Still on your reading list', $d['reminders'] );
