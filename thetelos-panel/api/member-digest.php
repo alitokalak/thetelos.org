@@ -47,8 +47,10 @@ if ($action === 'list') {
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_encode(['ok' => false, 'error' => 'POST gerekli'])); }
 
 if ($action === 'test') {
-    $r = tls_digest_send((int) ($_POST['uid'] ?? 0), TLS_DIGEST_TEST_TO);
-    exit(json_encode($r + ['to' => TLS_DIGEST_TEST_TO], JSON_UNESCAPED_UNICODE));
+    // Test adresi panelden değiştirilebilir (ör. mail-tester.com spam testi); boşsa varsayılan.
+    $to = trim((string) ($_POST['to'] ?? '')); if (!is_email($to)) $to = TLS_DIGEST_TEST_TO;
+    $r = tls_digest_send((int) ($_POST['uid'] ?? 0), $to);
+    exit(json_encode($r + ['to' => $to], JSON_UNESCAPED_UNICODE));
 }
 
 if ($action === 'send') {
@@ -57,7 +59,7 @@ if ($action === 'send') {
     foreach ($uids as $uid) {
         $r = tls_digest_send($uid);
         if ($r['ok']) $sent++; else $fail[] = ['uid' => $uid, 'error' => $r['error']];
-        usleep(300000);   // SMTP'yi yormamak için kısa ara
+        sleep(2);   // toplu gönderimde yavaş git: sağlayıcılar ani yığını spam sayar
     }
     if ($sent > 0) update_option('tls_digest_issue', (int) get_option('tls_digest_issue', 0) + 1, false);   // sayı (Issue Nº) gerçek gönderimde artar
     exit(json_encode(['ok' => true, 'sent' => $sent, 'failed' => $fail], JSON_UNESCAPED_UNICODE));

@@ -257,11 +257,21 @@ function tls_digest_send( $uid, $to_override = '' ) {
     $to = $to_override !== '' ? $to_override : $d['email'];
     if ( ! is_email( $to ) ) return [ 'ok' => false, 'error' => 'geçersiz e-posta' ];
     $subject = ( $to_override !== '' ? '[TEST] ' : '' ) . 'Your reading picks from The Telos';
-    $ok = wp_mail( $to, $subject, tls_digest_html( $d ), [
+    // DÜZ METİN SÜRÜMÜ (multipart/alternative): yalnız-HTML mailler spam puanını yükseltir.
+    $html = tls_digest_html( $d );
+    $alt  = "Hi,\n\nHere are a few summaries picked for you on The Telos:\n\n";
+    foreach ( array_merge( $d['recs'], $d['reminders'] ) as $pid ) {
+        $alt .= '- ' . html_entity_decode( get_the_title( $pid ), ENT_QUOTES, 'UTF-8' ) . "\n  " . get_permalink( $pid ) . "\n";
+    }
+    $alt .= "\nUnsubscribe: " . tls_digest_unsub_url( $uid ) . "\n";
+    $set_alt = function ( $m ) use ( $alt ) { $m->AltBody = $alt; };
+    add_action( 'phpmailer_init', $set_alt );
+    $ok = wp_mail( $to, $subject, $html, [
         'Content-Type: text/html; charset=UTF-8',
         'List-Unsubscribe: <' . tls_digest_unsub_url( $uid ) . '>',
         'List-Unsubscribe-Post: List-Unsubscribe=One-Click',   // Gmail/Outlook tek tık "Abonelikten çık" düğmesi
     ] );
+    remove_action( 'phpmailer_init', $set_alt );
     if ( $ok && $to_override === '' ) update_user_meta( $uid, '_tls_digest_last_sent', current_time( 'mysql' ) );
     return [ 'ok' => (bool) $ok, 'error' => $ok ? '' : 'mail gönderilemedi (SMTP)' ];
 }

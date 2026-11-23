@@ -33,6 +33,8 @@ if (empty($_SESSION['tls_auth'])) { header('Location: index.php'); exit; }
       <button class="btn" id="md-load">🔄 Üyeleri yükle</button>
       <button class="btn" id="md-all">☑ Verisi olanların hepsini seç</button>
       <button class="btn btn-primary" id="md-send">✉ Seçilenlere gönder</button>
+      <label class="muted" style="display:flex;align-items:center;gap:6px">Test adresi
+        <input type="email" id="md-testto" value="thetelosorg@gmail.com" style="width:230px;padding:5px 8px"></label>
       <span id="md-status"></span>
     </div>
 
@@ -70,7 +72,7 @@ async function load() {
 function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
 function prev(uid){ const f=$('#md-prev'); f.style.display='block'; f.src='api/member-digest.php?action=preview&uid='+uid; f.scrollIntoView({behavior:'smooth'}); }
 async function post(data){ const fd=new FormData(); for(const k in data) fd.append(k,data[k]); return fetch('api/member-digest.php',{method:'POST',body:fd}).then(x=>x.json()).catch(e=>({ok:false,error:e.message})); }
-async function test(uid){ st('Test maili gönderiliyor…'); const r=await post({action:'test',uid}); st(r.ok?('✓ Test maili gönderildi → '+r.to):('✗ '+(r.error||'hata'))); }
+async function test(uid){ st('Test maili gönderiliyor…'); const r=await post({action:'test',uid,to:($('#md-testto').value||'').trim()}); st(r.ok?('✓ Test maili gönderildi → '+r.to):('✗ '+(r.error||'hata'))); }
 $('#md-load').onclick = load;
 $('#md-all').onclick = () => document.querySelectorAll('.md-cb').forEach(c => { if(!c.disabled && c.dataset.hasdata==='1') c.checked = true; });
 $('#md-send').onclick = async () => {
