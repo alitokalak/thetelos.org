@@ -54,6 +54,12 @@ function dg_variants($book) {
     if ($base !== '') $out[] = $base;
     if (preg_match_all('/\(([^()]+)\)/u', $book, $m)) foreach ($m[1] as $in) { $in = trim($in); if (mb_strlen($in) >= 3) $out[] = $in; }
     if (!$out) $out[] = $book;
+    // Alt başlık / katalog eki: "Against the Logicians. Loeb No. 291", "AGAINST THE LOGICIANS; ED. BY …"
+    // → ana başlık ayrıca karşılaştırılır (en az 2 kelime ve 8 harf ise).
+    foreach ($out as $v) {
+        $head = trim((string) preg_split('/\s*(?:[;:]|\.\s|\s[–—]\s)/u', $v, 2)[0]);
+        if ($head !== $v && mb_strlen($head) >= 8 && str_word_count($head) >= 2) $out[] = $head;
+    }
     return array_values(array_unique($out));
 }
 

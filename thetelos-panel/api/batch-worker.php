@@ -974,6 +974,26 @@ function bw_claude_queue($batch_file, $idx, $book, $author, $target_words, &$why
                 . "— the next parts continue from where you stop. End at a section boundary.";
             $p['max_tokens'] = min(16000, (int) round($pw * 2) + 1500);
         }
+        // KİMLİK SATIRI (27.11.2026, Sextus/Pinker/Burckhardt olayı): listeler aynı eserin çeviri
+        // baskılarını ("Kuskuculuk", "Esquisses pyrrhoniennes"), külliyat ciltlerini ("Opera",
+        // "Oeuvres", "Briefe") ve BAŞKA yazarların kitaplarını ("Sidereus nuncius" → Galileo)
+        // içeriyor. Claude yazmadan önce eserin gerçek kimliğini söyler; kod buna göre eler,
+        // başlığı standart İngilizce ada çevirir ve çift kaydı bu adla yakalar.
+        if (!empty($p['prompt_only'])) {
+            $p['user'] .= "\n\n=== IDENTIFY THE WORK FIRST ===\nThe listing above may be a translated edition, a "
+                . "catalogue entry, a volume of collected works, or even a book by someone else. If you know the book, "
+                . "the VERY FIRST line of your reply must be exactly:\n"
+                . "WORK: <the standard English title of the single original work this listing is> | TYPE: <single|collection|other_author>\n"
+                . "TYPE rules: 'single' = one distinct work by $author (a translation or edition of ONE work is still "
+                . "'single' — give that work's standard English title, e.g. a French or Turkish edition of the Outlines "
+                . "of Pyrrhonism → WORK: Outlines of Pyrrhonism; a book of essays $author published as one book is also "
+                . "'single'). 'collection' = complete/collected works, opera omnia, oeuvres, letters/correspondence "
+                . "volumes, a numbered volume of an edition, or a selection/anthology of excerpts from several of "
+                . "$author's works. 'other_author' = the main text was written by someone else ($author only edited, "
+                . "translated, prefaced or annotated it, it is a study ABOUT $author, or it is by a different person with "
+                . "a similar name). For 'collection' or 'other_author' write NOTHING after that line. For 'single' "
+                . "continue on the next line with the summary. If you do not know the book, reply exactly UNKNOWN.";
+        }
         if (!empty($p['prompt_only'])) {
             $cid = 'bk' . (int) $idx . '_' . substr(md5($book . microtime()), 0, 10);
             $sub = tls_claude_batch_submit([[
@@ -1094,6 +1114,14 @@ function bw_claude_poll($batch_file) {
                 bw_update_book($batch_file, $i, ['status' => 'pending', 'claude_md' => $acc, 'claude_acc' => '', 'error' => '']);
                 continue;
             }
+            // PARÇA 1 KİMLİK SATIRI: "WORK: … | TYPE: …" → külliyat/başka yazar elenir; çeviri
+            // baskısı standart İngilizce ada çevrilir ve aynı listede o eser zaten varsa atlanır.
+            if ($okres && $txt !== '') {
+                $idr = bw_claude_identity($batch_file, $i, $wait[$i], $txt);
+                if ($idr === null) continue;          // elendi (status skipped yazıldı)
+                $txt = $idr;
+                if (strncmp($txt, 'UNKNOWN', 7) === 0) $txt = 'UNKNOWN';
+            }
             if ($okres && $nparts >= 2 && $txt !== '' && strncmp($txt, 'UNKNOWN', 7) !== 0 && str_word_count($txt) >= 150
                 && bw_claude_next_part($batch_file, $i, $wait[$i], $txt, 2)) continue;
             if (empty($res['ok']) || !$one || empty($one['ok'])) {
@@ -1108,6 +1136,50 @@ function bw_claude_poll($batch_file) {
         }
     }
     $GLOBALS['tls_no_claude'] = true;
+}
+
+/* Parça 1 cevabının başındaki kimlik satırını işler ("WORK: <İngilizce ad> | TYPE: single|collection|other_author").
+   Dönüş: kimlik satırı çıkarılmış metin | null (kitap elendi, status 'skipped' yazıldı).
+   single ise kitabın adı standart İngilizce ada çevrilir (sayfa bu adla açılır; yayın öncesi çift
+   denetimi de bu adla yapılır) ve aynı listede aynı eser zaten işlenmişse hemen atlanır. */
+function bw_claude_identity($batch_file, $i, array &$bk, $txt) {
+    require_once __DIR__ . '/_dup-guard.php';
+    $lines = preg_split('/\R/u', ltrim((string) $txt), 2);
+    $first = trim(str_replace(['*', '`'], '', (string) ($lines[0] ?? '')));
+    if (!preg_match('/^WORK:\s*(.+?)\s*\|\s*TYPE:\s*([a-z_\-]+)/i', $first, $m)) return $txt;   // satır yoksa eski davranış
+    $rest = trim((string) ($lines[1] ?? ''));
+    $work = trim(preg_replace('/^["“”\'‘’]+|["“”\'‘’.]+$/u', '', trim($m[1])));
+    $type = strtolower(str_replace('-', '_', $m[2]));
+    $orig = (string) ($bk['book_title'] ?? '');
+    if ($type === 'collection') {
+        bw_update_book($batch_file, $i, ['status' => 'skipped', 'claude_work' => $work, 'error' => 'Atlandı: külliyat / cilt / mektuplar / seçki — ayrı kitap değil (Claude: ' . mb_substr($work, 0, 80) . ')']);
+        return null;
+    }
+    if ($type === 'other_author') {
+        bw_update_book($batch_file, $i, ['status' => 'skipped', 'claude_work' => $work, 'error' => 'Atlandı: bu yazarın eseri değil (başkasının kitabı / hakkında yazılmış / editörlük) — Claude: ' . mb_substr($work, 0, 80)]);
+        return null;
+    }
+    if ($work === '' || mb_strlen($work) > 200) return $rest;
+    // Aynı listede bu eser zaten işlendi mi? (çeviri baskıları burada yakalanır)
+    $b = json_decode((string) @file_get_contents($batch_file), true);
+    $kw = dg_key($work);
+    foreach ((is_array($b) ? ($b['books'] ?? []) : []) as $bi => $bb) {
+        if ($bi === $i || !empty($bb['duplicate'])) continue;
+        $bst = $bb['status'] ?? '';
+        $live = in_array($bst, ['claude_wait', 'processing', 'done'], true) || ($bst === 'pending' && trim((string) ($bb['claude_md'] ?? '')) !== '');
+        if (!$live) continue;
+        foreach (array_filter([(string) ($bb['claude_work'] ?? ''), (string) ($bb['book_title'] ?? '')]) as $ot) {
+            if (dg_key($ot) === $kw || dg_same_by_rules($work, $ot)) {
+                bw_update_book($batch_file, $i, ['status' => 'skipped', 'duplicate' => 1, 'claude_work' => $work,
+                    'error' => 'Atlandı: listede aynı eser zaten var → ' . ($bi + 1) . '. satır “' . mb_substr($ot, 0, 100) . '” (Claude: bu “' . mb_substr($work, 0, 80) . '”)']);
+                return null;
+            }
+        }
+    }
+    $upd = ['claude_work' => $work];
+    if ($kw !== dg_key($orig)) { $upd['book_title'] = $work; $upd['orig_title'] = $orig; $bk['book_title'] = $work; }
+    bw_update_book($batch_file, $i, $upd);
+    return $rest;
 }
 
 function bw_claude_fail($batch_file, $i, $bk, $reason) {
@@ -1355,7 +1427,10 @@ function bw_process_book($batch_file, $idx, $batch, $auth, $wp_api) {
         $tnorm = mb_strtolower($book, 'UTF-8');
         $is_vol = preg_match('/\b(gesamtausgabe|gesammelte\s+(werke|schriften)|s[äa]mtliche\s+werke|werke|nachlass|briefwechsel|collected\s+works|complete\s+works|[œo]euvres\s+compl[èe]tes|opere\s+complete|obras\s+completas|sobranie\s+sochinenii)\b.*\b(band|bd\.?|reihe|vol\.?|volume|tome|tomo|teil)\s*[\divxlc]/iu', $tnorm)
                || preg_match('/\[\s*microform\s*\]/i', $book)
-               || ($author !== '' && trim(preg_replace('/[^a-z]/', '', mb_strtolower($book))) === trim(preg_replace('/[^a-z]/', '', mb_strtolower($author))));
+               || ($author !== '' && trim(preg_replace('/[^a-z]/', '', mb_strtolower($book))) === trim(preg_replace('/[^a-z]/', '', mb_strtolower($author))))
+               // başlık = yazar adı (yazım hatalı da olsa: "Sextus Empericus") ya da "Yazar Complete"
+               || ($author !== '' && (function ($a, $b) { similar_text($a, $b, $pc); return $pc >= 85; })(preg_replace('/[^a-z]/', '', mb_strtolower(preg_replace('/\b(complete|works|opera|oeuvres|werke)\b/i', '', $book))), preg_replace('/[^a-z]/', '', mb_strtolower($author))))
+               || preg_match('/^\s*(opera(\s+omnia)?|[œo]euvres(\s+compl[èe]tes)?|werke|briefe|correspondan[cz]e|vortr(ä|a|ae)ge|schriften)\s*([,;:.(\[…]|$)/iu', $book);
         if ($is_vol) {
             bw_update_book($batch_file, $idx, ['status' => 'skipped', 'error' => 'cilt/baskı/katalog satırı — ayrı kitap değil, yazılmadı']);
             return;
